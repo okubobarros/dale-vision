@@ -1,4 +1,4 @@
-# apps/stores/views.py - VERSÃO MELHORADA (mantendo seu código)
+# apps/stores/views.py 
 from rest_framework import viewsets, status, permissions
 from rest_framework.decorators import action
 from rest_framework.response import Response
@@ -16,7 +16,7 @@ class StoreViewSet(viewsets.ModelViewSet):
         """Filtra apenas lojas do usuário atual"""
         user = self.request.user
         if user.is_authenticated:
-            return Store.objects.filter(owner_email=user.email)
+            return Store.objects.filter(owner=self.request.user)
         return Store.objects.none()
     
     def list(self, request):
@@ -32,7 +32,7 @@ class StoreViewSet(viewsets.ModelViewSet):
     
     def perform_create(self, serializer):
         """Auto-popula owner_email com email do usuário - ADICIONE ESTE!"""
-        serializer.save(owner_email=self.request.user.email)
+        serializer.save(owner=self.request.user)
     
     
     @action(detail=True, methods=['get'])
@@ -155,7 +155,7 @@ class StoreViewSet(viewsets.ModelViewSet):
         network_data = {
             'network': {
                 'total_stores': stores.count(),
-                'active_stores': stores.filter(is_active=True).count(),
+                'active_stores': stores.filter(status='active').count(),
                 'total_visitors': 3124,
                 'avg_conversion': 75.2,
             },
