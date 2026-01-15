@@ -1,48 +1,76 @@
 import { NavLink } from "react-router-dom"
+import ReactDOM from "react-dom"
+import { useMemo } from "react"
 
-export function BottomNav({
-  onOpenAgent,
-}: {
+type BottomNavProps = {
   onOpenAgent: () => void
-}) {
-  const base =
-    "flex flex-col items-center justify-center gap-1 text-xs text-white/70"
-  const active = "text-white"
+}
 
-  return (
-    <nav className="fixed bottom-0 left-0 right-0 z-50 border-t border-white/10 bg-[#0B0F14]/95 backdrop-blur">
-      <div className="mx-auto grid max-w-lg grid-cols-5 px-2 py-2">
-        <NavLink to="/dashboard" className={({ isActive }) => `${base} ${isActive ? active : ""}`}>
-          <span className="text-lg">📡</span>
-          Radar
+export default function BottomNav({ onOpenAgent }: BottomNavProps) {
+  const items = useMemo(
+    () => [
+      { label: "Radar", to: "/app/dashboard", icon: "🏠" },
+      { label: "Lojas", to: "/app/stores", icon: "🏪" },
+      { label: "Analytics", to: "/app/analytics", icon: "📊" },
+      { label: "Alertas", to: "/app/alerts", icon: "🔔" },
+    ],
+    []
+  )
+
+  const content = (
+    <nav className="dv-bottomnav" aria-label="Navegação inferior">
+      <div className="dv-bottomnav__inner">
+        <NavLink
+          to={items[0].to}
+          className={({ isActive }) =>
+            `dv-bottomnav__item ${isActive ? "is-active" : ""}`
+          }
+        >
+          <div className="dv-bottomnav__icon">{items[0].icon}</div>
+          <span className="dv-bottomnav__label">{items[0].label}</span>
         </NavLink>
 
-        <NavLink to="/stores" className={({ isActive }) => `${base} ${isActive ? active : ""}`}>
-          <span className="text-lg">🏬</span>
-          Lojas
+        <NavLink
+          to={items[1].to}
+          className={({ isActive }) =>
+            `dv-bottomnav__item ${isActive ? "is-active" : ""}`
+          }
+        >
+          <div className="dv-bottomnav__icon">{items[1].icon}</div>
+          <span className="dv-bottomnav__label">{items[1].label}</span>
         </NavLink>
 
         <button
-          onClick={onOpenAgent}
-          className="flex items-center justify-center"
           type="button"
-          aria-label="Abrir agente IA"
+          onClick={onOpenAgent}
+          className="dv-bottomnav__fab"
+          aria-label="Abrir agente"
         >
-          <div className="relative -mt-8 flex h-14 w-14 items-center justify-center rounded-full bg-gradient-to-r from-lime-400 to-green-500 text-black shadow-lg">
-            <span className="text-xl">⚡</span>
-          </div>
+          ⚡
         </button>
 
-        <NavLink to="/analytics" className={({ isActive }) => `${base} ${isActive ? active : ""}`}>
-          <span className="text-lg">👥</span>
-          Time
+        <NavLink
+          to={items[2].to}
+          className={({ isActive }) =>
+            `dv-bottomnav__item ${isActive ? "is-active" : ""}`
+          }
+        >
+          <div className="dv-bottomnav__icon">{items[2].icon}</div>
+          <span className="dv-bottomnav__label">{items[2].label}</span>
         </NavLink>
 
-        <NavLink to="/cameras" className={({ isActive }) => `${base} ${isActive ? active : ""}`}>
-          <span className="text-lg">📷</span>
-          Monitor
+        <NavLink
+          to={items[3].to}
+          className={({ isActive }) =>
+            `dv-bottomnav__item ${isActive ? "is-active" : ""}`
+          }
+        >
+          <div className="dv-bottomnav__icon">{items[3].icon}</div>
+          <span className="dv-bottomnav__label">{items[3].label}</span>
         </NavLink>
       </div>
     </nav>
   )
+
+  return ReactDOM.createPortal(content, document.body)
 }

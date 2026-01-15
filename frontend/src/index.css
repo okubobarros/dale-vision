@@ -1,3 +1,114 @@
 @tailwind base;
 @tailwind components;
 @tailwind utilities;
+
+html, body, #root {
+  height: 100%;
+}
+body {
+  overflow-x: hidden;
+}
+
+/* ===== Dale Vision BottomNav (mobile) ===== */
+.dv-bottomnav {
+  position: fixed;
+  left: 0;
+  right: 0;
+  bottom: 0;
+
+  /* MUITO importante: ficar acima do resto */
+  z-index: 9999;
+
+  border-top: 1px solid rgba(255, 255, 255, 0.10);
+  background: rgba(11, 15, 20, 0.90);
+  backdrop-filter: blur(10px);
+
+  padding: 12px 16px;
+  padding-bottom: max(12px, env(safe-area-inset-bottom));
+}
+
+.dv-bottomnav__inner {
+  max-width: 520px;           /* um pouco mais flex */
+  margin: 0 auto;
+  display: flex;
+  justify-content: space-between;
+  align-items: flex-end;
+  gap: 6px;                   /* evita esmagar */
+}
+
+.dv-bottomnav__item {
+  flex: 1;                    /* <-- em vez de width fixa */
+  min-width: 0;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 4px;
+
+  font-size: 12px;
+  color: rgba(255, 255, 255, 0.60);
+  text-decoration: none;
+}
+
+.dv-bottomnav__item.is-active {
+  color: #fff;
+}
+
+.dv-bottomnav__icon {
+  font-size: 18px;
+  line-height: 18px;
+}
+
+.dv-bottomnav__label {
+  line-height: 1;
+}
+
+.dv-bottomnav__fab {
+  margin-top: -32px;
+
+  width: 56px;
+  height: 56px;
+
+  border-radius: 999px;
+  border: 0;
+
+  background: linear-gradient(90deg, #A3FF3B, #22C55E);
+  color: #000;
+
+  box-shadow: 0 10px 24px rgba(34, 197, 94, 0.20);
+
+  /* anel para destacar do fundo */
+  outline: 4px solid #0B0F14;
+
+  display: flex;
+  align-items: center;
+  justify-content: center;
+
+  cursor: pointer;
+}
+:root {
+  --safe-bottom: env(safe-area-inset-bottom);
+  --safe-top: env(safe-area-inset-top);
+}
+
+/* padding para não cortar no iPhone */
+.pb-safe-bottom {
+  padding-bottom: max(12px, var(--safe-bottom));
+}
+
+/* altura aproximada do bottom nav (ajustável) */
+:root {
+  --bottom-nav-h: 76px;
+}
+
+/* quando tiver bottomnav, dá folga no conteúdo */
+.pb-bottomnav {
+  padding-bottom: calc(var(--bottom-nav-h) + max(12px, var(--safe-bottom)));
+}
+@media (max-width: 360px) {
+  .dv-bottomnav__item {
+    font-size: 11px;
+  }
+  .dv-bottomnav__icon {
+    font-size: 17px;
+  }
+}

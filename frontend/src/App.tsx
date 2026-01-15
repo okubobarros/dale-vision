@@ -9,6 +9,7 @@ import Cameras from "./pages/Cameras/Cameras"
 import Alerts from "./pages/Alerts/Alerts"
 import Settings from "./pages/Settings/Settings"
 import HomePage from "./pages/Home/Home"
+import ProfilePage from "./pages/Profile/Profile"
 
 function App() {
   return (
@@ -33,6 +34,7 @@ function App() {
         <Route path="cameras" element={<Cameras />} />
         <Route path="alerts" element={<Alerts />} />
         <Route path="settings" element={<Settings />} />
+        <Route path="profile" element={<ProfilePage />} />
       </Route>
 
       {/* Compat: se algum lugar ainda manda pra /dashboard, redireciona */}
