@@ -1,15 +1,35 @@
 // src/pages/Stores/Stores.tsx
 import { useState, useEffect } from 'react';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
-import { storesService, type Store } from '../../services/stores';
+import {
+  storesService,
+  type Store,
+  type CreateStorePayload,
+  type UpdateStorePayload,
+  type StoreStatus,
+  type StorePlan,
+} from '../../services/stores';
 import toast from 'react-hot-toast';
+
+const PLAN_LABELS: Record<StorePlan, string> = {
+  trial: 'Trial',
+  basic: 'Basic',
+  pro: 'Pro',
+  enterprise: 'Enterprise',
+};
+
+const STATUS_OPTIONS: Array<{ value: StoreStatus; label: string }> = [
+  { value: 'active', label: 'Ativa' },
+  { value: 'inactive', label: 'Inativa' },
+  { value: 'maintenance', label: 'Manutencao' },
+];
 
 // =======================
 // Create Store Modal
 // =======================
 const CreateStoreModal = ({ isOpen, onClose }: { isOpen: boolean; onClose: () => void }) => {
   const queryClient = useQueryClient();
-  const [formData, setFormData] = useState({
+  const [formData, setFormData] = useState<CreateStorePayload>({
     name: '',
     description: '',
     address: '',
@@ -17,7 +37,7 @@ const CreateStoreModal = ({ isOpen, onClose }: { isOpen: boolean; onClose: () =>
     state: '',
     phone: '',
     email: '',
-    status: 'active' as 'active' | 'inactive',
+    status: 'active',
   });
 
   const createMutation = useMutation({
@@ -168,15 +188,18 @@ const CreateStoreModal = ({ isOpen, onClose }: { isOpen: boolean; onClose: () =>
                   value={formData.status}
                   onChange={(e) => setFormData({ 
                     ...formData, 
-                    status: e.target.value as 'active' | 'inactive'
+                    status: e.target.value as StoreStatus
                   })}
                   className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent"
                   disabled={createMutation.isPending}
                   aria-label="Status da loja"
                   title="Selecione o status da loja"
                 >
-                  <option value="active">Ativa</option>
-                  <option value="inactive">Inativa</option>
+                  {STATUS_OPTIONS.map((option) => (
+                    <option key={option.value} value={option.value}>
+                      {option.label}
+                    </option>
+                  ))}
                 </select>
               </div>
             </div>
@@ -230,7 +253,7 @@ const EditStoreModal = ({
   onClose: () => void 
 }) => {
   const queryClient = useQueryClient();
-  const [formData, setFormData] = useState({
+  const [formData, setFormData] = useState<UpdateStorePayload>({
     name: '',
     description: '',
     address: '',
@@ -238,11 +261,12 @@ const EditStoreModal = ({
     state: '',
     phone: '',
     email: '',
-    status: 'active' as 'active' | 'inactive' | 'maintenance',
+    status: 'active',
   });
 
   const updateMutation = useMutation({
-    mutationFn: () => storesService.updateStore(store!.id, formData),
+    mutationFn: ({ storeId, payload }: { storeId: string; payload: UpdateStorePayload }) =>
+      storesService.updateStore(storeId, payload),
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ['stores'] });
       toast.success('Loja atualizada com sucesso!');
@@ -265,7 +289,7 @@ const EditStoreModal = ({
         state: store.state || '',
         phone: store.phone || '',
         email: store.email || '',
-        status: store.status as 'active' | 'inactive' | 'maintenance',
+        status: store.status || 'active',
       });
     }
   }, [store]);
@@ -291,7 +315,9 @@ const EditStoreModal = ({
 
           <form onSubmit={(e) => {
             e.preventDefault();
-            updateMutation.mutate();
+            if (store) {
+              updateMutation.mutate({ storeId: store.id, payload: formData });
+            }
           }}>
             <div className="space-y-4">
               <div>
@@ -395,7 +421,7 @@ const EditStoreModal = ({
                   value={formData.status}
                   onChange={(e) => setFormData({ 
                     ...formData, 
-                    status: e.target.value as 'active' | 'inactive' | 'maintenance'
+                    status: e.target.value as StoreStatus
                   })}
                   className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent"
                   disabled={updateMutation.isPending}
@@ -456,6 +482,7 @@ interface StoreCardProps {
 const StoreCard = ({ store, onEdit }: StoreCardProps) => {
   const queryClient = useQueryClient();
   const [showActions, setShowActions] = useState(false);
+  const planLabel = PLAN_LABELS[store.plan] ?? 'Trial';
 
   const deleteMutation = useMutation({
     mutationFn: () => storesService.deleteStore(store.id),
@@ -532,22 +559,29 @@ const StoreCard = ({ store, onEdit }: StoreCardProps) => {
       {/* Store Info */}
       <div className="mb-4">
         <h3 className="text-lg font-semibold text-gray-800 pr-8">{store.name}</h3>
-        <span 
-          className={`inline-block mt-2 px-3 py-1 rounded-full text-xs font-medium ${
-            store.status === 'active' 
-              ? 'bg-green-100 text-green-800'
-              : store.status === 'inactive'
-              ? 'bg-gray-100 text-gray-800'
-              : 'bg-yellow-100 text-yellow-800'
-          }`}
-          aria-label={`Status: ${store.status === 'active' ? 'Ativa' : store.status === 'inactive' ? 'Inativa' : 'Manutenção'}`}
-        >
-          {store.status === 'active' ? 'Ativa' : 
-           store.status === 'inactive' ? 'Inativa' : 'Manutenção'}
-        </span>
+        <div className="mt-2 flex flex-wrap items-center gap-2">
+          <span 
+            className={`inline-block px-3 py-1 rounded-full text-xs font-medium ${
+              store.status === 'active' 
+                ? 'bg-green-100 text-green-800'
+                : store.status === 'inactive'
+                ? 'bg-gray-100 text-gray-800'
+                : 'bg-yellow-100 text-yellow-800'
+            }`}
+            aria-label={`Status: ${store.status === 'active' ? 'Ativa' : store.status === 'inactive' ? 'Inativa' : 'Manutencao'}`}
+          >
+            {store.status === 'active' ? 'Ativa' : 
+             store.status === 'inactive' ? 'Inativa' : 'Manutencao'}
+          </span>
+          <span
+            className="inline-block px-3 py-1 rounded-full text-xs font-medium bg-blue-50 text-blue-700"
+            aria-label={`Plano: ${planLabel}`}
+          >
+            {planLabel}
+          </span>
+        </div>
       </div>
-      
-      {store.description && (
+{store.description && (
         <p className="text-gray-600 text-sm mb-4 line-clamp-2">{store.description}</p>
       )}
       
@@ -728,3 +762,6 @@ const Stores = () => {
 };
 
 export default Stores;
+
+
+

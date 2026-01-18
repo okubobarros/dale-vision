@@ -7,6 +7,15 @@ import { AuthProvider } from './contexts/AuthContext'
 import App from './App'
 import './index.css'
 import { Toaster } from 'react-hot-toast';
+import { alertsService } from "./services/alerts"
+
+declare global {
+  interface Window {
+    alertsService: typeof alertsService
+  }
+}
+
+window.alertsService = alertsService
 
 const queryClient = new QueryClient({
   defaultOptions: {

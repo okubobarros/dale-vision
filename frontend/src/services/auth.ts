@@ -26,31 +26,31 @@ export interface AuthResponse {
 
 export const authService = {
   async login(credentials: LoginCredentials): Promise<AuthResponse> {
-    console.log('Fazendo login com:', credentials);
-    
-    // Importante: não enviar Authorization header no login
-    const response = await api.post('/accounts/login/', credentials, {
+    console.log("Fazendo login com:", credentials)
+
+    const response = await api.post("/accounts/login/", credentials, {
       headers: {
-        Authorization: undefined // Garante que não envia token antigo
-      }
-    });
-    
-    console.log('Resposta do login:', response.data);
-    
-    if (response.data.token) {
-      const token = response.data.token;
-      
-      // Salvar token e usuário
-      localStorage.setItem('authToken', token);
-      localStorage.setItem('userData', JSON.stringify(response.data.user));
-      
-      // O interceptor em api.ts já vai pegar este token automaticamente
-      // nas próximas requisições
-      
-      return response.data;
+        "Content-Type": "application/json",
+        Accept: "application/json",
+      },
+      // ✅ garante que não herda Authorization de lugar nenhum
+      transformRequest: [(data, headers) => {
+        // @ts-ignore
+        if (headers && typeof headers.delete === "function") headers.delete("Authorization")
+        // fallback
+        // @ts-ignore
+        else if (headers) delete headers.Authorization
+        return JSON.stringify(data)
+      }],
+    })
+
+    if (response.data?.token) {
+      localStorage.setItem("authToken", response.data.token)
+      localStorage.setItem("userData", JSON.stringify(response.data.user))
+      return response.data
     }
-    
-    throw new Error('Token não encontrado na resposta');
+
+    throw new Error("Token não encontrado na resposta")
   },
 
   async logout(): Promise<void> {

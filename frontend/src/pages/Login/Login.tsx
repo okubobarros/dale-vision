@@ -1,6 +1,7 @@
 // src/pages/Login/Login.tsx
 import { useState } from 'react';
 import { useNavigate } from 'react-router-dom';
+import logo from '../../assets/logo.png';
 import { useAuth } from '../../contexts/AuthContext';
 
 const Login = () => {
@@ -74,14 +75,15 @@ const Login = () => {
   };
 
   return (
-    <div className="min-h-screen flex items-center justify-center bg-gradient-to-br from-blue-50 to-indigo-100 p-4">
+    <div className="min-h-screen flex items-center justify-center bg-gradient-to-br bg-gradient-to-r from-blue-500 to-purple-600 p-4">
       <div className="max-w-md w-full">
         <div className="bg-white rounded-2xl shadow-2xl p-8">
           <div className="text-center mb-10">
-            <div className="inline-flex items-center justify-center w-16 h-16 bg-gradient-to-r from-blue-500 to-purple-600 rounded-2xl shadow-lg mb-4">
-              <span className="text-2xl font-bold text-white">DV</span>
+            <div className="inline-flex items-center justify-center w-16 h-16 bg-white rounded-2xl shadow-lg mb-4">
+              <img src={logo} alt="DALE Vision" className="h-12 w-auto" />
             </div>
-            <h1 className="text-3xl font-bold text-gray-800">DALE Vision</h1>
+            <h1 className="text-3xl font-bold bg-gradient-to-r from-blue-500 to-purple-600 
+                bg-clip-text text-transparent">DALE Vision</h1>
             <p className="text-gray-600 mt-2">Gestão inteligente para suas lojas</p>
           </div>
 

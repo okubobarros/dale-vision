@@ -75,11 +75,18 @@ TEMPLATES = [
 
 WSGI_APPLICATION = 'backend.wsgi.application'
 
-# ⭐ DATABASE - Vamos usar SQLite inicialmente, depois Supabase
+# ⭐ DATABASE - Supabase Postgres (prod e dev)
 DATABASES = {
     'default': {
-        'ENGINE': 'django.db.backends.sqlite3',
-        'NAME': BASE_DIR / 'db.sqlite3',
+        'ENGINE': 'django.db.backends.postgresql',
+        'NAME': os.getenv('DB_NAME', 'postgres'),
+        'USER': os.getenv('DB_USER', 'postgres'),
+        'PASSWORD': os.getenv('DB_PASSWORD', ''),
+        'HOST': os.getenv('DB_HOST', ''),
+        'PORT': os.getenv('DB_PORT', '5432'),
+        'OPTIONS': {
+            'sslmode': os.getenv('DB_SSLMODE', 'require'),
+        }
     }
 }
 
@@ -146,8 +153,8 @@ REST_KNOX = {
 }
 
 # ⭐ SUPABASE CONFIG (SEUS DADOS)
-SUPABASE_URL = "https://jytkrwjvatmvmqewoyoq.supabase.co"
-SUPABASE_KEY = "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6Imp5dGtyd2p2YXRtdm1xZXdveW9xIiwicm9sZSI6ImFub24iLCJpYXQiOjE3NjgyNjA2NzAsImV4cCI6MjA4MzgzNjY3MH0.FIBBu85Hh-Lh0EHCzDXJJMU4v3nLRJfNOxmVOzqSqQ4"
-
+SUPABASE_URL = os.getenv("SUPABASE_URL")
+SUPABASE_KEY = os.getenv("SUPABASE_KEY")
+N8N_ALERTS_WEBHOOK = os.getenv("N8N_ALERTS_WEBHOOK", "https://visionanalytics.app.n8n.cloud/webhook/dale-vision-alerts")
 # ⭐ WHITENOISE (para arquivos estáticos)
 STATICFILES_STORAGE = 'whitenoise.storage.CompressedManifestStaticFilesStorage'

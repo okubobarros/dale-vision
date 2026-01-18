@@ -112,3 +112,26 @@ body {
     font-size: 17px;
   }
 }
+
+/* ===== Dale Vision Agent Modal ===== */
+.dv-agentmodal {
+  padding-bottom: calc(16px + var(--bottom-nav-h) + max(12px, var(--safe-bottom)));
+}
+
+/* AgentModal panel: respeita bottom nav + safe area */
+.dv-agent-panel {
+  padding-bottom: calc(16px + var(--bottom-nav-h) + env(safe-area-inset-bottom));
+}
+
+/* área rolável do chat (pra não esmagar) */
+.dv-agent-scroll {
+  max-height: min(52vh, 420px);
+  overflow: auto;
+}
+:root {
+  --bottom-nav-h: 72px; /* ajuste ao seu BottomNav real */
+}
+
+.dv-safe-bottom {
+  padding-bottom: calc(16px + var(--bottom-nav-h) + env(safe-area-inset-bottom));
+}

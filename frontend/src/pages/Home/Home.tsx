@@ -1,7 +1,7 @@
 import { Link, useNavigate } from "react-router-dom"
 import { useEffect } from "react"
 import { useAuth } from "../../contexts/AuthContext"
-
+import logo from "../../assets/logo.png"
 export default function HomePage() {
   const { isAuthenticated } = useAuth()
   const navigate = useNavigate()
@@ -16,10 +16,15 @@ export default function HomePage() {
       <header className="sticky top-0 z-40 border-b border-white/10 bg-[#0B0F14]/80 backdrop-blur">
         <div className="mx-auto flex max-w-6xl items-center justify-between px-4 py-4">
           <div className="flex items-center gap-3">
-            <div className="h-9 w-9 rounded-xl bg-gradient-to-br from-blue-500 to-cyan-400" />
+           <img src={logo} alt="DALE Vision" className="h-12 w-auto" />
             <div>
-              <div className="text-sm font-semibold leading-none">Dale Vision</div>
-              <div className="text-[11px] text-white/60 leading-none">Radar Operacional</div>
+              <div className="text-sm font-semibold leading-none 
+                bg-gradient-to-r from-blue-500 to-purple-600 
+                bg-clip-text text-transparent">
+                Dale Vision
+              </div>
+              
+              <div className="text-[11px] text-white/60 leading-none">Gestão Remota</div>
             </div>
           </div>
 
@@ -32,7 +37,7 @@ export default function HomePage() {
             </Link>
             <a
               href="#demo"
-              className="rounded-xl bg-gradient-to-r from-blue-500 to-cyan-400 px-4 py-2 text-sm font-semibold text-black hover:opacity-95"
+              className="rounded-xl bg-gradient-to-r from-blue-500 to-purple-600  px-4 py-2 text-sm font-semibold text-black hover:opacity-95"
             >
               Agendar Demo
             </a>
@@ -52,7 +57,7 @@ export default function HomePage() {
 
               <h1 className="mt-6 text-4xl font-extrabold tracking-tight sm:text-5xl">
                 Transforme câmeras em{" "}
-                <span className="bg-gradient-to-r from-blue-400 to-cyan-300 bg-clip-text text-transparent">
+                <span className="bg-gradient-to-r from-blue-500 to-purple-600  bg-clip-text text-transparent">
                   inteligência operacional
                 </span>
               </h1>

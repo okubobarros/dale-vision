@@ -2,6 +2,9 @@
 import api from './api';
 import type { StoreDashboard } from '../types/dashboard';
 
+export type StoreStatus = 'active' | 'inactive' | 'maintenance';
+export type StorePlan = 'trial' | 'basic' | 'pro' | 'enterprise';
+
 export interface Store {
   id: string;
   name: string;
@@ -11,11 +14,26 @@ export interface Store {
   state?: string;
   phone?: string;
   email?: string;
-  status: 'active' | 'inactive' | 'maintenance';
+  plan: StorePlan;
+  status: StoreStatus;
   created_at: string;
   updated_at: string;
   owner_email: string;
 }
+
+type StoreWriteFields = {
+  name: string;
+  description?: string;
+  address?: string;
+  city?: string;
+  state?: string;
+  phone?: string;
+  email?: string;
+  status?: StoreStatus;
+};
+
+export type CreateStorePayload = StoreWriteFields;
+export type UpdateStorePayload = StoreWriteFields;
 
 export interface StoreMetrics {
   total_cameras: number;
@@ -114,6 +132,19 @@ const getMockDashboard = (storeId: string): StoreDashboard => {
   };
 };
 
+const omitEmpty = <T extends Record<string, unknown>>(payload: T): Partial<T> => {
+  const result: Partial<T> = {};
+
+  (Object.keys(payload) as Array<keyof T>).forEach((key) => {
+    const value = payload[key];
+    if (value === undefined || value === null) return;
+    if (typeof value === 'string' && value === '') return;
+    result[key] = value;
+  });
+
+  return result;
+};
+
 export const storesService = {
   // Listar todas as lojas do usuário
   async getStores(): Promise<Store[]> {
@@ -190,14 +221,54 @@ export const storesService = {
   },
 
   // Criar nova loja
-  async createStore(storeData: Partial<Store>): Promise<Store> {
-    const response = await api.post('/v1/stores/', storeData);
+  async createStore(storeData: CreateStorePayload): Promise<Store> {
+    const {
+      name,
+      description,
+      address,
+      city,
+      state,
+      phone,
+      email,
+      status,
+    } = storeData;
+    const payload = omitEmpty({
+      name,
+      description,
+      address,
+      city,
+      state,
+      phone,
+      email,
+      status: status ?? 'active',
+    });
+    const response = await api.post('/v1/stores/', payload);
     return response.data;
   },
 
   // Atualizar loja
-  async updateStore(storeId: string, storeData: Partial<Store>): Promise<Store> {
-    const response = await api.put(`/v1/stores/${storeId}/`, storeData);
+  async updateStore(storeId: string, storeData: UpdateStorePayload): Promise<Store> {
+    const {
+      name,
+      description,
+      address,
+      city,
+      state,
+      phone,
+      email,
+      status,
+    } = storeData;
+    const payload = omitEmpty({
+      name,
+      description,
+      address,
+      city,
+      state,
+      phone,
+      email,
+      status,
+    });
+    const response = await api.put(`/v1/stores/${storeId}/`, payload);
     return response.data;
   },
 
