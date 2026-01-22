@@ -127,7 +127,7 @@ export default function HomePage() {
   const jsonLd = {
     "@context": "https://schema.org",
     "@type": "SoftwareApplication",
-    name: "DaleVision | Visão Computacional Aplicada no Varejo",
+    name: "DaleVision | Visão Computacional Aplicada ao Varejo",
     applicationCategory: "BusinessApplication",
     operatingSystem: "Web",
     description:
@@ -143,6 +143,16 @@ export default function HomePage() {
   // FAQ ordenada (já está ordenada por fluxo de objeções)
   const faqs = useMemo(
     () => [
+           {
+        icon: "🚨",
+        q: "Como são os alertas em tempo real?",
+        a: "Alertas por WhatsApp/e-mail/painel quando detectamos filas acima do limite, cliente esperando, picos de fluxo sem cobertura, ociosidade crítica ou eventos em zonas sensíveis.",
+      },
+            {
+        icon: "🤖",
+        q: "Como funciona a classificação de comportamentos?",
+        a: "A IA identifica padrões de atividade operacional (atendimento, espera, organização, inatividade) sem reconhecimento facial e sem identificar pessoas — foco é gestão da operação.",
+      },
       {
         icon: "📊",
         q: "Como funciona o cálculo de ociosidade da equipe?",
@@ -153,16 +163,8 @@ export default function HomePage() {
         q: "Preciso trocar minhas câmeras atuais?",
         a: "Não. Funciona com câmeras IP/CFTV via RTSP/ONVIF. Intelbras, Hikvision, Dahua e similares geralmente são compatíveis.",
       },
-      {
-        icon: "🚨",
-        q: "Como são os alertas em tempo real?",
-        a: "Alertas por WhatsApp/e-mail/painel quando detectamos filas acima do limite, cliente esperando, picos de fluxo sem cobertura, ociosidade crítica ou eventos em zonas sensíveis.",
-      },
-      {
-        icon: "🤖",
-        q: "Como funciona a classificação de comportamentos?",
-        a: "A IA identifica padrões de atividade operacional (atendimento, espera, organização, inatividade) sem reconhecimento facial e sem identificar pessoas — foco é gestão da operação.",
-      },
+ 
+
       {
         icon: "👥",
         q: "Vocês fazem análise de fluxo de clientes?",
@@ -220,33 +222,77 @@ export default function HomePage() {
 
       {/* Top bar */}
       <header className="sticky top-0 z-40 border-b border-white/10 bg-[#0B0F14]/85 backdrop-blur">
-        <div className="mx-auto flex max-w-6xl items-center justify-between px-4 py-4">
-          <div className="flex items-center gap-3">
-            <img src={logo} alt="DaleVision" className="h-10 w-auto" />
-            <div>
-              <div className="text-sm font-semibold leading-none">
-                <GradientTitle>DaleVision</GradientTitle>
+        <div className="mx-auto max-w-6xl px-4 py-3">
+          
+          {/* MOBILE */}
+          <div className="flex flex-col gap-3 sm:hidden">
+            
+            {/* Linha 1 — Brand */}
+            <div className="flex items-center gap-3">
+              <img src={logo} alt="DaleVision" className="h-9 w-auto" />
+              <div className="leading-tight">
+                <div className="text-sm font-semibold">
+                  <GradientTitle>DaleVision</GradientTitle>
+                </div>
+                <div className="text-[11px] text-white/60">
+                  Eyes Everywhere
+                </div>
               </div>
-              <div className="text-[11px] text-white/60 leading-none">Eyes Everywhere</div>
+            </div>
+
+            {/* Linha 2 — Actions */}
+            <div className="flex items-center gap-3">
+              
+              {/* Login — secundário */}
+              <Link
+                to="/login"
+                className="flex-1 rounded-xl border border-white/15 px-4 py-2 text-sm text-white/80 text-center"
+              >
+                Login
+              </Link>
+
+              {/* CTA principal */}
+              <a
+                href="#teste48h"
+                className="flex-1 rounded-xl bg-gradient-to-r from-blue-400 via-cyan-300 to-purple-500 px-4 py-2 text-sm font-semibold text-black text-center shadow-lg"
+              >
+                Agendar Demo →
+              </a>
             </div>
           </div>
 
-          <div className="flex items-center gap-2">
-            <Link
-              to="/login"
-              className="rounded-xl border border-white/15 px-4 py-2 text-sm text-white/90 hover:bg-white/5"
-            >
-              Login
-            </Link>
-            <a
-              href="#teste48h"
-              className="rounded-xl bg-white/5 border border-white/15 px-6 py-2 text-sm font-semibold text-white/90 hover:bg-white/10 transition-all"
-            >
-              Agendar Demo →
-            </a>
+          {/* DESKTOP */}
+          <div className="hidden sm:flex items-center justify-between">
+            <div className="flex items-center gap-3">
+              <img src={logo} alt="DaleVision" className="h-10 w-auto" />
+              <div>
+                <div className="text-sm font-semibold leading-none">
+                  <GradientTitle>DaleVision</GradientTitle>
+                </div>
+                <div className="text-[11px] text-white/60 leading-none">
+                  Eyes Everywhere
+                </div>
+              </div>
+            </div>
+
+            <div className="flex items-center gap-3">
+              <Link
+                to="/login"
+                className="rounded-xl border border-white/15 px-4 py-2 text-sm text-white/90 hover:bg-white/5"
+              >
+                Login
+              </Link>
+              <a
+                href="#teste48h"
+                className="rounded-xl bg-gradient-to-r from-blue-400 via-cyan-300 to-purple-500 px-6 py-2 text-sm font-semibold text-black shadow-lg hover:opacity-95"
+              >
+                Agendar Demo →
+              </a>
+            </div>
           </div>
         </div>
       </header>
+
 
       <main className="mx-auto max-w-6xl px-4 relative z-10">
         {/* HERO */}
@@ -255,11 +301,11 @@ export default function HomePage() {
             <div data-reveal className="dv-reveal">
               <div className="inline-flex items-center gap-2 rounded-full border border-white/10 bg-white/5 px-4 py-2 text-xs font-medium text-white/90">
                 <span className="h-2 w-2 rounded-full bg-cyan-300 animate-pulse" />
-                IA aplicada ao varejo físico • multilojas
+                IA aplicada ao varejo físico • Controle de multilojas
               </div>
 
               <h1 className="mt-6 text-4xl font-extrabold tracking-tight sm:text-5xl lg:text-6xl">
-                Você está pagando por horas que <GradientTitle>ninguém trabalhou</GradientTitle>
+                Você não sabe o que acontece nas lojas, <GradientTitle>mas paga por tudo o que acontece nelas</GradientTitle>
               </h1>
 
               <div className="mt-4 p-4 border border-white/10 bg-white/5 rounded-2xl">
@@ -458,7 +504,7 @@ export default function HomePage() {
 
             <div className="mt-10 text-center">
               <BrandButton href={WHATSAPP_DEMO}>
-                Quero parar de perder clientes →
+                Parar de perder clientes →
               </BrandButton>
               <p className="mt-3 text-sm text-white/60">
                 Você vê o diagnóstico em 48h, com evidências e recomendações.
@@ -582,9 +628,9 @@ export default function HomePage() {
                 },
                 {
                   icon: "🎥",
-                  title: "Evidências visuais",
+                  title: "Evidências com dados",
                   bullets: [
-                    "Snapshots e clipes curtos",
+                    "Relatórios Operacionais",
                     "Contexto antes/depois do evento",
                     "Base para reuniões e correções",
                   ],
