@@ -1,6 +1,6 @@
 // src/queries/alerts.queries.ts
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query"
-import type { AlertIngestPayload, DetectionEvent, NotificationLog } from "../services/alerts"
+import type { AlertIngestPayload } from "../services/alerts"
 import { alertsService } from "../services/alerts"
 
 export function useAlertsEvents(params: {
