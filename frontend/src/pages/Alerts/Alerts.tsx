@@ -1,8 +1,16 @@
 // src/pages/Alerts/Alerts.tsx
 import { useMemo, useState } from "react"
-import { useAlertsEvents, useAlertLogs, useIgnoreEvent, useResolveEvent } from "../../queries/alerts.queries"
 import { useQuery } from "@tanstack/react-query"
-import { storesService } from "../../services/stores"
+
+import {
+  useAlertsEvents,
+  useAlertLogs,
+  useIgnoreEvent,
+  useResolveEvent,
+  useIngestAlert,
+} from "../../queries/alerts.queries"
+import { alertsService } from "../../services/alerts"
+import toast from "react-hot-toast"
 
 type FilterSeverity = "all" | "critical" | "warning" | "info"
 type FilterStatus = "all" | "open" | "resolved" | "ignored"
@@ -26,6 +34,15 @@ function formatHHMM(iso?: string) {
   return d.toLocaleTimeString("pt-BR", { hour: "2-digit", minute: "2-digit" })
 }
 
+// ✅ Normaliza respostas do backend (array direto, {data:[...]}, {results:[...]})
+function normalizeArray<T = any>(input: any): T[] {
+  if (!input) return []
+  if (Array.isArray(input)) return input
+  if (Array.isArray(input.data)) return input.data
+  if (Array.isArray(input.results)) return input.results
+  return []
+}
+
 export default function Alerts() {
   const [query, setQuery] = useState("")
   const [severityFilter, setSeverityFilter] = useState<FilterSeverity>("all")
@@ -33,11 +50,12 @@ export default function Alerts() {
   const [storeId, setStoreId] = useState<string>("")
   const [selectedEventId, setSelectedEventId] = useState<string | null>(null)
 
-  // lojas (pra filtro)
-  const { data: stores = [], isLoading: storesLoading } = useQuery({
-    queryKey: ["stores"],
-    queryFn: storesService.getStores,
+  // lojas (CORE UUID) - pra filtro de alerts
+  const { data: storesRaw, isLoading: storesLoading } = useQuery({
+    queryKey: ["alerts", "coreStores"],
+    queryFn: alertsService.listCoreStores,
   })
+  const stores = normalizeArray<any>(storesRaw)
 
   // eventos
   const eventsQuery = useAlertsEvents({
@@ -45,7 +63,11 @@ export default function Alerts() {
     status: statusFilter === "all" ? undefined : statusFilter,
   })
 
-  const events = eventsQuery.data || []
+  // ✅ evita crash: garante array
+  const events = useMemo(
+    () => normalizeArray<any>(eventsQuery.data),
+    [eventsQuery.data]
+  )
 
   // logs do evento selecionado
   const logsQuery = useAlertLogs({
@@ -54,11 +76,56 @@ export default function Alerts() {
 
   const resolveMut = useResolveEvent()
   const ignoreMut = useIgnoreEvent()
+  const ingestMut = useIngestAlert()
+
+  const isDev = import.meta.env.DEV // Vite: só aparece em dev
+
+  function handleSimularEvento() {
+    console.log("[SIMULATE] clicked", { storeId })
+    if (!storeId) {
+      toast.error("Selecione uma loja para simular o evento.")
+      return
+    }
+
+    const now = new Date()
+    const payload = {
+      store_id: storeId,
+      event_type: "queue_long",
+      severity: "warning",
+      title: "Simulação: fila longa",
+      description: "Evento simulado via UI (dev-only).",
+      occurred_at: now.toISOString(),
+      metadata: {
+        source: "ui_simulator",
+        ts: now.getTime(),
+      },
+      destinations: {
+        email: "dev@dalevision.local",
+        whatsapp: "+5511999999999",
+      },
+    }
+
+    ingestMut.mutate(payload as any, {
+      onSuccess: (res: any) => {
+        toast.success("Evento simulado com sucesso ✅")
+        // abre o drawer automaticamente
+        const createdId = res?.event?.id
+        if (createdId) setSelectedEventId(String(createdId))
+
+        // garante refresh do feed
+        eventsQuery.refetch()
+      },
+      onError: (err: any) => {
+        console.error(err)
+        toast.error("Falha ao simular evento. Veja console / backend.")
+      },
+    })
+  }
 
   const filtered = useMemo(() => {
     const q = query.trim().toLowerCase()
 
-    return events.filter((e) => {
+    return events.filter((e: any) => {
       const matchQuery =
         !q ||
         (e.title || "").toLowerCase().includes(q) ||
@@ -75,7 +142,9 @@ export default function Alerts() {
 
   const selectedEvent = useMemo(() => {
     if (!selectedEventId) return null
-    return events.find((e) => String(e.id) === String(selectedEventId)) || null
+    return (
+      events.find((e: any) => String(e.id) === String(selectedEventId)) || null
+    )
   }, [events, selectedEventId])
 
   return (
@@ -83,13 +152,30 @@ export default function Alerts() {
       {/* Header */}
       <div className="flex flex-col gap-3 md:flex-row md:items-end md:justify-between">
         <div>
-          <h1 className="text-2xl md:text-3xl font-bold text-gray-800">Alertas</h1>
+          <h1 className="text-2xl md:text-3xl font-bold text-gray-800">
+            Alertas
+          </h1>
           <p className="text-gray-600 mt-1">
             Feed de eventos e recomendações acionáveis (dados reais)
           </p>
+
+          {/* ✅ DEV-ONLY */}
+          {isDev && (
+            <div className="mt-3">
+              <button
+                type="button"
+                onClick={handleSimularEvento}
+                disabled={!storeId || ingestMut.isPending}
+                className="inline-flex items-center gap-2 rounded-lg bg-gray-900 px-4 py-2 text-sm font-semibold text-white hover:bg-gray-800 disabled:opacity-60"
+                aria-label="Simular evento"
+                title="Simular evento (dev-only)"
+              >
+                {ingestMut.isPending ? "Simulando..." : "🧪 Simular Evento"}
+              </button>
+            </div>
+          )}
         </div>
 
-        {/* Filtros */}
         <div className="flex flex-col gap-2 sm:flex-row sm:items-center">
           {/* store */}
           <div className="w-full sm:w-60">
@@ -98,6 +184,8 @@ export default function Alerts() {
             </label>
             <select
               id="alerts-store"
+              title="Filtrar por loja"
+              aria-label="Filtrar por loja"
               value={storeId}
               onChange={(e) => setStoreId(e.target.value)}
               className="w-full rounded-lg border border-gray-300 px-4 py-2"
@@ -131,11 +219,10 @@ export default function Alerts() {
 
           {/* severity */}
           <div className="w-full sm:w-auto">
-            <label htmlFor="alerts-filter-sev" className="sr-only">
-              Filtrar por severidade
-            </label>
             <select
-              id="alerts-filter-sev"
+              id="alerts-severity"
+              aria-label="Filtrar por severidade"
+              title="Filtrar por severidade"
               value={severityFilter}
               onChange={(e) => setSeverityFilter(e.target.value as any)}
               className="w-full sm:w-auto rounded-lg border border-gray-300 px-4 py-2"
@@ -149,11 +236,10 @@ export default function Alerts() {
 
           {/* status */}
           <div className="w-full sm:w-auto">
-            <label htmlFor="alerts-filter-status" className="sr-only">
-              Filtrar por status
-            </label>
             <select
-              id="alerts-filter-status"
+              id="alerts-status"
+              aria-label="Filtrar por status"
+              title="Filtrar por status"
               value={statusFilter}
               onChange={(e) => setStatusFilter(e.target.value as any)}
               className="w-full sm:w-auto rounded-lg border border-gray-300 px-4 py-2"
@@ -183,7 +269,7 @@ export default function Alerts() {
       {/* Lista */}
       {!eventsQuery.isLoading && !eventsQuery.isError && (
         <div className="space-y-4">
-          {filtered.map((e) => {
+          {filtered.map((e: any) => {
             const sev = e.severity || "info"
             const hhmm = formatHHMM(e.occurred_at)
 
@@ -225,6 +311,7 @@ export default function Alerts() {
                   <button
                     className="text-gray-400 hover:text-gray-600"
                     aria-label="Detalhes"
+                    title="Detalhes"
                     type="button"
                     onClick={() => setSelectedEventId(String(e.id))}
                   >
@@ -245,7 +332,19 @@ export default function Alerts() {
                   {e.status === "open" ? (
                     <button
                       className="rounded-lg bg-blue-600 px-3 py-2 text-sm font-semibold text-white hover:bg-blue-700 disabled:opacity-60"
-                      onClick={() => resolveMut.mutate(String(e.id))}
+                      onClick={() =>
+                        resolveMut.mutate(String(e.id), {
+                          onSuccess: () => {
+                            toast.success("Alerta resolvido ✅")
+                            // se estava aberto no drawer também, fecha
+                            if (String(selectedEventId) === String(e.id)) {
+                              setSelectedEventId(null)
+                            }
+                            eventsQuery.refetch()
+                          },
+                          onError: () => toast.error("Falha ao resolver alerta."),
+                        })
+                      }
                       disabled={resolveMut.isPending}
                       type="button"
                     >
@@ -254,7 +353,15 @@ export default function Alerts() {
                   ) : (
                     <button
                       className="rounded-lg border border-gray-200 px-3 py-2 text-sm font-semibold text-gray-700 hover:bg-gray-50"
-                      onClick={() => ignoreMut.mutate(String(e.id))}
+                      onClick={() =>
+                        ignoreMut.mutate(String(e.id), {
+                          onSuccess: () => {
+                            toast.success("Marcado como ignorado ✅")
+                            eventsQuery.refetch()
+                          },
+                          onError: () => toast.error("Falha ao ignorar alerta."),
+                        })
+                      }
                       disabled={ignoreMut.isPending}
                       type="button"
                     >
@@ -293,6 +400,9 @@ export default function Alerts() {
               <button
                 className="rounded-lg px-3 py-1 text-gray-500 hover:bg-gray-50"
                 onClick={() => setSelectedEventId(null)}
+                aria-label="Fechar"
+                title="Fechar"
+                type="button"
               >
                 ✕
               </button>
@@ -334,7 +444,9 @@ export default function Alerts() {
                 </div>
 
                 {logsQuery.isLoading && (
-                  <div className="mt-2 text-sm text-gray-600">Carregando logs...</div>
+                  <div className="mt-2 text-sm text-gray-600">
+                    Carregando logs...
+                  </div>
                 )}
 
                 {logsQuery.isError && (
@@ -345,12 +457,12 @@ export default function Alerts() {
 
                 {!logsQuery.isLoading && !logsQuery.isError && (
                   <div className="mt-2 space-y-2">
-                    {(logsQuery.data || []).length === 0 ? (
+                    {normalizeArray<any>(logsQuery.data).length === 0 ? (
                       <div className="text-sm text-gray-600">
                         Nenhum log encontrado para este evento.
                       </div>
                     ) : (
-                      (logsQuery.data || []).map((l: any) => (
+                      normalizeArray<any>(logsQuery.data).map((l: any) => (
                         <div
                           key={String(l.id)}
                           className="rounded-lg border border-gray-200 bg-white p-3"
@@ -380,21 +492,31 @@ export default function Alerts() {
             </div>
 
             <div className="flex flex-col gap-2 border-t border-gray-100 p-5 sm:flex-row sm:justify-end">
+              {/* ✅ Resolver fecha drawer automaticamente */}
               {selectedEvent?.status === "open" && (
                 <button
                   className="rounded-xl bg-blue-600 px-4 py-2 text-sm font-semibold text-white hover:bg-blue-700 disabled:opacity-60"
-                  onClick={() => {
-                    resolveMut.mutate(String(selectedEvent.id))
-                  }}
+                  onClick={() =>
+                    resolveMut.mutate(String(selectedEvent.id), {
+                      onSuccess: () => {
+                        toast.success("Alerta resolvido ✅")
+                        setSelectedEventId(null) // ✅ fecha drawer
+                        eventsQuery.refetch() // ✅ atualiza feed
+                      },
+                      onError: () => toast.error("Falha ao resolver alerta."),
+                    })
+                  }
                   disabled={resolveMut.isPending}
+                  type="button"
                 >
-                  Resolver
+                  {resolveMut.isPending ? "Resolvendo..." : "Resolver"}
                 </button>
               )}
 
               <button
                 className="rounded-xl border border-gray-200 px-4 py-2 text-sm font-semibold text-gray-700 hover:bg-gray-50"
                 onClick={() => setSelectedEventId(null)}
+                type="button"
               >
                 Fechar
               </button>

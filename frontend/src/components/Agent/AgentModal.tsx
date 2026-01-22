@@ -1,4 +1,6 @@
 import { useState } from "react"
+import logo from "../../assets/logo.png"
+import { useAgent } from "../../contexts/AgentContext"
 
 export function AgentModal({
   open,
@@ -8,56 +10,84 @@ export function AgentModal({
   onClose: () => void
 }) {
   const [msg, setMsg] = useState("")
+  const { messages, addMessage } = useAgent()
 
   if (!open) return null
 
   return (
-    <div className="fixed inset-0 z-[60]">
-      <div className="absolute inset-0 bg-black/60" onClick={onClose} />
-
-      <div className="absolute bottom-0 left-0 right-0 mx-auto w-full max-w-lg rounded-t-3xl border border-white/10 bg-[#0B0F14] p-4 dv-agent-panel">
-        {/* Header */}
-        <div className="flex items-center justify-between gap-3 px-1 pt-1">
+    <div className="fixed inset-0 z-[60] bg-[#0B0F14] flex flex-col">
+      {/* ================= HEADER ================= */}
+      <div className="flex items-center justify-between gap-3 px-4 py-4 border-b border-white/10">
+        <div className="flex items-center gap-3 min-w-0">
+          <img
+            src={logo}
+            alt="DALE Copiloto"
+            className="h-10 w-10 rounded-md"
+          />
           <div className="min-w-0">
-            <div className="text-sm font-semibold text-white">Vision Intelligence</div>
+            <div className="text-sm font-semibold text-white">
+              DALE Copiloto
+            </div>
             <div className="text-xs text-white/50 truncate">
               Insights e recomendações (em breve: dados reais)
             </div>
           </div>
+        </div>
 
-          <button
-            className="rounded-lg px-3 py-1 text-sm text-white/70 hover:bg-white/5"
-            onClick={onClose}
+        <button
+          className="rounded-lg px-3 py-2 text-sm text-white/70 hover:bg-white/5"
+          onClick={onClose}
+          aria-label="Fechar agente"
+        >
+          ✕
+        </button>
+      </div>
+
+      {/* ================= CHAT (SCROLL) ================= */}
+      <div className="flex-1 overflow-y-auto px-4 py-4 space-y-3">
+        {messages.map((m) => (
+          <div
+            key={m.id}
+            className={`rounded-2xl border border-white/10 p-4 text-sm ${
+              m.role === "assistant"
+                ? "bg-white/5 text-white/70"
+                : "bg-blue-600/20 text-white"
+            }`}
           >
-            Fechar
-          </button>
-        </div>
-
-        {/* Mensagens / conteúdo (rolável) */}
-        <div className="mt-3 dv-agent-scroll space-y-3">
-          <div className="rounded-2xl border border-white/10 bg-white/5 p-4 text-sm text-white/70">
-            Olá! Sou o Vision Intelligence. Como posso ajudar com os dados da sua rede hoje?
+            {m.content}
           </div>
+        ))}
+      </div>
 
-          {/* placeholder de “mensagens futuras” */}
-          {/* aqui depois você renderiza histórico */}
-        </div>
-
-        {/* Input fixo embaixo */}
-        <div className="mt-4 flex gap-2">
+      {/* ================= INPUT FIXO ================= */}
+      <div
+        className="px-4 pt-3 pb-6 border-t border-white/10 bg-[#0B0F14] shadow-[0_-4px_12px_rgba(0,0,0,0.35)]"
+        style={{
+          paddingBottom: "calc(16px + 72px + env(safe-area-inset-bottom))",
+        }}
+      >
+        <div className="flex gap-2 items-center">
           <input
             value={msg}
             onChange={(e) => setMsg(e.target.value)}
-            placeholder="Como posso melhorar a conversão hoje?"
-            className="w-full rounded-2xl border border-white/10 bg-black/40 px-4 py-3 text-white outline-none"
+            placeholder="Digite sua pergunta…"
+            className="w-full rounded-2xl border border-white/10 bg-black/40 px-4 py-3 text-white outline-none focus:ring-1 focus:ring-white/20"
+            aria-label="Mensagem para o agente"
           />
           <button
-            className="rounded-2xl bg-gradient-to-r from-lime-400 to-green-500 px-4 py-3 font-semibold text-black"
+            className="rounded-2xl bg-gradient-to-r from-lime-400 to-green-500 px-4 py-3 font-semibold text-black hover:brightness-105 transition"
+            aria-label="Enviar mensagem"
             onClick={() => {
-              // TODO: webhook n8n
+              if (!msg.trim()) return
+
+              addMessage({
+                id: crypto.randomUUID(),
+                role: "user",
+                content: msg,
+              })
+
               setMsg("")
             }}
-            aria-label="Enviar mensagem"
           >
             ➤
           </button>

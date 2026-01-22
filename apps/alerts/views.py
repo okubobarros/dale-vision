@@ -1,7 +1,9 @@
 # apps/alerts/views.py
 from datetime import timedelta
+from uuid import UUID
+
 from django.utils import timezone
-from rest_framework import viewsets, permissions, status
+from rest_framework import viewsets, permissions, status, serializers
 from rest_framework.decorators import action
 from rest_framework.exceptions import ValidationError
 from rest_framework.response import Response
@@ -23,6 +25,40 @@ from .serializers import (
     NotificationLogSerializer,
 )
 from .services import send_event_to_n8n
+
+
+# =========================
+# CORE STORES (UUID) - para o frontend filtrar alerts corretamente
+# GET /api/alerts/stores/
+# =========================
+class CoreStoreSerializer(serializers.ModelSerializer):
+    class Meta:
+        model = Store
+        fields = ("id", "name")
+
+
+class CoreStoreListView(APIView):
+    permission_classes = [permissions.IsAuthenticated]
+
+    def get(self, request):
+        qs = Store.objects.all().order_by("name")
+        return Response(CoreStoreSerializer(qs, many=True).data)
+
+
+# =========================
+# Helpers
+# =========================
+def is_uuid(value: str) -> bool:
+    try:
+        UUID(str(value))
+        return True
+    except Exception:
+        return False
+
+
+def require_uuid_param(name: str, value: str):
+    if not is_uuid(value):
+        raise ValidationError({name: f'{name} deve ser um UUID válido (core.Store). Recebido: "{value}".'})
 
 
 # =========================
@@ -67,6 +103,7 @@ class AlertRuleViewSet(viewsets.ModelViewSet):
         store_id = self.request.query_params.get("store_id")
         qs = AlertRule.objects.all()
         if store_id:
+            require_uuid_param("store_id", store_id)
             qs = qs.filter(store_id=store_id)
         return qs.order_by("-updated_at")
 
@@ -100,15 +137,20 @@ class AlertRuleViewSet(viewsets.ModelViewSet):
                 status=status.HTTP_400_BAD_REQUEST,
             )
 
+        # ✅ store_id precisa ser UUID (core.Store)
+        require_uuid_param("store_id", str(store_id))
+
         try:
             store = Store.objects.get(id=store_id)
         except Store.DoesNotExist:
             raise ValidationError({"detail": "store_id inválido"})
+
         org_id = store.org_id
 
         now = timezone.now()
         occ = now
-        # se vier string iso, tenta parse; se falhar, usa now
+
+        # parse occurred_at se vier ISO string
         if isinstance(occurred_at, str):
             try:
                 occ = timezone.datetime.fromisoformat(occurred_at.replace("Z", "+00:00"))
@@ -119,18 +161,17 @@ class AlertRuleViewSet(viewsets.ModelViewSet):
 
         # regras candidatas (por store e, se existir, por zone e tipo)
         rules = AlertRule.objects.filter(store_id=store_id, active=True)
-        # opcional: filtrar por zone e type se você quer estrito
-        # (recomendado usar, porque seu schema tem unique(store_id, zone_id, type))
         rules = rules.filter(type=event_type)
         if zone_id:
-            rules = rules.filter(zone_id=zone_id)
+            # zone_id no core é FK UUID -> se você passar lixo, DRF vai explodir depois
+            # Aqui deixamos ser "best effort": se não for uuid, ignora filtro por zone
+            if is_uuid(str(zone_id)):
+                rules = rules.filter(zone_id=zone_id)
 
-        # se não existir regra, ainda assim cria evento (para histórico)
         rule_used = None
         suppressed_by_rule_id = None
         suppressed_reason = None
 
-        # Decide se deve suprimir por cooldown com base em regra
         should_send = False
         channels = {"dashboard": True, "email": False, "whatsapp": False}
         destinations = request.data.get("destinations") or {}  # {email, whatsapp}
@@ -153,15 +194,14 @@ class AlertRuleViewSet(viewsets.ModelViewSet):
                 suppressed_by_rule_id = rule_used.id
                 suppressed_reason = f"Cooldown ativo ({cooldown} min)"
             else:
-                # dashboard sempre true, email/whatsapp conforme channels
                 should_send = bool(channels.get("email") or channels.get("whatsapp"))
 
-        # 4) cria detection_event sempre
+        # cria detection_event sempre
         event = DetectionEvent.objects.create(
             org_id=org_id,
             store_id=store_id,
             camera_id=camera_id,
-            zone_id=zone_id,
+            zone_id=zone_id if is_uuid(str(zone_id)) else None,
             type=event_type,
             severity=severity,
             status="open",
@@ -174,7 +214,7 @@ class AlertRuleViewSet(viewsets.ModelViewSet):
             created_at=now,
         )
 
-        # 5) event_media
+        # event_media
         if clip_url:
             EventMedia.objects.create(
                 event_id=event.id,
@@ -190,10 +230,9 @@ class AlertRuleViewSet(viewsets.ModelViewSet):
                 created_at=now,
             )
 
-        # 6) notification logs + 7) n8n
+        # notification logs + n8n
         n8n_result = None
         if suppressed_by_rule_id:
-            # registra que foi suprimido (log dashboard)
             NotificationLog.objects.create(
                 org_id=event.org_id,
                 store_id=store_id,
@@ -207,7 +246,6 @@ class AlertRuleViewSet(viewsets.ModelViewSet):
                 sent_at=now,
             )
         else:
-            # dashboard log sempre
             NotificationLog.objects.create(
                 org_id=event.org_id,
                 store_id=store_id,
@@ -233,9 +271,13 @@ class AlertRuleViewSet(viewsets.ModelViewSet):
                     "occurred_at": event.occurred_at.isoformat(),
                     "channels": channels,
                     "destinations": destinations,
-                    "media": EventMediaSerializer(EventMedia.objects.filter(event_id=event.id), many=True).data,
+                    "media": EventMediaSerializer(
+                        EventMedia.objects.filter(event_id=event.id),
+                        many=True
+                    ).data,
                     "metadata": event.metadata,
                 }
+
                 n8n_result = send_event_to_n8n(payload)
 
                 for ch in ["email", "whatsapp"]:
@@ -275,11 +317,18 @@ class DetectionEventViewSet(viewsets.ModelViewSet):
     def get_queryset(self):
         store_id = self.request.query_params.get("store_id")
         status_q = self.request.query_params.get("status")
+
         qs = DetectionEvent.objects.all().order_by("-occurred_at")
+
         if store_id:
+            require_uuid_param("store_id", store_id)
             qs = qs.filter(store_id=store_id)
+
         if status_q:
+            if status_q not in ["open", "resolved", "ignored"]:
+                raise ValidationError({"status": "status deve ser open|resolved|ignored"})
             qs = qs.filter(status=status_q)
+
         return qs
 
     @action(detail=True, methods=["post"], url_path="resolve")
@@ -317,11 +366,16 @@ class NotificationLogViewSet(viewsets.ReadOnlyModelViewSet):
     def get_queryset(self):
         store_id = self.request.query_params.get("store_id")
         event_id = self.request.query_params.get("event_id")
-        qs = NotificationLog.objects.all().order_by("-sent_at")
-        if store_id:
-            qs = qs.filter(store_id=store_id)
-        if event_id:
-            qs = qs.filter(event_id=event_id)
-        return qs
 
+        qs = NotificationLog.objects.all().order_by("-sent_at")
+
+        if store_id:
+            require_uuid_param("store_id", store_id)
+            qs = qs.filter(store_id=store_id)
+
+        if event_id:
+            require_uuid_param("event_id", event_id)
+            qs = qs.filter(event_id=event_id)
+
+        return qs
 

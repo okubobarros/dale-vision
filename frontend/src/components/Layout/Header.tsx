@@ -1,7 +1,12 @@
 import { useAuth } from "../../contexts/AuthContext"
 import { useNavigate } from "react-router-dom"
 import logo from "../../assets/logo.png"
-const Header = () => {
+
+type HeaderProps = {
+  onOpenAgent?: () => void
+}
+
+const Header = ({ onOpenAgent }: HeaderProps) => {
   const { user, logout } = useAuth()
   const navigate = useNavigate()
 
@@ -19,20 +24,40 @@ const Header = () => {
 
   return (
     <header className="bg-white shadow-sm border-b relative z-50">
-      <div className="flex flex-wrap items-center justify-between gap-3 px-3 py-3 sm:px-6 sm:py-4">
+      <div className="flex items-center justify-between gap-3 px-3 py-3 sm:px-6 sm:py-4">
+
         {/* Left: Brand */}
         <div className="flex items-center gap-3 min-w-0">
-           <img src={logo} alt="DALE Vision" className="h-12 w-auto" />
+          <img src={logo} alt="DALE Vision" className="h-12 w-auto" />
           <h1 className="text-xl sm:text-2xl font-bold leading-none bg-gradient-to-r from-blue-500 to-purple-600 bg-clip-text text-transparent">
-              DALE Vision
+            DALE Vision
           </h1>
-          <span className="px-3 py-1 bg-blue-100 text-blue-800 text-xs sm:text-sm font-medium rounded-full">
-            Beta
-          </span>
+
         </div>
 
-        {/* Right: User */}
+        {/* Right: Actions + User */}
         <div className="flex items-center gap-3 sm:gap-4 min-w-0">
+          {/* ✅ Desktop Agent button */}
+          {onOpenAgent && (
+            <button
+              type="button"
+              onClick={onOpenAgent}
+              className="hidden md:inline-flex items-center gap-2 px-4 py-2 rounded-lg
+              bg-gradient-to-r from-blue-500 to-purple-600
+              text-white text-sm font-semibold shadow-sm
+              border border-white/10
+              hover:bg-white hover:from-transparent hover:to-transparent
+              hover:border-gray-200
+              transition group"
+              aria-label="Abrir agente"
+            >
+              <span className="text-base leading-none">⚡</span>
+             <span className="hidden md:inline group-hover:bg-gradient-to-r group-hover:from-blue-500 group-hover:to-purple-600 group-hover:bg-clip-text group-hover:text-transparent">
+              DALE Copiloto
+            </span>
+            </button>
+          )}
+
           {/* Text: hide email on mobile */}
           <div className="text-right min-w-0">
             <p className="text-sm font-medium text-gray-700 truncate max-w-[140px] sm:max-w-[220px]">

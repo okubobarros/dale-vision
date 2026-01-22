@@ -11,7 +11,7 @@ import Settings from "./pages/Settings/Settings"
 import HomePage from "./pages/Home/Home"
 import ProfilePage from "./pages/Profile/Profile"
 
-// ✅ novos
+// 🆕 Páginas de Alerts
 import AlertRules from "./pages/AlertRules/AlertRules"
 import NotificationLogs from "./pages/NotificationLogs/NotificationLogs"
 
@@ -36,9 +36,9 @@ function App() {
         <Route path="stores" element={<Stores />} />
         <Route path="analytics" element={<Analytics />} />
         <Route path="cameras" element={<Cameras />} />
-
-        {/* ✅ Alerts */}
         <Route path="alerts" element={<Alerts />} />
+
+        {/* ✅ Alerts stack */}
         <Route path="alert-rules" element={<AlertRules />} />
         <Route path="notification-logs" element={<NotificationLogs />} />
 
@@ -46,18 +46,20 @@ function App() {
         <Route path="profile" element={<ProfilePage />} />
       </Route>
 
-      {/* Compat */}
+      {/* Compat: se algum lugar ainda manda pra rotas sem /app */}
       <Route path="/dashboard" element={<Navigate to="/app/dashboard" replace />} />
       <Route path="/stores" element={<Navigate to="/app/stores" replace />} />
       <Route path="/analytics" element={<Navigate to="/app/analytics" replace />} />
       <Route path="/cameras" element={<Navigate to="/app/cameras" replace />} />
       <Route path="/alerts" element={<Navigate to="/app/alerts" replace />} />
+      <Route path="/settings" element={<Navigate to="/app/settings" replace />} />
+
+      {/* ✅ NOVOS REDIRECTS (o que você pediu) */}
       <Route path="/alert-rules" element={<Navigate to="/app/alert-rules" replace />} />
       <Route
         path="/notification-logs"
         element={<Navigate to="/app/notification-logs" replace />}
       />
-      <Route path="/settings" element={<Navigate to="/app/settings" replace />} />
 
       {/* Fallback */}
       <Route path="*" element={<Navigate to="/" replace />} />
