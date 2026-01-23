@@ -306,7 +306,7 @@ export default function HomePage() {
 
               {/* CTA principal */}
               <a
-                href="#teste48h"
+                href="/agendar-demo"
                 className="flex-1 rounded-xl bg-gradient-to-r from-blue-400 via-cyan-300 to-purple-500 px-4 py-2 text-sm font-semibold text-black text-center shadow-lg"
               >
                 Agendar Demo →
@@ -334,7 +334,7 @@ export default function HomePage() {
                 Login
               </Link>
               <a
-                href="#teste48h"
+                href="/agendar-demo"
                 className="rounded-xl bg-gradient-to-r from-blue-400 via-cyan-300 to-purple-500 px-6 py-2 text-sm font-semibold text-black shadow-lg hover:opacity-95"
               >
                 Agendar Demo →
@@ -384,7 +384,7 @@ export default function HomePage() {
               </div>
 
               <div id="teste48h" className="mt-8">
-                <BrandButton href={WHATSAPP_DEMO} className="w-full">
+                <BrandButton  href="/agendar-demo" className="w-full">
                   🚀 QUERO MEU DIAGNÓSTICO EM 48h
                 </BrandButton>
 
@@ -558,7 +558,7 @@ export default function HomePage() {
             </div>
 
             <div className="mt-10 text-center">
-              <BrandButton href={WHATSAPP_DEMO}>Parar de perder clientes →</BrandButton>
+              <BrandButton  href="/agendar-demo">Parar de perder clientes →</BrandButton>
               <p className="mt-3 text-sm text-white/60">
                 Você vê o diagnóstico em 48h, com evidências e recomendações.
               </p>
@@ -618,7 +618,7 @@ export default function HomePage() {
             </div>
 
             <div className="mt-12 text-center">
-              <BrandButton href={WHATSAPP_DEMO}>Ver relatório do meu negócio →</BrandButton>
+              <BrandButton  href="/agendar-demo">Ver relatório do meu negócio →</BrandButton>
             </div>
           </div>
         </section>
@@ -729,7 +729,7 @@ export default function HomePage() {
             </div>
 
             <div className="mt-12 text-center">
-              <BrandButton href={WHATSAPP_DEMO}>
+              <BrandButton  href="/agendar-demo">
                 Quero esses entregáveis na minha operação →
               </BrandButton>
               <p className="mt-4 text-sm text-white/60">
@@ -786,7 +786,7 @@ export default function HomePage() {
             </div>
 
             <div className="mt-8 text-center">
-              <BrandButton href={WHATSAPP_DEMO}>
+              <BrandButton  href="/agendar-demo">
                 👉 Começar meu teste 48h agora
               </BrandButton>
               <p className="mt-3 text-sm text-white/60">
@@ -909,7 +909,7 @@ export default function HomePage() {
             </div>
 
             <div className="mt-8 relative z-10">
-              <BrandButton href={WHATSAPP_DEMO} className="px-12 py-5">
+              <BrandButton  href="/agendar-demo" className="px-12 py-5">
                 🎯 QUERO MEU RELATÓRIO GRÁTIS EM 48h
               </BrandButton>
               <p className="mt-4 text-sm text-white/60">
@@ -953,7 +953,7 @@ export default function HomePage() {
       {/* Mobile sticky CTA */}
       <div className="dv-sticky-cta sm:hidden">
         <a
-          href={WHATSAPP_DEMO}
+          href="/agendar-demo"
           target="_blank"
           rel="noopener noreferrer"
           className="dv-cta block w-full rounded-2xl bg-gradient-to-r from-blue-400 via-cyan-300 to-purple-500 px-5 py-4 text-center font-bold text-black shadow-lg"

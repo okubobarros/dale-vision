@@ -10,7 +10,7 @@ import Alerts from "./pages/Alerts/Alerts"
 import Settings from "./pages/Settings/Settings"
 import HomePage from "./pages/Home/Home"
 import ProfilePage from "./pages/Profile/Profile"
-
+import AgendarDemo from "./pages/AgendarDemo/AgendarDemo"
 // 🆕 Páginas de Alerts
 import AlertRules from "./pages/AlertRules/AlertRules"
 import NotificationLogs from "./pages/NotificationLogs/NotificationLogs"
@@ -63,6 +63,7 @@ function App() {
 
       {/* Fallback */}
       <Route path="*" element={<Navigate to="/" replace />} />
+      <Route path="/agendar-demo" element={<AgendarDemo />} />
     </Routes>
   )
 }
