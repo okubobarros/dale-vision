@@ -1,5 +1,5 @@
 import { Link, useNavigate } from "react-router-dom"
-import { useEffect, useMemo, useState } from "react"
+import React, { useEffect, useMemo, useState } from "react"
 import { useAuth } from "../../contexts/AuthContext"
 import { Helmet } from "react-helmet-async"
 import logo from "../../assets/logo.png"
@@ -49,6 +49,21 @@ function BrandButton({
   )
 }
 
+// Hook: rotaciona índice para o slide de frases (sem framer-motion)
+function useRotatingIndex(length: number, delay = 4500) {
+  const [index, setIndex] = useState(0)
+
+  useEffect(() => {
+    if (length <= 1) return
+    const id = window.setInterval(() => {
+      setIndex((prev) => (prev + 1) % length)
+    }, delay)
+    return () => window.clearInterval(id)
+  }, [length, delay])
+
+  return index
+}
+
 // FAQ item com hover + click mobile
 function FaqItem({
   q,
@@ -76,7 +91,7 @@ function FaqItem({
       <button
         type="button"
         className="w-full text-left"
-        aria-expanded={isOpen ? "true" : "false"}
+        aria-expanded={isOpen}
         onClick={onToggle}
       >
         <div className="flex items-center justify-between gap-4">
@@ -94,8 +109,19 @@ function FaqItem({
               isOpen ? "rotate-180" : ""
             }`}
           >
-            <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 9l-7 7-7-7" />
+            <svg
+              className="w-5 h-5"
+              fill="none"
+              stroke="currentColor"
+              viewBox="0 0 24 24"
+              aria-hidden="true"
+            >
+              <path
+                strokeLinecap="round"
+                strokeLinejoin="round"
+                strokeWidth={2}
+                d="M19 9l-7 7-7-7"
+              />
             </svg>
           </div>
         </div>
@@ -140,15 +166,49 @@ export default function HomePage() {
     },
   }
 
+  // DORES (frases rotativas — slide lateral)
+  const pains = useMemo(
+    () => [
+      {
+        title: "Enquanto você lê isso,",
+        highlight: "há clientes indo embora",
+        sub: "Fila estoura → cliente reclama. Quando você fica sabendo, a venda já se perdeu.",
+      },
+      {
+        title: "Eu só descubro o problema",
+        highlight: "depois que já aconteceu",
+        sub: "Sem evidência, a operação vira reação — e isso não escala em 20+ lojas.",
+      },
+      {
+        title: "Sempre falta alguém no turno",
+        highlight: "e atrasos viraram rotina",
+        sub: "Ociosidade de um lado, fila do outro. Margem vazando sem você perceber.",
+      },
+      {
+        title: "Quebra, erro ou furto",
+        highlight: "só aparece no fechamento",
+        sub: "Sem histórico e prova, você age tarde — e paga caro pela falta de prevenção.",
+      },
+      {
+        title: "Você confia nos líderes,",
+        highlight: "mas não tem visibilidade",
+        sub: "Relato não é dado. Intuição não replica. Você precisa de métricas por loja e turno.",
+      },
+    ],
+    []
+  )
+
+  const painIndex = useRotatingIndex(pains.length, 4800)
+
   // FAQ ordenada (já está ordenada por fluxo de objeções)
   const faqs = useMemo(
     () => [
-           {
+      {
         icon: "🚨",
         q: "Como são os alertas em tempo real?",
         a: "Alertas por WhatsApp/e-mail/painel quando detectamos filas acima do limite, cliente esperando, picos de fluxo sem cobertura, ociosidade crítica ou eventos em zonas sensíveis.",
       },
-            {
+      {
         icon: "🤖",
         q: "Como funciona a classificação de comportamentos?",
         a: "A IA identifica padrões de atividade operacional (atendimento, espera, organização, inatividade) sem reconhecimento facial e sem identificar pessoas — foco é gestão da operação.",
@@ -163,8 +223,6 @@ export default function HomePage() {
         q: "Preciso trocar minhas câmeras atuais?",
         a: "Não. Funciona com câmeras IP/CFTV via RTSP/ONVIF. Intelbras, Hikvision, Dahua e similares geralmente são compatíveis.",
       },
- 
-
       {
         icon: "👥",
         q: "Vocês fazem análise de fluxo de clientes?",
@@ -223,10 +281,8 @@ export default function HomePage() {
       {/* Top bar */}
       <header className="sticky top-0 z-40 border-b border-white/10 bg-[#0B0F14]/85 backdrop-blur">
         <div className="mx-auto max-w-6xl px-4 py-3">
-          
           {/* MOBILE */}
           <div className="flex flex-col gap-3 sm:hidden">
-            
             {/* Linha 1 — Brand */}
             <div className="flex items-center gap-3">
               <img src={logo} alt="DaleVision" className="h-9 w-auto" />
@@ -234,15 +290,12 @@ export default function HomePage() {
                 <div className="text-sm font-semibold">
                   <GradientTitle>DaleVision</GradientTitle>
                 </div>
-                <div className="text-[11px] text-white/60">
-                  Eyes Everywhere
-                </div>
+                <div className="text-[11px] text-white/60">Eyes Everywhere</div>
               </div>
             </div>
 
             {/* Linha 2 — Actions */}
             <div className="flex items-center gap-3">
-              
               {/* Login — secundário */}
               <Link
                 to="/login"
@@ -269,9 +322,7 @@ export default function HomePage() {
                 <div className="text-sm font-semibold leading-none">
                   <GradientTitle>DaleVision</GradientTitle>
                 </div>
-                <div className="text-[11px] text-white/60 leading-none">
-                  Eyes Everywhere
-                </div>
+                <div className="text-[11px] text-white/60 leading-none">Eyes Everywhere</div>
               </div>
             </div>
 
@@ -293,7 +344,6 @@ export default function HomePage() {
         </div>
       </header>
 
-
       <main className="mx-auto max-w-6xl px-4 relative z-10">
         {/* HERO */}
         <section className="pt-14 pb-10">
@@ -305,7 +355,8 @@ export default function HomePage() {
               </div>
 
               <h1 className="mt-6 text-4xl font-extrabold tracking-tight sm:text-5xl lg:text-6xl">
-                Você não sabe o que acontece nas lojas, <GradientTitle>mas paga por tudo o que acontece nelas</GradientTitle>
+                Você não sabe o que acontece nas lojas,{" "}
+                <GradientTitle>mas paga por tudo o que acontece nelas</GradientTitle>
               </h1>
 
               <div className="mt-4 p-4 border border-white/10 bg-white/5 rounded-2xl">
@@ -340,13 +391,12 @@ export default function HomePage() {
                 <div className="mt-6 flex flex-wrap gap-2 justify-center">
                   <BrandPill>✅ Setup em 1 chamada</BrandPill>
                   <BrandPill>✅ Sem custos no teste</BrandPill>
-                  <BrandPill>✅ Sem cartão</BrandPill>
-                  <BrandPill>✅ Compatível Intelbras/CFTV</BrandPill>
+                  <BrandPill>✅ 100% Compatível Intelbras/CFTV</BrandPill>
                 </div>
               </div>
             </div>
 
-            {/* Dashboard: cores de estado ficam aqui (OK), mas sem virar “seção vermelha”) */}
+            {/* Dashboard */}
             <div data-reveal className="dv-reveal relative">
               <div className="rounded-[28px] border border-white/15 bg-white/5 p-4 shadow-2xl">
                 <div className="flex items-center justify-between mb-6">
@@ -431,36 +481,41 @@ export default function HomePage() {
 
         <div className="dv-divider my-6" />
 
-        {/* DORES (menos vermelho, mais “silêncio” para a copy brilhar) */}
-        <section className="py-10">
+        {/* DORES (com slide lateral) */}
+        <section className="py-10 overflow-hidden">
           <div data-reveal className="dv-reveal">
             <div className="text-center mb-10">
               <div className="inline-block px-6 py-2 rounded-full bg-white/5 border border-white/10 mb-4">
                 <span className="text-sm font-medium text-white/80">PARE E PENSE</span>
               </div>
 
-              <h2 className="text-3xl md:text-4xl font-bold text-white leading-tight">
-                “Enquanto você lê isso,{" "}
-                <span className="block">
-                  <GradientTitle>há clientes indo embora</GradientTitle>
-                </span>
-                por falta de atendimento”
-              </h2>
+              {/* SLIDER */}
+              <div className="relative h-[150px] md:h-[165px] overflow-hidden">
+                {pains.map((item, i) => (
+                  <div
+                    key={i}
+                    className={[
+                      "absolute inset-0 flex flex-col items-center justify-center",
+                      "transition-all duration-700 ease-in-out",
+                      i === painIndex
+                        ? "opacity-100 translate-x-0"
+                        : i < painIndex
+                        ? "opacity-0 -translate-x-full"
+                        : "opacity-0 translate-x-full",
+                    ].join(" ")}
+                  >
+                    <h2 className="text-3xl md:text-4xl font-bold text-white leading-tight">
+                      {item.title}{" "}
+                      <span className="block">
+                        <GradientTitle>{item.highlight}</GradientTitle>
+                      </span>
+                    </h2>
 
-              <p className="mt-4 text-lg text-white/70 max-w-2xl mx-auto">
-                Isso acontece sem você ver. E quando não há evidência, a operação vira reação.
-              </p>
-
-              <div className="mt-6 max-w-lg mx-auto dv-card rounded-3xl border border-white/10 bg-white/5 p-6">
-                <div className="flex items-center justify-center gap-4">
-                  <div className="text-4xl">⏱️</div>
-                  <div className="text-left">
-                    <div className="text-2xl font-bold text-white">5 minutos</div>
-                    <div className="text-sm text-white/60">
-                      é um limite comum de espera antes do cliente desistir.
-                    </div>
+                    <p className="mt-4 text-lg text-white/70 max-w-2xl mx-auto">
+                      {item.sub}
+                    </p>
                   </div>
-                </div>
+                ))}
               </div>
             </div>
 
@@ -503,9 +558,7 @@ export default function HomePage() {
             </div>
 
             <div className="mt-10 text-center">
-              <BrandButton href={WHATSAPP_DEMO}>
-                Parar de perder clientes →
-              </BrandButton>
+              <BrandButton href={WHATSAPP_DEMO}>Parar de perder clientes →</BrandButton>
               <p className="mt-3 text-sm text-white/60">
                 Você vê o diagnóstico em 48h, com evidências e recomendações.
               </p>
@@ -621,8 +674,8 @@ export default function HomePage() {
                   title: "Alertas configuráveis",
                   bullets: [
                     "Fila/espera acima do limite",
-                    "Cobertura insuficiente em pico",
                     "Ociosidade crítica por faixa",
+                    "dashboard,email, whatsapp",
                   ],
                   tag: "AÇÃO",
                 },
@@ -879,19 +932,19 @@ export default function HomePage() {
                   <div className="text-xs text-white/40">Gestão inteligente para multilojistas</div>
                 </div>
               </div>
-              <div>© 2026 DaleVision. Transformando câmeras em inteligência operacional.</div>
+              <div>© 2026 DaleVision. Smart Retail Surveillance </div>
             </div>
 
             <div className="flex flex-col sm:items-end gap-3">
               <div className="flex gap-4">
                 <a className="hover:text-white" href={WHATSAPP_DEMO}>
-                  Agendar Teste
+                  Contato
                 </a>
                 <a className="hover:text-white" href="#faq">
                   Perguntas Frequentes
                 </a>
               </div>
-              <div className="text-xs text-white/40">LGPD • Criptografia • Sem reconhecimento facial</div>
+              <div className="text-xs text-white/40">LGPD • Criptografia • </div>
             </div>
           </div>
         </footer>
