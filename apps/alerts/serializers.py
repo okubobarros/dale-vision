@@ -1,10 +1,13 @@
+# apps/alerts/serializers.py
 from rest_framework import serializers
+
 from apps.core.models import (
     DemoLead,
     AlertRule,
     DetectionEvent,
     EventMedia,
     NotificationLog,
+    JourneyEvent,
 )
 
 class DemoLeadSerializer(serializers.ModelSerializer):
@@ -42,3 +45,9 @@ class NotificationLogSerializer(serializers.ModelSerializer):
         model = NotificationLog
         fields = "__all__"
         read_only_fields = ("id", "sent_at")
+
+class JourneyEventSerializer(serializers.ModelSerializer):
+    class Meta:
+        model = JourneyEvent
+        fields = "__all__"
+        read_only_fields = ("id", "created_at")

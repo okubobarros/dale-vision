@@ -26,7 +26,8 @@ from .serializers import (
 )
 from .services import send_event_to_n8n
 
-
+from apps.core.models import JourneyEvent
+from .serializers import JourneyEventSerializer
 # =========================
 # CORE STORES (UUID) - para o frontend filtrar alerts corretamente
 # GET /api/alerts/stores/
@@ -62,36 +63,135 @@ def require_uuid_param(name: str, value: str):
 
 
 # =========================
-# DEMO LEAD (FORM PÚBLICO)
+# DEMO LEAD (FORM PÚBLICO) — Opção A (DEDUPE por email/whatsapp)
 # =========================
 class DemoLeadCreateView(APIView):
     permission_classes = [permissions.AllowAny]
 
     def post(self, request):
+        now = timezone.now()
+
+        email = (request.data.get("email") or "").strip()
+        whatsapp = (request.data.get("whatsapp") or "").strip()
+
+        active_statuses = ["new", "contacted", "scheduled"]
+        existing = None
+
+        if email:
+            existing = (
+                DemoLead.objects.filter(email__iexact=email, status__in=active_statuses)
+                .order_by("-created_at")
+                .first()
+            )
+
+        if not existing and whatsapp:
+            existing = (
+                DemoLead.objects.filter(whatsapp=whatsapp, status__in=active_statuses)
+                .order_by("-created_at")
+                .first()
+            )
+
+        if existing:
+            # 1) grava JourneyEvent
+            je = JourneyEvent.objects.create(
+                lead_id=existing.id,
+                org_id=None,
+                event_name="lead_duplicate_attempt",
+                payload={
+                    "source": "demo_form",
+                    "reason": "duplicate_active_lead",
+                    "status": existing.status,
+                    "email": email or existing.email,
+                    "whatsapp": whatsapp or existing.whatsapp,
+                },
+                created_at=now,
+            )
+
+            # 2) dispara n8n (webhook único)
+            # Obs: não pode quebrar o fluxo do usuário
+            try:
+                send_event_to_n8n(
+                    event_name="lead_duplicate_attempt",
+                    event_id=str(je.id),
+                    lead_id=str(existing.id),
+                    org_id=None,
+                    source="backend",
+                    data={
+                        "lead_id": str(existing.id),
+                        "status": existing.status,
+                        "email": existing.email,
+                        "whatsapp": existing.whatsapp,
+                        "created_at": existing.created_at.isoformat() if existing.created_at else None,
+                    },
+                    meta={
+                        "ip": request.META.get("REMOTE_ADDR"),
+                        "user_agent": request.META.get("HTTP_USER_AGENT"),
+                    },
+                )
+            except Exception:
+                pass
+
+            return Response(DemoLeadSerializer(existing).data, status=status.HTTP_200_OK)
+
+        # -------------------------
+        # 1) Cria lead
+        # -------------------------
         serializer = DemoLeadSerializer(data=request.data)
         serializer.is_valid(raise_exception=True)
-        lead = serializer.save(status="new", created_at=timezone.now())
+        lead = serializer.save(status="new", created_at=now)
 
-        # notifica n8n (pipeline comercial)
-        send_event_to_n8n({
-            "type": "demo_lead",
-            "lead_id": str(lead.id),
-            "org_name": lead.org_name,
-            "contact_name": lead.contact_name,
-            "email": lead.email,
-            "whatsapp": lead.whatsapp,
-            "segment": lead.segment,
-            "best_time": lead.best_time,
-            "stores_count": lead.stores_count,
-            "city": lead.city,
-            "state": lead.state,
-            "camera_brands": lead.camera_brands,
-            "has_rtsp": lead.has_rtsp,
-        })
+        # -------------------------
+        # 2) JourneyEvent: lead_created
+        # -------------------------
+        je = JourneyEvent.objects.create(
+            lead_id=lead.id,
+            org_id=None,
+            event_name="lead_created",
+            payload={
+                "source": "demo_form",
+                "lead_id": str(lead.id),
+                "email": lead.email,
+                "whatsapp": lead.whatsapp,
+                "operation_type": getattr(lead, "operation_type", None),
+                "stores_range": getattr(lead, "stores_range", None),
+                "cameras_range": getattr(lead, "cameras_range", None),
+                "primary_goal": getattr(lead, "primary_goal", None),
+                "primary_goals": getattr(lead, "primary_goals", None),
+                "qualified_score": getattr(lead, "qualified_score", None),
+            },
+            created_at=now,
+        )
+
+        # -------------------------
+        # 3) Dispara n8n (webhook único)
+        # -------------------------
+        send_event_to_n8n(
+            event_name="lead_created",
+            event_id=str(je.id),              # <- idempotência
+            lead_id=str(lead.id),
+            org_id=None,
+            source="backend",
+            data={
+                "lead_id": str(lead.id),
+                "contact_name": lead.contact_name,
+                "email": lead.email,
+                "whatsapp": lead.whatsapp,
+                "operation_type": getattr(lead, "operation_type", None),
+                "stores_range": getattr(lead, "stores_range", None),
+                "cameras_range": getattr(lead, "cameras_range", None),
+                "primary_goal": getattr(lead, "primary_goal", None),
+                "primary_goals": getattr(lead, "primary_goals", None),
+                "qualified_score": getattr(lead, "qualified_score", None),
+                "utm": getattr(lead, "utm", None),
+                "metadata": getattr(lead, "metadata", None),
+            },
+            meta={
+                "ip": request.META.get("REMOTE_ADDR"),
+                "user_agent": request.META.get("HTTP_USER_AGENT"),
+            },
+        )
 
         return Response(DemoLeadSerializer(lead).data, status=status.HTTP_201_CREATED)
-
-
 # =========================
 # ALERT RULES (CRUD + INGEST)
 # =========================
@@ -117,7 +217,7 @@ class AlertRuleViewSet(viewsets.ModelViewSet):
         4) cria detection_event (sempre)
         5) cria event_media (se clip/snapshot)
         6) cria notification_logs por canal (email/whatsapp/dashboard)
-        7) chama n8n somente se email/whatsapp enabled
+        7) chama n8n com envelope padronizado (alert_triggered/alert_suppressed)
         """
         store_id = request.data.get("store_id")
         camera_id = request.data.get("camera_id")
@@ -171,6 +271,7 @@ class AlertRuleViewSet(viewsets.ModelViewSet):
         rule_used = None
         suppressed_by_rule_id = None
         suppressed_reason = None
+        cooldown_minutes = 0
 
         should_send = False
         channels = {"dashboard": True, "email": False, "whatsapp": False}
@@ -179,8 +280,8 @@ class AlertRuleViewSet(viewsets.ModelViewSet):
         if rules.exists():
             rule_used = rules.first()
             channels = rule_used.channels or channels
-            cooldown = rule_used.cooldown_minutes or 0
-            since = now - timedelta(minutes=cooldown)
+            cooldown_minutes = rule_used.cooldown_minutes or 0
+            since = now - timedelta(minutes=cooldown_minutes)
 
             recently_sent = NotificationLog.objects.filter(
                 store_id=store_id,
@@ -192,7 +293,7 @@ class AlertRuleViewSet(viewsets.ModelViewSet):
 
             if recently_sent:
                 suppressed_by_rule_id = rule_used.id
-                suppressed_reason = f"Cooldown ativo ({cooldown} min)"
+                suppressed_reason = f"Cooldown ativo ({cooldown_minutes} min)"
             else:
                 should_send = bool(channels.get("email") or channels.get("whatsapp"))
 
@@ -245,6 +346,32 @@ class AlertRuleViewSet(viewsets.ModelViewSet):
                 error=suppressed_reason,
                 sent_at=now,
             )
+            suppressed_payload = {
+                "store_id": str(event.store_id),
+                "event_id": str(event.id),
+                "rule_id": str(suppressed_by_rule_id),
+                "cooldown_minutes": cooldown_minutes,
+                "suppressed_reason": suppressed_reason,
+                "channels": channels,
+                "destinations": destinations,
+                "metadata": event.metadata,
+                "occurred_at": event.occurred_at.isoformat() if event.occurred_at else None,
+            }
+            journey_event = JourneyEvent.objects.create(
+                lead_id=None,
+                org_id=org_id,
+                event_name="alert_suppressed",
+                payload=suppressed_payload,
+                created_at=now,
+            )
+            n8n_result = send_event_to_n8n(
+                event_name="alert_suppressed",
+                event_id=str(journey_event.id),
+                lead_id=None,
+                org_id=org_id,
+                data=suppressed_payload,
+                meta={"source": "alerts_ingest"},
+            )
         else:
             NotificationLog.objects.create(
                 org_id=event.org_id,
@@ -278,7 +405,21 @@ class AlertRuleViewSet(viewsets.ModelViewSet):
                     "metadata": event.metadata,
                 }
 
-                n8n_result = send_event_to_n8n(payload)
+                journey_event = JourneyEvent.objects.create(
+                    lead_id=None,
+                    org_id=org_id,
+                    event_name="alert_triggered",
+                    payload=payload,
+                    created_at=now,
+                )
+                n8n_result = send_event_to_n8n(
+                    event_name="alert_triggered",
+                    event_id=str(journey_event.id),
+                    lead_id=None,
+                    org_id=org_id,
+                    data=payload,
+                    meta={"source": "alerts_ingest"},
+                )
 
                 for ch in ["email", "whatsapp"]:
                     if channels.get(ch):
@@ -378,4 +519,30 @@ class NotificationLogViewSet(viewsets.ReadOnlyModelViewSet):
             qs = qs.filter(event_id=event_id)
 
         return qs
+
+# =========================
+# JOURNEY EVENTS (CRM)
+# =========================
+class JourneyEventViewSet(viewsets.ModelViewSet):
+    serializer_class = JourneyEventSerializer
+    permission_classes = [permissions.AllowAny]
+
+    def get_queryset(self):
+        qs = JourneyEvent.objects.all().order_by("-created_at")
+
+        lead_id = self.request.query_params.get("lead_id")
+        org_id = self.request.query_params.get("org_id")
+        event_name = self.request.query_params.get("event_name")
+
+        if lead_id:
+            qs = qs.filter(lead_id=lead_id)
+        if org_id:
+            qs = qs.filter(org_id=org_id)
+        if event_name:
+            qs = qs.filter(event_name=event_name)
+
+        return qs
+
+    def perform_create(self, serializer):
+        serializer.save(created_at=timezone.now())
 

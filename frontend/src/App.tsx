@@ -1,19 +1,27 @@
 import { Routes, Route, Navigate } from "react-router-dom"
 import PrivateRoute from "./components/PrivateRoute"
+import Layout from "./components/Layout/Layout"
+
+import HomePage from "./pages/Home/Home"
 import Login from "./pages/Login/Login"
+import AgendarDemo from "./pages/AgendarDemo/AgendarDemo"
+
 import Dashboard from "./pages/Dashboard/Dashboard"
 import Stores from "./pages/Stores/Stores"
-import Layout from "./components/Layout/Layout"
 import Analytics from "./pages/Analytics/Analytics"
 import Cameras from "./pages/Cameras/Cameras"
 import Alerts from "./pages/Alerts/Alerts"
 import Settings from "./pages/Settings/Settings"
-import HomePage from "./pages/Home/Home"
 import ProfilePage from "./pages/Profile/Profile"
-import AgendarDemo from "./pages/AgendarDemo/AgendarDemo"
-// 🆕 Páginas de Alerts
+
+// ✅ Alerts stack
 import AlertRules from "./pages/AlertRules/AlertRules"
 import NotificationLogs from "./pages/NotificationLogs/NotificationLogs"
+
+// 🆕 Onboarding / Register (front-only)
+import Register from "./pages/Register/Register"
+import Onboarding from "./pages/Onboarding/Onboarding"
+import OnboardingSuccess from "./pages/Onboarding/OnboardingSuccess"
 
 function App() {
   return (
@@ -21,6 +29,12 @@ function App() {
       {/* Rotas públicas */}
       <Route path="/" element={<HomePage />} />
       <Route path="/login" element={<Login />} />
+      <Route path="/agendar-demo" element={<AgendarDemo />} />
+
+      {/* 🆕 Registro + Onboarding (público, sem backend por enquanto) */}
+      <Route path="/register" element={<Register />} />
+      <Route path="/onboarding" element={<Onboarding />} />
+      <Route path="/onboarding/success" element={<OnboardingSuccess />} />
 
       {/* Rotas protegidas */}
       <Route
@@ -54,16 +68,15 @@ function App() {
       <Route path="/alerts" element={<Navigate to="/app/alerts" replace />} />
       <Route path="/settings" element={<Navigate to="/app/settings" replace />} />
 
-      {/* ✅ NOVOS REDIRECTS (o que você pediu) */}
+      {/* ✅ Redirects Alerts */}
       <Route path="/alert-rules" element={<Navigate to="/app/alert-rules" replace />} />
-      <Route
-        path="/notification-logs"
-        element={<Navigate to="/app/notification-logs" replace />}
-      />
+      <Route path="/notification-logs" element={<Navigate to="/app/notification-logs" replace />} />
+
+      {/* ✅ Redirects Onboarding (opcional, caso alguém aponte errado) */}
+      <Route path="/onboarding-success" element={<Navigate to="/onboarding/success" replace />} />
 
       {/* Fallback */}
       <Route path="*" element={<Navigate to="/" replace />} />
-      <Route path="/agendar-demo" element={<AgendarDemo />} />
     </Routes>
   )
 }

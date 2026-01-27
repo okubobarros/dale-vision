@@ -155,6 +155,6 @@ REST_KNOX = {
 # ⭐ SUPABASE CONFIG (SEUS DADOS)
 SUPABASE_URL = os.getenv("SUPABASE_URL")
 SUPABASE_KEY = os.getenv("SUPABASE_KEY")
-N8N_ALERTS_WEBHOOK = os.getenv("N8N_ALERTS_WEBHOOK", "https://visionanalytics.app.n8n.cloud/webhook/dale-vision-alerts")
+N8N_EVENTS_WEBHOOK = os.getenv("N8N_EVENTS_WEBHOOK")
 # ⭐ WHITENOISE (para arquivos estáticos)
 STATICFILES_STORAGE = 'whitenoise.storage.CompressedManifestStaticFilesStorage'

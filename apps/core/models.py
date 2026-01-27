@@ -333,7 +333,27 @@ class DemoLead(UnmanagedModel):
     status = models.CharField(max_length=20, choices=LEAD_STATUS, default="new")
     notes = models.TextField(null=True, blank=True)
     created_at = models.DateTimeField()
+    # --- NOVOS CAMPOS (schema evolução) ---
+    source = models.TextField(null=True, blank=True)
+    utm = models.JSONField(default=dict)
+    metadata = models.JSONField(default=dict)
 
+    operation_type = models.TextField(null=True, blank=True)
+    stores_range = models.TextField(null=True, blank=True)
+    cameras_range = models.TextField(null=True, blank=True)
+    primary_goal = models.TextField(null=True, blank=True)
+
+    pilot_city = models.TextField(null=True, blank=True)
+    pilot_state = models.TextField(null=True, blank=True)
+
+    calendly_event_uri = models.TextField(null=True, blank=True)
+    calendly_invitee_uri = models.TextField(null=True, blank=True)
+    scheduled_at = models.DateTimeField(null=True, blank=True)
+    timezone = models.TextField(null=True, blank=True)
+
+    camera_brands_json = models.JSONField(default=list)
+    qualified_score = models.IntegerField(default=0)
+    primary_goals = models.JSONField(default=list)
     class Meta(UnmanagedModel.Meta):
         db_table = "demo_leads"
 
@@ -394,3 +414,31 @@ class AuditLog(UnmanagedModel):
 
     class Meta(UnmanagedModel.Meta):
         db_table = "audit_logs"
+# -------------------------
+# Journey Events (CRM / Pipeline)
+# -------------------------
+class JourneyEvent(UnmanagedModel):
+    id = models.UUIDField(primary_key=True, default=uuid.uuid4)
+
+    lead = models.ForeignKey(
+        DemoLead,
+        on_delete=models.DO_NOTHING,
+        db_column="lead_id",
+        null=True,
+        blank=True,
+    )
+
+    org = models.ForeignKey(
+        Organization,
+        on_delete=models.DO_NOTHING,
+        db_column="org_id",
+        null=True,
+        blank=True,
+    )
+
+    event_name = models.TextField()
+    payload = models.JSONField(default=dict)
+    created_at = models.DateTimeField()
+
+    class Meta(UnmanagedModel.Meta):
+        db_table = "journey_events"

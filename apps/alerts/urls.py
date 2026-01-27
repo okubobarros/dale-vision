@@ -7,12 +7,14 @@ from .views import (
     DetectionEventViewSet,
     NotificationLogViewSet,
     CoreStoreListView,
+    JourneyEventViewSet,
 )
 
 router = DefaultRouter()
 router.register(r"alert-rules", AlertRuleViewSet, basename="alert-rules")
 router.register(r"events", DetectionEventViewSet, basename="events")
 router.register(r"notification-logs", NotificationLogViewSet, basename="notification-logs")
+router.register(r"journey-events", JourneyEventViewSet, basename="journey-events")
 
 urlpatterns = [
     path("stores/", CoreStoreListView.as_view(), name="alerts-core-stores"),
