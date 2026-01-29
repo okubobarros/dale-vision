@@ -54,4 +54,5 @@ urlpatterns = [
     path("api/cameras/", include("apps.cameras.urls")),
 
     path("health/", lambda r: JsonResponse({"status": "healthy", "service": "dale-vision-api"})),
+    path("api/edge/", include("apps.edge.urls")),
 ]

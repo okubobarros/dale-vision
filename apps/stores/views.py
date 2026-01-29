@@ -4,7 +4,7 @@ from rest_framework.decorators import action
 from rest_framework.response import Response
 from django.utils import timezone
 from datetime import timedelta
-from .models import Store
+from apps.core.models import Store
 from .serializers import StoreSerializer
 
 class StoreViewSet(viewsets.ModelViewSet):
@@ -13,11 +13,11 @@ class StoreViewSet(viewsets.ModelViewSet):
     permission_classes = [permissions.IsAuthenticated]
     
     def get_queryset(self):
-        """Filtra apenas lojas do usuário atual"""
-        user = self.request.user
-        if user.is_authenticated:
-            return Store.objects.filter(owner=self.request.user)
-        return Store.objects.none()
+        qs = Store.objects.all().order_by("-updated_at")
+        org_id = self.request.query_params.get("org_id")
+        if org_id:
+            qs = qs.filter(org_id=org_id)
+        return qs
     
     def list(self, request):
         """Sobrescreve list para retornar formato personalizado - MANTENHA ESTE!"""

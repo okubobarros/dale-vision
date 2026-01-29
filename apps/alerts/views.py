@@ -3,6 +3,7 @@ from datetime import timedelta
 from uuid import UUID
 
 from django.utils import timezone
+from django.db.utils import DataError
 from rest_framework import viewsets, permissions, status, serializers
 from rest_framework.decorators import action
 from rest_framework.exceptions import ValidationError
@@ -16,18 +17,21 @@ from apps.core.models import (
     EventMedia,
     NotificationLog,
     Store,
+    JourneyEvent,
 )
+
 from .serializers import (
     DemoLeadSerializer,
     AlertRuleSerializer,
     DetectionEventSerializer,
     EventMediaSerializer,
     NotificationLogSerializer,
+    JourneyEventSerializer,
 )
+
 from .services import send_event_to_n8n
 
-from apps.core.models import JourneyEvent
-from .serializers import JourneyEventSerializer
+
 # =========================
 # CORE STORES (UUID) - para o frontend filtrar alerts corretamente
 # GET /api/alerts/stores/
@@ -108,7 +112,6 @@ class DemoLeadCreateView(APIView):
             )
 
             # 2) dispara n8n (webhook único)
-            # Obs: não pode quebrar o fluxo do usuário
             try:
                 send_event_to_n8n(
                     event_name="lead_duplicate_attempt",
@@ -124,6 +127,7 @@ class DemoLeadCreateView(APIView):
                         "created_at": existing.created_at.isoformat() if existing.created_at else None,
                     },
                     meta={
+                        "source": "demo_form",
                         "ip": request.META.get("REMOTE_ADDR"),
                         "user_agent": request.META.get("HTTP_USER_AGENT"),
                     },
@@ -133,16 +137,12 @@ class DemoLeadCreateView(APIView):
 
             return Response(DemoLeadSerializer(existing).data, status=status.HTTP_200_OK)
 
-        # -------------------------
         # 1) Cria lead
-        # -------------------------
         serializer = DemoLeadSerializer(data=request.data)
         serializer.is_valid(raise_exception=True)
         lead = serializer.save(status="new", created_at=now)
 
-        # -------------------------
         # 2) JourneyEvent: lead_created
-        # -------------------------
         je = JourneyEvent.objects.create(
             lead_id=lead.id,
             org_id=None,
@@ -162,12 +162,10 @@ class DemoLeadCreateView(APIView):
             created_at=now,
         )
 
-        # -------------------------
         # 3) Dispara n8n (webhook único)
-        # -------------------------
         send_event_to_n8n(
             event_name="lead_created",
-            event_id=str(je.id),              # <- idempotência
+            event_id=str(je.id),
             lead_id=str(lead.id),
             org_id=None,
             source="backend",
@@ -186,12 +184,15 @@ class DemoLeadCreateView(APIView):
                 "metadata": getattr(lead, "metadata", None),
             },
             meta={
+                "source": "demo_form",
                 "ip": request.META.get("REMOTE_ADDR"),
                 "user_agent": request.META.get("HTTP_USER_AGENT"),
             },
         )
 
         return Response(DemoLeadSerializer(lead).data, status=status.HTTP_201_CREATED)
+
+
 # =========================
 # ALERT RULES (CRUD + INGEST)
 # =========================
@@ -223,6 +224,17 @@ class AlertRuleViewSet(viewsets.ModelViewSet):
         camera_id = request.data.get("camera_id")
         zone_id = request.data.get("zone_id")
         event_type = request.data.get("event_type")
+
+        # valida enum do banco sem 500
+        if event_type:
+            try:
+                AlertRule.objects.filter(type=event_type).exists()
+            except DataError:
+                return Response(
+                    {"event_type": f'event_type inválido para o enum do banco: "{event_type}".'},
+                    status=status.HTTP_400_BAD_REQUEST,
+                )
+
         severity = request.data.get("severity")
         title = request.data.get("title") or "Evento detectado"
         description = request.data.get("description") or request.data.get("message") or ""
@@ -230,6 +242,10 @@ class AlertRuleViewSet(viewsets.ModelViewSet):
         occurred_at = request.data.get("occurred_at")  # opcional iso
         clip_url = request.data.get("clip_url")
         snapshot_url = request.data.get("snapshot_url")
+        destinations = request.data.get("destinations") or {}  # {email, whatsapp}
+
+        # ✅ NOVO: receipt_id (para rastreio / idempotência ponta-a-ponta)
+        receipt_id = request.data.get("receipt_id")  # opcional
 
         if not store_id or not event_type or not severity:
             return Response(
@@ -237,7 +253,7 @@ class AlertRuleViewSet(viewsets.ModelViewSet):
                 status=status.HTTP_400_BAD_REQUEST,
             )
 
-        # ✅ store_id precisa ser UUID (core.Store)
+        # store_id precisa ser UUID (core.Store)
         require_uuid_param("store_id", str(store_id))
 
         try:
@@ -260,13 +276,9 @@ class AlertRuleViewSet(viewsets.ModelViewSet):
                 occ = now
 
         # regras candidatas (por store e, se existir, por zone e tipo)
-        rules = AlertRule.objects.filter(store_id=store_id, active=True)
-        rules = rules.filter(type=event_type)
-        if zone_id:
-            # zone_id no core é FK UUID -> se você passar lixo, DRF vai explodir depois
-            # Aqui deixamos ser "best effort": se não for uuid, ignora filtro por zone
-            if is_uuid(str(zone_id)):
-                rules = rules.filter(zone_id=zone_id)
+        rules = AlertRule.objects.filter(store_id=store_id, active=True).filter(type=event_type)
+        if zone_id and is_uuid(str(zone_id)):
+            rules = rules.filter(zone_id=zone_id)
 
         rule_used = None
         suppressed_by_rule_id = None
@@ -275,7 +287,6 @@ class AlertRuleViewSet(viewsets.ModelViewSet):
 
         should_send = False
         channels = {"dashboard": True, "email": False, "whatsapp": False}
-        destinations = request.data.get("destinations") or {}  # {email, whatsapp}
 
         if rules.exists():
             rule_used = rules.first()
@@ -331,9 +342,45 @@ class AlertRuleViewSet(viewsets.ModelViewSet):
                 created_at=now,
             )
 
+        # meta padronizado para n8n
+        edge_meta = {"source": "alerts_ingest"}
+        if receipt_id:
+            edge_meta["receipt_id"] = receipt_id
+
+        # helper pra extrair delivery id/status do n8n
+        def _delivery_info(n8n_result: dict, channel: str):
+            """
+            Espera resposta padrão do n8n:
+            {
+              ok: true,
+              deliveries: {
+                whatsapp: { ok: true, id: "..." },
+                email: { ok: true, id: "..." }
+              }
+            }
+            """
+            try:
+                deliveries = (n8n_result or {}).get("data", {}).get("deliveries") or (n8n_result or {}).get("deliveries")
+                if isinstance(deliveries, dict) and channel in deliveries and isinstance(deliveries[channel], dict):
+                    ch = deliveries[channel]
+                    return (bool(ch.get("ok")), ch.get("id"))
+            except Exception:
+                pass
+            # fallback antigo
+            provider_id = None
+            try:
+                d = (n8n_result or {}).get("data")
+                if isinstance(d, dict):
+                    provider_id = d.get("id")
+            except Exception:
+                provider_id = None
+            return (bool(n8n_result and n8n_result.get("ok")), provider_id)
+
         # notification logs + n8n
         n8n_result = None
+
         if suppressed_by_rule_id:
+            # dashboard log suppressed
             NotificationLog.objects.create(
                 org_id=event.org_id,
                 store_id=store_id,
@@ -346,6 +393,7 @@ class AlertRuleViewSet(viewsets.ModelViewSet):
                 error=suppressed_reason,
                 sent_at=now,
             )
+
             suppressed_payload = {
                 "store_id": str(event.store_id),
                 "event_id": str(event.id),
@@ -357,6 +405,9 @@ class AlertRuleViewSet(viewsets.ModelViewSet):
                 "metadata": event.metadata,
                 "occurred_at": event.occurred_at.isoformat() if event.occurred_at else None,
             }
+            if receipt_id:
+                suppressed_payload["receipt_id"] = receipt_id
+
             journey_event = JourneyEvent.objects.create(
                 lead_id=None,
                 org_id=org_id,
@@ -364,15 +415,18 @@ class AlertRuleViewSet(viewsets.ModelViewSet):
                 payload=suppressed_payload,
                 created_at=now,
             )
+
             n8n_result = send_event_to_n8n(
                 event_name="alert_suppressed",
                 event_id=str(journey_event.id),
                 lead_id=None,
                 org_id=org_id,
                 data=suppressed_payload,
-                meta={"source": "alerts_ingest"},
+                meta=edge_meta,
             )
+
         else:
+            # dashboard log sent
             NotificationLog.objects.create(
                 org_id=event.org_id,
                 store_id=store_id,
@@ -404,6 +458,8 @@ class AlertRuleViewSet(viewsets.ModelViewSet):
                     ).data,
                     "metadata": event.metadata,
                 }
+                if receipt_id:
+                    payload["receipt_id"] = receipt_id
 
                 journey_event = JourneyEvent.objects.create(
                     lead_id=None,
@@ -412,17 +468,20 @@ class AlertRuleViewSet(viewsets.ModelViewSet):
                     payload=payload,
                     created_at=now,
                 )
+
                 n8n_result = send_event_to_n8n(
                     event_name="alert_triggered",
                     event_id=str(journey_event.id),
                     lead_id=None,
                     org_id=org_id,
                     data=payload,
-                    meta={"source": "alerts_ingest"},
+                    meta=edge_meta,
                 )
 
+                # logs por canal (email/whatsapp)
                 for ch in ["email", "whatsapp"]:
                     if channels.get(ch):
+                        ok, provider_message_id = _delivery_info(n8n_result, ch)
                         NotificationLog.objects.create(
                             org_id=event.org_id,
                             store_id=store_id,
@@ -431,10 +490,9 @@ class AlertRuleViewSet(viewsets.ModelViewSet):
                             channel=ch,
                             destination=destinations.get(ch),
                             provider="n8n",
-                            status="sent" if (n8n_result and n8n_result.get("ok")) else "failed",
-                            provider_message_id=(n8n_result or {}).get("data", {}).get("id")
-                                if isinstance((n8n_result or {}).get("data"), dict) else None,
-                            error=None if (n8n_result and n8n_result.get("ok")) else str(n8n_result),
+                            status="sent" if ok else "failed",
+                            provider_message_id=provider_message_id,
+                            error=None if ok else str(n8n_result),
                             sent_at=now,
                         )
 
@@ -520,6 +578,7 @@ class NotificationLogViewSet(viewsets.ReadOnlyModelViewSet):
 
         return qs
 
+
 # =========================
 # JOURNEY EVENTS (CRM)
 # =========================
@@ -545,4 +604,3 @@ class JourneyEventViewSet(viewsets.ModelViewSet):
 
     def perform_create(self, serializer):
         serializer.save(created_at=timezone.now())
-

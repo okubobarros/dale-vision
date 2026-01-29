@@ -37,10 +37,10 @@ INSTALLED_APPS = [
     'apps.core',
     'apps.stores',
     'apps.cameras', 
-    'apps.vision',
     'apps.analytics',
     'apps.alerts',
     'apps.billing',
+    "apps.edge",
 ]
 
 MIDDLEWARE = [
@@ -158,3 +158,6 @@ SUPABASE_KEY = os.getenv("SUPABASE_KEY")
 N8N_EVENTS_WEBHOOK = os.getenv("N8N_EVENTS_WEBHOOK")
 # ⭐ WHITENOISE (para arquivos estáticos)
 STATICFILES_STORAGE = 'whitenoise.storage.CompressedManifestStaticFilesStorage'
+
+EDGE_SERVICE_USERNAME = os.getenv("EDGE_SERVICE_USERNAME", "edge-agent")
+EDGE_AGENT_TOKEN = os.getenv("EDGE_AGENT_TOKEN", "")
