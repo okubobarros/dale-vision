@@ -193,7 +193,13 @@ export const alertsService = {
     status?: "open" | "resolved" | "ignored"
   }): Promise<DetectionEvent[]> {
     const res = await api.get("/alerts/events/", { params })
-    return normalizeArray<DetectionEvent>(res.data)
+    return normalizeArray<DetectionEvent>(res.data).map((event: any) => ({
+      ...event,
+      store_id: event?.store_id ?? event?.store,
+      camera_id: event?.camera_id ?? event?.camera,
+      zone_id: event?.zone_id ?? event?.zone,
+      org_id: event?.org_id ?? event?.org,
+    }))
   },
 
   async resolveEvent(eventId: string): Promise<DetectionEvent> {

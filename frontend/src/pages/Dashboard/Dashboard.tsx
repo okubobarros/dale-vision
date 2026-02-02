@@ -6,7 +6,14 @@ import {
   storesService,
   type NetworkDashboard,
   type Store,
+  type StoreEdgeStatus,
 } from "../../services/stores"
+import { formatAge, formatReason } from "../../utils/edgeReasons"
+import {
+  useAlertsEvents,
+  useIgnoreEvent,
+  useResolveEvent,
+} from "../../queries/alerts.queries"
 import type { StoreDashboard } from "../../types/dashboard"
 import { LineChart } from "../../components/Charts/LineChart"
 import { PieChart } from "../../components/Charts/PieChart"
@@ -182,11 +189,36 @@ const Dashboard = () => {
   const [selectedStore, setSelectedStore] = useState<string>(ALL_STORES_VALUE)
   const [dashboard, setDashboard] = useState<StoreDashboard | null>(null)
   const [isLoadingDashboard, setIsLoadingDashboard] = useState(false)
+  const [resolvingEventId, setResolvingEventId] = useState<string | null>(null)
+  const [ignoringEventId, setIgnoringEventId] = useState<string | null>(null)
 
   const { data: stores, isLoading: storesLoading } = useQuery<Store[]>({
     queryKey: ["stores"],
     queryFn: storesService.getStores,
   })
+
+  const {
+    data: edgeStatus,
+    isLoading: edgeStatusLoading,
+  } = useQuery<StoreEdgeStatus>({
+    queryKey: ["store-edge-status", selectedStore],
+    queryFn: () => storesService.getStoreEdgeStatus(selectedStore),
+    enabled: selectedStore !== ALL_STORES_VALUE,
+  })
+
+  const {
+    data: events,
+    isLoading: eventsLoading,
+    error: eventsError,
+  } = useAlertsEvents({
+    store_id: selectedStore === ALL_STORES_VALUE ? undefined : selectedStore,
+    status: "open",
+  }, {
+    enabled: Boolean(selectedStore && selectedStore !== ALL_STORES_VALUE),
+  })
+
+  const resolveEvent = useResolveEvent()
+  const ignoreEvent = useIgnoreEvent()
 
   useEffect(() => {
     if (!stores || stores.length === 0) {
@@ -310,6 +342,43 @@ const Dashboard = () => {
     ),
   }
 
+  const edgeStatusLabel = edgeStatusLoading
+    ? "Carregando"
+    : edgeStatus?.store_status === "online"
+    ? "Loja Online"
+    : edgeStatus?.store_status === "degraded"
+    ? "Loja Instável"
+    : edgeStatus?.store_status === "offline"
+    ? "Loja Offline"
+    : "Status desconhecido"
+
+  const edgeStatusClass = edgeStatusLoading
+    ? "bg-blue-100 text-blue-800"
+    : edgeStatus?.store_status === "online"
+    ? "bg-green-100 text-green-800"
+    : edgeStatus?.store_status === "degraded"
+    ? "bg-yellow-100 text-yellow-800"
+    : edgeStatus?.store_status === "offline"
+    ? "bg-gray-100 text-gray-800"
+    : "bg-gray-100 text-gray-800"
+
+  const showStoreIndicators =
+    Boolean(selectedStore) && selectedStore !== ALL_STORES_VALUE
+
+  const eventStatusClass = (status: string) =>
+    status === "open"
+      ? "bg-red-100 text-red-800"
+      : status === "resolved"
+      ? "bg-green-100 text-green-800"
+      : "bg-gray-100 text-gray-700"
+
+  const eventSeverityClass = (severity: string) =>
+    severity === "critical" || severity === "high"
+      ? "bg-red-100 text-red-800"
+      : severity === "warning" || severity === "medium"
+      ? "bg-yellow-100 text-yellow-800"
+      : "bg-blue-100 text-blue-800"
+
   if (storesLoading) {
     return (
       <div className="flex items-center justify-center h-64">
@@ -424,58 +493,288 @@ const Dashboard = () => {
 
       {dashboard ? (
         <>
-          {/* Métricas topo */}
-          <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4 sm:gap-6">
-            <MetricCard
-              title="Score de Saúde"
-              value={`${dashboard.metrics.health_score}%`}
-              icon={icons.health}
-              color="bg-green-50"
-              trend={Math.round(Math.random() * 10) - 3}
-              subtitle="Saúde geral da operação"
-            />
-            <MetricCard
-              title="Produtividade"
-              value={`${dashboard.metrics.productivity}%`}
-              icon={icons.productivity}
-              color="bg-blue-50"
-              trend={Math.round(Math.random() * 8) - 2}
-              subtitle="Eficiência da equipe"
-            />
-            <MetricCard
-              title="Fluxo de Visitantes"
-              value={dashboard.metrics.visitor_flow.toLocaleString("pt-BR")}
-              icon={icons.visitors}
-              color="bg-purple-50"
-              trend={Math.round(Math.random() * 15)}
-              subtitle="Pessoas na loja hoje"
-            />
-          </div>
+          {selectedStore !== ALL_STORES_VALUE && (
+            <div className="space-y-4 sm:space-y-6">
+              <div className="bg-white rounded-xl shadow-sm border border-gray-100 p-4 sm:p-6">
+                <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3">
+                  <div>
+                    <h2 className="text-lg sm:text-xl font-bold text-gray-800">
+                      Loja Online/Offline
+                    </h2>
+                  <p className="text-sm text-gray-500 mt-1">
+                    Último heartbeat há{" "}
+                    <span className="font-semibold text-gray-700">
+                      {edgeStatusLoading
+                        ? "Carregando..."
+                        : formatAge(edgeStatus?.store_status_age_seconds)}
+                    </span>
+                  </p>
+                  {edgeStatus?.store_status_reason && (
+                    <p className="text-xs text-gray-500 mt-1">
+                      {formatReason(edgeStatus.store_status_reason)}
+                    </p>
+                  )}
+                    {edgeStatus?.last_error && (
+                      <p className="text-xs text-red-600 mt-2">
+                        Erro: {edgeStatus.last_error}
+                      </p>
+                    )}
+                  </div>
+                  <span
+                    className={`inline-flex items-center px-3 py-1 rounded-full text-xs sm:text-sm font-semibold ${edgeStatusClass}`}
+                  >
+                    {edgeStatusLabel}
+                  </span>
+                </div>
 
-          {/* Métricas 2 */}
-          <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4 sm:gap-6">
-            <MetricCard
-              title="Taxa de Conversão"
-              value={`${dashboard.metrics.conversion_rate.toFixed(1)}%`}
-              icon={icons.conversion}
-              color="bg-yellow-50"
-              subtitle="Visitantes → Clientes"
-            />
-            <MetricCard
-              title="Ticket Médio"
-              value={`R$ ${dashboard.metrics.avg_cart_value.toFixed(2)}`}
-              icon={icons.cart}
-              color="bg-indigo-50"
-              subtitle="Valor médio por venda"
-            />
-            <MetricCard
-              title="Tempo Ocioso"
-              value={`${dashboard.metrics.idle_time}%`}
-              icon={icons.idle}
-              color="bg-red-50"
-              subtitle="Redução de produtividade"
-            />
-          </div>
+                <div className="mt-4">
+                  <h3 className="text-sm font-semibold text-gray-700 mb-3">
+                    Câmeras
+                  </h3>
+
+                  {edgeStatusLoading ? (
+                    <div className="text-sm text-gray-500">
+                      Carregando status...
+                    </div>
+                  ) : edgeStatus && edgeStatus.cameras.length > 0 ? (
+                    <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+                      {edgeStatus.cameras.map((cam) => (
+                        <div
+                          key={cam.camera_id}
+                          className="flex items-center justify-between border border-gray-100 rounded-lg px-3 py-2"
+                        >
+                          <div className="min-w-0">
+                            <p className="text-sm font-medium text-gray-800 truncate">
+                              {cam.name}
+                            </p>
+                            <p className="text-xs text-gray-500">{cam.camera_id}</p>
+                          </div>
+                        <div className="flex flex-col items-end gap-1">
+                          <span
+                            className={`px-2 py-1 text-xs rounded-full ${
+                              cam.status === "online"
+                                ? "bg-green-100 text-green-800"
+                                : cam.status === "degraded"
+                                ? "bg-yellow-100 text-yellow-800"
+                                : cam.status === "offline"
+                                ? "bg-gray-100 text-gray-700"
+                                : "bg-gray-100 text-gray-600"
+                            }`}
+                          >
+                            {cam.status}
+                          </span>
+                          {cam.reason && (
+                            <span className="text-[11px] text-gray-500">
+                              {formatReason(cam.reason)}
+                            </span>
+                          )}
+                        </div>
+                        </div>
+                      ))}
+                    </div>
+                  ) : (
+                    <div className="text-sm text-gray-500">
+                      Nenhuma câmera encontrada.
+                    </div>
+                  )}
+                </div>
+              </div>
+
+              <div className="bg-white rounded-xl shadow-sm border border-gray-100 p-4 sm:p-6">
+                <div className="flex items-center justify-between gap-3 mb-4">
+                  <h2 className="text-lg sm:text-xl font-bold text-gray-800">
+                    Últimos alertas
+                  </h2>
+                  <span className="px-2.5 py-1 rounded-full text-xs font-semibold bg-gray-100 text-gray-700">
+                    {(events?.length ?? 0) > 0
+                      ? `${Math.min(events?.length ?? 0, 10)} de ${
+                          events?.length ?? 0
+                        }`
+                      : "0"}
+                  </span>
+                </div>
+
+                {!selectedStore || selectedStore === ALL_STORES_VALUE ? (
+                  <div className="text-sm text-gray-500">
+                    Selecione uma loja para ver alertas.
+                  </div>
+                ) : eventsLoading ? (
+                  <div className="text-sm text-gray-500">Carregando alertas...</div>
+                ) : eventsError ? (
+                  <div className="text-sm text-red-600">Falha ao carregar alertas</div>
+                ) : !events || events.length === 0 ? (
+                  <div className="text-sm text-gray-500">Nenhum alerta em aberto</div>
+                ) : (
+                  <div className="space-y-3">
+                    {events.slice(0, 10).map((event) => {
+                      const eventTime = event.occurred_at || event.created_at
+                      const isResolving = resolvingEventId === event.id
+                      const isIgnoring = ignoringEventId === event.id
+                      const isMutating = isResolving || isIgnoring
+                      return (
+                        <div
+                          key={event.id}
+                          className="border border-gray-100 rounded-lg px-4 py-3"
+                        >
+                          <div className="flex items-start justify-between gap-3">
+                            <div className="min-w-0">
+                              <p className="text-sm text-gray-500">
+                                {eventTime
+                                  ? new Date(eventTime).toLocaleTimeString(
+                                      "pt-BR",
+                                      {
+                                        hour: "2-digit",
+                                        minute: "2-digit",
+                                      }
+                                    )
+                                  : "—"}
+                              </p>
+                              <p className="text-sm sm:text-base font-semibold text-gray-800 mt-1">
+                                {event.title}
+                              </p>
+                            </div>
+                            <div className="flex flex-wrap items-center gap-2 justify-end">
+                              <span className="px-2 py-0.5 text-[11px] rounded-full bg-gray-100 text-gray-700">
+                                {event.type}
+                              </span>
+                              <span
+                                className={`px-2 py-0.5 text-[11px] rounded-full ${eventSeverityClass(
+                                  event.severity
+                                )}`}
+                              >
+                                {event.severity}
+                              </span>
+                              <span
+                                className={`px-2 py-0.5 text-[11px] rounded-full ${eventStatusClass(
+                                  event.status
+                                )}`}
+                              >
+                                {event.status}
+                              </span>
+                            </div>
+                          </div>
+                          {event.status === "open" && (
+                            <div className="mt-3 flex flex-wrap items-center gap-2">
+                              <button
+                                type="button"
+                                disabled={isMutating}
+                                onClick={() => {
+                                  setResolvingEventId(event.id)
+                                  resolveEvent.mutate(event.id, {
+                                    onSettled: () => setResolvingEventId(null),
+                                  })
+                                }}
+                                className={`px-3 py-1 text-xs font-semibold rounded border ${
+                                  isMutating
+                                    ? "bg-gray-100 text-gray-400 border-gray-200 cursor-not-allowed"
+                                    : "bg-green-50 text-green-700 border-green-200 hover:bg-green-100"
+                                }`}
+                              >
+                                {isResolving ? "Resolvendo..." : "Resolver"}
+                              </button>
+                              <button
+                                type="button"
+                                disabled={isMutating}
+                                onClick={() => {
+                                  setIgnoringEventId(event.id)
+                                  ignoreEvent.mutate(event.id, {
+                                    onSettled: () => setIgnoringEventId(null),
+                                  })
+                                }}
+                                className={`px-3 py-1 text-xs font-semibold rounded border ${
+                                  isMutating
+                                    ? "bg-gray-100 text-gray-400 border-gray-200 cursor-not-allowed"
+                                    : "bg-yellow-50 text-yellow-800 border-yellow-200 hover:bg-yellow-100"
+                                }`}
+                              >
+                                {isIgnoring ? "Ignorando..." : "Ignorar"}
+                              </button>
+                            </div>
+                          )}
+                          {event.description && (
+                            <p className="text-xs sm:text-sm text-gray-500 mt-2">
+                              {event.description}
+                            </p>
+                          )}
+                        </div>
+                      )
+                    })}
+                  </div>
+                )}
+              </div>
+            </div>
+          )}
+
+          {showStoreIndicators ? (
+            isLoadingDashboard ? (
+              <div className="bg-white rounded-xl shadow-sm border border-gray-100 p-6 text-center text-gray-500">
+                Carregando indicadores...
+              </div>
+            ) : dashboard?.metrics ? (
+              <>
+                {/* Métricas topo */}
+                <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4 sm:gap-6">
+                  <MetricCard
+                    title="Score de Saúde"
+                    value={`${dashboard.metrics.health_score}%`}
+                    icon={icons.health}
+                    color="bg-green-50"
+                    trend={Math.round(Math.random() * 10) - 3}
+                    subtitle="Saúde geral da operação"
+                  />
+                  <MetricCard
+                    title="Produtividade"
+                    value={`${dashboard.metrics.productivity}%`}
+                    icon={icons.productivity}
+                    color="bg-blue-50"
+                    trend={Math.round(Math.random() * 8) - 2}
+                    subtitle="Eficiência da equipe"
+                  />
+                  <MetricCard
+                    title="Fluxo de Visitantes"
+                    value={dashboard.metrics.visitor_flow.toLocaleString("pt-BR")}
+                    icon={icons.visitors}
+                    color="bg-purple-50"
+                    trend={Math.round(Math.random() * 15)}
+                    subtitle="Pessoas na loja hoje"
+                  />
+                </div>
+
+                {/* Métricas 2 */}
+                <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4 sm:gap-6">
+                  <MetricCard
+                    title="Taxa de Conversão"
+                    value={`${dashboard.metrics.conversion_rate.toFixed(1)}%`}
+                    icon={icons.conversion}
+                    color="bg-yellow-50"
+                    subtitle="Visitantes → Clientes"
+                  />
+                  <MetricCard
+                    title="Ticket Médio"
+                    value={`R$ ${dashboard.metrics.avg_cart_value.toFixed(2)}`}
+                    icon={icons.cart}
+                    color="bg-indigo-50"
+                    subtitle="Valor médio por venda"
+                  />
+                  <MetricCard
+                    title="Tempo Ocioso"
+                    value={`${dashboard.metrics.idle_time}%`}
+                    icon={icons.idle}
+                    color="bg-red-50"
+                    subtitle="Redução de produtividade"
+                  />
+                </div>
+              </>
+            ) : (
+              <div className="bg-white rounded-xl shadow-sm border border-gray-100 p-6 text-center text-gray-500">
+                Indicadores indisponíveis no momento.
+              </div>
+            )
+          ) : (
+            <div className="bg-white rounded-xl shadow-sm border border-gray-100 p-6 text-center text-gray-500">
+              Selecione uma loja para ver os indicadores
+            </div>
+          )}
 
           {/* Charts */}
           <div className="grid grid-cols-1 lg:grid-cols-2 gap-4 sm:gap-6">

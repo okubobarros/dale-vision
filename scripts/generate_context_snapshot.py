@@ -1,251 +1,224 @@
 # scripts/generate_context_snapshot.py
+from __future__ import annotations
+
 import os
+import sys
 import json
-from datetime import datetime
+import time
+from pathlib import Path
+from typing import Iterable, List, Tuple
 
-ROOT = os.path.abspath(os.getcwd())
+# =========================
+# Config
+# =========================
 
-# Pastas principais do seu monorepo
-SCAN_DIRS = [
-    "apps",
+ROOT = Path(__file__).resolve().parents[1]  # repo root
+OUT_DIR = ROOT / "docs"
+OUT_MD = OUT_DIR / "SNAPSHOT_CONTEXT.md"
+OUT_JSON = OUT_DIR / "SNAPSHOT_CONTEXT.json"
+
+# Pastas típicas do repo
+DEFAULT_INCLUDE_DIRS = [
     "backend",
-    "frontend/src",
-    "frontend/public",
-    "frontend/package.json",
-    "frontend/vite.config.ts",
-    "frontend/tsconfig.json",
-    "frontend/tsconfig.app.json",
-    "frontend/tsconfig.node.json",
+    "apps",
+    "frontend",
     "edge-agent",
     "scripts",
-    "contracts",
     "docs",
 ]
 
-# Arquivos que valem preview (ajuste à vontade)
-# Caminho B (fonte única de verdade = apps/core/models.py)
-IMPORTANT_FILES = [
-    # Django core wiring
-    "backend/settings.py",
-    "backend/urls.py",
-    "backend/asgi.py",
-    "backend/wsgi.py",
-
-    # Accounts/Auth
-    "apps/accounts/views.py",
-    "apps/accounts/serializers.py",
-    "apps/accounts/urls.py",
-
-    # Core (SSoT: Store, Camera, DetectionEvent, AlertRule, etc)
-    "apps/core/models.py",
-    "apps/core/serializers.py",
-    "apps/core/admin.py",
-
-    # Stores API (mesmo com model no core, as views podem estar em apps/stores)
-    "apps/stores/models.py",
-    "apps/stores/serializers.py",
-    "apps/stores/views.py",
-    "apps/stores/urls.py",
-
-    # Cameras API (sem model próprio — usa apps.core.models.Camera)
-    "apps/cameras/views.py",
-    "apps/cameras/serializers.py",
-    "apps/cameras/services.py",
-    "apps/cameras/urls.py",
-
-    # Alerts
-    "apps/alerts/models.py",
-    "apps/alerts/serializers.py",
-    "apps/alerts/services.py",
-    "apps/alerts/views.py",
-    "apps/alerts/urls.py",
-
-    # Edge ingest
-    "apps/edge/models.py",
-    "apps/edge/serializers.py",
-    "apps/edge/permissions.py",
-    "apps/edge/views.py",
-    "apps/edge/urls.py",
-
-    # Frontend
-    "frontend/src/App.tsx",
-    "frontend/src/main.tsx",
-    "frontend/src/services/api.ts",
-    "frontend/src/services/alerts.ts",
-    "frontend/src/services/stores.ts",
-
-    # Docs/Contracts (se existirem)
-    "contracts/event_envelope_v1.json",
-    "contracts/edge_event_envelope.json",
-]
-
-# Ignorar coisas pesadas/inúteis
-IGNORE_DIRS = {
-    ".git", ".github", ".vscode", "__pycache__", ".pytest_cache",
-    ".venv", "venv", "env",
-    "node_modules", "dist", "build", ".next",
-    ".turbo", ".cache",
-    "outputs", "videos",
+# Extensões “texto”
+TEXT_EXTS = {
+    ".py", ".ts", ".tsx", ".js", ".json", ".md", ".yaml", ".yml",
+    ".toml", ".ini", ".env", ".txt", ".css", ".html", ".sh",
 }
 
-IGNORE_FILES_SUFFIX = (
-    ".pyc", ".log", ".tmp", ".lock", ".map",
-)
+# Arquivos/pastas a ignorar
+IGNORE_DIR_NAMES = {
+    ".git", ".venv", "venv", "__pycache__", "node_modules", "dist", "build",
+    ".next", ".turbo", ".pytest_cache", ".mypy_cache",
+    "runs",  # edge-agent runs/*
+}
 
-MAX_TREE_LINES_PER_SECTION = 1200
-MAX_PREVIEW_CHARS = 6000
+IGNORE_FILE_EXTS = {
+    ".mp4", ".mov", ".avi", ".mkv",
+    ".pt", ".onnx",
+    ".db", ".sqlite", ".sqlite3",
+    ".png", ".jpg", ".jpeg", ".webp", ".gif",
+    ".zip", ".7z", ".tar", ".gz",
+    ".pdf",
+}
+
+# Limites (pra não explodir o snapshot)
+MAX_TREE_DEPTH = 5
+MAX_FILES = 220
+MAX_FILE_BYTES = 200_000   # 200 KB
+MAX_LINES_PER_FILE = 220
+MAX_TOTAL_CHARS = 280_000  # snapshot final “controlado”
 
 
-def safe_read(path, max_chars=MAX_PREVIEW_CHARS):
-    try:
-        with open(path, "r", encoding="utf-8") as f:
-            return f.read()[:max_chars]
-    except Exception as e:
-        return f"<ERROR reading {path}: {e}>"
+# =========================
+# Helpers
+# =========================
 
+def is_ignored_dir(p: Path) -> bool:
+    return p.name in IGNORE_DIR_NAMES
 
-def should_ignore_dir(dirname: str) -> bool:
-    base = os.path.basename(dirname)
-    return base in IGNORE_DIRS
-
-
-def should_ignore_file(filename: str) -> bool:
-    if filename.endswith(IGNORE_FILES_SUFFIX):
+def is_text_file(p: Path) -> bool:
+    if p.suffix.lower() in IGNORE_FILE_EXTS:
+        return False
+    if p.suffix.lower() in TEXT_EXTS:
+        return True
+    # sem extensão: às vezes README, Procfile etc.
+    if p.suffix == "" and p.name.lower() in {"makefile", "dockerfile"}:
         return True
     return False
 
+def safe_read_text(p: Path) -> str:
+    try:
+        data = p.read_text(encoding="utf-8", errors="replace")
+        return data
+    except Exception as e:
+        return f"<<error reading file: {e}>>"
 
-def list_tree(path, max_depth=5):
-    out = []
-    abs_base = os.path.join(ROOT, path)
-    if not os.path.exists(abs_base):
-        return [f"(missing) {path}"]
+def rel(p: Path) -> str:
+    try:
+        return str(p.relative_to(ROOT)).replace("\\", "/")
+    except Exception:
+        return str(p).replace("\\", "/")
 
-    # Se for arquivo, só lista ele
-    if os.path.isfile(abs_base):
-        return [path]
-
-    for root, dirs, files in os.walk(abs_base):
-        # filtra dirs
-        dirs[:] = [d for d in dirs if not should_ignore_dir(d)]
-        rel_root = os.path.relpath(root, ROOT)
-
-        depth = rel_root.count(os.sep) - path.count(os.sep)
-        if depth > max_depth:
-            dirs[:] = []
-            continue
-
-        out.append(rel_root + "/")
-
-        # filtra files
-        files = [f for f in files if not should_ignore_file(f)]
-        for fn in sorted(files):
-            out.append("  " * (depth + 1) + fn)
-
-        if len(out) > MAX_TREE_LINES_PER_SECTION:
-            out.append("... (tree truncated)")
-            break
-
+def walk_tree(start: Path, depth: int = 0, max_depth: int = MAX_TREE_DEPTH) -> List[Path]:
+    """Lista paths para print de árvore (controlada)."""
+    out: List[Path] = []
+    if depth > max_depth:
+        return out
+    try:
+        for child in sorted(start.iterdir(), key=lambda x: (x.is_file(), x.name.lower())):
+            if child.is_dir():
+                if is_ignored_dir(child):
+                    continue
+                out.append(child)
+                out.extend(walk_tree(child, depth + 1, max_depth))
+            else:
+                if child.suffix.lower() in IGNORE_FILE_EXTS:
+                    continue
+                out.append(child)
+    except Exception:
+        pass
     return out
 
+def render_tree(base: Path, include_dirs: List[str]) -> str:
+    lines: List[str] = []
+    for d in include_dirs:
+        p = base / d
+        if not p.exists():
+            continue
+        lines.append(f"{d}/")
+        entries = walk_tree(p, 1, MAX_TREE_DEPTH)
+        for e in entries:
+            prefix = "  " * min(MAX_TREE_DEPTH, len(e.relative_to(p).parts))
+            name = e.name + ("/" if e.is_dir() else "")
+            lines.append(f"{prefix}{name}")
+        lines.append("")
+    return "\n".join(lines).strip()
 
-def _autodiscover_files(base_dir: str, exts=(".py", ".md", ".yaml", ".yml", ".toml", ".json"), limit=12):
-    """Returns relative paths under ROOT from a base dir."""
-    abs_dir = os.path.join(ROOT, base_dir)
-    if not os.path.exists(abs_dir):
-        return []
+def select_files(base: Path, include_dirs: List[str]) -> List[Path]:
+    files: List[Path] = []
+    for d in include_dirs:
+        root = base / d
+        if not root.exists():
+            continue
+        for dirpath, dirnames, filenames in os.walk(root):
+            dp = Path(dirpath)
+            # prune ignored dirs
+            dirnames[:] = [dn for dn in dirnames if dn not in IGNORE_DIR_NAMES]
+            for fn in filenames:
+                p = dp / fn
+                if not is_text_file(p):
+                    continue
+                try:
+                    st = p.stat()
+                    if st.st_size > MAX_FILE_BYTES:
+                        continue
+                except Exception:
+                    continue
+                files.append(p)
+    # limita quantidade
+    files = sorted(set(files), key=lambda x: rel(x))
+    return files[:MAX_FILES]
 
-    candidates = []
-    for root, dirs, files in os.walk(abs_dir):
-        dirs[:] = [d for d in dirs if not should_ignore_dir(d)]
-        for f in files:
-            if should_ignore_file(f):
-                continue
-            if f.endswith(exts):
-                rel = os.path.relpath(os.path.join(root, f), ROOT)
-                candidates.append(rel)
+def excerpt(text: str, max_lines: int = MAX_LINES_PER_FILE) -> str:
+    lines = text.splitlines()
+    if len(lines) <= max_lines:
+        return text.strip()
+    return "\n".join(lines[:max_lines]).rstrip() + "\n\n<<truncated>>"
 
-    candidates = sorted(candidates)[:limit]
-    return candidates
+def clamp_total(text: str, max_chars: int = MAX_TOTAL_CHARS) -> str:
+    if len(text) <= max_chars:
+        return text
+    return text[:max_chars].rstrip() + "\n\n<<SNAPSHOT TRUNCATED: max chars reached>>\n"
 
-
-def resolve_existing_important_files():
-    """
-    Remove IMPORTANT_FILES that don't exist,
-    and auto-add key edge-agent + apps/edge + key app entrypoints.
-    """
-    existing = []
-
-    for rel in IMPORTANT_FILES:
-        abs_path = os.path.join(ROOT, rel)
-        if os.path.exists(abs_path) and os.path.isfile(abs_path):
-            existing.append(rel)
-
-    # Auto-discover edge-agent src entrypoints (top 15)
-    existing += [p for p in _autodiscover_files("edge-agent/src", limit=15) if p not in existing]
-
-    # Auto-discover apps/edge (top 10)
-    existing += [p for p in _autodiscover_files("apps/edge", limit=10) if p not in existing]
-
-    # Auto-discover apps/alerts (top 10)
-    existing += [p for p in _autodiscover_files("apps/alerts", limit=10) if p not in existing]
-
-    # Auto-discover backend root (urls/settings) extras (top 8)
-    existing += [p for p in _autodiscover_files("backend", limit=8) if p not in existing]
-
-    return existing
-
+# =========================
+# Main
+# =========================
 
 def main():
-    snapshot = {
-        "generated_at": datetime.utcnow().isoformat() + "Z",
-        "root": ROOT,
-        "tree": {},
-        "important_files_preview": {},
+    include_dirs = DEFAULT_INCLUDE_DIRS.copy()
+
+    OUT_DIR.mkdir(parents=True, exist_ok=True)
+
+    meta = {
+        "generated_at": time.strftime("%Y-%m-%d %H:%M:%S"),
+        "root": str(ROOT),
+        "include_dirs": include_dirs,
+        "limits": {
+            "MAX_TREE_DEPTH": MAX_TREE_DEPTH,
+            "MAX_FILES": MAX_FILES,
+            "MAX_FILE_BYTES": MAX_FILE_BYTES,
+            "MAX_LINES_PER_FILE": MAX_LINES_PER_FILE,
+            "MAX_TOTAL_CHARS": MAX_TOTAL_CHARS,
+        },
+        "ignored": {
+            "IGNORE_DIR_NAMES": sorted(list(IGNORE_DIR_NAMES)),
+            "IGNORE_FILE_EXTS": sorted(list(IGNORE_FILE_EXTS)),
+        }
     }
 
-    # Tree
-    for p in SCAN_DIRS:
-        snapshot["tree"][p] = list_tree(p)
+    tree_txt = render_tree(ROOT, include_dirs)
+    files = select_files(ROOT, include_dirs)
 
-    # Previews
-    important = resolve_existing_important_files()
-    for rel in important:
-        abs_path = os.path.join(ROOT, rel)
-        snapshot["important_files_preview"][rel] = safe_read(abs_path)
+    parts: List[str] = []
+    parts.append("# SNAPSHOT_CONTEXT (auto)\n")
+    parts.append(f"Gerado em: {meta['generated_at']}\n")
+    parts.append("Este snapshot existe para colar em um novo chat e dar contexto do repositório.\n")
+    parts.append("Inclui apenas arquivos texto e ignora binários/vídeos/modelos.\n")
 
-    os.makedirs("docs", exist_ok=True)
-    out_json = os.path.join("docs", "SNAPSHOT_CONTEXT.json")
-    out_md = os.path.join("docs", "SNAPSHOT_CONTEXT.md")
+    parts.append("\n---\n## Tree (limitada)\n")
+    parts.append("```")
+    parts.append(tree_txt or "<<empty>>")
+    parts.append("```")
 
-    with open(out_json, "w", encoding="utf-8") as fp:
-        json.dump(snapshot, fp, indent=2, ensure_ascii=False)
+    parts.append("\n---\n## Arquivos incluídos\n")
+    parts.append("```")
+    for p in files:
+        parts.append(rel(p))
+    parts.append("```")
 
-    md = []
-    md.append("# DALE Vision — Context Snapshot\n")
-    md.append(f"Generated at: `{snapshot['generated_at']}`\n")
-    md.append("## Project Tree\n")
+    parts.append("\n---\n## Conteúdo (trechos)\n")
+    for p in files:
+        parts.append(f"\n### {rel(p)}\n")
+        parts.append("```")
+        parts.append(excerpt(safe_read_text(p)))
+        parts.append("```")
 
-    for k, lines in snapshot["tree"].items():
-        md.append(f"### {k}\n")
-        md.append("```")
-        md.extend(lines)
-        md.append("```\n")
+    md = clamp_total("\n".join(parts), MAX_TOTAL_CHARS)
 
-    md.append("## Important Files (Preview)\n")
-    for k, content in snapshot["important_files_preview"].items():
-        md.append(f"### {k}\n")
-        md.append("```")
-        md.append(content)
-        md.append("```\n")
+    OUT_MD.write_text(md, encoding="utf-8")
+    OUT_JSON.write_text(json.dumps(meta, indent=2, ensure_ascii=False), encoding="utf-8")
 
-    with open(out_md, "w", encoding="utf-8") as fp:
-        fp.write("\n".join(md))
-
-    print("✅ Generated:")
-    print(" -", out_json)
-    print(" -", out_md)
-
+    print(f"✅ wrote: {rel(OUT_MD)}")
+    print(f"✅ wrote: {rel(OUT_JSON)}")
+    print(f"files included: {len(files)}")
 
 if __name__ == "__main__":
     main()

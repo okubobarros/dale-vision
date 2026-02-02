@@ -1,3 +1,5 @@
+import logging
+import os
 import threading
 import time
 from dataclasses import dataclass
@@ -56,8 +58,16 @@ class RtspCameraWorker(threading.Thread):
         self._ok = False
         self._last_err = None
 
-        with open(roi_config_path, "r", encoding="utf-8") as f:
-            self.roi = yaml.safe_load(f) or {}
+        if not os.path.exists(roi_config_path):
+            logging.warning(
+                "[ROI] arquivo não encontrado: %s (camera %s). Rodando sem ROI.",
+                roi_config_path,
+                self.camera_id,
+            )
+            self.roi = {}
+        else:
+            with open(roi_config_path, "r", encoding="utf-8") as f:
+                self.roi = yaml.safe_load(f) or {}
 
         # estado interno (checkout FSM, linhas etc.)
         self._roi_state: Dict[str, Any] = {

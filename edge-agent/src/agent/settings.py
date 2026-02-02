@@ -47,10 +47,13 @@ def _env_override(d: Dict[str, Any]) -> Dict[str, Any]:
     # mantenha simples no v1; expanda conforme precisar
     base = os.getenv("EDGE_CLOUD_BASE_URL")
     token = os.getenv("EDGE_CLOUD_TOKEN")
+    heartbeat = os.getenv("HEARTBEAT_INTERVAL_SECONDS")
     if base:
         d.setdefault("cloud", {})["base_url"] = base
     if token:
         d.setdefault("cloud", {})["token"] = token
+    if heartbeat:
+        d.setdefault("cloud", {})["heartbeat_interval_seconds"] = int(heartbeat)
     return d
 
 
@@ -85,7 +88,7 @@ def load_settings(path: str) -> Settings:
         cloud_token=cloud["token"],
         cloud_timeout=int(cloud.get("timeout_seconds", 8)),
         send_interval_seconds=int(cloud.get("send_interval_seconds", 2)),
-        heartbeat_interval_seconds=int(cloud.get("heartbeat_interval_seconds", 15)),
+        heartbeat_interval_seconds=int(cloud.get("heartbeat_interval_seconds", 30)),
 
         target_width=int(runtime.get("target_width", 960)),
         fps_limit=int(runtime.get("fps_limit", 8)),

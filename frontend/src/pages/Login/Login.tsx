@@ -54,7 +54,7 @@ const Login = () => {
       */
 
       console.log('✅ Login bem sucedido! Redirecionando...');
-      navigate('/dashboard');
+      navigate('/app/dashboard');
 
     } catch (err: any) {
       console.error('❌ Erro no login:', err);

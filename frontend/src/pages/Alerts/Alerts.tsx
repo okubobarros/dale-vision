@@ -99,10 +99,7 @@ export default function Alerts() {
         source: "ui_simulator",
         ts: now.getTime(),
       },
-      destinations: {
-        email: "dev@dalevision.local",
-        whatsapp: "+5511999999999",
-      },
+      receipt_id: `ui-dev-${Date.now()}`,
     }
 
     ingestMut.mutate(payload as any, {

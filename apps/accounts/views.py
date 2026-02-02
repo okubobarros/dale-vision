@@ -2,14 +2,16 @@
 from rest_framework import status
 from rest_framework.response import Response
 from rest_framework.views import APIView
-from rest_framework.permissions import AllowAny
+from rest_framework.permissions import AllowAny, IsAuthenticated
 from knox.models import AuthToken
 from django.contrib.auth import authenticate
+from django.db import connection
 
 from drf_yasg.utils import swagger_auto_schema  # ✅
 from drf_yasg import openapi  # (opcional)
 
 from .serializers import RegisterSerializer, LoginSerializer
+from apps.core.models import OrgMember
 
 
 class RegisterView(APIView):
@@ -58,6 +60,57 @@ class LoginView(APIView):
                     "last_name": user.last_name,
                 },
                 "token": token,
+            },
+            status=status.HTTP_200_OK,
+        )
+
+
+class MeView(APIView):
+    permission_classes = [IsAuthenticated]
+
+    def get(self, request):
+        user = request.user
+        if not user or not getattr(user, "id", None):
+            return Response({"detail": "Usuário não autenticado."}, status=status.HTTP_403_FORBIDDEN)
+
+        with connection.cursor() as cursor:
+            cursor.execute(
+                "SELECT user_uuid FROM public.user_id_map WHERE django_user_id = %s",
+                [user.id],
+            )
+            row = cursor.fetchone()
+            if not row or not row[0]:
+                cursor.execute(
+                    "INSERT INTO public.user_id_map (django_user_id) VALUES (%s) RETURNING user_uuid",
+                    [user.id],
+                )
+                row = cursor.fetchone()
+            user_uuid = row[0]
+
+        memberships = (
+            OrgMember.objects
+            .filter(user_id=user_uuid)
+            .select_related("org")
+        )
+        orgs = [
+            {
+                "id": str(m.org.id),
+                "name": m.org.name,
+                "role": m.role,
+            }
+            for m in memberships
+        ]
+
+        return Response(
+            {
+                "user": {
+                    "id": user.id,
+                    "username": user.username,
+                    "email": user.email,
+                    "first_name": user.first_name,
+                    "last_name": user.last_name,
+                },
+                "orgs": orgs,
             },
             status=status.HTTP_200_OK,
         )

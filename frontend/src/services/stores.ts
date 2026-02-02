@@ -57,6 +57,23 @@ export interface NetworkDashboard {
   }>;
 }
 
+export interface StoreEdgeStatus {
+  store_id: string;
+  store_status?: string;
+  store_status_age_seconds?: number | null;
+  store_status_reason?: string | null;
+  last_heartbeat: string | null;
+  last_metric_bucket: string | null;
+  last_error: string | null;
+  cameras: Array<{
+    camera_id: string;
+    name: string;
+    status: string;
+    age_seconds?: number | null;
+    reason?: string | null;
+  }>;
+}
+
 // Funções auxiliares (não exportadas)
 const getMockDashboard = (storeId: string): StoreDashboard => {
   console.log('🔄 Usando dados mock para dashboard');
@@ -152,12 +169,18 @@ export const storesService = {
     try {
       const response = await api.get('/v1/stores/');
       console.log('📦 Resposta completa:', response);
-      
-      // A API retorna {data: [...]}
-      const stores = response.data.data || response.data;
+
+      const payload = response.data;
+      const stores = Array.isArray(payload)
+        ? payload
+        : Array.isArray(payload?.data)
+        ? payload.data
+        : Array.isArray(payload?.results)
+        ? payload.results
+        : [];
       console.log(`✅ Encontradas ${stores?.length || 0} lojas`);
-      
-      return stores || [];
+
+      return stores;
     } catch (error) {
       console.error('❌ Erro ao buscar lojas:', error);
       throw error;
@@ -218,6 +241,11 @@ export const storesService = {
         }))
       };
     }
+  },
+
+  async getStoreEdgeStatus(storeId: string): Promise<StoreEdgeStatus> {
+    const response = await api.get(`/v1/stores/${storeId}/edge-status/`);
+    return response.data;
   },
 
   // Criar nova loja

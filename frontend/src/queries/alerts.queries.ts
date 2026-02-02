@@ -3,13 +3,17 @@ import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query"
 import type { AlertIngestPayload } from "../services/alerts"
 import { alertsService } from "../services/alerts"
 
-export function useAlertsEvents(params: {
+export function useAlertsEvents(
+  params: {
   store_id?: string
   status?: "open" | "resolved" | "ignored"
-}) {
+  },
+  options?: { enabled?: boolean }
+) {
   return useQuery({
     queryKey: ["alerts", "events", params],
     queryFn: () => alertsService.listEvents(params),
+    enabled: options?.enabled,
   })
 }
 

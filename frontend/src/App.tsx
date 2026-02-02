@@ -18,10 +18,13 @@ import ProfilePage from "./pages/Profile/Profile"
 import AlertRules from "./pages/AlertRules/AlertRules"
 import NotificationLogs from "./pages/NotificationLogs/NotificationLogs"
 
-// 🆕 Onboarding / Register (front-only)
+// 🆕 Onboarding / Register
 import Register from "./pages/Register/Register"
 import Onboarding from "./pages/Onboarding/Onboarding"
 import OnboardingSuccess from "./pages/Onboarding/OnboardingSuccess"
+
+// 🆕 Setup técnico (EDGE-first)
+import Setup from "./pages/Setup/Setup"
 
 function App() {
   return (
@@ -31,7 +34,7 @@ function App() {
       <Route path="/login" element={<Login />} />
       <Route path="/agendar-demo" element={<AgendarDemo />} />
 
-      {/* 🆕 Registro + Onboarding (público, sem backend por enquanto) */}
+      {/* Registro + onboarding (público por enquanto) */}
       <Route path="/register" element={<Register />} />
       <Route path="/onboarding" element={<Onboarding />} />
       <Route path="/onboarding/success" element={<OnboardingSuccess />} />
@@ -56,11 +59,14 @@ function App() {
         <Route path="alert-rules" element={<AlertRules />} />
         <Route path="notification-logs" element={<NotificationLogs />} />
 
+        {/* 🧩 SETUP TÉCNICO */}
+        <Route path="setup" element={<Setup />} />
+
         <Route path="settings" element={<Settings />} />
         <Route path="profile" element={<ProfilePage />} />
       </Route>
 
-      {/* Compat: se algum lugar ainda manda pra rotas sem /app */}
+      {/* Compat redirects (rotas antigas sem /app) */}
       <Route path="/dashboard" element={<Navigate to="/app/dashboard" replace />} />
       <Route path="/stores" element={<Navigate to="/app/stores" replace />} />
       <Route path="/analytics" element={<Navigate to="/app/analytics" replace />} />
@@ -72,8 +78,11 @@ function App() {
       <Route path="/alert-rules" element={<Navigate to="/app/alert-rules" replace />} />
       <Route path="/notification-logs" element={<Navigate to="/app/notification-logs" replace />} />
 
-      {/* ✅ Redirects Onboarding (opcional, caso alguém aponte errado) */}
+      {/* ✅ Redirects Onboarding */}
       <Route path="/onboarding-success" element={<Navigate to="/onboarding/success" replace />} />
+
+      {/* ✅ Redirect Setup (opcional) */}
+      <Route path="/setup" element={<Navigate to="/app/setup" replace />} />
 
       {/* Fallback */}
       <Route path="*" element={<Navigate to="/" replace />} />

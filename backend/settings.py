@@ -161,3 +161,4 @@ STATICFILES_STORAGE = 'whitenoise.storage.CompressedManifestStaticFilesStorage'
 
 EDGE_SERVICE_USERNAME = os.getenv("EDGE_SERVICE_USERNAME", "edge-agent")
 EDGE_AGENT_TOKEN = os.getenv("EDGE_AGENT_TOKEN", "")
+EDGE_SHARED_TOKEN = os.getenv("EDGE_SHARED_TOKEN", "")

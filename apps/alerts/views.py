@@ -1,6 +1,10 @@
 # apps/alerts/views.py
 from datetime import timedelta
 from uuid import UUID
+from django.conf import settings
+from django.contrib.auth import get_user_model
+from apps.core.models import StoreManager
+
 
 from django.utils import timezone
 from django.db.utils import DataError
@@ -60,11 +64,77 @@ def is_uuid(value: str) -> bool:
     except Exception:
         return False
 
+def _dest_to_text(dest):
+    """
+    notification_logs.destination é TEXT.
+    - string -> string
+    - lista -> CSV
+    - None -> None
+    """
+    if dest is None:
+        return None
+    if isinstance(dest, list):
+        return ",".join([str(x).strip() for x in dest if str(x).strip()])
+    return str(dest).strip()
+
 
 def require_uuid_param(name: str, value: str):
     if not is_uuid(value):
         raise ValidationError({name: f'{name} deve ser um UUID válido (core.Store). Recebido: "{value}".'})
 
+def resolve_email_destinations(*, store_id, explicit_email=None):
+    """
+    Resolve e-mails automaticamente:
+    - Se explicit_email foi fornecido (request), retorna ele.
+    - Senão, tenta StoreManager -> User.email (owner/admin/manager).
+    Retorna lista de emails (dedup).
+    """
+    if explicit_email:
+        # aceita string ou lista
+        if isinstance(explicit_email, list):
+            return [e for e in explicit_email if e]
+        return [explicit_email]
+
+    User = get_user_model()
+
+    # Ajuste roles conforme seu ORG_ROLE / StoreManager model
+    qs = (
+        StoreManager.objects
+        .filter(store_id=store_id)
+        .select_related("user")
+    )
+
+    # Se StoreManager tiver campo role, descomente e ajuste:
+    # qs = qs.filter(role__in=["owner", "admin", "manager"])
+
+    emails = []
+    for sm in qs:
+        email = getattr(sm.user, "email", None)
+        if email:
+            emails.append(email)
+
+    # dedupe preservando ordem
+    out = []
+    for e in emails:
+        if e not in out:
+            out.append(e)
+    return out
+
+
+def get_store_plan_features(store: Store) -> dict:
+    features = {"email": True, "whatsapp": False}
+
+    default_features = getattr(settings, "DALE_PLAN_DEFAULT_FEATURES", None)
+    if isinstance(default_features, dict):
+        features.update(default_features)
+
+    if getattr(settings, "DALE_WHATSAPP_ENABLED", False):
+        features["whatsapp"] = True
+
+    plan_code = getattr(store, "plan_code", None) or getattr(getattr(store, "org", None), "plan_code", None)
+    _ = plan_code  # reservado para futura lógica por plano
+
+    return features
 
 # =========================
 # DEMO LEAD (FORM PÚBLICO) — Opção A (DEDUPE por email/whatsapp)
@@ -102,6 +172,7 @@ class DemoLeadCreateView(APIView):
                 org_id=None,
                 event_name="lead_duplicate_attempt",
                 payload={
+                    "event_category": "onboarding",
                     "source": "demo_form",
                     "reason": "duplicate_active_lead",
                     "status": existing.status,
@@ -120,6 +191,7 @@ class DemoLeadCreateView(APIView):
                     org_id=None,
                     source="backend",
                     data={
+                        "event_category": "onboarding",
                         "lead_id": str(existing.id),
                         "status": existing.status,
                         "email": existing.email,
@@ -148,6 +220,7 @@ class DemoLeadCreateView(APIView):
             org_id=None,
             event_name="lead_created",
             payload={
+                "event_category": "onboarding",
                 "source": "demo_form",
                 "lead_id": str(lead.id),
                 "email": lead.email,
@@ -170,6 +243,7 @@ class DemoLeadCreateView(APIView):
             org_id=None,
             source="backend",
             data={
+                "event_category": "onboarding",
                 "lead_id": str(lead.id),
                 "contact_name": lead.contact_name,
                 "email": lead.email,
@@ -242,7 +316,8 @@ class AlertRuleViewSet(viewsets.ModelViewSet):
         occurred_at = request.data.get("occurred_at")  # opcional iso
         clip_url = request.data.get("clip_url")
         snapshot_url = request.data.get("snapshot_url")
-        destinations = request.data.get("destinations") or {}  # {email, whatsapp}
+        destinations_in = request.data.get("destinations") or {}  # pode vir vazio
+        destinations = dict(destinations_in)  # cópia segura
 
         # ✅ NOVO: receipt_id (para rastreio / idempotência ponta-a-ponta)
         receipt_id = request.data.get("receipt_id")  # opcional
@@ -287,10 +362,12 @@ class AlertRuleViewSet(viewsets.ModelViewSet):
 
         should_send = False
         channels = {"dashboard": True, "email": False, "whatsapp": False}
+        rule_channels = {}
 
         if rules.exists():
             rule_used = rules.first()
             channels = rule_used.channels or channels
+            rule_channels = dict(channels)
             cooldown_minutes = rule_used.cooldown_minutes or 0
             since = now - timedelta(minutes=cooldown_minutes)
 
@@ -305,8 +382,25 @@ class AlertRuleViewSet(viewsets.ModelViewSet):
             if recently_sent:
                 suppressed_by_rule_id = rule_used.id
                 suppressed_reason = f"Cooldown ativo ({cooldown_minutes} min)"
-            else:
-                should_send = bool(channels.get("email") or channels.get("whatsapp"))
+
+        # Gating por plano (email base, whatsapp somente addon)
+        allowed = get_store_plan_features(store)
+        channels["email"] = bool(channels.get("email")) and bool(allowed.get("email"))
+        channels["whatsapp"] = bool(channels.get("whatsapp")) and bool(allowed.get("whatsapp"))
+        channels["dashboard"] = True
+
+        # Resolve automaticamente email se a regra pedir e não vier no request
+        if channels.get("email") and not destinations.get("email"):
+            resolved_emails = resolve_email_destinations(
+                store_id=store_id,
+                explicit_email=None,
+            )
+            if resolved_emails:
+                destinations["email"] = resolved_emails
+
+        should_send = bool(channels.get("email") or channels.get("whatsapp"))
+        if suppressed_by_rule_id:
+            should_send = False
 
         # cria detection_event sempre
         event = DetectionEvent.objects.create(
@@ -395,6 +489,7 @@ class AlertRuleViewSet(viewsets.ModelViewSet):
             )
 
             suppressed_payload = {
+                "event_category": "alert",
                 "store_id": str(event.store_id),
                 "event_id": str(event.id),
                 "rule_id": str(suppressed_by_rule_id),
@@ -439,8 +534,25 @@ class AlertRuleViewSet(viewsets.ModelViewSet):
                 sent_at=now,
             )
 
+            # canais bloqueados por plano -> log "skipped"
+            for ch in ["email", "whatsapp"]:
+                if rule_channels.get(ch) and not channels.get(ch):
+                    NotificationLog.objects.create(
+                        org_id=event.org_id,
+                        store_id=store_id,
+                        event_id=event.id,
+                        rule_id=rule_used.id if rule_used else None,
+                        channel=ch,
+                        destination=_dest_to_text(destinations.get(ch)),
+                        provider="internal",
+                        status="skipped",
+                        error="plan_not_allowed",
+                        sent_at=now,
+                    )
+
             if should_send:
                 payload = {
+                    "event_category": "alert",
                     "type": "alert",
                     "org_id": str(event.org_id) if event.org_id else None,
                     "store_id": str(event.store_id),
@@ -450,6 +562,7 @@ class AlertRuleViewSet(viewsets.ModelViewSet):
                     "title": event.title,
                     "description": event.description,
                     "occurred_at": event.occurred_at.isoformat(),
+                    "receipt_id": request.data.get("receipt_id"),  # ✅ aqui
                     "channels": channels,
                     "destinations": destinations,
                     "media": EventMediaSerializer(
@@ -488,7 +601,7 @@ class AlertRuleViewSet(viewsets.ModelViewSet):
                             event_id=event.id,
                             rule_id=rule_used.id if rule_used else None,
                             channel=ch,
-                            destination=destinations.get(ch),
+                            destination=_dest_to_text(destinations.get(ch)),
                             provider="n8n",
                             status="sent" if ok else "failed",
                             provider_message_id=provider_message_id,

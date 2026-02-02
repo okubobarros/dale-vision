@@ -1,4 +1,5 @@
 import time
+from datetime import datetime, timezone
 from typing import List
 
 from ..storage.sqlite_queue import SqliteQueue
@@ -75,27 +76,57 @@ def run_agent(settings):
 
         # ========== heartbeat ==========
         if (now - last_heartbeat) >= float(settings.heartbeat_interval_seconds):
-            hb = {
-                "agent_id": agent_id,
-                "store_id": store_id,
-                "cameras": [
-                    {
+            hb_bucket = int(now // float(settings.heartbeat_interval_seconds)) * float(settings.heartbeat_interval_seconds)
+            hb_ts = datetime.fromtimestamp(hb_bucket, tz=timezone.utc).isoformat()
+
+            try:
+                for w in workers:
+                    cam_data = {
+                        "store_id": store_id,
+                        "agent_id": agent_id,
+                        "ts": hb_ts,
                         "camera_id": w.camera_id,
+                        "external_id": w.camera_id,
                         "name": w.name,
+                        "rtsp_url": getattr(w, "rtsp_url", None),
                         "ok": w.is_ok(),
                     }
-                    for w in workers
-                ],
-            }
+                    cam_env = build_envelope(
+                        event_name="edge_camera_heartbeat",
+                        source="edge",
+                        data=cam_data,
+                        meta={},
+                    )
+                    cam_env["receipt_id"] = compute_receipt_id(cam_env)
+                    queue.enqueue(cam_env)
 
-            env = build_envelope(
-                event_name="edge_heartbeat",
-                source="edge",
-                data=hb,
-                meta={},
-            )
-            env["receipt_id"] = compute_receipt_id(env)
-            queue.enqueue(env)
+                hb = {
+                    "agent_id": agent_id,
+                    "store_id": store_id,
+                    "ts": hb_ts,
+                    "cameras": [
+                        {
+                            "camera_id": w.camera_id,
+                            "external_id": w.camera_id,
+                            "name": w.name,
+                            "rtsp_url": getattr(w, "rtsp_url", None),
+                            "ok": w.is_ok(),
+                        }
+                        for w in workers
+                    ],
+                }
+
+                env = build_envelope(
+                    event_name="edge_heartbeat",
+                    source="edge",
+                    data=hb,
+                    meta={},
+                )
+                env["receipt_id"] = compute_receipt_id(env)
+                queue.enqueue(env)
+            except Exception as e:
+                print(f"⚠️ heartbeat enqueue failed (ignored): {e}")
+
             last_heartbeat = now
 
         # ========== process frames ==========

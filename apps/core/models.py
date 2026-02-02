@@ -1,7 +1,8 @@
 # apps/core/models.py
+from django.conf import settings
+from django.utils import timezone
 from django.db import models
 import uuid
-
 
 # -------------------------
 # Helpers
@@ -120,8 +121,10 @@ class Store(UnmanagedModel):
     trial_started_at = models.DateTimeField(null=True, blank=True)
     trial_ends_at = models.DateTimeField(null=True, blank=True)
     blocked_reason = models.TextField(null=True, blank=True)
-    created_at = models.DateTimeField()
-    updated_at = models.DateTimeField()
+    last_seen_at = models.DateTimeField(null=True, blank=True)
+    last_error = models.TextField(null=True, blank=True)
+    created_at = models.DateTimeField(default=timezone.now, editable=False)
+    updated_at = models.DateTimeField(default=timezone.now, editable=False)
 
     class Meta(UnmanagedModel.Meta):
         db_table = "stores"
@@ -149,10 +152,12 @@ class Camera(UnmanagedModel):
     zone = models.ForeignKey(StoreZone, on_delete=models.DO_NOTHING, db_column="zone_id", null=True, blank=True)
 
     name = models.TextField()
+    external_id = models.TextField(null=True, blank=True)
     brand = models.TextField(null=True, blank=True)
     model = models.TextField(null=True, blank=True)
     ip = models.TextField(null=True, blank=True)
     onvif = models.BooleanField(default=False)
+    active = models.BooleanField(default=True)
 
     rtsp_url = models.TextField(null=True, blank=True)
     username = models.TextField(null=True, blank=True)
@@ -172,7 +177,12 @@ class Camera(UnmanagedModel):
 
 class CameraHealthLog(UnmanagedModel):
     id = models.UUIDField(primary_key=True, default=uuid.uuid4)
-    camera = models.ForeignKey(Camera, on_delete=models.DO_NOTHING, db_column="camera_id")
+    camera = models.ForeignKey(
+        "Camera",
+        db_column="camera_id",
+        on_delete=models.DO_NOTHING,
+        related_name="health_logs",
+    )
     checked_at = models.DateTimeField()
     status = models.CharField(max_length=20, choices=CAMERA_STATUS)
     latency_ms = models.IntegerField(null=True, blank=True)
@@ -442,3 +452,38 @@ class JourneyEvent(UnmanagedModel):
 
     class Meta(UnmanagedModel.Meta):
         db_table = "journey_events"
+
+class StoreManager(UnmanagedModel):
+    """
+    Membership/RBAC do usuário na loja.
+    Unmanaged porque a fonte de verdade é o schema do Supabase/Postgres.
+    """
+
+    id = models.UUIDField(primary_key=True, default=uuid.uuid4, editable=False)
+
+    store = models.ForeignKey(
+        "Store",
+        on_delete=models.DO_NOTHING,
+        db_column="store_id",
+        related_name="store_managers",
+    )
+
+    user = models.ForeignKey(
+        settings.AUTH_USER_MODEL,
+        on_delete=models.DO_NOTHING,
+        db_column="user_id",
+        related_name="store_memberships",
+    )
+
+    role = models.CharField(
+        max_length=20,
+        choices=ORG_ROLE,
+        default="viewer",
+    )
+
+    created_at = models.DateTimeField(null=True, blank=True)
+    updated_at = models.DateTimeField(null=True, blank=True)
+
+    class Meta:
+        db_table = "store_managers"
+        managed = False

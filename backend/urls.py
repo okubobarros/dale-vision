@@ -17,7 +17,9 @@ def home(request):
             "login": "/api/accounts/login/",
             "logout": "/api/accounts/logout/",
             "stores": "/api/v1/stores/",
+            "edge_status": "/api/v1/stores/{store_uuid}/edge-status/",
             "alerts": "/api/alerts/",
+            "alerts_v1": "/api/v1/alerts/",
         }
     })
 
@@ -51,6 +53,7 @@ urlpatterns = [
 
     # ✅ Alerts (demo lead + rules + ingest/event)
     path("api/alerts/", include("apps.alerts.urls")),
+    path("api/v1/alerts/", include("apps.alerts.urls")),
     path("api/cameras/", include("apps.cameras.urls")),
 
     path("health/", lambda r: JsonResponse({"status": "healthy", "service": "dale-vision-api"})),

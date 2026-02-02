@@ -1,14 +1,25 @@
 # apps/edge/permissions.py
-import os
+from django.conf import settings
 from rest_framework.permissions import BasePermission
+from knox.auth import TokenAuthentication
 
 
-class EdgeTokenPermission(BasePermission):
+class EdgeOrUserTokenPermission(BasePermission):
     """
-    Valida header X-EDGE-TOKEN contra EDGE_AGENT_TOKEN do .env/settings.
+    Permite acesso se:
+      - Authorization: Token ... for válido (Knox), OU
+      - X-EDGE-TOKEN corresponder a settings.EDGE_TOKEN
     """
 
     def has_permission(self, request, view):
-        expected = os.getenv("EDGE_AGENT_TOKEN") or ""
+        user_auth = TokenAuthentication().authenticate(request)
+        if user_auth:
+            return True
+
+        expected = getattr(settings, "EDGE_TOKEN", "") or ""
         provided = request.headers.get("X-EDGE-TOKEN") or ""
-        return bool(expected) and (provided == expected)
+        if bool(expected) and (provided == expected):
+            print("[EDGE] request autorizado via EDGE token")
+            return True
+
+        return False

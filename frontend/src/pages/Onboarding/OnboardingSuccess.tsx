@@ -100,17 +100,17 @@ export default function OnboardingSuccess() {
           </p>
 
           <div className="mt-8 space-y-3">
-            <button
-              onClick={() => navigate("/dashboard")}
-              className="w-full rounded-2xl border border-white/10 bg-white/5 p-4 text-left hover:bg-white/10"
-            >
+              <button
+                onClick={() => navigate("/app/setup")}
+                className="w-full rounded-2xl border border-white/10 bg-white/5 p-4 text-left hover:bg-white/10"
+              >
               <div className="flex items-center justify-between">
                 <div>
                   <div className="font-semibold flex items-center gap-2">
-                    Ir para o Dashboard <span className="inline-block h-2 w-2 rounded-full bg-green-400" />
+                    Continuar Setup Técnico <span className="inline-block h-2 w-2 rounded-full bg-green-400" />
                   </div>
                   <div className="text-sm text-white/60 mt-1">
-                    Visualize seus dados em tempo real agora mesmo.
+                   Os dados em tempo real do seu negócio.
                   </div>
                 </div>
                 <div className="text-green-300 font-bold">ACESSAR →</div>
@@ -118,12 +118,12 @@ export default function OnboardingSuccess() {
             </button>
 
             <button
-              onClick={() => navigate("/alerts/rules")}
+              onClick={() => navigate("/app/alert-rules")}
               className="w-full rounded-2xl border border-white/10 bg-white/5 p-4 text-left hover:bg-white/10"
             >
               <div className="flex items-center justify-between gap-3">
                 <div>
-                  <div className="font-semibold">Explorar Alertas</div>
+                  <div className="font-semibold">Configurar Alertas</div>
                   <div className="text-sm text-white/60 mt-1">
                     Configure suas primeiras notificações inteligentes.
                   </div>

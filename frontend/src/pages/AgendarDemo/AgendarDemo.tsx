@@ -16,6 +16,28 @@ type GoalValue =
   | "heatmap"
   | "other"
 
+type SetupWhereValue = "store_pc" | "nvr_server" | "not_sure"
+type AccessWhoValue = "owner" | "store_manager" | "staff" | "not_sure"
+type HowHeardValue =
+  | "referral"
+  | "instagram"
+  | "linkedin"
+  | "google"
+  | "youtube"
+  | "partner"
+  | "event"
+  | "other"
+  
+const HOW_HEARD: { label: string; value: HowHeardValue }[] = [
+  { label: "Indicação", value: "referral" },
+  { label: "Instagram", value: "instagram" },
+  { label: "LinkedIn", value: "linkedin" },
+  { label: "Google / Busca", value: "google" },
+  { label: "YouTube", value: "youtube" },
+  { label: "Parceiro", value: "partner" },
+  { label: "Evento", value: "event" },
+  { label: "Outro", value: "other" },
+]
 const CAMERA_BRANDS = [
   "Intelbras",
   "Hikvision",
@@ -55,7 +77,6 @@ function isValidWhatsappBR11Mobile(input: string) {
 }
 
 function isValidEmail(email: string) {
-  // simples e suficiente p/ form (backend pode reforçar depois)
   return /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test((email || "").trim())
 }
 
@@ -97,6 +118,8 @@ export default function AgendarDemo() {
   const [name, setName] = useState("")
   const [email, setEmail] = useState("")
   const [whatsapp, setWhatsapp] = useState("")
+  const [howHeard, setHowHeard] = useState<HowHeardValue | "">("")
+  const [howHeardOther, setHowHeardOther] = useState("")
 
   // negócio
   const [operationType, setOperationType] = useState("")
@@ -106,6 +129,10 @@ export default function AgendarDemo() {
   const [city, setCity] = useState("")
   const [stateUF, setStateUF] = useState("")
 
+  // ativação (opcional) — pós-demo
+  const [setupWhere, setSetupWhere] = useState<SetupWhereValue | "">("")
+  const [accessWho, setAccessWho] = useState<AccessWhoValue | "">("")
+
   // objetivos (multi)
   const [goals, setGoals] = useState<GoalValue[]>([])
   const [goalOther, setGoalOther] = useState("")
@@ -114,7 +141,7 @@ export default function AgendarDemo() {
 
   const hasOther = goals.includes("other")
 
-  // mantém compatibilidade: “principal” = primeiro objetivo selecionado que não seja other; se só tiver other, other
+  // “principal” = primeiro objetivo selecionado que não seja other; se só tiver other, other
   const primaryGoal: GoalValue | "" = useMemo(() => {
     if (!goals.length) return ""
     const nonOther = goals.find((g) => g !== "other")
@@ -147,8 +174,7 @@ export default function AgendarDemo() {
   function toggleGoal(goal: GoalValue) {
     setGoals((prev) => {
       const exists = prev.includes(goal)
-      const next = exists ? prev.filter((g) => g !== goal) : [...prev, goal]
-      return next
+      return exists ? prev.filter((g) => g !== goal) : [...prev, goal]
     })
   }
 
@@ -162,13 +188,16 @@ export default function AgendarDemo() {
     if (!isValidWhatsappBR11Mobile(whatsapp)) {
       return toast.error("WhatsApp inválido. Use DDD + número de celular (11 dígitos, começando com 9).")
     }
-    if (!operationType.trim()) return toast.error("Informe o tipo de operação.")
+    if (!operationType.trim()) return toast.error("Informe o tipo/segmento da operação.")
     if (!storesRange) return toast.error("Selecione a faixa de quantidade de lojas.")
     if (!camerasRange) return toast.error("Selecione a faixa de quantidade de câmeras.")
     if (!goals.length) return toast.error("Selecione pelo menos 1 objetivo.")
     if (hasOther && !goalOther.trim()) return toast.error('Preencha o campo "Outro" (objetivo).')
-
     if (!consent) return toast.error("É necessário concordar em receber comunicações sobre a demo.")
+    if (!howHeard) return toast.error("Diga como você soube de nós.")
+    if (howHeard === "other" && !howHeardOther.trim()) {
+      return toast.error('Preencha o campo "Outro" (como soube de nós).')
+    }
 
     try {
       setLoading(true)
@@ -181,18 +210,15 @@ export default function AgendarDemo() {
         operation_type: operationType.trim(),
         stores_range: storesRange,
         cameras_range: camerasRange,
-        camera_brands_json: cameraBrands, // array
+        camera_brands_json: cameraBrands, // array (opcional — pode vir vazio)
 
         pilot_city: city.trim() ? city.trim() : null,
         pilot_state: stateUF.trim() ? stateUF.trim().toUpperCase() : null,
 
-        // compat
         primary_goal: primaryGoal || null,
-        // multi (verdadeiro)
-        primary_goals: goals, // <-- aqui resolve seu problema do supabase vir []
+        primary_goals: goals,
 
         source: "web",
-
         utm: {
           utm_source: "dalevision_site",
           utm_medium: "demo_form",
@@ -202,23 +228,27 @@ export default function AgendarDemo() {
         metadata: {
           consent: true,
           goal_other: hasOther ? goalOther.trim() : null,
-          goals_selected: goals, // redundância útil p/ auditoria
+          goals_selected: goals,
+
+          how_heard: howHeard || null,
+          how_heard_other: howHeard === "other" ? howHeardOther.trim() : null,
+
+          activation_setup_where: setupWhere || null,
+          activation_access_who: accessWho || null,
+          next_step_hint:
+            "Após a demo, enviamos link do Edge Agent (.exe) por WhatsApp/e-mail para instalar no computador da loja ou no servidor/NVR e testar conexão com câmeras.",
         },
 
         qualified_score: qualifiedScore, // NÃO exibir no form
       }
 
-      // 1) cria lead
       const lead = await demoService.createLead(payload)
 
-      // 2) redirect calendly com tracking
       const calendlyUrl = new URL("https://calendly.com/dale-vision")
       calendlyUrl.searchParams.set("lead_id", lead.id)
       calendlyUrl.searchParams.set("utm_source", "dalevision_site")
       calendlyUrl.searchParams.set("utm_medium", "demo_form")
       calendlyUrl.searchParams.set("utm_campaign", "agendar_demo")
-
-      // prefill (best-effort)
       calendlyUrl.searchParams.set("name", payload.contact_name)
       calendlyUrl.searchParams.set("email", payload.email)
 
@@ -235,37 +265,34 @@ export default function AgendarDemo() {
     <div className="min-h-screen bg-[#0B0F14]/85 backdrop-blur flex justify-center px-4 py-8">
       <div className="w-full max-w-xl bg-white rounded-2xl shadow-sm border p-6 space-y-6">
         {/* Header */}
-        <div className="flex items-center gap-3">
+        <div className="flex items-start gap-3">
           <img src={logo} alt="DALE Vision" className="h-10 w-10 rounded-md" />
           <div>
-            <h1 className="text-xl font-bold"> 📅 Sua demo do Dale Vision está quase pronta!</h1>
-            <p className="text-sm text-gray-600">
-             Oi! Que bom ver seu interesse pelo Dale Vision 🙌
+            <h1 className="text-xl font-bold">📅 Sua demo do Dale Vision está quase pronta!</h1>
 
-            Em apenas 30 minutos, vamos te mostrar como transformar suas câmeras de segurança em um sistema inteligente que previne problemas antes que aconteçam.
-            </p>
-            <p className="text-xs text-gray-500 mt-1">
-              ✨ O que você vai levar desta demo:
-                • Um plano claro de como implementar na sua operação
-                • Visualização em tempo real de como funciona
-                • Respostas específicas para suas necessidades
-
-                📋 É bem simples:
-                1️⃣ Você preenche 2 minutinhos com informações básicas
-                2️⃣ Escolhe um horário que caiba na sua agenda (temos opções até fora do horário comercial!)
-                3️⃣ Na demo, já ativamos 1 loja piloto com até 3 câmeras - você vê funcionando na prática!
-            </p>
           </div>
         </div>
 
         {/* Passos */}
         <div className="rounded-xl border bg-gray-50 p-4 text-sm text-gray-700">
-          <div className="font-semibold text-gray-800 mb-2">Veja como vai funcionar</div>
+          <div className="font-semibold text-gray-800 mb-2">Como funciona</div>
           <ol className="list-decimal pl-5 space-y-1">
-            <li>Você preenche o básico (1 minuto)</li>
-            <li>Você agenda no Calendly (30s)</li>
-            <li>Na demo, ativamos 1 loja piloto (até 3 câmeras)</li>
+            <li>Responda o formulário para entendermos o seu perfil (1–2 min)</li>
+            <li>Agenda a Demonstração no Calendly (30s)</li>
+            <li>Na demo, definimos a loja piloto (até 3 câmeras) e o passo a passo</li>
           </ol>
+        </div>
+
+        {/* ✅ Novo: clareza sobre ativação pós-demo */}
+        <div className="rounded-xl border border-amber-200 bg-amber-50 p-4 text-sm text-amber-900">
+          <div className="font-semibold mb-1">Depois da demo: ativação na loja (5–10 min)</div>
+          <p className="text-amber-900/90">
+            Para conectar as câmeras, você instala o<strong> Agente Dale Vision (.exe)</strong> em um computador da loja (servidor local onde roda as câmeras
+            ).  Para essa  ativação você vai precisar (em algum momento) de acesso a esse computador e às credenciais das câmeras/NVR.
+          </p>
+          <p className="text-amber-900/80 mt-2">
+            ✅ Após o agendamento, enviaremos por WhatsApp/e-mail um link com o download e um checklist simples.
+          </p> <p><strong>A transformação da gestão do seu negócio está a poucos cliques.</strong></p>
         </div>
 
         {/* Seus dados */}
@@ -314,10 +341,48 @@ export default function AgendarDemo() {
               inputMode="tel"
               autoComplete="tel"
             />
-            <p className="text-xs text-gray-500 mt-1">
-              Vamos enviar confirmação, lembrete e checklist da demo.
-            </p>
+            <p className="text-xs text-gray-500 mt-1">Enviaremos confirmação, lembrete e o link do Agent.</p>
           </div>
+        </div>
+
+
+        {/* Como soube de nós */}
+        <div className="space-y-4">
+          <h2 className="font-semibold text-gray-800">Como você soube de nós? *</h2>
+
+          <div>
+            <label className="text-sm font-medium text-gray-700" htmlFor="demo-how-heard">
+              Selecione uma opção *
+            </label>
+            <select
+              id="demo-how-heard"
+              className="mt-2 w-full rounded-lg border px-4 py-2"
+              value={howHeard}
+              onChange={(e) => setHowHeard(e.target.value as HowHeardValue)}
+            >
+              <option value="">Selecione</option>
+              {HOW_HEARD.map((o) => (
+                <option key={o.value} value={o.value}>
+                  {o.label}
+                </option>
+              ))}
+            </select>
+          </div>
+
+          {howHeard === "other" && (
+            <div>
+              <label className="text-sm font-medium text-gray-700" htmlFor="demo-how-heard-other">
+                Descreva (Outro) *
+              </label>
+              <input
+                id="demo-how-heard-other"
+                className="mt-2 w-full rounded-lg border px-4 py-2"
+                placeholder="Ex: grupo do WhatsApp, recomendação de consultor..."
+                value={howHeardOther}
+                onChange={(e) => setHowHeardOther(e.target.value)}
+              />
+            </div>
+          )}
         </div>
 
         {/* Seu negócio */}
@@ -326,7 +391,7 @@ export default function AgendarDemo() {
 
           <div>
             <label className="text-sm font-medium text-gray-700" htmlFor="demo-operation">
-              Qual é o tipo de operação? *
+              Segmento / tipo de operação *
             </label>
             <input
               id="demo-operation"
@@ -386,7 +451,7 @@ export default function AgendarDemo() {
 
           <div>
             <label className="text-sm font-medium text-gray-700" htmlFor="demo-cameras-range">
-              Aproximadamente quantas câmeras você têm em todos os negócios? *
+              Aproximadamente quantas câmeras você tem? *
             </label>
             <select
               id="demo-cameras-range"
@@ -402,9 +467,10 @@ export default function AgendarDemo() {
             </select>
           </div>
 
+          {/* Marcas: útil, mas NÃO obrigatória */}
           <div>
             <p className="text-sm font-medium text-gray-700 mb-2">
-              Quais marcas de câmeras vocês usam? *
+              Marcas de câmeras (opcional)
             </p>
             <div className="flex flex-wrap gap-2">
               {CAMERA_BRANDS.map((b) => (
@@ -423,6 +489,52 @@ export default function AgendarDemo() {
               ))}
             </div>
           </div>
+        </div>
+
+        {/* ✅ Novo: Pré-ativação (opcional, não bloqueia) */}
+        <div className="space-y-3">
+          <h2 className="font-semibold text-gray-800">Preparação para ativação (opcional)</h2>
+
+          <div className="grid gap-3 sm:grid-cols-2">
+            <div>
+              <label className="text-sm font-medium text-gray-700" htmlFor="demo-setup-where">
+                Onde o Agent deve rodar?
+              </label>
+              <select
+                id="demo-setup-where"
+                className="mt-2 w-full rounded-lg border px-4 py-2"
+                value={setupWhere}
+                onChange={(e) => setSetupWhere(e.target.value as SetupWhereValue)}
+              >
+                <option value="">Selecione (opcional)</option>
+                <option value="store_pc">Computador na loja (Windows)</option>
+                <option value="nvr_server">Servidor/NVR onde ficam as câmeras</option>
+                <option value="not_sure">Não sei ainda</option>
+              </select>
+            </div>
+
+            <div>
+              <label className="text-sm font-medium text-gray-700" htmlFor="demo-access-who">
+                Quem terá acesso na loja?
+              </label>
+              <select
+                id="demo-access-who"
+                className="mt-2 w-full rounded-lg border px-4 py-2"
+                value={accessWho}
+                onChange={(e) => setAccessWho(e.target.value as AccessWhoValue)}
+              >
+                <option value="">Selecione (opcional)</option>
+                <option value="owner">Eu mesmo</option>
+                <option value="store_manager">Gerente / responsável da loja</option>
+                <option value="staff">Funcionário de confiança</option>
+                <option value="not_sure">Ainda não sei</option>
+              </select>
+            </div>
+          </div>
+
+          <p className="text-xs text-gray-500">
+            Isso não impede o agendamento — só ajuda a gente a preparar a ativação no mesmo dia.
+          </p>
         </div>
 
         {/* Objetivo (multi) */}
@@ -458,16 +570,17 @@ export default function AgendarDemo() {
             </div>
           )}
         </div>
-          <p>📲 Vamos te manter informado:
-              Enviaremos confirmações e lembretes por WhatsApp e e-mail, para você não perder nosso encontro.</p>
-              <p>✅ Marque aqui: </p>
+
+        <div className="text-sm text-gray-700">
+          <p className="font-medium">📲 Vamos te manter informado</p>
+          <p className="text-gray-600">
+            Enviaremos confirmações e lembretes por WhatsApp e e-mail — e o link para dowload do Agente Dale Vision após o agendamento.
+          </p>
+        </div>
+
         {/* Consentimento */}
         <label className="flex items-start gap-2 text-sm text-gray-600">
-          <input
-            type="checkbox"
-            checked={consent}
-            onChange={(e) => setConsent(e.target.checked)}
-          />
+          <input type="checkbox" checked={consent} onChange={(e) => setConsent(e.target.checked)} />
           Concordo em receber comunicações sobre a demo por WhatsApp e e-mail. Você pode cancelar quando quiser.
         </label>
 
@@ -480,9 +593,7 @@ export default function AgendarDemo() {
           {loading ? "Enviando..." : "Continuar para escolher o horário"}
         </button>
 
-        <p className="text-xs text-center text-gray-500">
-          Você será redirecionado para o Calendly.
-        </p>
+        <p className="text-xs text-center text-gray-500">Você será redirecionado para o Calendly.</p>
       </div>
     </div>
   )

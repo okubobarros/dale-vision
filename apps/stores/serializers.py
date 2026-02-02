@@ -3,11 +3,20 @@ from rest_framework import serializers
 from apps.core.models import Store
 
 class StoreSerializer(serializers.ModelSerializer):
+    org_id = serializers.UUIDField(write_only=True, required=False)
+
+    def validate(self, attrs):
+        org_id = attrs.pop("org_id", None)
+        if org_id is not None and "org" not in attrs:
+            attrs["org"] = org_id
+        return attrs
+
     class Meta:
         model = Store
         fields = [
             "id",
             "org",
+            "org_id",
             "code",
             "name",
             "mall_name",
@@ -22,3 +31,6 @@ class StoreSerializer(serializers.ModelSerializer):
             "updated_at",
         ]
         read_only_fields = ["id", "created_at", "updated_at"]
+        extra_kwargs = {
+            "org": {"required": False, "allow_null": True},
+        }

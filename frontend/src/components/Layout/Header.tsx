@@ -17,10 +17,8 @@ const Header = ({ onOpenAgent }: HeaderProps) => {
     }
   }
 
-  const displayName = user?.first_name || user?.username || "Usuário"
-  const initial = (user?.first_name || user?.username || "U")
-    .charAt(0)
-    .toUpperCase()
+  const displayName = user?.username || user?.email || "Perfil"
+  const initial = (user?.username || user?.email || "P").charAt(0).toUpperCase()
 
   return (
     <header className="bg-white shadow-sm border-b relative z-50">
@@ -58,23 +56,17 @@ const Header = ({ onOpenAgent }: HeaderProps) => {
             </button>
           )}
 
-          {/* Text: hide email on mobile */}
-          <div className="text-right min-w-0">
-            <p className="text-sm font-medium text-gray-700 truncate max-w-[140px] sm:max-w-[220px]">
-              {displayName}
-            </p>
-            <p className="hidden sm:block text-xs text-gray-500 truncate max-w-[220px]">
-              {user?.email}
-            </p>
-          </div>
-
           {/* Dropdown */}
           <div className="relative group">
-            <button className="flex items-center gap-2 px-3 py-2 sm:px-4 bg-gray-100 hover:bg-gray-200 rounded-lg transition-colors">
+            <button
+              className="flex items-center gap-2 px-3 py-2 sm:px-4 bg-gray-100 hover:bg-gray-200 rounded-lg transition-colors"
+              aria-label={`Perfil de ${displayName}`}
+              title={`Perfil de ${displayName}`}
+            >
               <div className="w-8 h-8 bg-blue-500 rounded-full flex items-center justify-center text-white font-medium">
                 {initial}
               </div>
-              <span className="hidden md:inline text-gray-700">Perfil</span>
+              <span className="hidden md:inline text-gray-700">{displayName}</span>
               <svg
                 className="w-4 h-4 text-gray-500"
                 fill="none"
