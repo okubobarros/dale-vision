@@ -1,6 +1,6 @@
 # SNAPSHOT_CONTEXT (auto)
 
-Gerado em: 2026-01-30 00:50:17
+Gerado em: 2026-02-05 20:39:20
 
 Este snapshot existe para colar em um novo chat e dar contexto do repositório.
 
@@ -77,11 +77,13 @@ apps/
     management/
       commands/
         __init__.py
+        health_alerts_tick.py
         seed_demo.py
       __init__.py
     migrations/
       0001_initial.py
       0002_alertrule_auditlog_billingcustomer_camera_and_more.py
+      0003_storemanager.py
       __init__.py
     __init__.py
     admin.py
@@ -92,7 +94,9 @@ apps/
   edge/
     migrations/
       0001_initial.py
+      0002_edgetoken.py
       __init__.py
+    tests/
     __init__.py
     admin.py
     apps.py
@@ -105,6 +109,7 @@ apps/
   stores/
     migrations/
       __init__.py
+    tests/
     __init__.py
     admin.py
     apps.py
@@ -113,6 +118,7 @@ apps/
     tests.py
     urls.py
     views.py
+    views_edge_status.py
 
 frontend/
   public/
@@ -126,6 +132,7 @@ frontend/
       Charts/
         LineChart.tsx
         PieChart.tsx
+      Edge/
       Layout/
         BottomNav.tsx
         Header.tsx
@@ -188,6 +195,8 @@ frontend/
       stores.ts
     types/
       dashboard.ts
+    utils/
+      edgeReasons.ts
     App.tsx
     index.css
     main.tsx
@@ -213,13 +222,22 @@ edge-agent/
       cam03.yaml
     agent.yaml
   data/
+  install/
+  logs/
+    agent.log
+    monitor_edge_status_20260204_192545.log
   models/
+  rois/
+  scripts/
   src/
     agent/
       __init__.py
+      __main__.py
+      cli.py
       lifecycle.py
       main.py
       settings.py
+      setup_server.py
     camera/
       rtsp.py
     events/
@@ -236,9 +254,16 @@ edge-agent/
       rules.py
     __init__.py
   videos/
+  01_setup.bat
+  02_run.bat
+  monitor_edge_status.log
+  README_PILOT.md
 
 scripts/
+  add_camera_external_id.sql
   generate_context_snapshot.py
+  project_snapshot.ps1
+  snapshot_project.ps1
 
 docs/
   SNAPSHOT_CONTEXT.json
@@ -297,9 +322,11 @@ apps/core/admin.py
 apps/core/apps.py
 apps/core/management/__init__.py
 apps/core/management/commands/__init__.py
+apps/core/management/commands/health_alerts_tick.py
 apps/core/management/commands/seed_demo.py
 apps/core/migrations/0001_initial.py
 apps/core/migrations/0002_alertrule_auditlog_billingcustomer_camera_and_more.py
+apps/core/migrations/0003_storemanager.py
 apps/core/migrations/__init__.py
 apps/core/models.py
 apps/core/tests.py
@@ -308,6 +335,7 @@ apps/edge/__init__.py
 apps/edge/admin.py
 apps/edge/apps.py
 apps/edge/migrations/0001_initial.py
+apps/edge/migrations/0002_edgetoken.py
 apps/edge/migrations/__init__.py
 apps/edge/models.py
 apps/edge/permissions.py
@@ -324,22 +352,26 @@ apps/stores/serializers.py
 apps/stores/tests.py
 apps/stores/urls.py
 apps/stores/views.py
+apps/stores/views_edge_status.py
 backend/__init__.py
 backend/asgi.py
 backend/settings.py
 backend/urls.py
 backend/wsgi.py
 docs/SNAPSHOT_CONTEXT.json
-docs/SNAPSHOT_CONTEXT.md
+edge-agent/README_PILOT.md
 edge-agent/config/agent.yaml
 edge-agent/config/rois/cam01.yaml
 edge-agent/config/rois/cam02.yaml
 edge-agent/config/rois/cam03.yaml
 edge-agent/src/__init__.py
 edge-agent/src/agent/__init__.py
+edge-agent/src/agent/__main__.py
+edge-agent/src/agent/cli.py
 edge-agent/src/agent/lifecycle.py
 edge-agent/src/agent/main.py
 edge-agent/src/agent/settings.py
+edge-agent/src/agent/setup_server.py
 edge-agent/src/camera/rtsp.py
 edge-agent/src/events/builder.py
 edge-agent/src/events/receipts.py
@@ -400,6 +432,7 @@ frontend/src/services/auth.ts
 frontend/src/services/demo.ts
 frontend/src/services/stores.ts
 frontend/src/types/dashboard.ts
+frontend/src/utils/edgeReasons.ts
 frontend/tailwind.config.js
 frontend/tsconfig.app.json
 frontend/tsconfig.json
@@ -517,13 +550,14 @@ from django.test import TestCase
 # apps/accounts/urls.py
 from django.urls import path
 from knox import views as knox_views
-from .views import RegisterView, LoginView
+from .views import RegisterView, LoginView, MeView
 
 urlpatterns = [
     path("register/", RegisterView.as_view(), name="register"),
     path("login/", LoginView.as_view(), name="login"),
     path("logout/", knox_views.LogoutView.as_view(), name="logout"),
     path("logoutall/", knox_views.LogoutAllView.as_view(), name="logoutall"),
+    path("me/", MeView.as_view(), name="me"),
 ]
 ```
 
@@ -534,14 +568,16 @@ urlpatterns = [
 from rest_framework import status
 from rest_framework.response import Response
 from rest_framework.views import APIView
-from rest_framework.permissions import AllowAny
+from rest_framework.permissions import AllowAny, IsAuthenticated
 from knox.models import AuthToken
 from django.contrib.auth import authenticate
+from django.db import connection
 
 from drf_yasg.utils import swagger_auto_schema  # ✅
 from drf_yasg import openapi  # (opcional)
 
 from .serializers import RegisterSerializer, LoginSerializer
+from apps.core.models import OrgMember
 
 
 class RegisterView(APIView):
@@ -590,6 +626,57 @@ class LoginView(APIView):
                     "last_name": user.last_name,
                 },
                 "token": token,
+            },
+            status=status.HTTP_200_OK,
+        )
+
+
+class MeView(APIView):
+    permission_classes = [IsAuthenticated]
+
+    def get(self, request):
+        user = request.user
+        if not user or not getattr(user, "id", None):
+            return Response({"detail": "Usuário não autenticado."}, status=status.HTTP_403_FORBIDDEN)
+
+        with connection.cursor() as cursor:
+            cursor.execute(
+                "SELECT user_uuid FROM public.user_id_map WHERE django_user_id = %s",
+                [user.id],
+            )
+            row = cursor.fetchone()
+            if not row or not row[0]:
+                cursor.execute(
+                    "INSERT INTO public.user_id_map (django_user_id) VALUES (%s) RETURNING user_uuid",
+                    [user.id],
+                )
+                row = cursor.fetchone()
+            user_uuid = row[0]
+
+        memberships = (
+            OrgMember.objects
+            .filter(user_id=user_uuid)
+            .select_related("org")
+        )
+        orgs = [
+            {
+                "id": str(m.org.id),
+                "name": m.org.name,
+                "role": m.role,
+            }
+            for m in memberships
+        ]
+
+        return Response(
+            {
+                "user": {
+                    "id": user.id,
+                    "username": user.username,
+                    "email": user.email,
+                    "first_name": user.first_name,
+                    "last_name": user.last_name,
+                },
+                "orgs": orgs,
             },
             status=status.HTTP_200_OK,
         )
@@ -1454,6 +1541,233 @@ class CoreConfig(AppConfig):
 """Management commands for core app."""
 ```
 
+### apps/core/management/commands/health_alerts_tick.py
+
+```
+import os
+from typing import List, Tuple
+
+from django.conf import settings
+from django.core.management.base import BaseCommand
+from django.core.mail import send_mail
+from django.core.exceptions import FieldError
+from django.db.utils import ProgrammingError, OperationalError
+from django.utils import timezone
+
+from apps.core.models import Store, Camera, NotificationLog
+from apps.stores.views_edge_status import (
+    classify_age,
+    _get_last_heartbeat,
+    _get_latest_camera_health,
+)
+
+
+ALERT_THRESHOLD_SECONDS = 5 * 60
+ALERT_COOLDOWN_SECONDS = 15 * 60
+
+_NOTIFICATION_LOGS_AVAILABLE = None
+
+
+def _notification_logs_available() -> bool:
+    global _NOTIFICATION_LOGS_AVAILABLE
+    if _NOTIFICATION_LOGS_AVAILABLE is not None:
+        return _NOTIFICATION_LOGS_AVAILABLE
+    try:
+        NotificationLog.objects.all().only("id")[:1]
+        _NOTIFICATION_LOGS_AVAILABLE = True
+    except Exception:
+        _NOTIFICATION_LOGS_AVAILABLE = False
+    return _NOTIFICATION_LOGS_AVAILABLE
+
+
+def _get_recipients() -> List[str]:
+    raw = (
+        getattr(settings, "EDGE_ALERT_EMAIL_TO", None)
+        or os.getenv("EDGE_ALERT_EMAIL_TO")
+        or os.getenv("ALERT_EMAIL_TO")
+    )
+    if not raw:
+        return []
+    return [r.strip() for r in raw.replace(";", ",").split(",") if r.strip()]
+
+
+def _send_email(subject: str, body: str, recipients: List[str]) -> Tuple[bool, str]:
+    if not recipients:
+        return False, "no_recipients"
+    from_email = getattr(settings, "DEFAULT_FROM_EMAIL", None) or getattr(
+        settings, "EMAIL_HOST_USER", None
+    )
+    if not from_email:
+        from_email = "no-reply@localhost"
+    try:
+        send_mail(subject, body, from_email, recipients, fail_silently=False)
+        return True, ""
+    except Exception as exc:
+        return False, str(exc)
+
+
+def _cooldown_ok(store_id, alert_type: str) -> bool:
+    if not _notification_logs_available():
+        return True
+    try:
+        last = (
+            NotificationLog.objects.filter(
+                store_id=store_id,
+                provider="edge_status",
+                provider_message_id=alert_type,
+            )
+            .order_by("-sent_at")
+            .first()
+        )
+        if not last or not last.sent_at:
+            return True
+        delta = (timezone.now() - last.sent_at).total_seconds()
+        return delta >= ALERT_COOLDOWN_SECONDS
+    except Exception:
+        return True
+
+
+def _log_notification(store: Store, alert_type: str, recipients: List[str], ok: bool, error: str):
+    if not _notification_logs_available():
+        return
+    try:
+        NotificationLog.objects.create(
+            org_id=store.org_id,
+            store_id=store.id,
+            channel="email",
+            destination=",".join(recipients) if recipients else None,
+            provider="edge_status",
+            status="sent" if ok else "failed",
+            provider_message_id=alert_type,
+            error=error or None,
+            sent_at=timezone.now(),
+        )
+    except Exception:
+        pass
+
+
+def _get_active_cameras(store_id) -> List[Camera]:
+    try:
+        return list(
+            Camera.objects.filter(store_id=store_id, active=True).order_by("name")
+        )
+    except FieldError:
+        return list(Camera.objects.filter(store_id=store_id).order_by("name"))
+
+
+class Command(BaseCommand):
+    help = "Emite alertas de saúde do edge (tick único; agendar externamente)."
+
+    def handle(self, *args, **options):
+        try:
+            stores = Store.objects.filter(status__in=["active", "trial"]).order_by("name")
+        except Exception:
+            stores = Store.objects.all().order_by("name")
+
+        recipients = _get_recipients()
+
+        for store in stores:
+            cameras = _get_active_cameras(store.id)
+            cameras_total = 0
+            cameras_online = 0
+            cameras_degraded = 0
+            cameras_offline = 0
+            cameras_unknown = 0
+            camera_age_seconds = []
+            offline_cameras = []
+
+            for cam in cameras:
+                cameras_total += 1
+                last_log = _get_latest_camera_health(cam.id)
+                last_ts = None
+                if last_log is not None:
+                    last_ts = getattr(last_log, "checked_at", None) or getattr(
+                        last_log, "created_at", None
+                    )
+
+                cam_status, cam_age_seconds, cam_reason = classify_age(last_ts)
+
+                if cam_status == "online":
+                    cameras_online += 1
+                elif cam_status == "degraded":
+                    cameras_degraded += 1
+                elif cam_status == "offline":
+                    cameras_offline += 1
+                else:
+                    cameras_unknown += 1
+
+                if cam_age_seconds is not None:
+                    camera_age_seconds.append(cam_age_seconds)
+
+                if (
+                    cam_status == "offline"
+                    and cam_age_seconds is not None
+                    and cam_age_seconds >= ALERT_THRESHOLD_SECONDS
+                ):
+                    offline_cameras.append((cam, cam_age_seconds, cam_reason))
+
+            last_heartbeat = _get_last_heartbeat(store.id)
+            hb_status, hb_age_seconds, hb_reason = classify_age(last_heartbeat)
+
+            if cameras_total == 0:
+                store_status = "unknown"
+                store_status_reason = "no_heartbeat"
+            elif cameras_online >= 1:
+                if cameras_online < cameras_total:
+                    store_status = "degraded"
+                    store_status_reason = "partial_camera_coverage"
+                else:
+                    store_status = "online"
+                    store_status_reason = "has_online_camera"
+            else:
+                if last_heartbeat:
+                    store_status = hb_status
+                    store_status_reason = hb_reason
+                else:
+                    store_status = "unknown"
+                    store_status_reason = "no_heartbeat"
+
+            if last_heartbeat:
+                store_status_age_seconds = hb_age_seconds
+            else:
+                store_status_age_seconds = (
+                    min(camera_age_seconds) if camera_age_seconds else None
+                )
+
+            if (
+                store_status in ("degraded", "offline")
+                and store_status_age_seconds is not None
+                and store_status_age_seconds >= ALERT_THRESHOLD_SECONDS
+            ):
+                alert_type = f"store_{store_status}"
+                if _cooldown_ok(store.id, alert_type):
+                    subject = f"[Edge] Store {store.name} {store_status}"
+                    body = (
+                        f"Store: {store.name} ({store.id})\n"
+                        f"Status: {store_status}\n"
+                        f"Reason: {store_status_reason}\n"
+                        f"Age (s): {store_status_age_seconds}\n"
+                        f"Last heartbeat: {last_heartbeat.isoformat() if last_heartbeat else None}\n"
+                        f"Cameras: total={cameras_total} online={cameras_online} "
+                        f"degraded={cameras_degraded} offline={cameras_offline} unknown={cameras_unknown}\n"
+                    )
+                    ok, err = _send_email(subject, body, recipients)
+                    _log_notification(store, alert_type, recipients, ok, err)
+                    if not ok:
+                        self.stdout.write(f"[WARN] email failed for {alert_type}: {err}")
+
+            if offline_cameras:
+                alert_type = "camera_offline"
+                if _cooldown_ok(store.id, alert_type):
+                    subject = f"[Edge] Cameras offline - {store.name}"
+                    lines = []
+                    for cam, age_s, reason in offline_cameras:
+                        lines.append(
+                            f"- {cam.name} ({cam.id}) age_s={age_s} reason={reason}"
+
+<<truncated>>
+```
+
 ### apps/core/management/commands/seed_demo.py
 
 ```
@@ -1839,6 +2153,38 @@ class Migration(migrations.Migration):
 <<truncated>>
 ```
 
+### apps/core/migrations/0003_storemanager.py
+
+```
+# Generated by Django 4.2.11 on 2026-02-01 22:56
+
+from django.db import migrations, models
+import uuid
+
+
+class Migration(migrations.Migration):
+
+    dependencies = [
+        ('core', '0002_alertrule_auditlog_billingcustomer_camera_and_more'),
+    ]
+
+    operations = [
+        migrations.CreateModel(
+            name='StoreManager',
+            fields=[
+                ('id', models.UUIDField(default=uuid.uuid4, editable=False, primary_key=True, serialize=False)),
+                ('role', models.CharField(choices=[('owner', 'owner'), ('admin', 'admin'), ('manager', 'manager'), ('viewer', 'viewer')], default='viewer', max_length=20)),
+                ('created_at', models.DateTimeField(blank=True, null=True)),
+                ('updated_at', models.DateTimeField(blank=True, null=True)),
+            ],
+            options={
+                'db_table': 'store_managers',
+                'managed': False,
+            },
+        ),
+    ]
+```
+
 ### apps/core/migrations/__init__.py
 
 ```
@@ -1850,6 +2196,7 @@ class Migration(migrations.Migration):
 ```
 # apps/core/models.py
 from django.conf import settings
+from django.utils import timezone
 from django.db import models
 import uuid
 
@@ -1970,8 +2317,10 @@ class Store(UnmanagedModel):
     trial_started_at = models.DateTimeField(null=True, blank=True)
     trial_ends_at = models.DateTimeField(null=True, blank=True)
     blocked_reason = models.TextField(null=True, blank=True)
-    created_at = models.DateTimeField()
-    updated_at = models.DateTimeField()
+    last_seen_at = models.DateTimeField(null=True, blank=True)
+    last_error = models.TextField(null=True, blank=True)
+    created_at = models.DateTimeField(default=timezone.now, editable=False)
+    updated_at = models.DateTimeField(default=timezone.now, editable=False)
 
     class Meta(UnmanagedModel.Meta):
         db_table = "stores"
@@ -1999,10 +2348,12 @@ class Camera(UnmanagedModel):
     zone = models.ForeignKey(StoreZone, on_delete=models.DO_NOTHING, db_column="zone_id", null=True, blank=True)
 
     name = models.TextField()
+    external_id = models.TextField(null=True, blank=True)
     brand = models.TextField(null=True, blank=True)
     model = models.TextField(null=True, blank=True)
     ip = models.TextField(null=True, blank=True)
     onvif = models.BooleanField(default=False)
+    active = models.BooleanField(default=True)
 
     rtsp_url = models.TextField(null=True, blank=True)
     username = models.TextField(null=True, blank=True)
@@ -2022,7 +2373,12 @@ class Camera(UnmanagedModel):
 
 class CameraHealthLog(UnmanagedModel):
     id = models.UUIDField(primary_key=True, default=uuid.uuid4)
-    camera = models.ForeignKey(Camera, on_delete=models.DO_NOTHING, db_column="camera_id")
+    camera = models.ForeignKey(
+        "Camera",
+        db_column="camera_id",
+        on_delete=models.DO_NOTHING,
+        related_name="health_logs",
+    )
     checked_at = models.DateTimeField()
     status = models.CharField(max_length=20, choices=CAMERA_STATUS)
     latency_ms = models.IntegerField(null=True, blank=True)
@@ -2058,16 +2414,6 @@ class Shift(UnmanagedModel):
     ends_at = models.DateTimeField()
     planned = models.BooleanField(default=True)
     created_at = models.DateTimeField()
-
-    class Meta(UnmanagedModel.Meta):
-        db_table = "shifts"
-
-
-class TimeClockEntry(UnmanagedModel):
-    id = models.UUIDField(primary_key=True, default=uuid.uuid4)
-    store = models.ForeignKey(Store, on_delete=models.DO_NOTHING, db_column="store_id")
-    employee = models.ForeignKey(Employee, on_delete=models.DO_NOTHING, db_column="employee_id", null=True, blank=True)
-    source = models.TextField(default="manual")
 
 <<truncated>>
 ```
@@ -2182,6 +2528,36 @@ class Migration(migrations.Migration):
     ]
 ```
 
+### apps/edge/migrations/0002_edgetoken.py
+
+```
+# Generated by Django 4.2.11 on 2026-02-01
+
+from django.db import migrations, models
+import django.utils.timezone
+
+
+class Migration(migrations.Migration):
+
+    dependencies = [
+        ("edge", "0001_initial"),
+    ]
+
+    operations = [
+        migrations.CreateModel(
+            name="EdgeToken",
+            fields=[
+                ("id", models.BigAutoField(auto_created=True, primary_key=True, serialize=False, verbose_name="ID")),
+                ("store_id", models.UUIDField(db_index=True)),
+                ("token_hash", models.CharField(max_length=128, unique=True)),
+                ("active", models.BooleanField(default=True)),
+                ("created_at", models.DateTimeField(default=django.utils.timezone.now)),
+                ("last_used_at", models.DateTimeField(blank=True, null=True)),
+            ],
+        ),
+    ]
+```
+
 ### apps/edge/migrations/__init__.py
 
 ```
@@ -2192,6 +2568,7 @@ class Migration(migrations.Migration):
 
 ```
 from django.db import models
+from django.utils import timezone
 
 class EdgeEventReceipt(models.Model):
     receipt_id = models.CharField(max_length=128, unique=True)
@@ -2203,25 +2580,47 @@ class EdgeEventReceipt(models.Model):
 
     def __str__(self):
         return f"{self.event_name} {self.receipt_id[:10]}"
+
+
+class EdgeToken(models.Model):
+    store_id = models.UUIDField(db_index=True)
+    token_hash = models.CharField(max_length=128, unique=True)
+    active = models.BooleanField(default=True)
+    created_at = models.DateTimeField(default=timezone.now)
+    last_used_at = models.DateTimeField(null=True, blank=True)
+
+    def __str__(self):
+        return f"{self.store_id} ({'active' if self.active else 'inactive'})"
 ```
 
 ### apps/edge/permissions.py
 
 ```
 # apps/edge/permissions.py
-import os
+from django.conf import settings
 from rest_framework.permissions import BasePermission
+from knox.auth import TokenAuthentication
 
 
-class EdgeTokenPermission(BasePermission):
+class EdgeOrUserTokenPermission(BasePermission):
     """
-    Valida header X-EDGE-TOKEN contra EDGE_AGENT_TOKEN do .env/settings.
+    Permite acesso se:
+      - Authorization: Token ... for válido (Knox), OU
+      - X-EDGE-TOKEN corresponder a settings.EDGE_TOKEN
     """
 
     def has_permission(self, request, view):
-        expected = os.getenv("EDGE_AGENT_TOKEN") or ""
+        user_auth = TokenAuthentication().authenticate(request)
+        if user_auth:
+            return True
+
+        expected = getattr(settings, "EDGE_TOKEN", "") or ""
         provided = request.headers.get("X-EDGE-TOKEN") or ""
-        return bool(expected) and (provided == expected)
+        if bool(expected) and (provided == expected):
+            print("[EDGE] request autorizado via EDGE token")
+            return True
+
+        return False
 ```
 
 ### apps/edge/serializers.py
@@ -2246,9 +2645,146 @@ class EdgeEventSerializer(serializers.Serializer):
 ### apps/edge/tests.py
 
 ```
+import uuid
 from django.test import TestCase
+from django.conf import settings
+from django.db import connection
+from django.contrib.auth import get_user_model
+from rest_framework.test import APIClient
+from knox.models import AuthToken
+from apps.core.models import Organization, OrgMember, Store
 
-# Create your tests here.
+
+class EdgeEventsAuthTests(TestCase):
+    @classmethod
+    def setUpTestData(cls):
+        if connection.vendor != "postgresql":
+            return
+        with connection.cursor() as cursor:
+            cursor.execute("CREATE EXTENSION IF NOT EXISTS pgcrypto;")
+            cursor.execute(
+                """
+                CREATE TABLE IF NOT EXISTS public.user_id_map (
+                    user_id uuid PRIMARY KEY,
+                    django_user_id int NOT NULL UNIQUE,
+                    email text,
+                    created_at timestamptz DEFAULT now()
+                );
+                """
+            )
+            cursor.execute(
+                """
+                CREATE TABLE IF NOT EXISTS public.organizations (
+                    id uuid PRIMARY KEY,
+                    name text,
+                    segment text,
+                    country text,
+                    timezone text,
+                    created_at timestamptz
+                );
+                """
+            )
+            cursor.execute(
+                """
+                CREATE TABLE IF NOT EXISTS public.org_members (
+                    id uuid PRIMARY KEY,
+                    org_id uuid,
+                    user_id uuid,
+                    role text,
+                    created_at timestamptz
+                );
+                """
+            )
+            cursor.execute(
+                """
+                CREATE TABLE IF NOT EXISTS public.stores (
+                    id uuid PRIMARY KEY,
+                    org_id uuid,
+                    name text,
+                    status text,
+                    created_at timestamptz,
+                    updated_at timestamptz
+                );
+                """
+            )
+
+    def setUp(self):
+        self.client = APIClient()
+
+    def _skip_if_not_pg(self):
+        if connection.vendor != "postgresql":
+            self.skipTest("Requires PostgreSQL for unmanaged models.")
+
+    def test_edge_token_allows_event(self):
+        self._skip_if_not_pg()
+        settings.EDGE_SHARED_TOKEN = "edge-shared"
+        payload = {
+            "event_name": "edge_heartbeat",
+            "receipt_id": "test-receipt-1",
+            "data": {"store_id": str(uuid.uuid4())},
+        }
+        resp = self.client.post(
+            "/api/edge/events/",
+            payload,
+            format="json",
+            HTTP_X_EDGE_TOKEN="edge-shared",
+        )
+        self.assertIn(resp.status_code, (200, 201))
+        self.assertTrue(resp.data.get("ok"))
+
+    def test_user_token_allows_event_with_access(self):
+        self._skip_if_not_pg()
+        User = get_user_model()
+        user = User.objects.create_user(username="edgeuser", password="pass123", email="edge@x.com")
+        token = AuthToken.objects.create(user)[1]
+
+        org = Organization.objects.create(
+            id=uuid.uuid4(),
+            name="Org",
+            segment=None,
+            country="BR",
+            timezone="America/Sao_Paulo",
+            created_at="2026-01-01T00:00:00Z",
+        )
+
+        with connection.cursor() as cursor:
+            cursor.execute(
+                "INSERT INTO public.user_id_map (user_id, django_user_id, email) "
+                "VALUES (gen_random_uuid(), %s, %s) RETURNING user_id",
+                [user.id, user.email],
+            )
+            user_uuid = cursor.fetchone()[0]
+
+        OrgMember.objects.create(
+            id=uuid.uuid4(),
+            org=org,
+            user_id=user_uuid,
+            role="owner",
+            created_at="2026-01-01T00:00:00Z",
+        )
+
+        store = Store.objects.create(
+            id=uuid.uuid4(),
+            org=org,
+            name="Store",
+            status="active",
+            created_at="2026-01-01T00:00:00Z",
+            updated_at="2026-01-01T00:00:00Z",
+        )
+
+        payload = {
+            "event_name": "edge_heartbeat",
+            "receipt_id": "test-receipt-2",
+            "data": {"store_id": str(store.id)},
+        }
+        resp = self.client.post(
+            "/api/edge/events/",
+            payload,
+            format="json",
+            HTTP_AUTHORIZATION=f"Token {token}",
+        )
+        self.assertIn(resp.status_code, (200, 201))
+        self.assertTrue(resp.data.get("ok"))
 ```
 
 ### apps/edge/urls.py
@@ -2266,19 +2802,39 @@ urlpatterns = [
 
 ```
 # apps/edge/views.py
+from uuid import UUID
 from django.conf import settings
 from django.contrib.auth import get_user_model
+from django.utils import timezone
+from django.db.utils import OperationalError, ProgrammingError
+from django.db import connection
+import logging
+import os
 
 from rest_framework.views import APIView
 from rest_framework.response import Response
 from rest_framework import status
 from rest_framework.test import APIRequestFactory, force_authenticate
+from rest_framework.permissions import AllowAny
+from knox.auth import TokenAuthentication
 
 from .serializers import EdgeEventSerializer
 from .models import EdgeEventReceipt
-from .permissions import EdgeTokenPermission
 
 from apps.alerts.views import AlertRuleViewSet
+from apps.core.models import Camera, CameraHealthLog
+from apps.core.models import Store
+from apps.stores.views import ensure_user_uuid, get_user_org_ids
+
+
+def _is_uuid(x: str) -> bool:
+    try:
+        UUID(str(x))
+        return True
+    except Exception:
+        return False
+
+logger = logging.getLogger(__name__)
 
 class EdgeEventsIngestView(APIView):
     """
@@ -2294,7 +2850,7 @@ class EdgeEventsIngestView(APIView):
       - para edge_metric_bucket / heartbeat: só registra receipt e retorna ok
     """
     authentication_classes = []
-    permission_classes = [EdgeTokenPermission]
+    permission_classes = [AllowAny]
 
     def _get_service_user(self):
         """
@@ -2305,9 +2861,29 @@ class EdgeEventsIngestView(APIView):
         u = User.objects.filter(username=username).first()
         return u
 
+    def _is_edge_request(self, request):
+        expected = getattr(settings, "EDGE_SHARED_TOKEN", None) or os.getenv("EDGE_SHARED_TOKEN")
+        if not expected:
+            print("[EDGE] EDGE_SHARED_TOKEN não configurado")
+            return (False, "EDGE_SHARED_TOKEN não configurado")
+        provided = request.headers.get("X-EDGE-TOKEN") or ""
+        if not provided:
+            print("[EDGE] missing X-EDGE-TOKEN")
+            return (False, "missing X-EDGE-TOKEN")
+        if provided != expected:
+            print("[EDGE] invalid edge token")
+            return (False, "invalid edge token")
+        print("[EDGE] request autorizado via EDGE token")
+        return (True, None)
+
+    def _user_has_store_access(self, user, store_id: str) -> bool:
+        org_ids = get_user_org_ids(user)
+        return Store.objects.filter(id=store_id, org_id__in=org_ids).exists()
+
     def post(self, request):
         ser = EdgeEventSerializer(data=request.data)
-        ser.is_valid(raise_exception=True)
+        if not ser.is_valid():
+            return Response({"detail": "payload inválido", "errors": ser.errors}, status=status.HTTP_400_BAD_REQUEST)
         validated = ser.validated_data
         payload = request.data  # salva raw json
 
@@ -2315,9 +2891,38 @@ class EdgeEventsIngestView(APIView):
         source = validated.get("source") or "edge"
         receipt_id = validated.get("receipt_id") or ""
         data = validated.get("data") or {}
-        store_id = data.get("store_id")
+        store_id = (
+            data.get("store_id")
+            or payload.get("store_id")
+            or (payload.get("agent") or {}).get("store_id")
+        )
+        event_type = payload.get("event_type") or data.get("event_type") or event_name
+        normalized = (event_type or "").replace(".", "_").lower()
+
+        if not event_name:
+            return Response({"detail": "event_name ausente."}, status=status.HTTP_400_BAD_REQUEST)
+        if not store_id or not _is_uuid(store_id):
+            return Response({"detail": "store_id inválido ou ausente."}, status=status.HTTP_400_BAD_REQUEST)
+
+        user_auth = TokenAuthentication().authenticate(request)
+        if user_auth:
+            user, _ = user_auth
+            try:
+                ensure_user_uuid(user)
+                if not self._user_has_store_access(user, store_id):
+                    print("[EDGE] user has no access to store")
+                    return Response({"detail": "Usuário sem acesso à store."}, status=status.HTTP_403_FORBIDDEN)
+            except Exception:
+                return Response({"detail": "Usuário não autenticado."}, status=status.HTTP_403_FORBIDDEN)
+        else:
+            ok, err = self._is_edge_request(request)
+            if not ok:
+                if err == "EDGE_SHARED_TOKEN não configurado":
+                    return Response({"detail": err}, status=status.HTTP_403_FORBIDDEN)
+                return Response({"detail": "Edge token inválido."}, status=status.HTTP_403_FORBIDDEN)
 
         # --- dedupe por receipt_id ---
+        stored = False
         if receipt_id:
             _, created = EdgeEventReceipt.objects.get_or_create(
                 receipt_id=receipt_id,
@@ -2330,41 +2935,94 @@ class EdgeEventsIngestView(APIView):
             )
             if not created:
                 return Response({"ok": True, "deduped": True}, status=status.HTTP_200_OK)
+            stored = True
 
-        # --- encaminhar ALERT do edge para o ingest do Alerts ---
-        if event_name == "alert":
-            ingest_payload = {
-                "store_id": data.get("store_id"),
-                "camera_id": data.get("camera_id"),
-                "zone_id": data.get("zone_id"),
-                "event_type": data.get("event_type") or data.get("type"),
-                "severity": data.get("severity"),
-                "title": data.get("title") or "Alerta",
-                "description": data.get("description") or data.get("message") or "",
-                "metadata": data.get("metadata") or {},
-                "occurred_at": data.get("occurred_at"),
-                "clip_url": data.get("clip_url"),
-                "snapshot_url": data.get("snapshot_url"),
-                "destinations": data.get("destinations") or {},
-            }
+        # --- persistir heartbeat do edge ---
+        if normalized in ("edge_heartbeat", "camera_heartbeat", "edge_camera_heartbeat"):
+            try:
+                ts = data.get("ts") or payload.get("ts")
+                if ts:
+                    try:
+                        ts_dt = timezone.datetime.fromisoformat(ts.replace("Z", "+00:00"))
+                    except Exception:
+                        ts_dt = timezone.now()
+                else:
+                    ts_dt = timezone.now()
 
-            service_user = self._get_service_user()
-            if service_user is None:
-                # se não existir user, falha explícita para você corrigir rápido
-                return Response(
-                    {"detail": "EDGE service user not found. Create user 'edge-agent' or set EDGE_SERVICE_USERNAME."},
-                    status=status.HTTP_500_INTERNAL_SERVER_ERROR,
+                cameras_in = (
+                    payload.get("cameras")
+                    or data.get("cameras")
+                    or payload.get("camera_heartbeats")
+                    or []
                 )
+                if not cameras_in and (data.get("camera_id") or data.get("external_id") or data.get("name")):
+                    cameras_in = [data]
 
-            factory = APIRequestFactory()
-            drf_req = factory.post("/api/alerts/alert-rules/ingest/", ingest_payload, format="json")
-            force_authenticate(drf_req, user=service_user)
+                try:
+                    with connection.cursor() as cursor:
+                        cursor.execute(
+                            """
+                            UPDATE public.stores
+                            SET last_seen_at = %s,
+                                last_error = NULL,
+                                updated_at = now()
+                            WHERE id = %s
+                            """,
+                            [ts_dt, store_id],
+                        )
+                except Exception:
+                    logger.exception("[WARN] store last_seen_at update failed")
 
-            ingest_view = AlertRuleViewSet.as_view({"post": "ingest"})
-            return ingest_view(drf_req)
+                for cam in cameras_in:
+                    if not isinstance(cam, dict):
+                        continue
+                    external_id = cam.get("external_id") or cam.get("camera_id")
+                    name = cam.get("name") or external_id or "camera"
+                    rtsp_url = cam.get("rtsp_url")
 
-        # por enquanto: heartbeat/bucket aceita e responde ok
-        return Response({"ok": True}, status=status.HTTP_200_OK)
+                    camera_obj = None
+                    if external_id:
+                        camera_obj = Camera.objects.filter(store_id=store_id, external_id=external_id).first()
+                    if camera_obj is None:
+                        camera_obj = Camera.objects.filter(store_id=store_id, name=name).first()
+
+                    if camera_obj is None:
+                        camera_obj = Camera.objects.create(
+                            store_id=store_id,
+                            external_id=external_id,
+                            name=name,
+                            rtsp_url=rtsp_url,
+                            status="online",
+                            last_seen_at=ts_dt,
+                            last_error=None,
+                            created_at=timezone.now(),
+                            updated_at=timezone.now(),
+                        )
+                    else:
+                        Camera.objects.filter(id=camera_obj.id).update(
+                            external_id=external_id or camera_obj.external_id,
+                            name=name or camera_obj.name,
+                            rtsp_url=rtsp_url or camera_obj.rtsp_url,
+                            status="online",
+                            last_seen_at=ts_dt,
+                            last_error=None,
+                            updated_at=timezone.now(),
+                        )
+
+                    CameraHealthLog.objects.create(
+                        camera_id=camera_obj.id,
+                        checked_at=ts_dt,
+                        status="online",
+                        error=None,
+                    )
+
+            except Exception:
+                logger.exception("[WARN] heartbeat persist failed")
+
+            return Response(
+                {"ok": True, "receipt_id": receipt_id or None, "stored": stored},
+
+<<truncated>>
 ```
 
 ### apps/stores/__init__.py
@@ -2419,11 +3077,20 @@ from rest_framework import serializers
 from apps.core.models import Store
 
 class StoreSerializer(serializers.ModelSerializer):
+    org_id = serializers.UUIDField(write_only=True, required=False)
+
+    def validate(self, attrs):
+        org_id = attrs.pop("org_id", None)
+        if org_id is not None and "org" not in attrs:
+            attrs["org"] = org_id
+        return attrs
+
     class Meta:
         model = Store
         fields = [
             "id",
             "org",
+            "org_id",
             "code",
             "name",
             "mall_name",
@@ -2438,6 +3105,9 @@ class StoreSerializer(serializers.ModelSerializer):
             "updated_at",
         ]
         read_only_fields = ["id", "created_at", "updated_at"]
+        extra_kwargs = {
+            "org": {"required": False, "allow_null": True},
+        }
 ```
 
 ### apps/stores/tests.py
@@ -2455,12 +3125,14 @@ from django.test import TestCase
 from django.urls import path, include
 from rest_framework.routers import DefaultRouter
 from .views import StoreViewSet
+from .views_edge_status import StoreEdgeStatusView
 
 router = DefaultRouter()
 router.register(r'stores', StoreViewSet)
 
 urlpatterns = [
     path('', include(router.urls)),
+    path("stores/<uuid:store_id>/edge-status/", StoreEdgeStatusView.as_view(), name="store-edge-status"),
 ]
 ```
 
@@ -2470,11 +3142,75 @@ urlpatterns = [
 # apps/stores/views.py 
 from rest_framework import viewsets, status, permissions
 from rest_framework.decorators import action
+from rest_framework.exceptions import PermissionDenied, ValidationError
 from rest_framework.response import Response
+from django.core.exceptions import ObjectDoesNotExist
+from django.db.utils import ProgrammingError, OperationalError
+from django.db import connection
 from django.utils import timezone
+from django.conf import settings
 from datetime import timedelta
-from apps.core.models import Store
+from apps.core.models import Store, OrgMember, Organization, Camera
+from apps.edge.models import EdgeToken
+import hashlib
+import secrets
+import uuid
 from .serializers import StoreSerializer
+
+def ensure_user_uuid(user):
+    """
+    Map Django auth_user.id -> public.user_id_map.user_uuid, creating if missing.
+    """
+    if not user or not getattr(user, "id", None):
+        raise PermissionDenied("Usuário não autenticado.")
+    with connection.cursor() as cursor:
+        cursor.execute(
+            "SELECT user_uuid FROM public.user_id_map WHERE django_user_id = %s",
+            [user.id],
+        )
+        row = cursor.fetchone()
+        if row and row[0]:
+            return row[0]
+
+        cursor.execute(
+            "INSERT INTO public.user_id_map (user_id, django_user_id, email, created_at) "
+            "VALUES (gen_random_uuid(), %s, %s, now()) RETURNING user_id",
+            [user.id, getattr(user, "email", None)],
+        )
+        return cursor.fetchone()[0]
+
+
+def get_user_org_ids(user):
+    user_uuid = ensure_user_uuid(user)
+    return list(
+        OrgMember.objects.filter(user_id=user_uuid).values_list("org_id", flat=True)
+    )
+
+
+def filter_stores_for_user(qs, user):
+    if getattr(user, "is_superuser", False) or getattr(user, "is_staff", False):
+        return qs
+    org_ids = get_user_org_ids(user)
+    if not org_ids:
+        if settings.DEBUG:
+            return qs
+        return qs.none()
+    return qs.filter(org_id__in=org_ids)
+
+def _camera_active_column_exists():
+    try:
+        with connection.cursor() as cursor:
+            columns = connection.introspection.get_table_description(cursor, "cameras")
+        return any(col.name == "active" for col in columns)
+    except Exception:
+        return False
+
+def _is_uuid(value: str) -> bool:
+    try:
+        uuid.UUID(str(value))
+        return True
+    except Exception:
+        return False
 
 class StoreViewSet(viewsets.ModelViewSet):
     queryset = Store.objects.all()
@@ -2483,6 +3219,7 @@ class StoreViewSet(viewsets.ModelViewSet):
     
     def get_queryset(self):
         qs = Store.objects.all().order_by("-updated_at")
+        qs = filter_stores_for_user(qs, self.request.user)
         org_id = self.request.query_params.get("org_id")
         if org_id:
             qs = qs.filter(org_id=org_id)
@@ -2498,154 +3235,359 @@ class StoreViewSet(viewsets.ModelViewSet):
             'data': serializer.data,
             'timestamp': timezone.now().isoformat()
         })
+
+    @action(detail=True, methods=['get'])
+    def edge_token(self, request, pk=None):
+        """
+        Retorna um token do edge para a store (gera e sobrescreve o hash).
+        """
+        store = self.get_object()
+        raw_token = secrets.token_urlsafe(32)
+        token_hash = hashlib.sha256(raw_token.encode("utf-8")).hexdigest()
+        EdgeToken.objects.update_or_create(
+            store_id=store.id,
+            defaults={
+                "token_hash": token_hash,
+                "active": True,
+                "created_at": timezone.now(),
+            },
+        )
+        return Response({
+            "store_id": str(store.id),
+            "token": raw_token,
+        })
+
+    @action(detail=True, methods=["patch"], url_path=r"cameras/(?P<camera_id>[^/.]+)")
+    def set_camera_active(self, request, pk=None, camera_id=None):
+        store = self.get_object()
+
+        if "active" not in request.data:
+            return Response({"detail": "Campo 'active' obrigatório."}, status=status.HTTP_400_BAD_REQUEST)
+
+        active = request.data.get("active")
+        if isinstance(active, str):
+            if active.lower() in ("true", "1", "yes"):
+                active = True
+            elif active.lower() in ("false", "0", "no"):
+                active = False
+
+        if not isinstance(active, bool):
+            return Response({"detail": "Campo 'active' deve ser booleano."}, status=status.HTTP_400_BAD_REQUEST)
+
+        if not _camera_active_column_exists():
+            return Response(
+                {"detail": "Coluna 'active' não existe. Rode o script SQL no Supabase."},
+                status=status.HTTP_409_CONFLICT,
+            )
+
+        camera_qs = Camera.objects.filter(store_id=store.id)
+        if _is_uuid(camera_id):
+            camera_qs = camera_qs.filter(id=camera_id)
+        else:
+            camera_qs = camera_qs.filter(external_id=camera_id)
+
+        camera = camera_qs.first()
+        if not camera:
+            return Response({"detail": "Camera não encontrada."}, status=status.HTTP_404_NOT_FOUND)
+
+        try:
+            camera.active = active
+            camera.updated_at = timezone.now()
+            camera.save(update_fields=["active", "updated_at"])
+        except (ProgrammingError, OperationalError):
+            return Response(
+                {"detail": "Falha ao atualizar camera.active."},
+                status=status.HTTP_409_CONFLICT,
+            )
+
+        return Response(
+            {
+                "id": str(camera.id),
+                "name": camera.name,
+                "external_id": camera.external_id,
+                "active": camera.active,
+                "status": camera.status,
+                "last_seen_at": camera.last_seen_at.isoformat() if camera.last_seen_at else None,
+            }
+        )
     
     def perform_create(self, serializer):
         """Auto-popula owner_email com email do usuário - ADICIONE ESTE!"""
-        serializer.save(owner=self.request.user)
-    
-    
-    @action(detail=True, methods=['get'])
-    def dashboard(self, request, pk=None):
-        """Dashboard específico da loja (como no seu design)"""
-        store = self.get_object()
-        
-        # ⭐ MOCK DATA - depois substituímos por dados reais
-        dashboard_data = {
-            'store': {
-                'id': str(store.id),
-                'name': store.name,
-                'owner_email': store.owner_email,
-                'plan': store.plan,
-                'status': 'active' if store.is_active else 'inactive',
-            },
-            'metrics': {
-                'health_score': 92,
-                'productivity': 88,
-                'idle_time': 12,
-                'visitor_flow': 1240,
-                'conversion_rate': 77.5,
-                'avg_cart_value': 89.90,
-            },
-            'insights': {
-                'peak_hour': '14:00-16:00',
-                'best_selling_zone': 'Corredor A',
-                'employee_performance': {
-                    'best': 'Maria Silva (94% produtiva)',
-                    'needs_attention': 'João Santos (67% produtiva)'
-                },
-            },
-            'recommendations': [
-                {
-                    'id': 'staff_redistribution',
-                    'title': 'Redistribuir Equipe',
-                    'description': 'Pico de fluxo esperado às 12:00. Mover 2 colaboradores para o setor têxtil.',
-                    'priority': 'high',
-                    'action': 'redistribute_staff',
-                    'estimated_impact': 'Aumento de 15% na conversão',
-                },
-                {
-                    'id': 'inventory_check',
-                    'title': 'Verificar Estoque',
-                    'description': 'Produtos da linha verão com baixo estoque. Reabastecer até sexta.',
-                    'priority': 'medium',
-                    'action': 'check_inventory',
-                    'estimated_impact': 'Evitar perda de R$ 2.400 em vendas',
-                }
-            ],
-            'alerts': [
-                {
-                    'type': 'high_idle_time',
-                    'message': 'Funcionário João teve 45min de ociosidade hoje',
-                    'severity': 'medium',
-                    'time': '10:30',
-                },
-                {
-                    'type': 'conversion_opportunity',
-                    'message': '5 clientes abandonaram carrinho no setor eletrônicos',
-                    'severity': 'high',
-                    'time': '11:15',
-                }
-            ]
-        }
-        
-        return Response(dashboard_data)
-    
-    @action(detail=True, methods=['get'])
-    def live_monitor(self, request, pk=None):
-        """Dados para monitoramento em tempo real"""
-        store = self.get_object()
-        
-        # ⭐ MOCK - depois vem do processamento de vídeo
-        monitor_data = {
-            'store': store.name,
-            'timestamp': timezone.now().isoformat(),
-            'cameras': [
-                {
-                    'id': 'cam_001',
-                    'name': 'Caixa Principal',
-                    'status': 'online',
-                    'current_viewers': 0,
-                    'events_last_hour': 12,
-                    'stream_url': f'/api/cameras/{store.id}/stream/cam_001'
-                },
-                {
-                    'id': 'cam_002',
-                    'name': 'Entrada Loja',
-                    'status': 'online',
-                    'current_viewers': 1,
-                    'events_last_hour': 47,
-                    'stream_url': f'/api/cameras/{store.id}/stream/cam_002'
-                }
-            ],
-            'current_events': [
-                {
-                    'type': 'person_detected',
-                    'camera': 'Entrada Loja',
-                    'confidence': 0.92,
-                    'timestamp': timezone.now().isoformat(),
-                },
-                {
-                    'type': 'queue_forming',
-                    'camera': 'Caixa Principal',
-                    'confidence': 0.78,
-                    'timestamp': timezone.now().isoformat(),
-                    'details': '3 pessoas na fila'
-                }
-            ]
-        }
-        
-        return Response(monitor_data)
-    
-    @action(detail=False, methods=['get'])
-    def network_dashboard(self, request):
-        """Dashboard para redes com múltiplas lojas (seu segundo design)"""
-        stores = self.get_queryset()
-        
-        network_data = {
-            'network': {
-                'total_stores': stores.count(),
-                'active_stores': stores.filter(status='active').count(),
-                'total_visitors': 3124,
-                'avg_conversion': 75.2,
-            },
-            'stores': []
-        }
-        
-        for store in stores:
-            # MOCK metrics por loja
-            store_metrics = {
-                'id': str(store.id),
-                'name': store.name,
-                'location': f'{store.name} - Matriz',  # Placeholder
-                'health': 92 - (stores.count() * 2),  # Mock
-                'visitor_flow': 1240 - (stores.count() * 100),
-                'conversion': 77.5 - (stores.count() * 1.5),
-                'status': 'active' if store.is_active else 'inactive',
-                'alerts': 2 if store.is_active else 0
-            }
-            network_data['stores'].append(store_metrics)
-        
-        return Response(network_data)
+        user = self.request.user
+        payload = self.request.data or {}
+        requested_org_id = payload.get("org_id") or payload.get("org")
+        now = timezone.now()
+        user_uuid = None
+
+        if requested_org_id:
+            if not (getattr(user, "is_superuser", False) or getattr(user, "is_staff", False)):
+                user_uuid = ensure_user_uuid(user)
+                is_member = OrgMember.objects.filter(
+                    org_id=requested_org_id,
+                    user_id=user_uuid,
+                ).exists()
+                if not is_member:
+                    print(f"[RBAC] user {user.id} tentou criar store em org {requested_org_id} sem membership.")
+                    raise PermissionDenied("Você não tem acesso a esta organização.")
+            serializer.save(org_id=requested_org_id, created_at=now, updated_at=now)
+            return
+
+        org_ids = get_user_org_ids(user)
+        if len(org_ids) == 1:
+            serializer.save(org_id=org_ids[0], created_at=now, updated_at=now)
+            return
+        if len(org_ids) > 1:
+            raise ValidationError("Informe org_id para criar a store.")
+
+        # Sem org: cria uma org default e adiciona o usuário como owner.
+        try:
+            user_uuid = ensure_user_uuid(user)
+            org = Organization.objects.create(
+                name="Default",
+                segment=None,
+                country="BR",
+                timezone="America/Sao_Paulo",
+                created_at=timezone.now(),
+            )
+            OrgMember.objects.create(
+                org=org,
+                user_id=user_uuid,
+                role="owner",
+                created_at=timezone.now(),
+            )
+            serializer.save(org=org, created_at=now, updated_at=now)
+        except (ProgrammingError, OperationalError) as exc:
+            print(f"[RBAC] falha ao criar org padrão: {exc}")
+            raise ValidationError("Não foi possível criar organização padrão.")
+
+<<truncated>>
+```
+
+### apps/stores/views_edge_status.py
+
+```
+from django.core.exceptions import FieldError
+from django.db.models import Max
+from django.db import connection
+from django.shortcuts import get_object_or_404
+from django.utils import timezone
+from rest_framework.permissions import IsAuthenticated
+from rest_framework.response import Response
+from rest_framework.views import APIView
+
+from apps.core.models import Camera, CameraHealthLog, Store, OrgMember
+
+ONLINE_SEC = 120
+DEGRADED_SEC = 300
+_CAMERA_ACTIVE_COLUMN_EXISTS = None
+
+
+def _user_has_store_access(user, store_id) -> bool:
+    if getattr(user, "is_superuser", False) or getattr(user, "is_staff", False):
+        return True
+    store_row = Store.objects.filter(id=store_id).values("org_id").first()
+    if not store_row:
+        return False
+    with connection.cursor() as cursor:
+        cursor.execute(
+            "SELECT user_uuid FROM public.user_id_map WHERE django_user_id = %s",
+            [user.id],
+        )
+        row = cursor.fetchone()
+        if row and row[0]:
+            user_uuid = row[0]
+        else:
+            cursor.execute(
+                "INSERT INTO public.user_id_map (django_user_id) VALUES (%s) RETURNING user_uuid",
+                [user.id],
+            )
+            user_uuid = cursor.fetchone()[0]
+    return OrgMember.objects.filter(
+        org_id=store_row["org_id"],
+        user_id=user_uuid,
+    ).exists()
+
+
+def classify_age(dt):
+    if not dt:
+        return ("unknown", None, "no_heartbeat")
+    age = (timezone.now() - dt).total_seconds()
+    if age <= ONLINE_SEC:
+        return ("online", int(age), "recent_heartbeat")
+    if age <= DEGRADED_SEC:
+        return ("degraded", int(age), "stale_heartbeat")
+    return ("offline", int(age), "heartbeat_expired")
+
+
+def _camera_active_column_exists():
+    global _CAMERA_ACTIVE_COLUMN_EXISTS
+    if _CAMERA_ACTIVE_COLUMN_EXISTS is not None:
+        return _CAMERA_ACTIVE_COLUMN_EXISTS
+    try:
+        with connection.cursor() as cursor:
+            columns = connection.introspection.get_table_description(cursor, "cameras")
+        _CAMERA_ACTIVE_COLUMN_EXISTS = any(col.name == "active" for col in columns)
+    except Exception:
+        _CAMERA_ACTIVE_COLUMN_EXISTS = False
+    return _CAMERA_ACTIVE_COLUMN_EXISTS
+
+
+def _filter_active_health_qs(qs):
+    if not _camera_active_column_exists():
+        return qs
+    try:
+        return qs.filter(camera__active=True)
+    except FieldError:
+        return qs
+
+
+def _get_active_camera_ids(store_id):
+    try:
+        return list(
+            Camera.objects.filter(store_id=store_id, active=True)
+            .values_list("id", flat=True)
+        )
+    except FieldError:
+        return list(
+            Camera.objects.filter(store_id=store_id)
+            .values_list("id", flat=True)
+        )
+
+
+def _get_last_heartbeat(store_id):
+    camera_ids = _get_active_camera_ids(store_id)
+    if not camera_ids:
+        return None
+
+    try:
+        last_ts = (
+            CameraHealthLog.objects
+            .filter(camera_id__in=camera_ids)
+            .aggregate(last_ts=Max("checked_at"))
+            .get("last_ts")
+        )
+    except FieldError:
+        last_ts = None
+
+    if last_ts:
+        return last_ts
+
+    try:
+        return (
+            CameraHealthLog.objects
+            .filter(camera_id__in=camera_ids)
+            .aggregate(last_ts=Max("created_at"))
+            .get("last_ts")
+        )
+    except FieldError:
+        try:
+            qs = CameraHealthLog.objects.filter(camera__store_id=store_id)
+            qs = _filter_active_health_qs(qs)
+            last_ts = qs.aggregate(last_ts=Max("created_at")).get("last_ts")
+        except FieldError:
+            last_ts = None
+        return last_ts
+
+
+def _get_latest_camera_health(camera_id):
+    try:
+        log = (
+            CameraHealthLog.objects
+            .filter(camera_id=camera_id)
+            .order_by("-checked_at")
+            .first()
+        )
+    except FieldError:
+        log = None
+
+    if log is not None:
+        return log
+
+    try:
+        return (
+            CameraHealthLog.objects
+            .filter(camera_id=camera_id)
+            .order_by("-created_at")
+            .first()
+        )
+    except FieldError:
+        return None
+
+
+def _get_latest_error(store_id):
+    try:
+        camera_ids = _get_active_camera_ids(store_id)
+        if not camera_ids:
+            return None
+        qs = CameraHealthLog.objects.filter(camera_id__in=camera_ids, error__isnull=False)
+        last_error_row = (
+            qs.exclude(error="")
+            .order_by("-checked_at")
+            .values("error")
+            .first()
+        )
+        if last_error_row:
+            return last_error_row["error"]
+    except FieldError:
+        pass
+
+    try:
+        camera_ids = _get_active_camera_ids(store_id)
+        if not camera_ids:
+            return None
+        qs = CameraHealthLog.objects.filter(camera_id__in=camera_ids, error__isnull=False)
+        last_error_row = (
+            qs.exclude(error="")
+            .order_by("-created_at")
+            .values("error")
+            .first()
+        )
+        if last_error_row:
+            return last_error_row["error"]
+    except FieldError:
+        try:
+            qs = CameraHealthLog.objects.filter(camera__store_id=store_id, error__isnull=False)
+            qs = _filter_active_health_qs(qs)
+            last_error_row = (
+                qs.exclude(error="")
+                .order_by("-created_at")
+                .values("error")
+                .first()
+            )
+            if last_error_row:
+                return last_error_row["error"]
+        except FieldError:
+            pass
+
+    return None
+
+
+class StoreEdgeStatusView(APIView):
+    permission_classes = [IsAuthenticated]
+
+    def get(self, request, store_id):
+        store = get_object_or_404(Store, id=store_id)
+
+        if not _user_has_store_access(request.user, store_id):
+            return Response({"detail": "Você não tem acesso a esta store."}, status=403)
+
+        try:
+            cameras = Camera.objects.filter(store_id=store_id, active=True).order_by("name")
+        except FieldError:
+            cameras = Camera.objects.filter(store_id=store_id).order_by("name")
+        cameras_out = []
+        cameras_total = 0
+        cameras_online = 0
+        cameras_degraded = 0
+        cameras_offline = 0
+        cameras_unknown = 0
+        camera_age_seconds = []
+        for cam in cameras:
+            cameras_total += 1
+            last_log = _get_latest_camera_health(cam.id)
+            last_ts = None
+
+<<truncated>>
 ```
 
 ### backend/__init__.py
@@ -2841,6 +3783,7 @@ STATICFILES_STORAGE = 'whitenoise.storage.CompressedManifestStaticFilesStorage'
 
 EDGE_SERVICE_USERNAME = os.getenv("EDGE_SERVICE_USERNAME", "edge-agent")
 EDGE_AGENT_TOKEN = os.getenv("EDGE_AGENT_TOKEN", "")
+EDGE_SHARED_TOKEN = os.getenv("EDGE_SHARED_TOKEN", "")
 ```
 
 ### backend/urls.py
@@ -2865,7 +3808,9 @@ def home(request):
             "login": "/api/accounts/login/",
             "logout": "/api/accounts/logout/",
             "stores": "/api/v1/stores/",
+            "edge_status": "/api/v1/stores/{store_uuid}/edge-status/",
             "alerts": "/api/alerts/",
+            "alerts_v1": "/api/v1/alerts/",
         }
     })
 
@@ -2899,6 +3844,7 @@ urlpatterns = [
 
     # ✅ Alerts (demo lead + rules + ingest/event)
     path("api/alerts/", include("apps.alerts.urls")),
+    path("api/v1/alerts/", include("apps.alerts.urls")),
     path("api/cameras/", include("apps.cameras.urls")),
 
     path("health/", lambda r: JsonResponse({"status": "healthy", "service": "dale-vision-api"})),
@@ -2931,500 +3877,150 @@ application = get_wsgi_application()
 
 ```
 {
-  "generated_at": "2026-01-29T01:19:56.068663Z",
+  "generated_at": "2026-02-05 20:30:10",
   "root": "C:\\workspace\\dale-vision",
-  "tree": {
-    "apps": [
-      "apps/",
-      "apps\\accounts/",
-      "    __init__.py",
-      "    admin.py",
-      "    apps.py",
-      "    models.py",
-      "    serializers.py",
-      "    tests.py",
-      "    urls.py",
-      "    views.py",
-      "apps\\accounts\\migrations/",
-      "      __init__.py",
-      "apps\\alerts/",
-      "    __init__.py",
-      "    admin.py",
-      "    apps.py",
-      "    models.py",
-      "    serializers.py",
-      "    services.py",
-      "    tests.py",
-      "    urls.py",
-      "    views.py",
-      "apps\\alerts\\migrations/",
-      "      __init__.py",
-      "apps\\analytics/",
-      "    __init__.py",
-      "    admin.py",
-      "    apps.py",
-      "    models.py",
-      "    tests.py",
-      "    views.py",
-      "apps\\analytics\\migrations/",
-      "      __init__.py",
-      "apps\\billing/",
-      "    __init__.py",
-      "    admin.py",
-      "    apps.py",
-      "    models.py",
-      "    tests.py",
-      "    views.py",
-      "apps\\billing\\migrations/",
-      "      __init__.py",
-      "apps\\cameras/",
-      "    __init__.py",
-      "    admin.py",
-      "    apps.py",
-      "    models.py",
-      "    serializers.py",
-      "    services.py",
-      "    tests.py",
-      "    urls.py",
-      "    views.py",
-      "apps\\cameras\\migrations/",
-      "      0001_initial.py",
-      "      0002_delete_camera.py",
-      "      __init__.py",
-      "apps\\core/",
-      "    __init__.py",
-      "    admin.py",
-      "    apps.py",
-      "    models.py",
-      "    tests.py",
-      "    views.py",
-      "apps\\core\\management/",
-      "      __init__.py",
-      "apps\\core\\management\\commands/",
-      "        __init__.py",
-      "        seed_demo.py",
-      "apps\\core\\migrations/",
-      "      0001_initial.py",
-      "      0002_alertrule_auditlog_billingcustomer_camera_and_more.py",
-      "      __init__.py",
-      "apps\\edge/",
-      "    __init__.py",
-      "    admin.py",
-      "    apps.py",
-      "    models.py",
-      "    permissions.py",
-      "    serializers.py",
-      "    tests.py",
-      "    urls.py",
-      "    views.py",
-      "apps\\edge\\migrations/",
-      "      0001_initial.py",
-      "      __init__.py",
-      "apps\\stores/",
-      "    __init__.py",
-      "    admin.py",
-      "    apps.py",
-      "    models.py",
-      "    serializers.py",
-      "    tests.py",
-      "    urls.py",
-      "    views.py",
-      "apps\\stores\\migrations/",
-      "      0001_initial.py",
-      "      0002_remove_store_is_active.py",
-      "      __init__.py",
-      "apps\\vision/",
-      "    __init__.py",
-      "    apps.py",
-      "    tests.py",
-      "    views.py",
-      "apps\\vision\\migrations/",
-      "      0001_initial.py",
-      "      0002_alter_detectionevent_camera.py",
-      "      0003_delete_detectionevent.py",
-      "      __init__.py"
+  "include_dirs": [
+    "backend",
+    "apps",
+    "frontend",
+    "edge-agent",
+    "scripts",
+    "docs"
+  ],
+  "limits": {
+    "MAX_TREE_DEPTH": 5,
+    "MAX_FILES": 220,
+    "MAX_FILE_BYTES": 200000,
+    "MAX_LINES_PER_FILE": 220,
+    "MAX_TOTAL_CHARS": 280000
+  },
+  "ignored": {
+    "IGNORE_DIR_NAMES": [
+      ".git",
+      ".mypy_cache",
+      ".next",
+      ".pytest_cache",
+      ".turbo",
+      ".venv",
+      "__pycache__",
+      "build",
+      "dist",
+      "node_modules",
+      "runs",
+      "venv"
     ],
-    "backend": [
-      "backend/",
-      "  .env",
-      "  __init__.py",
-      "  asgi.py",
-      "  settings.py",
-      "  urls.py",
-      "  wsgi.py"
-    ],
-    "frontend/src": [
-      "frontend\\src/",
-      "    App.tsx",
-      "    index.css",
-      "    main.tsx",
-      "frontend\\src\\assets/",
-      "      logo.png",
-      "      react.svg",
-      "frontend\\src\\components/",
-      "      PrivateRoute.tsx",
-      "frontend\\src\\components\\Agent/",
-      "        AgentModal.tsx",
-      "frontend\\src\\components\\Charts/",
-      "        LineChart.tsx",
-      "        PieChart.tsx",
-      "frontend\\src\\components\\Layout/",
-      "        BottomNav.tsx",
-      "        Header.tsx",
-      "        Layout.tsx",
-      "        Sidebar.tsx",
-      "        index.ts",
-      "frontend\\src\\components\\Skeletons/",
-      "        DashboardSkeleton.tsx",
-      "frontend\\src\\contexts/",
-      "      AgentContext.tsx",
-      "      AuthContext.tsx",
-      "frontend\\src\\hooks/",
-      "      useIsMobile.ts",
-      "      useRevealOnScroll.ts",
-      "frontend\\src\\pages/",
-      "frontend\\src\\pages\\AgendarDemo/",
-      "        AgendarDemo.tsx",
-      "frontend\\src\\pages\\AlertRules/",
-      "        AlertRules.tsx",
-      "frontend\\src\\pages\\Alerts/",
-      "        Alerts.tsx",
-      "frontend\\src\\pages\\Analytics/",
-      "        Analytics.tsx",
-      "frontend\\src\\pages\\Cameras/",
-      "        Cameras.tsx",
-      "frontend\\src\\pages\\Dashboard/",
-      "        Dashboard.tsx",
-      "frontend\\src\\pages\\Home/",
-      "        Home.tsx",
-      "frontend\\src\\pages\\Login/",
-      "        Login.tsx",
-      "frontend\\src\\pages\\NotificationLogs/",
-      "        NotificationLogs.tsx",
-      "frontend\\src\\pages\\Onboarding/",
-      "        Onboarding.tsx",
-      "        OnboardingSuccess.tsx",
-      "frontend\\src\\pages\\Onboarding\\components/",
-      "          CamerasSetup.tsx",
-      "          EmployeesSetup.tsx",
-      "          OnboardingProgress.tsx",
-      "          StoresSetup.tsx",
-      "frontend\\src\\pages\\Profile/",
-      "        Profile.tsx",
-      "frontend\\src\\pages\\Register/",
-      "        Register.tsx",
-      "frontend\\src\\pages\\Settings/",
-      "        Settings.tsx",
-      "frontend\\src\\pages\\Stores/",
-      "        Stores.tsx",
-      "frontend\\src\\queries/",
-      "      alerts.queries.ts",
-      "frontend\\src\\services/",
-      "      alerts.ts",
-      "      api.ts",
-      "      auth.ts",
-      "      demo.ts",
-      "      stores.ts",
-      "frontend\\src\\types/",
-      "      dashboard.ts"
-    ],
-    "frontend/public": [
-      "frontend\\public/",
-      "    vite.svg"
-    ],
-    "frontend/package.json": [
-      "frontend/package.json"
-    ],
-    "frontend/vite.config.ts": [
-      "frontend/vite.config.ts"
-    ],
-    "frontend/tsconfig.json": [
-      "frontend/tsconfig.json"
-    ],
-    "frontend/tsconfig.app.json": [
-      "frontend/tsconfig.app.json"
-    ],
-    "frontend/tsconfig.node.json": [
-      "frontend/tsconfig.node.json"
-    ],
-    "edge-agent": [
-      "edge-agent/",
-      "edge-agent\\config/",
-
-<<truncated>>
+    "IGNORE_FILE_EXTS": [
+      ".7z",
+      ".avi",
+      ".db",
+      ".gif",
+      ".gz",
+      ".jpeg",
+      ".jpg",
+      ".mkv",
+      ".mov",
+      ".mp4",
+      ".onnx",
+      ".pdf",
+      ".png",
+      ".pt",
+      ".sqlite",
+      ".sqlite3",
+      ".tar",
+      ".webp",
+      ".zip"
+    ]
+  }
+}
 ```
 
-### docs/SNAPSHOT_CONTEXT.md
+### edge-agent/README_PILOT.md
 
 ```
-# DALE Vision — Context Snapshot
+# DALE Vision — Pilot (Edge Agent Setup em 30 minutos)
 
-Generated at: `2026-01-29T01:19:56.068663Z`
+## Objetivo
+Rodar o agente dentro da loja (sem VPN e sem abrir portas) e enviar apenas:
+- status (heartbeat)
+- métricas agregadas
+- alertas
 
-## Project Tree
+## Pré-requisitos
+- Um PC Windows ligado na loja (na mesma rede do NVR/câmeras)
+- Acesso às URLs RTSP (ou ONVIF → RTSP)
+- Token do Edge (X-EDGE-TOKEN) e Store ID
 
-### apps
+## Passo a passo (Setup)
+1) Clique duas vezes em **01_setup.bat**
+2) Vai abrir o navegador em: http://localhost:7860
+3) Preencha:
+   - Cloud Base URL
+   - Store ID
+   - Edge Token
+   Clique em **Salvar Config**
+4) Para cada câmera:
+   - cole a URL RTSP
+   - clique **Testar (preview)** (deve aparecer a imagem)
+   - preencha o nome e clique **Adicionar câmera**
+5) ROI (YAML):
+   - Digite o camera_id (ex: cam01)
+   - Selecione o arquivo YAML de ROI (ex: config/rois/cam01.yaml)
+   - Clique **Upload ROI**
+6) Clique **Iniciar agente**
+   - Você verá: PID + caminho do log (logs/agent.log)
 
-```
-apps/
-apps\accounts/
-    __init__.py
-    admin.py
-    apps.py
-    models.py
-    serializers.py
-    tests.py
-    urls.py
-    views.py
-apps\accounts\migrations/
-      __init__.py
-apps\alerts/
-    __init__.py
-    admin.py
-    apps.py
-    models.py
-    serializers.py
-    services.py
-    tests.py
-    urls.py
-    views.py
-apps\alerts\migrations/
-      __init__.py
-apps\analytics/
-    __init__.py
-    admin.py
-    apps.py
-    models.py
-    tests.py
-    views.py
-apps\analytics\migrations/
-      __init__.py
-apps\billing/
-    __init__.py
-    admin.py
-    apps.py
-    models.py
-    tests.py
-    views.py
-apps\billing\migrations/
-      __init__.py
-apps\cameras/
-    __init__.py
-    admin.py
-    apps.py
-    models.py
-    serializers.py
-    services.py
-    tests.py
-    urls.py
-    views.py
-apps\cameras\migrations/
-      0001_initial.py
-      0002_delete_camera.py
-      __init__.py
-apps\core/
-    __init__.py
-    admin.py
-    apps.py
-    models.py
-    tests.py
-    views.py
-apps\core\management/
-      __init__.py
-apps\core\management\commands/
-        __init__.py
-        seed_demo.py
-apps\core\migrations/
-      0001_initial.py
-      0002_alertrule_auditlog_billingcustomer_camera_and_more.py
-      __init__.py
-apps\edge/
-    __init__.py
-    admin.py
-    apps.py
-    models.py
-    permissions.py
-    serializers.py
-    tests.py
-    urls.py
-    views.py
-apps\edge\migrations/
-      0001_initial.py
-      __init__.py
-apps\stores/
-    __init__.py
-    admin.py
-    apps.py
-    models.py
-    serializers.py
-    tests.py
-    urls.py
-    views.py
-apps\stores\migrations/
-      0001_initial.py
-      0002_remove_store_is_active.py
-      __init__.py
-apps\vision/
-    __init__.py
-    apps.py
-    tests.py
-    views.py
-apps\vision\migrations/
-      0001_initial.py
-      0002_alter_detectionevent_camera.py
-      0003_delete_detectionevent.py
-      __init__.py
-```
+## Logs (para suporte)
+Arquivo: **logs/agent.log**
 
-### backend
+Para ver as últimas linhas:
+- Abra PowerShell na pasta edge-agent e rode:
+  `Get-Content .\logs\agent.log -Tail 80`
 
-```
-backend/
-  .env
-  __init__.py
-  asgi.py
-  settings.py
-  urls.py
-  wsgi.py
-```
-
-### frontend/src
-
-```
-frontend\src/
-    App.tsx
-    index.css
-    main.tsx
-frontend\src\assets/
-      logo.png
-      react.svg
-frontend\src\components/
-      PrivateRoute.tsx
-frontend\src\components\Agent/
-        AgentModal.tsx
-frontend\src\components\Charts/
-        LineChart.tsx
-        PieChart.tsx
-frontend\src\components\Layout/
-        BottomNav.tsx
-        Header.tsx
-        Layout.tsx
-        Sidebar.tsx
-        index.ts
-frontend\src\components\Skeletons/
-        DashboardSkeleton.tsx
-frontend\src\contexts/
-      AgentContext.tsx
-      AuthContext.tsx
-frontend\src\hooks/
-      useIsMobile.ts
-      useRevealOnScroll.ts
-frontend\src\pages/
-frontend\src\pages\AgendarDemo/
-        AgendarDemo.tsx
-frontend\src\pages\AlertRules/
-        AlertRules.tsx
-frontend\src\pages\Alerts/
-        Alerts.tsx
-frontend\src\pages\Analytics/
-        Analytics.tsx
-frontend\src\pages\Cameras/
-        Cameras.tsx
-frontend\src\pages\Dashboard/
-        Dashboard.tsx
-frontend\src\pages\Home/
-        Home.tsx
-frontend\src\pages\Login/
-        Login.tsx
-frontend\src\pages\NotificationLogs/
-        NotificationLogs.tsx
-frontend\src\pages\Onboarding/
-        Onboarding.tsx
-        OnboardingSuccess.tsx
-frontend\src\pages\Onboarding\components/
-          CamerasSetup.tsx
-          EmployeesSetup.tsx
-          OnboardingProgress.tsx
-          StoresSetup.tsx
-frontend\src\pages\Profile/
-        Profile.tsx
-frontend\src\pages\Register/
-        Register.tsx
-frontend\src\pages\Settings/
-        Settings.tsx
-frontend\src\pages\Stores/
-        Stores.tsx
-frontend\src\queries/
-      alerts.queries.ts
-frontend\src\services/
-      alerts.ts
-      api.ts
-      auth.ts
-      demo.ts
-      stores.ts
-frontend\src\types/
-      dashboard.ts
-```
-
-### frontend/public
-
-```
-frontend\public/
-    vite.svg
-```
-
-### frontend/package.json
-
-```
-frontend/package.json
-
-<<truncated>>
+## Se der erro de porta 7860
+A porta já está em uso.
+Feche o terminal antigo ou mate o processo:
+- `netstat -ano | findstr :7860`
+- `taskkill /PID <PID> /F`
 ```
 
 ### edge-agent/config/agent.yaml
 
 ```
 agent:
-  agent_id: "edge-001"
-  store_id: "STORE_UUID_AQUI"
-  timezone: "America/Sao_Paulo"
-
+  agent_id: edge-001
+  store_id: b259e974-46f6-4f95-a293-35845946de55
+  timezone: America/Sao_Paulo
 cloud:
-  base_url: "http://127.0.0.1:8000"
-  token: "dale-edge-CHANGE-ME-123"
+  base_url: http://127.0.0.1:8000
+  token: edge-local-123
   timeout_seconds: 8
   send_interval_seconds: 2
   heartbeat_interval_seconds: 15
-
 runtime:
   target_width: 960
   fps_limit: 8
   frame_skip: 2
-  buffer_sqlite_path: "./data/edge_queue.db"
+  buffer_sqlite_path: ./data/edge_queue.db
   max_queue_size: 50000
-  log_level: "INFO"
-
+  log_level: INFO
 model:
-  yolo_weights_path: "./models/yolov8n.pt"
+  yolo_weights_path: ./models/yolov8n.pt
   conf: 0.35
   iou: 0.45
-  device: "cpu"
-
+  device: cpu
 cameras:
-  - camera_id: "cam01"
-    name: "Balcao"
-    rtsp_url: "./videos/cam01_balcao.mp4"
-    roi_config: "./config/rois/cam01.yaml"
-
-  - camera_id: "cam02"
-    name: "Salao"
-    rtsp_url: "./videos/cam02_salao.mp4"
-    roi_config: "./config/rois/cam02.yaml"
-
-  - camera_id: "cam03"
-    name: "Entrada"
-    rtsp_url: "./videos/cam03_entrada.mp4"
-    roi_config: "./config/rois/cam03.yaml"
+- camera_id: cam01
+  name: Balcao
+  rtsp_url: ./videos/cam01_balcao.mp4
+  roi_config: ./config/rois/cam01.yaml
+- camera_id: cam02
+  name: Salao
+  rtsp_url: ./videos/cam02_salao.mp4
+  roi_config: ./config/rois/cam02.yaml
+- camera_id: cam03
+  name: Entrada
+  rtsp_url: ./videos/cam03_entrada.mp4
+  roi_config: ./config/rois/cam03.yaml
 ```
 
 ### edge-agent/config/rois/cam01.yaml
@@ -3511,10 +4107,88 @@ lines:
 
 ```
 
+### edge-agent/src/agent/__main__.py
+
+```
+from .cli import main
+
+
+if __name__ == "__main__":
+    raise SystemExit(main())
+```
+
+### edge-agent/src/agent/cli.py
+
+```
+import argparse
+import subprocess
+import sys
+from pathlib import Path
+
+
+BASE_DIR = Path(__file__).resolve().parents[2]
+DEFAULT_CONFIG = "./config/agent.yaml"
+
+
+def _build_parser() -> argparse.ArgumentParser:
+    parser = argparse.ArgumentParser(prog="python -m src.agent")
+    sub = parser.add_subparsers(dest="command")
+
+    setup_p = sub.add_parser("setup", help="Start the local setup server")
+    setup_p.add_argument("--reload", action="store_true", help="Enable auto-reload")
+
+    run_p = sub.add_parser("run", help="Run the agent")
+    run_p.add_argument("--config", default=DEFAULT_CONFIG, help="Path to agent.yaml")
+
+    return parser
+
+
+def main(argv=None) -> int:
+    parser = _build_parser()
+    args = parser.parse_args(argv)
+
+    if not args.command:
+        parser.print_help()
+        return 1
+
+    if args.command == "setup":
+        cmd = [
+            sys.executable,
+            "-m",
+            "uvicorn",
+            "src.agent.setup_server:app",
+            "--host",
+            "0.0.0.0",
+            "--port",
+            "7860",
+        ]
+        if args.reload:
+            cmd.append("--reload")
+        return subprocess.call(cmd, cwd=BASE_DIR)
+
+    if args.command == "run":
+        cmd = [
+            sys.executable,
+            "-m",
+            "src.agent.main",
+            "--config",
+            args.config,
+        ]
+        return subprocess.call(cmd, cwd=BASE_DIR)
+
+    parser.print_help()
+    return 1
+
+
+if __name__ == "__main__":
+    raise SystemExit(main())
+```
+
 ### edge-agent/src/agent/lifecycle.py
 
 ```
 import time
+from datetime import datetime, timezone
 from typing import List
 
 from ..storage.sqlite_queue import SqliteQueue
@@ -3591,27 +4265,57 @@ def run_agent(settings):
 
         # ========== heartbeat ==========
         if (now - last_heartbeat) >= float(settings.heartbeat_interval_seconds):
-            hb = {
-                "agent_id": agent_id,
-                "store_id": store_id,
-                "cameras": [
-                    {
+            hb_bucket = int(now // float(settings.heartbeat_interval_seconds)) * float(settings.heartbeat_interval_seconds)
+            hb_ts = datetime.fromtimestamp(hb_bucket, tz=timezone.utc).isoformat()
+
+            try:
+                for w in workers:
+                    cam_data = {
+                        "store_id": store_id,
+                        "agent_id": agent_id,
+                        "ts": hb_ts,
                         "camera_id": w.camera_id,
+                        "external_id": w.camera_id,
                         "name": w.name,
+                        "rtsp_url": getattr(w, "rtsp_url", None),
                         "ok": w.is_ok(),
                     }
-                    for w in workers
-                ],
-            }
+                    cam_env = build_envelope(
+                        event_name="edge_camera_heartbeat",
+                        source="edge",
+                        data=cam_data,
+                        meta={},
+                    )
+                    cam_env["receipt_id"] = compute_receipt_id(cam_env)
+                    queue.enqueue(cam_env)
 
-            env = build_envelope(
-                event_name="edge_heartbeat",
-                source="edge",
-                data=hb,
-                meta={},
-            )
-            env["receipt_id"] = compute_receipt_id(env)
-            queue.enqueue(env)
+                hb = {
+                    "agent_id": agent_id,
+                    "store_id": store_id,
+                    "ts": hb_ts,
+                    "cameras": [
+                        {
+                            "camera_id": w.camera_id,
+                            "external_id": w.camera_id,
+                            "name": w.name,
+                            "rtsp_url": getattr(w, "rtsp_url", None),
+                            "ok": w.is_ok(),
+                        }
+                        for w in workers
+                    ],
+                }
+
+                env = build_envelope(
+                    event_name="edge_heartbeat",
+                    source="edge",
+                    data=hb,
+                    meta={},
+                )
+                env["receipt_id"] = compute_receipt_id(env)
+                queue.enqueue(env)
+            except Exception as e:
+                print(f"⚠️ heartbeat enqueue failed (ignored): {e}")
+
             last_heartbeat = now
 
         # ========== process frames ==========
@@ -3760,10 +4464,13 @@ def _env_override(d: Dict[str, Any]) -> Dict[str, Any]:
     # mantenha simples no v1; expanda conforme precisar
     base = os.getenv("EDGE_CLOUD_BASE_URL")
     token = os.getenv("EDGE_CLOUD_TOKEN")
+    heartbeat = os.getenv("HEARTBEAT_INTERVAL_SECONDS")
     if base:
         d.setdefault("cloud", {})["base_url"] = base
     if token:
         d.setdefault("cloud", {})["token"] = token
+    if heartbeat:
+        d.setdefault("cloud", {})["heartbeat_interval_seconds"] = int(heartbeat)
     return d
 
 
@@ -3798,7 +4505,7 @@ def load_settings(path: str) -> Settings:
         cloud_token=cloud["token"],
         cloud_timeout=int(cloud.get("timeout_seconds", 8)),
         send_interval_seconds=int(cloud.get("send_interval_seconds", 2)),
-        heartbeat_interval_seconds=int(cloud.get("heartbeat_interval_seconds", 15)),
+        heartbeat_interval_seconds=int(cloud.get("heartbeat_interval_seconds", 30)),
 
         target_width=int(runtime.get("target_width", 960)),
         fps_limit=int(runtime.get("fps_limit", 8)),
@@ -3816,9 +4523,238 @@ def load_settings(path: str) -> Settings:
     )
 ```
 
+### edge-agent/src/agent/setup_server.py
+
+```
+from fastapi import FastAPI, HTTPException, UploadFile, File
+from fastapi.responses import HTMLResponse
+from pydantic import BaseModel
+import cv2
+import yaml
+import os
+import subprocess
+import base64
+import uuid
+import sys
+from pathlib import Path
+import re
+from typing import Dict, Any
+
+APP_PORT = 7860
+
+# BASE_DIR = pasta edge-agent
+BASE_DIR = os.path.abspath(os.path.join(os.path.dirname(__file__), "../../"))
+CONFIG_PATH = os.path.join(BASE_DIR, "config", "agent.yaml")
+
+# ROIs no lugar que você já usa hoje: edge-agent/config/rois
+ROIS_DIR = os.path.join(BASE_DIR, "config", "rois")
+
+os.makedirs(os.path.dirname(CONFIG_PATH), exist_ok=True)
+os.makedirs(ROIS_DIR, exist_ok=True)
+
+app = FastAPI(title="DALE Vision Edge Setup")
+
+FILE_PREFIX = "file://"
+
+
+# -------------------------
+# Models
+# -------------------------
+
+class CloudConfig(BaseModel):
+    cloud_base_url: str
+    edge_token: str
+    store_id: str
+
+
+class CameraAddPayload(BaseModel):
+    name: str
+    rtsp_url: str
+
+
+class CameraTestPayload(BaseModel):
+    rtsp_url: str
+
+
+# -------------------------
+# Helpers
+# -------------------------
+
+def load_config() -> dict:
+    if not os.path.exists(CONFIG_PATH):
+        return {}
+    with open(CONFIG_PATH, "r", encoding="utf-8") as f:
+        return yaml.safe_load(f) or {}
+
+
+def save_config(cfg: dict):
+    with open(CONFIG_PATH, "w", encoding="utf-8") as f:
+        yaml.safe_dump(cfg, f, sort_keys=False, allow_unicode=True)
+
+
+def _ensure_defaults(cfg: dict) -> dict:
+    """
+    Garante o contrato esperado por edge-agent/src/agent/settings.py
+    """
+    cfg.setdefault("agent", {})
+    cfg.setdefault("cloud", {})
+    cfg.setdefault("runtime", {})
+    cfg.setdefault("model", {})
+    cfg.setdefault("cameras", [])
+
+    cfg["agent"].setdefault("agent_id", str(uuid.uuid4()))
+    cfg["agent"].setdefault("timezone", "America/Sao_Paulo")
+
+    cfg["cloud"].setdefault("timeout_seconds", 8)
+    cfg["cloud"].setdefault("send_interval_seconds", 2)
+    cfg["cloud"].setdefault("heartbeat_interval_seconds", 30)
+
+    cfg["runtime"].setdefault("target_width", 960)
+    cfg["runtime"].setdefault("fps_limit", 8)
+    cfg["runtime"].setdefault("frame_skip", 2)
+    cfg["runtime"].setdefault("buffer_sqlite_path", "./data/edge_queue.db")
+    cfg["runtime"].setdefault("max_queue_size", 50000)
+    cfg["runtime"].setdefault("log_level", "INFO")
+
+    cfg["model"].setdefault("yolo_weights_path", "./models/yolov8n.pt")
+    cfg["model"].setdefault("conf", 0.35)
+    cfg["model"].setdefault("iou", 0.45)
+    cfg["model"].setdefault("device", "cpu")
+
+    return cfg
+
+
+def _normalize_source(src: str) -> str:
+    """
+    Aceita:
+      - rtsp://...
+      - file://C:\\...\\media\\cam01.mp4
+      - file://..\\media\\cam01.mp4
+      - C:\\...\\media\\cam01.mp4
+      - ..\\media\\cam01.mp4
+
+    Resolve paths relativos a BASE_DIR (edge-agent).
+    """
+    src = (src or "").strip()
+    if src.lower().startswith(FILE_PREFIX):
+        src = src[len(FILE_PREFIX):]
+
+    # se for rtsp, retorna como está
+    if src.lower().startswith("rtsp://"):
+        return src
+
+    p = Path(src)
+    if not p.is_absolute():
+        p = Path(BASE_DIR) / p
+    return str(p)
+
+
+def _looks_like_private_store_rtsp(rtsp_url: str) -> bool:
+    m = re.search(
+        r"rtsp://[^@]+@(?P<ip>\d+\.\d+\.\d+\.\d+)(:\d+)?",
+        rtsp_url or "",
+        re.IGNORECASE
+    )
+    if not m:
+        return False
+    ip = m.group("ip")
+    return ip.startswith(("192.168.", "10.", "172."))
+
+
+def test_rtsp_or_file(source: str):
+    src = _normalize_source(source)
+
+    cap = cv2.VideoCapture(src)
+
+    try:
+        cap.set(cv2.CAP_PROP_OPEN_TIMEOUT_MSEC, 5000)
+        cap.set(cv2.CAP_PROP_READ_TIMEOUT_MSEC, 5000)
+    except Exception:
+        pass
+
+    if not cap.isOpened():
+        cap.release()
+
+        if (source or "").lower().startswith("rtsp://") and _looks_like_private_store_rtsp(source):
+            raise RuntimeError(
+                "Não foi possível abrir o RTSP. Esse IP parece ser da rede da loja (privado). "
+                "Para testar RTSP, rode o setup no PC dentro da loja."
+            )
+
+        raise RuntimeError(f"Não foi possível abrir a fonte. Verifique caminho/URL: {source}")
+
+    ok, frame = cap.read()
+    cap.release()
+
+    if not ok or frame is None:
+        raise RuntimeError("Conectou, mas não conseguiu ler frame (stream/path/codec incorreto).")
+
+    ok2, buffer = cv2.imencode(".jpg", frame)
+    if not ok2:
+        raise RuntimeError("Falha ao gerar snapshot JPG.")
+
+    b64 = base64.b64encode(buffer).decode("utf-8")
+    h, w = frame.shape[:2]
+    return {"ok": True, "width": int(w), "height": int(h), "snapshot_base64": b64}
+
+
+# -------------------------
+# API Endpoints
+# -------------------------
+
+@app.get("/health")
+def health():
+    return {"status": "ok"}
+
+
+@app.get("/config")
+def get_config():
+    return load_config()
+
+
+@app.post("/config")
+def set_config(payload: CloudConfig):
+    cfg = _ensure_defaults(load_config())
+
+    # contrato do Settings (settings.py)
+    cfg["agent"]["store_id"] = payload.store_id
+    cfg["cloud"]["base_url"] = payload.cloud_base_url.rstrip("/")
+    cfg["cloud"]["token"] = payload.edge_token
+
+    save_config(cfg)
+    return {"ok": True}
+
+
+@app.post("/camera/test")
+def camera_test(payload: CameraTestPayload):
+    try:
+        return test_rtsp_or_file(payload.rtsp_url)
+    except Exception as e:
+        raise HTTPException(status_code=400, detail=str(e))
+
+
+@app.post("/camera/add")
+def camera_add(payload: CameraAddPayload):
+    cfg = _ensure_defaults(load_config())
+
+    cam_id = f"cam{len(cfg['cameras']) + 1:02d}"
+
+    cfg["cameras"].append({
+        "camera_id": cam_id,
+        "name": payload.name,
+        "rtsp_url": payload.rtsp_url,
+        # contrato do Settings: roi_config é caminho do YAML
+        "roi_config": f"./config/rois/{cam_id}.yaml",
+    })
+
+<<truncated>>
+```
+
 ### edge-agent/src/camera/rtsp.py
 
 ```
+import logging
+import os
 import threading
 import time
 from dataclasses import dataclass
@@ -3877,8 +4813,16 @@ class RtspCameraWorker(threading.Thread):
         self._ok = False
         self._last_err = None
 
-        with open(roi_config_path, "r", encoding="utf-8") as f:
-            self.roi = yaml.safe_load(f) or {}
+        if not os.path.exists(roi_config_path):
+            logging.warning(
+                "[ROI] arquivo não encontrado: %s (camera %s). Rodando sem ROI.",
+                roi_config_path,
+                self.camera_id,
+            )
+            self.roi = {}
+        else:
+            with open(roi_config_path, "r", encoding="utf-8") as f:
+                self.roi = yaml.safe_load(f) or {}
 
         # estado interno (checkout FSM, linhas etc.)
         self._roi_state: Dict[str, Any] = {
@@ -4029,16 +4973,6 @@ class RtspCameraWorker(threading.Thread):
     def update_metrics(self, detections, ts: float):
         """
         Entrada:
-          detections: lista de detecções (idealmente de pessoas).
-            Aceita:
-              - objetos com .xyxy e opcional .track_id/.id
-              - dicts com keys: xyxy, track_id
-        Saída v1 (estável):
-          {
-            "people_count": int,
-            "queue_count": int,
-            "pay_count": int,
-            "staff_count": int,
 
 <<truncated>>
 ```
@@ -5546,10 +6480,8 @@ const Header = ({ onOpenAgent }: HeaderProps) => {
     }
   }
 
-  const displayName = user?.first_name || user?.username || "Usuário"
-  const initial = (user?.first_name || user?.username || "U")
-    .charAt(0)
-    .toUpperCase()
+  const displayName = user?.username || user?.email || "Perfil"
+  const initial = (user?.username || user?.email || "P").charAt(0).toUpperCase()
 
   return (
     <header className="bg-white shadow-sm border-b relative z-50">
@@ -5587,23 +6519,17 @@ const Header = ({ onOpenAgent }: HeaderProps) => {
             </button>
           )}
 
-          {/* Text: hide email on mobile */}
-          <div className="text-right min-w-0">
-            <p className="text-sm font-medium text-gray-700 truncate max-w-[140px] sm:max-w-[220px]">
-              {displayName}
-            </p>
-            <p className="hidden sm:block text-xs text-gray-500 truncate max-w-[220px]">
-              {user?.email}
-            </p>
-          </div>
-
           {/* Dropdown */}
           <div className="relative group">
-            <button className="flex items-center gap-2 px-3 py-2 sm:px-4 bg-gray-100 hover:bg-gray-200 rounded-lg transition-colors">
+            <button
+              className="flex items-center gap-2 px-3 py-2 sm:px-4 bg-gray-100 hover:bg-gray-200 rounded-lg transition-colors"
+              aria-label={`Perfil de ${displayName}`}
+              title={`Perfil de ${displayName}`}
+            >
               <div className="w-8 h-8 bg-blue-500 rounded-full flex items-center justify-center text-white font-medium">
                 {initial}
               </div>
-              <span className="hidden md:inline text-gray-700">Perfil</span>
+              <span className="hidden md:inline text-gray-700">{displayName}</span>
               <svg
                 className="w-4 h-4 text-gray-500"
                 fill="none"
@@ -7279,33 +8205,228 @@ export default Analytics
 ### frontend/src/pages/Cameras/Cameras.tsx
 
 ```
+import { useState } from "react"
+import { useQuery } from "@tanstack/react-query"
+import {
+  storesService,
+  type Store,
+  type StoreEdgeStatus,
+} from "../../services/stores"
+import { formatAge, formatReason } from "../../utils/edgeReasons"
+
 const Cameras = () => {
+  const [selectedStore, setSelectedStore] = useState("")
+
+  const { data: stores, isLoading: storesLoading } = useQuery<Store[]>({
+    queryKey: ["stores"],
+    queryFn: storesService.getStores,
+  })
+
+  const {
+    data: edgeStatus,
+    isLoading: edgeStatusLoading,
+    error: edgeStatusError,
+  } = useQuery<StoreEdgeStatus>({
+    queryKey: ["store-edge-status", selectedStore],
+    queryFn: () => storesService.getStoreEdgeStatus(selectedStore),
+    enabled: Boolean(selectedStore && selectedStore !== "all"),
+  })
+
+
   return (
-    <div className="p-6">
-      <div className="mb-8">
-        <h1 className="text-3xl font-bold text-gray-800">Nome da Página</h1>
-        <p className="text-gray-600 mt-1">Descrição da funcionalidade</p>
-      </div>
-      
-      <div className="bg-white rounded-xl shadow-sm p-8 text-center border border-gray-100">
-        <div className="inline-flex items-center justify-center w-16 h-16 bg-blue-100 rounded-full mb-4">
-          {/* Ícone */}
+    <div className="p-6 space-y-6">
+      <div className="flex flex-col gap-4">
+        <div className="min-w-0">
+          <h1 className="text-3xl font-bold text-gray-800">Câmeras</h1>
+          <p className="text-gray-600 mt-1">
+            Status e saúde das câmeras por loja
+          </p>
         </div>
-        <h3 className="text-lg font-medium text-gray-900 mb-2">Em Construção</h3>
-        <p className="text-gray-500">
-          Esta funcionalidade está em desenvolvimento e estará disponível em breve.
-        </p>
-        <div className="mt-6">
-          <div className="grid grid-cols-1 md:grid-cols-2 gap-4 max-w-2xl mx-auto">
-            {/* Placeholders para conteúdo futuro */}
+
+        {stores && stores.length > 0 && (
+          <div className="flex flex-col sm:flex-row sm:items-center gap-2">
+            <label
+              htmlFor="store-select"
+              className="text-gray-700 font-semibold text-sm"
+            >
+              Loja
+            </label>
+
+            <div className="flex items-center gap-2">
+              <select
+                id="store-select"
+                value={selectedStore}
+                onChange={(e) => setSelectedStore(e.target.value)}
+                className="w-full sm:w-[320px] border border-gray-300 rounded-lg px-4 py-2 focus:ring-2 focus:ring-blue-500 focus:border-transparent"
+                disabled={storesLoading}
+                aria-label="Selecionar loja para visualizar câmeras"
+              >
+                <option value="">Selecione uma loja</option>
+                <option value="all">Todas as lojas</option>
+                {stores.map((store) => (
+                  <option key={store.id} value={store.id}>
+                    {store.name}
+                  </option>
+                ))}
+              </select>
+
+              {storesLoading && (
+                <div className="animate-spin rounded-full h-5 w-5 border-t-2 border-b-2 border-blue-500" />
+              )}
+            </div>
+          </div>
+        )}
+      </div>
+
+      <div className="flex items-center justify-between">
+        <h2 className="text-lg font-semibold text-gray-800">
+          Status das câmeras
+        </h2>
+        <button
+          type="button"
+          onClick={async () => {
+            const url =
+              import.meta.env.VITE_EDGE_SETUP_URL || "http://localhost:7860/"
+            try {
+              await fetch(url, { method: "GET", mode: "no-cors" })
+              window.open(url, "_blank", "noreferrer")
+            } catch (error) {
+              window.alert(
+                "Não foi possível abrir o Edge Setup. Verifique se o serviço está rodando."
+              )
+            }
+          }}
+          className="text-sm font-semibold text-blue-600 hover:text-blue-700"
+        >
+          Abrir Edge Setup
+        </button>
+      </div>
+      <p className="text-xs text-gray-500">
+        Certifique-se de que o Edge Setup está rodando
+      </p>
+
+      {!selectedStore || selectedStore === "all" ? (
+        <div className="bg-white rounded-xl shadow-sm p-6 text-center border border-gray-100 text-gray-500">
+          Selecione uma loja para ver status das câmeras.
+        </div>
+      ) : edgeStatusLoading ? (
+        <div className="bg-white rounded-xl shadow-sm p-6 text-center border border-gray-100 text-gray-500">
+          Carregando status...
+        </div>
+      ) : edgeStatusError ? (
+        <div className="bg-white rounded-xl shadow-sm p-6 text-center border border-gray-100 text-red-600">
+          Falha ao carregar status das câmeras
+        </div>
+      ) : edgeStatus && edgeStatus.cameras.length > 0 ? (
+        <div className="space-y-4">
+          <div className="bg-white rounded-xl shadow-sm border border-gray-100 p-4">
+            <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3">
+              <div>
+                <p className="text-sm text-gray-500">Status da loja</p>
+                <p className="text-lg font-semibold text-gray-800">
+                  {edgeStatus.store_status === "online"
+                    ? "Loja Online"
+                    : edgeStatus.store_status === "degraded"
+                    ? "Loja Instável"
+                    : edgeStatus.store_status === "offline"
+                    ? "Loja Offline"
+                    : "Status desconhecido"}
+                </p>
+                <p className="text-xs text-gray-500 mt-1">
+                  Último heartbeat há{" "}
+                  <span className="font-semibold text-gray-700">
+                    {formatAge(edgeStatus.store_status_age_seconds)}
+                  </span>
+                </p>
+                {edgeStatus.store_status_reason && (
+                  <p className="text-xs text-gray-500 mt-1">
+                    {formatReason(edgeStatus.store_status_reason)}
+                  </p>
+                )}
+              </div>
+              <span
+                className={`px-3 py-1 text-xs font-semibold rounded-full ${
+                  edgeStatus.store_status === "online"
+                    ? "bg-green-100 text-green-800"
+                    : edgeStatus.store_status === "degraded"
+                    ? "bg-yellow-100 text-yellow-800"
+                    : edgeStatus.store_status === "offline"
+                    ? "bg-gray-100 text-gray-800"
+                    : "bg-gray-100 text-gray-600"
+                }`}
+              >
+                {edgeStatus.store_status ?? "unknown"}
+              </span>
+            </div>
+          </div>
+
+          <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4">
+            {edgeStatus.cameras.map((cam) => (
+              <div
+                key={cam.camera_id}
+                className="bg-white rounded-xl shadow-sm border border-gray-100 p-4"
+              >
+                <div className="flex items-start justify-between gap-3">
+                  <div className="min-w-0">
+                    <p className="text-sm font-semibold text-gray-800 truncate">
+                      {cam.name}
+                    </p>
+                    <p className="text-xs text-gray-500">{cam.camera_id}</p>
+                  </div>
+                  <span
+                    className={`px-2 py-0.5 text-xs rounded-full ${
+                      cam.status === "online"
+                        ? "bg-green-100 text-green-800"
+                        : cam.status === "degraded"
+                        ? "bg-yellow-100 text-yellow-800"
+                        : cam.status === "offline"
+                        ? "bg-gray-100 text-gray-700"
+                        : "bg-gray-100 text-gray-600"
+                    }`}
+                  >
+                    {cam.status}
+                  </span>
+                </div>
+
+                <div className="mt-3 text-xs text-gray-600 flex items-center gap-2">
+                  <span className="font-semibold text-gray-700">Idade:</span>
+                  <span>{formatAge(cam.age_seconds)}</span>
+                </div>
+
+                {cam.reason && (
+                  <p className="text-xs text-gray-500 mt-2">
+                    {formatReason(cam.reason)}
+                  </p>
+                )}
+              </div>
+            ))}
           </div>
         </div>
-      </div>
-    </div>
-  );
-};
+      ) : (
+        <div className="bg-white rounded-xl shadow-sm p-6 text-center border border-gray-100 text-gray-500">
+          <p className="mb-3">Nenhuma câmera encontrada.</p>
+          <button
+            type="button"
+            onClick={async () => {
+              const url =
+                import.meta.env.VITE_EDGE_SETUP_URL || "http://localhost:7860/"
+              try {
+                await fetch(url, { method: "GET", mode: "no-cors" })
+                window.open(url, "_blank", "noreferrer")
+              } catch (error) {
+                window.alert(
+                  "Não foi possível abrir o Edge Setup. Verifique se o serviço está rodando."
+                )
+              }
+            }}
+            className="text-sm font-semibold text-blue-600 hover:text-blue-700"
+          >
+            Abrir Edge Setup
+          </button>
+        </div>
+      )}
 
-export default Cameras;
+<<truncated>>
 ```
 
 ### frontend/src/pages/Dashboard/Dashboard.tsx
@@ -7319,7 +8440,14 @@ import {
   storesService,
   type NetworkDashboard,
   type Store,
+  type StoreEdgeStatus,
 } from "../../services/stores"
+import { formatAge, formatReason } from "../../utils/edgeReasons"
+import {
+  useAlertsEvents,
+  useIgnoreEvent,
+  useResolveEvent,
+} from "../../queries/alerts.queries"
 import type { StoreDashboard } from "../../types/dashboard"
 import { LineChart } from "../../components/Charts/LineChart"
 import { PieChart } from "../../components/Charts/PieChart"
@@ -7495,42 +8623,35 @@ const Dashboard = () => {
   const [selectedStore, setSelectedStore] = useState<string>(ALL_STORES_VALUE)
   const [dashboard, setDashboard] = useState<StoreDashboard | null>(null)
   const [isLoadingDashboard, setIsLoadingDashboard] = useState(false)
+  const [resolvingEventId, setResolvingEventId] = useState<string | null>(null)
+  const [ignoringEventId, setIgnoringEventId] = useState<string | null>(null)
 
   const { data: stores, isLoading: storesLoading } = useQuery<Store[]>({
     queryKey: ["stores"],
     queryFn: storesService.getStores,
   })
 
-  useEffect(() => {
-    if (!stores || stores.length === 0) {
-      setDashboard(null)
-      setIsLoadingDashboard(false)
-      return
-    }
+  const {
+    data: edgeStatus,
+    isLoading: edgeStatusLoading,
+  } = useQuery<StoreEdgeStatus>({
+    queryKey: ["store-edge-status", selectedStore],
+    queryFn: () => storesService.getStoreEdgeStatus(selectedStore),
+    enabled: selectedStore !== ALL_STORES_VALUE,
+  })
 
-    setIsLoadingDashboard(true)
-    const loadDashboard = async () => {
-      try {
-        if (selectedStore === ALL_STORES_VALUE) {
-          const network = await storesService.getNetworkDashboard()
-          setDashboard(buildNetworkDashboard(network, stores))
-          return
-        }
+  const {
+    data: events,
+    isLoading: eventsLoading,
+    error: eventsError,
+  } = useAlertsEvents({
+    store_id: selectedStore === ALL_STORES_VALUE ? undefined : selectedStore,
+    status: "open",
+  }, {
+    enabled: Boolean(selectedStore && selectedStore !== ALL_STORES_VALUE),
+  })
 
-        const storeDashboard = await storesService.getStoreDashboard(selectedStore)
-        setDashboard(storeDashboard)
-      } catch (error) {
-        console.error("? Erro ao buscar dashboard:", error)
-        setDashboard(buildNetworkDashboard(null, stores))
-      } finally {
-        setIsLoadingDashboard(false)
-      }
-    }
-
-    loadDashboard()
-  }, [selectedStore, stores])
-
-  const icons = {
+  const resolveEvent = useResolveEvent()
 
 <<truncated>>
 ```
@@ -8124,1164 +9245,6 @@ export default function NotificationLogs() {
                   <th scope="col" className="text-left font-semibold px-4 py-3">Status</th>
                   <th scope="col" className="text-left font-semibold px-4 py-3">Destino</th>
                   <th scope="col" className="text-left font-semibold px-4 py-3">Event ID</th>
-                  <th scope="col" className="text-left font-semibold px-4 py-3">Erro</th>
-                </tr>
-              </thead>
-
-              <tbody className="divide-y">
-                {logs.map((l) => (
-                  <tr key={String(l.id)} className="hover:bg-gray-50">
-                    <td className="px-4 py-3 whitespace-nowrap">
-                      {formatDateBR(l.sent_at)}
-                    </td>
-
-                    <td className="px-4 py-3 whitespace-nowrap">
-                      <span className="px-2 py-1 rounded-full bg-gray-100 text-gray-700 text-xs">
-                        {l.channel ?? "—"}
-                      </span>
-                    </td>
-
-                    <td className="px-4 py-3 whitespace-nowrap">
-                      <span className="px-2 py-1 rounded-full bg-gray-100 text-gray-700 text-xs">
-                        {l.status ?? "—"}
-                      </span>
-                    </td>
-
-                    <td className="px-4 py-3 min-w-[220px]">
-                      <span className="text-gray-700">{l.destination ?? "—"}</span>
-                    </td>
-
-                    <td className="px-4 py-3 whitespace-nowrap">
-                      <span className="font-mono text-xs text-gray-700">
-                        {l.event_id ? String(l.event_id) : "—"}
-                      </span>
-                    </td>
-
-                    <td className="px-4 py-3 min-w-[280px]">
-                      {l.error ? (
-                        <span className="text-red-700 text-xs">{l.error}</span>
-                      ) : (
-                        <span className="text-gray-400 text-xs">—</span>
-                      )}
-                    </td>
-                  </tr>
-
-<<truncated>>
-```
-
-### frontend/src/pages/Onboarding/Onboarding.tsx
-
-```
-// frontend/src/pages/Onboarding/Onboarding.tsx
-import { useEffect, useState } from "react"
-import { useNavigate } from "react-router-dom"
-
-import OnboardingProgress from "./components/OnboardingProgress"
-import StoresSetup, { type StoreDraft } from "./components/StoresSetup"
-import EmployeesSetup, { type EmployeeDraft } from "./components/EmployeesSetup"
-import CamerasSetup, { type CameraDraft } from "./components/CamerasSetup"
-
-export default function Onboarding() {
-  const navigate = useNavigate()
-  const totalSteps = 3
-  const [step, setStep] = useState(1)
-
-  // estado local para demo (sem backend)
-  const [store, setStore] = useState<StoreDraft | null>(null)
-  const [employees, setEmployees] = useState<EmployeeDraft[]>([])
-  const [cameras, setCameras] = useState<CameraDraft[]>([])
-
-  useEffect(() => {
-    window.scrollTo({ top: 0, behavior: "smooth" })
-  }, [step])
-
-  function handleNext() {
-    if (step < totalSteps) setStep((s) => s + 1)
-  }
-
-  function handlePrev() {
-    if (step > 1) setStep((s) => s - 1)
-  }
-
-  function handleComplete() {
-    // salva localmente para demo
-    localStorage.setItem("demo_onboarding", JSON.stringify({ store, employees, cameras }))
-    navigate("/onboarding/success")
-  }
-
-  return (
-    <main className="min-h-screen w-full bg-[#070B18] text-white">
-      <div className="max-w-5xl mx-auto px-4 sm:px-6 lg:px-8 py-10">
-        <OnboardingProgress currentStep={step} totalSteps={totalSteps} />
-
-        <div className="mt-10">
-          {step === 1 && (
-            <StoresSetup
-              value={store}
-              onChange={setStore}
-              onNext={handleNext}
-            />
-          )}
-
-          {step === 2 && (
-            <EmployeesSetup
-              employees={employees}
-              onChange={setEmployees}
-              onPrev={handlePrev}
-              onNext={handleNext}
-            />
-          )}
-
-          {step === 3 && (
-            <CamerasSetup
-              cameras={cameras}
-              onChange={setCameras}
-              onPrev={handlePrev}
-              onNext={handleComplete}
-            />
-          )}
-        </div>
-      </div>
-    </main>
-  )
-}
-```
-
-### frontend/src/pages/Onboarding/OnboardingSuccess.tsx
-
-```
-// frontend/src/pages/Onboarding/OnboardingSuccess.tsx
-import { useEffect, useMemo, useState } from "react"
-import { useNavigate } from "react-router-dom"
-
-type ConfettiPiece = {
-  id: string
-  left: number
-  delay: number
-  duration: number
-  rotate: number
-  size: number
-  opacity: number
-}
-
-function rand(min: number, max: number) {
-  return Math.random() * (max - min) + min
-}
-
-export default function OnboardingSuccess() {
-  const navigate = useNavigate()
-  const [showConfetti, setShowConfetti] = useState(true)
-
-  const pieces = useMemo<ConfettiPiece[]>(() => {
-    return Array.from({ length: 80 }).map((_, i) => ({
-      id: String(i),
-      left: rand(0, 100),
-      delay: rand(0, 0.6),
-      duration: rand(1.6, 2.6),
-      rotate: rand(0, 720),
-      size: rand(6, 12),
-      opacity: rand(0.6, 1),
-    }))
-  }, [])
-
-  useEffect(() => {
-    const t = setTimeout(() => setShowConfetti(false), 2600)
-    return () => clearTimeout(t)
-  }, [])
-
-  return (
-    <div className="min-h-screen w-full bg-[#05110A] text-white flex items-center justify-center px-4 py-10 relative overflow-hidden">
-      {/* Confetti */}
-      {showConfetti && (
-        <div className="absolute inset-0 pointer-events-none">
-          {pieces.map((p) => (
-            <span
-              key={p.id}
-              className="confetti-piece absolute top-[-20px]"
-              style={{
-                left: `${p.left}%`,
-                width: `${p.size}px`,
-                height: `${p.size * 0.6}px`,
-                opacity: p.opacity,
-                animationDelay: `${p.delay}s`,
-                animationDuration: `${p.duration}s`,
-                transform: `rotate(${p.rotate}deg)`,
-              }}
-            />
-          ))}
-        </div>
-      )}
-
-      <div className="w-full max-w-md">
-        <div className="rounded-3xl border border-green-400/20 bg-gradient-to-b from-green-500/10 to-transparent p-6 shadow-[0_20px_80px_rgba(0,0,0,0.55)]">
-          <div className="flex items-center justify-between">
-            <div className="flex items-center gap-3">
-              <div className="h-10 w-10 rounded-2xl bg-green-500/20 border border-green-400/30 flex items-center justify-center">
-                <span className="text-xl">👁️</span>
-              </div>
-              <div className="font-semibold">Dale Vision</div>
-            </div>
-            <button
-              className="h-10 w-10 rounded-full border border-white/10 bg-white/5 hover:bg-white/10"
-              aria-label="Ajuda"
-            >
-              ?
-            </button>
-          </div>
-
-          <div className="mt-8 rounded-3xl border border-green-400/20 bg-green-500/5 p-6">
-            <div className="mx-auto h-20 w-20 rounded-full bg-green-500/20 border border-green-400/30 flex items-center justify-center">
-              <div className="h-12 w-12 rounded-full bg-green-500 flex items-center justify-center text-black font-extrabold">
-                ✓
-              </div>
-            </div>
-
-            <div className="mt-5 flex justify-center">
-              <div className="px-5 py-2 rounded-full border border-green-400/30 bg-green-500/10 text-green-200 font-semibold tracking-widest text-xs">
-                SYSTEM ONLINE
-              </div>
-            </div>
-          </div>
-
-          <h1 className="mt-8 text-3xl font-extrabold leading-tight">
-            Tudo Pronto! Sua operação agora é inteligente.
-          </h1>
-
-          <p className="mt-3 text-white/60">
-            A Dale Vision está conectada e começando a processar dados em tempo real.
-          </p>
-
-          <div className="mt-8 space-y-3">
-              <button
-                onClick={() => navigate("/app/setup")}
-                className="w-full rounded-2xl border border-white/10 bg-white/5 p-4 text-left hover:bg-white/10"
-              >
-              <div className="flex items-center justify-between">
-                <div>
-                  <div className="font-semibold flex items-center gap-2">
-                    Continuar Setup Técnico <span className="inline-block h-2 w-2 rounded-full bg-green-400" />
-                  </div>
-                  <div className="text-sm text-white/60 mt-1">
-                   Os dados em tempo real do seu negócio.
-                  </div>
-                </div>
-                <div className="text-green-300 font-bold">ACESSAR →</div>
-              </div>
-            </button>
-
-            <button
-              onClick={() => navigate("/app/alert-rules")}
-              className="w-full rounded-2xl border border-white/10 bg-white/5 p-4 text-left hover:bg-white/10"
-            >
-              <div className="flex items-center justify-between gap-3">
-                <div>
-                  <div className="font-semibold">Configurar Alertas</div>
-                  <div className="text-sm text-white/60 mt-1">
-                    Configure suas primeiras notificações inteligentes.
-                  </div>
-                </div>
-                <div className="text-white/70 font-bold">›</div>
-              </div>
-            </button>
-          </div>
-
-          <p className="mt-6 text-center text-xs text-white/50">
-            Precisa de ajuda com a configuração? Fale com nosso time.
-          </p>
-        </div>
-      </div>
-
-      <style>{`
-        .confetti-piece {
-          border-radius: 2px;
-          background: linear-gradient(90deg, rgba(59,130,246,1), rgba(168,85,247,1));
-          animation-name: confetti-fall;
-          animation-timing-function: cubic-bezier(.2,.7,.2,1);
-          animation-fill-mode: forwards;
-        }
-
-        @keyframes confetti-fall {
-          0% {
-            transform: translateY(0) rotate(0deg);
-          }
-          100% {
-            transform: translateY(110vh) rotate(720deg);
-            opacity: 0;
-          }
-        }
-      `}</style>
-    </div>
-  )
-}
-```
-
-### frontend/src/pages/Onboarding/components/CamerasSetup.tsx
-
-```
-// frontend/src/pages/Onboarding/components/CamerasSetup.tsx
-import { useMemo, useState } from "react"
-
-export type CameraDraft = {
-  id: string
-  name: string
-  ip: string
-  rtspPort: string
-  httpPort: string
-  username: string
-  password: string
-  manufacturer: string
-  model: string
-  channel: string
-  streamType: "main" | "sub"
-  location: string
-  status: "online" | "offline"
-}
-
-const MANUFACTURERS = ["Intelbras", "Hikvision", "Dahua", "TP-Link", "Genérica (ONVIF)", "Outro"]
-const LOCATIONS = ["Entrada", "Saída", "Caixa", "Corredor", "Estoque", "Geral", "Outro"]
-
-function isProbablyIpOrHost(v: string) {
-  if (!v.trim()) return false
-  // aceita ip ou hostname simples (demo)
-  return /^[a-zA-Z0-9.\-]+$/.test(v.trim())
-}
-
-export default function CamerasSetup({
-  cameras,
-  onChange,
-  onPrev,
-  onNext,
-}: {
-  cameras: CameraDraft[]
-  onChange: (v: CameraDraft[]) => void
-  onPrev: () => void
-  onNext: () => void
-}) {
-  const [testing, setTesting] = useState(false)
-  const [touched, setTouched] = useState(false)
-
-  const [form, setForm] = useState({
-    name: "",
-    ip: "",
-    rtspPort: "554",
-    httpPort: "80",
-    username: "admin",
-    password: "",
-    manufacturer: "",
-    model: "",
-    channel: "1",
-    streamType: "main" as "main" | "sub",
-    location: "",
-  })
-
-  const errors = useMemo(() => {
-    const e: Record<string, string> = {}
-    if (cameras.length >= 3) e.limit = "Trial permite até 3 câmeras."
-    if (!isProbablyIpOrHost(form.ip)) e.ip = "Informe IP/host válido."
-    if (!form.username.trim()) e.username = "Informe usuário."
-    if (!form.password.trim()) e.password = "Informe senha."
-    if (!form.manufacturer) e.manufacturer = "Selecione o fabricante."
-    if (!form.location) e.location = "Selecione a localização."
-    if (!form.rtspPort.trim()) e.rtspPort = "Informe porta RTSP."
-    if (!form.httpPort.trim()) e.httpPort = "Informe porta HTTP."
-    return e
-  }, [form, cameras.length])
-
-  const canAdd = Object.keys(errors).length === 0
-
-  async function simulateTest() {
-    setTouched(true)
-    if (!isProbablyIpOrHost(form.ip) || !form.username.trim() || !form.password.trim()) return
-    setTesting(true)
-    await new Promise((r) => setTimeout(r, 1200))
-    setTesting(false)
-  }
-
-  async function addCamera() {
-    setTouched(true)
-    if (!canAdd) return
-
-    // simula teste antes de adicionar (para o demo)
-    setTesting(true)
-    await new Promise((r) => setTimeout(r, 900))
-    setTesting(false)
-
-    const cam: CameraDraft = {
-      id: String(Date.now()),
-      name: form.name.trim() || `Câmera ${cameras.length + 1}`,
-      ip: form.ip.trim(),
-      rtspPort: form.rtspPort.trim(),
-      httpPort: form.httpPort.trim(),
-      username: form.username.trim(),
-      password: form.password.trim(),
-      manufacturer: form.manufacturer,
-      model: form.model.trim(),
-      channel: form.channel.trim() || "1",
-      streamType: form.streamType,
-      location: form.location,
-      status: "online",
-    }
-
-    onChange([...cameras, cam])
-
-    setForm({
-      name: "",
-      ip: "",
-      rtspPort: "554",
-      httpPort: "80",
-      username: "admin",
-      password: "",
-      manufacturer: "",
-      model: "",
-      channel: "1",
-      streamType: "main",
-      location: "",
-    })
-    setTouched(false)
-  }
-
-  function removeCamera(id: string) {
-    onChange(cameras.filter((c) => c.id !== id))
-  }
-
-  return (
-    <div className="space-y-8">
-      <div>
-        <h3 className="text-xl sm:text-2xl font-extrabold">Conectar suas Câmeras</h3>
-        <p className="text-white/60 mt-1">
-          Para ativar alertas, precisamos das credenciais de acesso (RTSP/ONVIF).
-        </p>
-      </div>
-
-      {/* Guia */}
-      <div className="rounded-2xl border border-white/10 bg-white/5 p-6 space-y-3">
-        <div className="font-semibold">O que precisamos para conectar (piloto)</div>
-
-        <div className="grid grid-cols-1 md:grid-cols-2 gap-3 text-sm text-white/70">
-          <div className="rounded-xl border border-white/10 bg-black/20 p-4">
-            <div className="font-semibold text-white mb-2">Credenciais</div>
-            <ul className="list-disc pl-5 space-y-1">
-              <li>IP/Host da câmera</li>
-              <li>Usuário e senha</li>
-              <li>Porta RTSP (geralmente 554)</li>
-              <li>Porta HTTP (80/8080)</li>
-            </ul>
-          </div>
-
-          <div className="rounded-xl border border-white/10 bg-black/20 p-4">
-            <div className="font-semibold text-white mb-2">Detalhes técnicos</div>
-            <ul className="list-disc pl-5 space-y-1">
-              <li>Fabricante (Intelbras / Hikvision / Dahua...)</li>
-              <li>Modelo (opcional, ajuda suporte)</li>
-              <li>Canal (DVR/NVR: 1,2,3...)</li>
-              <li>Stream (main/sub)</li>
-            </ul>
-          </div>
-        </div>
-
-        <div className="text-xs text-white/50">
-          No trial: <span className="font-semibold text-white">até 3 câmeras</span>. Depois dá para expandir.
-        </div>
-      </div>
-
-      {/* Form */}
-      <div className="rounded-2xl border border-white/10 bg-white/5 p-6 space-y-4">
-        <div className="font-semibold">Adicionar câmera</div>
-
-        {errors.limit && <p className="text-xs text-yellow-300">{errors.limit}</p>}
-
-        <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
-          <div>
-            <label className="text-sm text-white/80">Nome (opcional)</label>
-            <input
-              className="mt-2 w-full rounded-xl border border-white/10 bg-black/20 px-4 py-3 outline-none"
-              placeholder="Ex: Entrada"
-              value={form.name}
-              onChange={(e) => setForm((p) => ({ ...p, name: e.target.value }))}
-            />
-          </div>
-
-          <div>
-            <label className="text-sm text-white/80">IP/Host *</label>
-            <input
-              className="mt-2 w-full rounded-xl border border-white/10 bg-black/20 px-4 py-3 outline-none"
-              placeholder="Ex: 192.168.1.100"
-              value={form.ip}
-              onChange={(e) => setForm((p) => ({ ...p, ip: e.target.value }))}
-            />
-            {touched && errors.ip && <p className="mt-2 text-xs text-red-300">{errors.ip}</p>}
-          </div>
-
-          <div>
-            <label className="text-sm text-white/80">Porta RTSP *</label>
-            <input
-              className="mt-2 w-full rounded-xl border border-white/10 bg-black/20 px-4 py-3 outline-none"
-              placeholder="554"
-              value={form.rtspPort}
-              onChange={(e) => setForm((p) => ({ ...p, rtspPort: e.target.value }))}
-            />
-          </div>
-
-          <div>
-            <label className="text-sm text-white/80">Porta HTTP *</label>
-            <input
-              className="mt-2 w-full rounded-xl border border-white/10 bg-black/20 px-4 py-3 outline-none"
-              placeholder="80"
-              value={form.httpPort}
-              onChange={(e) => setForm((p) => ({ ...p, httpPort: e.target.value }))}
-            />
-          </div>
-
-          <div>
-            <label className="text-sm text-white/80">Usuário *</label>
-            <input
-              className="mt-2 w-full rounded-xl border border-white/10 bg-black/20 px-4 py-3 outline-none"
-              placeholder="admin"
-              value={form.username}
-
-<<truncated>>
-```
-
-### frontend/src/pages/Onboarding/components/EmployeesSetup.tsx
-
-```
-// frontend/src/pages/Onboarding/components/EmployeesSetup.tsx
-import { useMemo, useState } from "react"
-
-export type EmployeeDraft = {
-  id: string
-  name: string
-  role: string
-  email: string
-}
-
-const ROLES = ["Gerente", "Caixa", "Vendedor", "Segurança", "Estoque", "Outro"]
-
-function isValidEmail(email: string) {
-  return /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email.trim())
-}
-
-export default function EmployeesSetup({
-  employees,
-  onChange,
-  onPrev,
-  onNext,
-}: {
-  employees: EmployeeDraft[]
-  onChange: (v: EmployeeDraft[]) => void
-  onPrev: () => void
-  onNext: () => void
-}) {
-  const [name, setName] = useState("")
-  const [role, setRole] = useState("")
-  const [email, setEmail] = useState("")
-  const [touched, setTouched] = useState(false)
-
-  const errors = useMemo(() => {
-    const e: Record<string, string> = {}
-    if (!name.trim()) e.name = "Informe o nome."
-    if (!role) e.role = "Selecione o cargo."
-    if (!email.trim() || !isValidEmail(email)) e.email = "Informe um e-mail válido."
-    if (employees.length >= 5) e.limit = "Trial permite até 5 funcionários."
-    return e
-  }, [name, role, email, employees.length])
-
-  const canAdd = Object.keys(errors).length === 0
-
-  function addEmployee() {
-    setTouched(true)
-    if (!canAdd) return
-    const next: EmployeeDraft = {
-      id: String(Date.now()),
-      name: name.trim(),
-      role,
-      email: email.trim(),
-    }
-    onChange([...employees, next])
-    setName("")
-    setRole("")
-    setEmail("")
-    setTouched(false)
-  }
-
-  function removeEmployee(id: string) {
-    onChange(employees.filter((e) => e.id !== id))
-  }
-
-  return (
-    <div className="space-y-8">
-      <div>
-        <h3 className="text-xl sm:text-2xl font-extrabold">Cadastrar Funcionários</h3>
-        <p className="text-white/60 mt-1">No trial, recomendamos cadastrar só o essencial (até 5).</p>
-      </div>
-
-      <div className="rounded-2xl border border-white/10 bg-white/5 p-6 space-y-4">
-        <h4 className="font-semibold">Adicionar Funcionário</h4>
-
-        <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
-          <div>
-            <label className="text-sm text-white/80">Nome Completo *</label>
-            <input
-              className="mt-2 w-full rounded-xl border border-white/10 bg-black/20 px-4 py-3 outline-none"
-              placeholder="Ex: João Silva"
-              value={name}
-              onChange={(e) => setName(e.target.value)}
-            />
-            {touched && errors.name && <p className="mt-2 text-xs text-red-300">{errors.name}</p>}
-          </div>
-
-          <div>
-            <label className="text-sm text-white/80">Cargo *</label>
-            <select
-              className="mt-2 w-full rounded-xl border border-white/10 bg-black/20 px-4 py-3 outline-none"
-              value={role}
-              onChange={(e) => setRole(e.target.value)}
-            >
-              <option value="">Selecione...</option>
-              {ROLES.map((r) => (
-                <option key={r} value={r}>
-                  {r}
-                </option>
-              ))}
-            </select>
-            {touched && errors.role && <p className="mt-2 text-xs text-red-300">{errors.role}</p>}
-          </div>
-
-          <div>
-            <label className="text-sm text-white/80">E-mail *</label>
-            <input
-              className="mt-2 w-full rounded-xl border border-white/10 bg-black/20 px-4 py-3 outline-none"
-              placeholder="email@exemplo.com"
-              value={email}
-              onChange={(e) => setEmail(e.target.value)}
-            />
-            {touched && errors.email && <p className="mt-2 text-xs text-red-300">{errors.email}</p>}
-          </div>
-        </div>
-
-        {errors.limit && <p className="text-xs text-yellow-300">{errors.limit}</p>}
-
-        <button
-          onClick={addEmployee}
-          disabled={!canAdd}
-          className="w-full rounded-2xl border border-blue-500/30 bg-blue-500/10 py-3 font-semibold text-blue-200 hover:bg-blue-500/15 disabled:opacity-60"
-        >
-          + Adicionar Funcionário
-        </button>
-      </div>
-
-      {/* Lista */}
-      {employees.length > 0 && (
-        <div className="rounded-2xl border border-white/10 bg-white/5 overflow-hidden">
-          <div className="px-6 py-4 border-b border-white/10 flex items-center justify-between">
-            <div className="font-semibold">Equipe registrada</div>
-            <div className="text-sm text-white/60">{employees.length}/5</div>
-          </div>
-
-          <div className="divide-y divide-white/10">
-            {employees.map((e) => (
-              <div key={e.id} className="px-6 py-4 flex items-center justify-between gap-4">
-                <div>
-                  <div className="font-semibold">{e.name}</div>
-                  <div className="text-sm text-white/60">
-                    {e.role} • {e.email}
-                  </div>
-                </div>
-
-                <button
-                  onClick={() => removeEmployee(e.id)}
-                  className="rounded-xl border border-red-500/30 bg-red-500/10 px-3 py-2 text-sm text-red-200 hover:bg-red-500/15"
-                >
-                  🗑️
-                </button>
-              </div>
-            ))}
-          </div>
-        </div>
-      )}
-
-      <div className="flex flex-col sm:flex-row gap-3 pt-2">
-        <button
-          onClick={onPrev}
-          className="w-full sm:w-1/2 rounded-2xl border border-white/10 bg-white/5 py-3 font-semibold hover:bg-white/10"
-        >
-          ← Voltar
-        </button>
-        <button
-          onClick={onNext}
-          className="w-full sm:w-1/2 rounded-2xl bg-blue-600 py-3 font-semibold hover:bg-blue-500"
-        >
-          Próximo →
-        </button>
-      </div>
-    </div>
-  )
-}
-```
-
-### frontend/src/pages/Onboarding/components/OnboardingProgress.tsx
-
-```
-// frontend/src/pages/Onboarding/components/OnboardingProgress.tsx
-interface Props {
-  currentStep: number
-  totalSteps: number
-}
-
-export default function OnboardingProgress({ currentStep, totalSteps }: Props) {
-  const steps = ["Lojas", "Funcionários", "Câmeras"]
-  const pct = Math.round((currentStep / totalSteps) * 100)
-
-  return (
-    <div className="space-y-4">
-      <div className="flex items-end justify-between gap-4">
-        <div>
-          <h2 className="text-2xl sm:text-3xl font-extrabold">
-            Configurar suas Lojas
-          </h2>
-          <p className="text-white/60 text-sm mt-1">
-            Passo {currentStep} de {totalSteps}
-          </p>
-        </div>
-
-        <div className="text-sm text-white/60">{pct}% completo</div>
-      </div>
-
-      <div className="w-full h-2 rounded-full overflow-hidden border border-white/10 bg-white/5">
-        <div
-          className="h-full bg-gradient-to-r from-blue-500 to-purple-500 transition-all duration-300"
-          style={{ width: `${(currentStep / totalSteps) * 100}%` }}
-        />
-      </div>
-
-      <div className="grid grid-cols-3 gap-4 mt-6">
-        {steps.map((label, idx) => {
-          const n = idx + 1
-          const active = n <= currentStep
-          return (
-            <div key={label} className="flex flex-col items-center gap-2">
-              <div
-                className={[
-                  "w-10 h-10 rounded-full flex items-center justify-center font-bold",
-                  active
-                    ? "bg-gradient-to-r from-blue-500 to-purple-500 text-white shadow-lg shadow-blue-500/25"
-                    : "bg-white/5 text-white/50 border border-white/10",
-                ].join(" ")}
-              >
-                {n}
-              </div>
-              <p className={active ? "text-sm font-medium" : "text-sm text-white/50"}>
-                {label}
-              </p>
-            </div>
-          )
-        })}
-      </div>
-
-      <div className="mt-2 rounded-2xl border border-white/10 bg-white/5 p-4">
-        <p className="text-sm text-white/70">
-          <span className="font-semibold text-white">Trial 48h:</span>{" "}
-          1 loja • até 3 câmeras • até 5 funcionários. Você pode ajustar depois.
-        </p>
-      </div>
-    </div>
-  )
-}
-```
-
-### frontend/src/pages/Onboarding/components/StoresSetup.tsx
-
-```
-// frontend/src/pages/Onboarding/components/StoresSetup.tsx
-import { useMemo, useState } from "react"
-
-export type StoreDraft = {
-  name: string
-  businessType: string
-  street: string
-  number: string
-  complement: string
-  city: string
-  state: string
-  zip: string
-  openTime: string
-  closeTime: string
-  employeesCount: number
-  camerasCount: number
-  pos: string
-}
-
-const BUSINESS_TYPES = [
-  "Supermercado",
-  "Farmácia",
-  "Loja de Roupas",
-  "Lavanderia",
-  "Cafeteria",
-  "Outro",
-]
-
-const POS_OPTIONS = ["Nenhuma", "TEF", "Vindi", "ERP/POS próprio", "Outro"]
-
-function clamp(n: number, min: number, max: number) {
-  return Math.max(min, Math.min(max, n))
-}
-
-export default function StoresSetup({
-  value,
-  onChange,
-  onNext,
-}: {
-  value: StoreDraft | null
-  onChange: (v: StoreDraft) => void
-  onNext: () => void
-}) {
-  const [touched, setTouched] = useState(false)
-
-  const form = value ?? {
-    name: "",
-    businessType: "",
-    street: "",
-    number: "",
-    complement: "",
-    city: "",
-    state: "",
-    zip: "",
-    openTime: "",
-    closeTime: "",
-    employeesCount: 1,
-    camerasCount: 1,
-    pos: "",
-  }
-
-  const errors = useMemo(() => {
-    const e: Record<string, string> = {}
-    if (!form.name.trim()) e.name = "Informe o nome da loja."
-    if (!form.businessType) e.businessType = "Selecione o tipo de negócio."
-    if (!form.street.trim()) e.street = "Informe a rua."
-    if (!form.number.trim()) e.number = "Informe o número."
-    if (!form.city.trim()) e.city = "Informe a cidade."
-    if (!form.state.trim() || form.state.trim().length !== 2) e.state = "UF com 2 letras."
-    if (!form.zip.trim()) e.zip = "Informe o CEP."
-    if (!form.openTime) e.openTime = "Informe horário de abertura."
-    if (!form.closeTime) e.closeTime = "Informe horário de fechamento."
-    if (!form.employeesCount || form.employeesCount < 1) e.employeesCount = "Informe funcionários."
-    if (!form.camerasCount || form.camerasCount < 1) e.camerasCount = "Informe câmeras."
-    if (form.employeesCount > 5) e.employeesCount = "Trial permite até 5 funcionários."
-    if (form.camerasCount > 3) e.camerasCount = "Trial permite até 3 câmeras."
-    return e
-  }, [form])
-
-  const canNext = Object.keys(errors).length === 0
-
-  function set<K extends keyof StoreDraft>(key: K, val: StoreDraft[K]) {
-    const next = { ...form, [key]: val }
-    onChange(next)
-  }
-
-  function handleNext() {
-    setTouched(true)
-    if (!canNext) return
-    onNext()
-  }
-
-  return (
-    <div className="space-y-8">
-      <div>
-        <h3 className="text-xl sm:text-2xl font-extrabold">Cadastre sua primeira loja</h3>
-        <p className="text-white/60 mt-1">Informações básicas para começarmos o piloto.</p>
-      </div>
-
-      <div className="grid grid-cols-1 lg:grid-cols-3 gap-8">
-        {/* Form */}
-        <div className="lg:col-span-2 space-y-5 rounded-2xl border border-white/10 bg-white/5 p-6">
-          <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
-            <Field label="Nome da Loja *" error={touched ? errors.name : ""}>
-              <input
-                className="w-full rounded-xl border border-white/10 bg-black/20 px-4 py-3 outline-none placeholder:text-white/30"
-                placeholder="Ex: Gelateria Centro"
-                value={form.name}
-                onChange={(e) => set("name", e.target.value)}
-              />
-            </Field>
-
-            <Field label="Tipo de Negócio *" error={touched ? errors.businessType : ""}>
-              <select
-                className="w-full rounded-xl border border-white/10 bg-black/20 px-4 py-3 outline-none"
-                value={form.businessType}
-                onChange={(e) => set("businessType", e.target.value)}
-              >
-                <option value="">Selecione...</option>
-                {BUSINESS_TYPES.map((b) => (
-                  <option key={b} value={b}>
-                    {b}
-                  </option>
-                ))}
-              </select>
-            </Field>
-
-            <Field label="Rua *" error={touched ? errors.street : ""}>
-              <input
-                className="w-full rounded-xl border border-white/10 bg-black/20 px-4 py-3 outline-none"
-                placeholder="Nome da rua"
-                value={form.street}
-                onChange={(e) => set("street", e.target.value)}
-              />
-            </Field>
-
-            <Field label="Nº *" error={touched ? errors.number : ""}>
-              <input
-                className="w-full rounded-xl border border-white/10 bg-black/20 px-4 py-3 outline-none"
-                placeholder="123"
-                value={form.number}
-                onChange={(e) => set("number", e.target.value)}
-              />
-            </Field>
-
-            <div className="sm:col-span-2">
-              <Field label="Complemento">
-                <input
-                  className="w-full rounded-xl border border-white/10 bg-black/20 px-4 py-3 outline-none"
-                  placeholder="Apt, sala, etc."
-                  value={form.complement}
-                  onChange={(e) => set("complement", e.target.value)}
-                />
-              </Field>
-            </div>
-
-            <Field label="Cidade *" error={touched ? errors.city : ""}>
-              <input
-                className="w-full rounded-xl border border-white/10 bg-black/20 px-4 py-3 outline-none"
-                placeholder="São Paulo"
-                value={form.city}
-                onChange={(e) => set("city", e.target.value)}
-              />
-            </Field>
-
-            <Field label="Estado (UF) *" error={touched ? errors.state : ""}>
-              <input
-                className="w-full rounded-xl border border-white/10 bg-black/20 px-4 py-3 outline-none uppercase"
-                placeholder="SP"
-                maxLength={2}
-                value={form.state}
-                onChange={(e) => set("state", e.target.value.toUpperCase())}
-              />
-            </Field>
-
-            <Field label="CEP *" error={touched ? errors.zip : ""}>
-              <input
-                className="w-full rounded-xl border border-white/10 bg-black/20 px-4 py-3 outline-none"
-                placeholder="01000-000"
-                value={form.zip}
-                onChange={(e) => set("zip", e.target.value)}
-              />
-            </Field>
-
-            <Field label="Abre às *" error={touched ? errors.openTime : ""}>
-              <input
-                type="time"
-                className="w-full rounded-xl border border-white/10 bg-black/20 px-4 py-3 outline-none"
-                value={form.openTime}
-                onChange={(e) => set("openTime", e.target.value)}
-              />
-            </Field>
-
-            <Field label="Fecha às *" error={touched ? errors.closeTime : ""}>
-              <input
-                type="time"
-                className="w-full rounded-xl border border-white/10 bg-black/20 px-4 py-3 outline-none"
-                value={form.closeTime}
-                onChange={(e) => set("closeTime", e.target.value)}
-              />
-            </Field>
-
-            <Field label="Nº de Funcionários * (máx. 5)" error={touched ? errors.employeesCount : ""}>
-              <input
-                type="number"
-                min={1}
-                max={5}
-                className="w-full rounded-xl border border-white/10 bg-black/20 px-4 py-3 outline-none"
-                value={form.employeesCount}
-                onChange={(e) => set("employeesCount", clamp(Number(e.target.value || 1), 1, 5))}
-              />
-              <p className="mt-2 text-xs text-white/50">No trial, limitamos a 5 para setup rápido.</p>
-            </Field>
-
-            <Field label="Nº de Câmeras * (1–3)" error={touched ? errors.camerasCount : ""}>
-              <input
-                type="number"
-                min={1}
-                max={3}
-                className="w-full rounded-xl border border-white/10 bg-black/20 px-4 py-3 outline-none"
-
-<<truncated>>
-```
-
-### frontend/src/pages/Profile/Profile.tsx
-
-```
-import { useAuth } from "../../contexts/AuthContext"
-
-export default function ProfilePage() {
-  const { user } = useAuth()
-
-  return (
-    <div className="max-w-4xl mx-auto">
-      <div className="flex items-start justify-between gap-4">
-        <div>
-          <h1 className="text-2xl font-bold text-gray-900">Meu Perfil</h1>
-          <p className="text-gray-600">Dados da sua conta e preferências</p>
-        </div>
-      </div>
-
-      <div className="mt-6 grid gap-4 sm:grid-cols-2">
-        <div className="rounded-xl border bg-white p-5">
-          <div className="text-sm text-gray-500">Nome</div>
-          <div className="mt-1 font-semibold text-gray-900">
-            {user?.first_name || user?.username || "-"}
-          </div>
-        </div>
-
-        <div className="rounded-xl border bg-white p-5">
-          <div className="text-sm text-gray-500">Email</div>
-          <div className="mt-1 font-semibold text-gray-900">
-            {user?.email || "-"}
-          </div>
-        </div>
-
-        <div className="rounded-xl border bg-white p-5 sm:col-span-2">
-          <div className="text-sm text-gray-500">Plano</div>
-          <div className="mt-1 font-semibold text-gray-900">Trial</div>
-          <div className="mt-2 text-sm text-gray-600">
-            Em breve: gerenciar plano, cobrança e usuários.
-          </div>
-        </div>
-      </div>
-    </div>
-  )
-}
-```
-
-### frontend/src/pages/Register/Register.tsx
-
-```
-// frontend/src/pages/Register/Register.tsx
-import { useMemo, useState } from "react"
-import { Link, useNavigate } from "react-router-dom"
-
-function isValidEmail(email: string) {
-  return /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email.trim())
-}
-
-export default function Register() {
-  const navigate = useNavigate()
-  const [loading, setLoading] = useState(false)
-
-  const [fullName, setFullName] = useState("")
-  const [email, setEmail] = useState("")
-  const [company, setCompany] = useState("")
-  const [password, setPassword] = useState("")
-  const [showPass, setShowPass] = useState(false)
-
-  const errors = useMemo(() => {
-    const e: Record<string, string> = {}
-    if (!fullName.trim()) e.fullName = "Informe seu nome completo."
-    if (!email.trim() || !isValidEmail(email)) e.email = "Informe um e-mail válido."
-    if (!company.trim()) e.company = "Informe o nome da empresa."
-    if (!password || password.length < 8) e.password = "Senha precisa ter no mínimo 8 caracteres."
-    return e
-  }, [fullName, email, company, password])
-
-  const canSubmit = Object.keys(errors).length === 0
-
-  async function handleSubmit() {
-    if (!canSubmit) return
-    setLoading(true)
-
-    // ✅ Sem backend: simula criação de conta
-    await new Promise((r) => setTimeout(r, 700))
-
-    // Você pode salvar no localStorage só pra demo:
-    localStorage.setItem(
-      "demo_user",
-      JSON.stringify({
-        fullName: fullName.trim(),
-        email: email.trim(),
-        company: company.trim(),
-      })
-    )
-
-    setLoading(false)
-    navigate("/onboarding")
-  }
-
-  return (
-    <div className="min-h-screen w-full bg-[#070B18] text-white flex items-center justify-center px-4 py-10">
-      <div className="w-full max-w-md">
-        <div className="rounded-3xl border border-white/10 bg-gradient-to-b from-white/5 to-transparent p-6 shadow-[0_20px_80px_rgba(0,0,0,0.55)]">
-          {/* Header */}
-          <div className="flex items-center gap-3">
-            <div className="h-12 w-12 rounded-2xl bg-gradient-to-br from-blue-500 to-cyan-400 flex items-center justify-center shadow-lg">
-              <span className="text-xl">👁️</span>
-            </div>
-            <div>
-              <div className="font-semibold text-lg">Dale Vision</div>
-              <div className="text-xs text-white/60">Setup rápido • Trial 48h</div>
-            </div>
-          </div>
-
-          <h1 className="mt-6 text-3xl font-extrabold leading-tight">
-            Assuma o controle total da sua operação com IA
-          </h1>
-          <p className="mt-3 text-white/60">
-            Inicie sua jornada na plataforma de gestão multi-lojas mais inteligente do varejo.
-          </p>
-
-          {/* Form */}
-          <div className="mt-8 space-y-5">
-            <div>
-              <label className="text-sm text-white/80">Nome Completo</label>
-              <div className="mt-2 flex items-center gap-2 rounded-2xl border border-white/10 bg-white/5 px-4 py-3">
-                <span className="text-white/60">👤</span>
-                <input
-                  className="w-full bg-transparent outline-none placeholder:text-white/30"
-                  placeholder="Ex: João Silva"
-                  value={fullName}
-                  onChange={(e) => setFullName(e.target.value)}
-                />
-              </div>
-              {errors.fullName && <p className="mt-2 text-xs text-red-300">{errors.fullName}</p>}
-            </div>
-
-            <div>
-              <label className="text-sm text-white/80">E-mail Corporativo</label>
-              <div className="mt-2 flex items-center gap-2 rounded-2xl border border-white/10 bg-white/5 px-4 py-3">
-                <span className="text-white/60">✉️</span>
-                <input
-                  className="w-full bg-transparent outline-none placeholder:text-white/30"
-                  placeholder="nome@empresa.com.br"
-                  value={email}
-                  onChange={(e) => setEmail(e.target.value)}
-                />
-              </div>
-              {errors.email && <p className="mt-2 text-xs text-red-300">{errors.email}</p>}
-            </div>
-
-            <div>
-              <label className="text-sm text-white/80">Nome da Empresa</label>
-              <div className="mt-2 flex items-center gap-2 rounded-2xl border border-white/10 bg-white/5 px-4 py-3">
-                <span className="text-white/60">🏢</span>
-                <input
-                  className="w-full bg-transparent outline-none placeholder:text-white/30"
-                  placeholder="Sua rede de lojas"
-                  value={company}
-                  onChange={(e) => setCompany(e.target.value)}
-                />
-              </div>
-              {errors.company && <p className="mt-2 text-xs text-red-300">{errors.company}</p>}
-            </div>
-
-            <div>
-              <label className="text-sm text-white/80">Senha</label>
-              <div className="mt-2 flex items-center gap-2 rounded-2xl border border-white/10 bg-white/5 px-4 py-3">
+                  <th scope="col" className="t
 
 <<SNAPSHOT TRUNCATED: max chars reached>>
