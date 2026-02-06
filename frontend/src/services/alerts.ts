@@ -67,6 +67,7 @@ export interface NotificationLog {
   status: "sent" | "queued" | "failed" | "suppressed"
   error?: string | null
   provider_message_id?: string | null
+  receipt_id?: string | null
   sent_at: string
 }
 
@@ -191,6 +192,9 @@ export const alertsService = {
   async listEvents(params?: {
     store_id?: string
     status?: "open" | "resolved" | "ignored"
+    severity?: "critical" | "warning" | "info"
+    occurred_from?: string
+    occurred_to?: string
   }): Promise<DetectionEvent[]> {
     const res = await api.get("/alerts/events/", { params })
     return normalizeArray<DetectionEvent>(res.data).map((event: any) => ({

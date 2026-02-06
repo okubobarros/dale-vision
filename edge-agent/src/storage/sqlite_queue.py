@@ -2,12 +2,14 @@ import os
 import sqlite3
 import json
 import time
+import threading
 from typing import Any, Dict, List, Tuple
 
 
 class SqliteQueue:
     def __init__(self, path: str):
         self.path = path
+        self._lock = threading.Lock()
 
         # garante que o diretório existe (Windows)
         db_dir = os.path.dirname(os.path.abspath(self.path))
@@ -22,23 +24,24 @@ class SqliteQueue:
         """
         Cria a tabela de outbox (offline-first).
         """
-        self._conn.execute(
-            """
-            CREATE TABLE IF NOT EXISTS outbox (
-                id INTEGER PRIMARY KEY AUTOINCREMENT,
-                receipt_id TEXT UNIQUE,
-                payload_json TEXT NOT NULL,
-                attempts INTEGER DEFAULT 0,
-                last_error TEXT,
-                created_at REAL NOT NULL,
-                next_attempt_at REAL DEFAULT 0
+        with self._lock:
+            self._conn.execute(
+                """
+                CREATE TABLE IF NOT EXISTS outbox (
+                    id INTEGER PRIMARY KEY AUTOINCREMENT,
+                    receipt_id TEXT UNIQUE,
+                    payload_json TEXT NOT NULL,
+                    attempts INTEGER DEFAULT 0,
+                    last_error TEXT,
+                    created_at REAL NOT NULL,
+                    next_attempt_at REAL DEFAULT 0
+                )
+                """
             )
-            """
-        )
-        self._conn.execute(
-            "CREATE INDEX IF NOT EXISTS idx_outbox_next_attempt ON outbox(next_attempt_at)"
-        )
-        self._conn.commit()
+            self._conn.execute(
+                "CREATE INDEX IF NOT EXISTS idx_outbox_next_attempt ON outbox(next_attempt_at)"
+            )
+            self._conn.commit()
 
     def enqueue(self, payload: Dict[str, Any]) -> bool:
         """
@@ -47,19 +50,20 @@ class SqliteQueue:
         """
         try:
             receipt_id = payload["receipt_id"]
-            self._conn.execute(
-                """
-                INSERT OR IGNORE INTO outbox
-                (receipt_id, payload_json, created_at, next_attempt_at)
-                VALUES (?, ?, ?, 0)
-                """,
-                (
-                    receipt_id,
-                    json.dumps(payload, ensure_ascii=False),
-                    time.time(),
-                ),
-            )
-            self._conn.commit()
+            with self._lock:
+                self._conn.execute(
+                    """
+                    INSERT OR IGNORE INTO outbox
+                    (receipt_id, payload_json, created_at, next_attempt_at)
+                    VALUES (?, ?, ?, 0)
+                    """,
+                    (
+                        receipt_id,
+                        json.dumps(payload, ensure_ascii=False),
+                        time.time(),
+                    ),
+                )
+                self._conn.commit()
             return True
         except Exception as e:
             print("❌ enqueue error:", e)
@@ -70,16 +74,17 @@ class SqliteQueue:
         Retorna eventos prontos para envio.
         """
         now = time.time()
-        rows = self._conn.execute(
-            """
-            SELECT id, receipt_id, payload_json, attempts
-            FROM outbox
-            WHERE next_attempt_at <= ?
-            ORDER BY id ASC
-            LIMIT ?
-            """,
-            (now, limit),
-        ).fetchall()
+        with self._lock:
+            rows = self._conn.execute(
+                """
+                SELECT id, receipt_id, payload_json, attempts
+                FROM outbox
+                WHERE next_attempt_at <= ?
+                ORDER BY id ASC
+                LIMIT ?
+                """,
+                (now, limit),
+            ).fetchall()
 
         out = []
         for row in rows:
@@ -94,17 +99,19 @@ class SqliteQueue:
         return out
 
     def mark_sent(self, row_id: int):
-        self._conn.execute("DELETE FROM outbox WHERE id = ?", (row_id,))
-        self._conn.commit()
+        with self._lock:
+            self._conn.execute("DELETE FROM outbox WHERE id = ?", (row_id,))
+            self._conn.commit()
 
     def mark_failed(self, row_id: int, error: str, attempts: int, backoff_seconds: int):
         next_at = time.time() + backoff_seconds
-        self._conn.execute(
-            """
-            UPDATE outbox
-            SET last_error = ?, attempts = ?, next_attempt_at = ?
-            WHERE id = ?
-            """,
-            (error[:1000], attempts, next_at, row_id),
-        )
-        self._conn.commit()
+        with self._lock:
+            self._conn.execute(
+                """
+                UPDATE outbox
+                SET last_error = ?, attempts = ?, next_attempt_at = ?
+                WHERE id = ?
+                """,
+                (error[:1000], attempts, next_at, row_id),
+            )
+            self._conn.commit()

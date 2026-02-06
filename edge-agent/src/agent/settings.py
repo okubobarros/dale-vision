@@ -30,6 +30,7 @@ class Settings:
     buffer_sqlite_path: str
     max_queue_size: int
     log_level: str
+    vision_enabled: bool
 
     yolo_weights_path: str
     conf: float
@@ -46,14 +47,26 @@ def _env_override(d: Dict[str, Any]) -> Dict[str, Any]:
     """
     # mantenha simples no v1; expanda conforme precisar
     base = os.getenv("EDGE_CLOUD_BASE_URL")
-    token = os.getenv("EDGE_CLOUD_TOKEN")
+    edge_token = os.getenv("EDGE_TOKEN")
+    token = edge_token or os.getenv("EDGE_CLOUD_TOKEN")
     heartbeat = os.getenv("HEARTBEAT_INTERVAL_SECONDS")
+    vision_env = os.getenv("EDGE_VISION_ENABLED")
+    vision_enabled = None
+    if vision_env is not None:
+        v = vision_env.strip().lower()
+        if v in ("1", "true", "yes", "y", "on"):
+            vision_enabled = True
+        elif v in ("0", "false", "no", "n", "off"):
+            vision_enabled = False
     if base:
         d.setdefault("cloud", {})["base_url"] = base
     if token:
-        d.setdefault("cloud", {})["token"] = token
+        d.setdefault("cloud", {})
+        d["cloud"]["token"] = token
     if heartbeat:
         d.setdefault("cloud", {})["heartbeat_interval_seconds"] = int(heartbeat)
+    if vision_enabled is not None:
+        d.setdefault("runtime", {})["vision_enabled"] = vision_enabled
     return d
 
 
@@ -96,6 +109,11 @@ def load_settings(path: str) -> Settings:
         buffer_sqlite_path=str(runtime.get("buffer_sqlite_path", "./data/edge_queue.db")),
         max_queue_size=int(runtime.get("max_queue_size", 50000)),
         log_level=str(runtime.get("log_level", "INFO")),
+        vision_enabled=(
+            str(runtime.get("vision_enabled", True)).strip().lower() in ("1", "true", "yes", "y", "on")
+            if isinstance(runtime.get("vision_enabled", True), str)
+            else bool(runtime.get("vision_enabled", True))
+        ),
 
         yolo_weights_path=str(model.get("yolo_weights_path", "./models/yolov8n.pt")),
         conf=float(model.get("conf", 0.35)),

@@ -1,7 +1,7 @@
 from django.core.exceptions import FieldError
+from django.db.utils import ProgrammingError, OperationalError
 from django.db.models import Max
 from django.db import connection
-from django.shortcuts import get_object_or_404
 from django.utils import timezone
 from rest_framework.permissions import IsAuthenticated
 from rest_framework.response import Response
@@ -42,13 +42,133 @@ def _user_has_store_access(user, store_id) -> bool:
 
 def classify_age(dt):
     if not dt:
-        return ("unknown", None, "no_heartbeat")
+        return ("offline", None, "no_heartbeat")
     age = (timezone.now() - dt).total_seconds()
     if age <= ONLINE_SEC:
         return ("online", int(age), "recent_heartbeat")
     if age <= DEGRADED_SEC:
         return ("degraded", int(age), "stale_heartbeat")
     return ("offline", int(age), "heartbeat_expired")
+
+
+def _empty_payload(store_id, reason: str, detail: str = None):
+    payload = {
+        "store_id": str(store_id),
+        "store_status": "offline",
+        "store_status_age_seconds": None,
+        "store_status_reason": reason,
+        "last_heartbeat": None,
+        "cameras_total": 0,
+        "cameras_online": 0,
+        "cameras_degraded": 0,
+        "cameras_offline": 0,
+        "cameras_unknown": 0,
+        "cameras": [],
+        "last_metric_bucket": None,
+        "last_error": None,
+    }
+    if detail:
+        payload["detail"] = detail
+    return payload
+
+
+def compute_store_edge_status_snapshot(store_id):
+    store = Store.objects.filter(id=store_id).first()
+    if not store:
+        return (_empty_payload(store_id, "store_not_found"), "store_not_found")
+
+    try:
+        try:
+            cameras = Camera.objects.filter(store_id=store_id, active=True).order_by("name")
+        except FieldError:
+            cameras = Camera.objects.filter(store_id=store_id).order_by("name")
+        cameras_out = []
+        cameras_total = 0
+        cameras_online = 0
+        cameras_degraded = 0
+        cameras_offline = 0
+        cameras_unknown = 0
+        camera_age_seconds = []
+        for cam in cameras:
+            cameras_total += 1
+            last_ts = getattr(cam, "last_seen_at", None)
+            if not last_ts:
+                last_log = _get_latest_camera_health(cam.id)
+                if last_log is not None:
+                    last_ts = getattr(last_log, "checked_at", None) or getattr(last_log, "created_at", None)
+
+            cam_status, cam_age_seconds, cam_reason = classify_age(last_ts)
+
+            if cam_status == "online":
+                cameras_online += 1
+            elif cam_status == "degraded":
+                cameras_degraded += 1
+            elif cam_status == "offline":
+                cameras_offline += 1
+            else:
+                cameras_unknown += 1
+
+            if cam_age_seconds is not None:
+                camera_age_seconds.append(cam_age_seconds)
+
+            cameras_out.append(
+                {
+                    "camera_id": str(cam.id),
+                    "external_id": cam.external_id,
+                    "name": cam.name,
+                    "camera_last_heartbeat_ts": last_ts.isoformat() if last_ts else None,
+                    "status": cam_status,
+                    "age_seconds": cam_age_seconds,
+                    "reason": cam_reason,
+                }
+            )
+
+        last_heartbeat = _get_last_heartbeat(store_id)
+        hb_status, hb_age_seconds, hb_reason = classify_age(last_heartbeat)
+        if cameras_total == 0:
+            store_status = "offline"
+            store_status_reason = "no_cameras"
+        elif cameras_online >= 1:
+            if cameras_online < cameras_total:
+                store_status = "degraded"
+                store_status_reason = "partial_camera_coverage"
+            else:
+                store_status = "online"
+                store_status_reason = "all_cameras_online"
+        else:
+            store_status = hb_status
+            store_status_reason = hb_reason
+
+        if last_heartbeat:
+            store_status_age_seconds = hb_age_seconds
+        else:
+            store_status_age_seconds = min(camera_age_seconds) if camera_age_seconds else None
+        last_error = _get_latest_error(store_id)
+        if not last_error:
+            last_error = store.last_error
+    except (ProgrammingError, OperationalError):
+        return (_empty_payload(store.id, "db_unavailable", "db_unavailable"), "db_unavailable")
+    except Exception:
+        return (_empty_payload(store.id, "unexpected_error", "unexpected_error"), "unexpected_error")
+
+    return (
+        {
+            "store_id": str(store.id),
+            "store_status": store_status,
+            "store_status_age_seconds": store_status_age_seconds,
+            "store_status_reason": store_status_reason,
+            "last_heartbeat": last_heartbeat.isoformat() if last_heartbeat else None,
+            "cameras_total": cameras_total,
+            "cameras_online": cameras_online,
+            "cameras_degraded": cameras_degraded,
+            "cameras_offline": cameras_offline,
+            "cameras_unknown": cameras_unknown,
+            "cameras": cameras_out,
+            "last_metric_bucket": None,
+            "last_error": last_error,
+        },
+        None,
+    )
 
 
 def _camera_active_column_exists():
@@ -90,6 +210,19 @@ def _get_last_heartbeat(store_id):
     camera_ids = _get_active_camera_ids(store_id)
     if not camera_ids:
         return None
+
+    try:
+        last_ts = (
+            Camera.objects
+            .filter(id__in=camera_ids)
+            .aggregate(last_ts=Max("last_seen_at"))
+            .get("last_ts")
+        )
+    except Exception:
+        last_ts = None
+
+    if last_ts:
+        return last_ts
 
     try:
         last_ts = (
@@ -198,96 +331,16 @@ class StoreEdgeStatusView(APIView):
     permission_classes = [IsAuthenticated]
 
     def get(self, request, store_id):
-        store = get_object_or_404(Store, id=store_id)
+        store = Store.objects.filter(id=store_id).first()
+        if not store:
+            payload, _reason = compute_store_edge_status_snapshot(store_id)
+            return Response(payload, status=200)
 
         if not _user_has_store_access(request.user, store_id):
-            return Response({"detail": "Você não tem acesso a esta store."}, status=403)
+            return Response(
+                _empty_payload(store.id, "forbidden", "Você não tem acesso a esta store."),
+                status=200,
+            )
 
-        try:
-            cameras = Camera.objects.filter(store_id=store_id, active=True).order_by("name")
-        except FieldError:
-            cameras = Camera.objects.filter(store_id=store_id).order_by("name")
-        cameras_out = []
-        cameras_total = 0
-        cameras_online = 0
-        cameras_degraded = 0
-        cameras_offline = 0
-        cameras_unknown = 0
-        camera_age_seconds = []
-        for cam in cameras:
-            cameras_total += 1
-            last_log = _get_latest_camera_health(cam.id)
-            last_ts = None
-            if last_log is not None:
-                last_ts = getattr(last_log, "checked_at", None) or getattr(last_log, "created_at", None)
-
-            cam_status, cam_age_seconds, cam_reason = classify_age(last_ts)
-
-            if cam_status == "online":
-                cameras_online += 1
-            elif cam_status == "degraded":
-                cameras_degraded += 1
-            elif cam_status == "offline":
-                cameras_offline += 1
-            else:
-                cameras_unknown += 1
-
-            if cam_age_seconds is not None:
-                camera_age_seconds.append(cam_age_seconds)
-
-            cameras_out.append(
-                {
-                    "camera_id": str(cam.id),
-                    "external_id": cam.external_id,
-                    "name": cam.name,
-                    "status": cam_status,
-                    "age_seconds": cam_age_seconds,
-                    "reason": cam_reason,
-                }
-        )
-
-        last_heartbeat = _get_last_heartbeat(store_id)
-        hb_status, hb_age_seconds, hb_reason = classify_age(last_heartbeat)
-        if cameras_total == 0:
-            store_status = "unknown"
-            store_status_reason = "no_heartbeat"
-        elif cameras_online >= 1:
-            if cameras_online < cameras_total:
-                store_status = "degraded"
-                store_status_reason = "partial_camera_coverage"
-            else:
-                store_status = "online"
-                store_status_reason = "has_online_camera"
-        else:
-            if last_heartbeat:
-                store_status = hb_status
-                store_status_reason = hb_reason
-            else:
-                store_status = "unknown"
-                store_status_reason = "no_heartbeat"
-
-        if last_heartbeat:
-            store_status_age_seconds = hb_age_seconds
-        else:
-            store_status_age_seconds = min(camera_age_seconds) if camera_age_seconds else None
-        last_error = _get_latest_error(store_id)
-        if not last_error:
-            last_error = store.last_error
-
-        return Response(
-            {
-                "store_id": str(store.id),
-                "store_status": store_status,
-                "store_status_age_seconds": store_status_age_seconds,
-                "store_status_reason": store_status_reason,
-                "last_heartbeat": last_heartbeat.isoformat() if last_heartbeat else None,
-                "cameras_total": cameras_total,
-                "cameras_online": cameras_online,
-                "cameras_degraded": cameras_degraded,
-                "cameras_offline": cameras_offline,
-                "cameras_unknown": cameras_unknown,
-                "cameras": cameras_out,
-                "last_metric_bucket": None,
-                "last_error": last_error,
-            }
-        )
+        payload, _reason = compute_store_edge_status_snapshot(store_id)
+        return Response(payload, status=200)

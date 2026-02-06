@@ -8,7 +8,7 @@ import {
   type Store,
   type StoreEdgeStatus,
 } from "../../services/stores"
-import { formatAge, formatReason } from "../../utils/edgeReasons"
+import { formatAge, formatReason, formatTimestamp } from "../../utils/edgeReasons"
 import {
   useAlertsEvents,
   useIgnoreEvent,
@@ -204,6 +204,8 @@ const Dashboard = () => {
     queryKey: ["store-edge-status", selectedStore],
     queryFn: () => storesService.getStoreEdgeStatus(selectedStore),
     enabled: selectedStore !== ALL_STORES_VALUE,
+    refetchInterval: 20000,
+    refetchIntervalInBackground: true,
   })
 
   const {
@@ -499,21 +501,21 @@ const Dashboard = () => {
                 <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3">
                   <div>
                     <h2 className="text-lg sm:text-xl font-bold text-gray-800">
-                      Loja Online/Offline
+                      Store Health
                     </h2>
-                  <p className="text-sm text-gray-500 mt-1">
-                    Último heartbeat há{" "}
-                    <span className="font-semibold text-gray-700">
-                      {edgeStatusLoading
-                        ? "Carregando..."
-                        : formatAge(edgeStatus?.store_status_age_seconds)}
-                    </span>
-                  </p>
-                  {edgeStatus?.store_status_reason && (
-                    <p className="text-xs text-gray-500 mt-1">
-                      {formatReason(edgeStatus.store_status_reason)}
+                    <p className="text-sm text-gray-500 mt-1">
+                      Último heartbeat há{" "}
+                      <span className="font-semibold text-gray-700">
+                        {edgeStatusLoading
+                          ? "Carregando..."
+                          : formatAge(edgeStatus?.store_status_age_seconds)}
+                      </span>
                     </p>
-                  )}
+                    {edgeStatus?.store_status_reason && (
+                      <p className="text-xs text-gray-500 mt-1">
+                        {formatReason(edgeStatus.store_status_reason)}
+                      </p>
+                    )}
                     {edgeStatus?.last_error && (
                       <p className="text-xs text-red-600 mt-2">
                         Erro: {edgeStatus.last_error}
@@ -525,6 +527,35 @@ const Dashboard = () => {
                   >
                     {edgeStatusLabel}
                   </span>
+                </div>
+
+                <div className="mt-4 grid grid-cols-1 sm:grid-cols-3 gap-3">
+                  <div className="rounded-lg border border-gray-100 px-3 py-2">
+                    <p className="text-xs text-gray-500">Câmeras online</p>
+                    <p className="text-sm font-semibold text-gray-800">
+                      {edgeStatusLoading
+                        ? "—"
+                        : `${edgeStatus?.cameras_online ?? 0}/${
+                            edgeStatus?.cameras_total ?? 0
+                          }`}
+                    </p>
+                  </div>
+                  <div className="rounded-lg border border-gray-100 px-3 py-2">
+                    <p className="text-xs text-gray-500">Reason</p>
+                    <p className="text-sm font-semibold text-gray-800">
+                      {edgeStatusLoading
+                        ? "—"
+                        : (formatReason(edgeStatus?.store_status_reason) ?? "—")}
+                    </p>
+                  </div>
+                  <div className="rounded-lg border border-gray-100 px-3 py-2">
+                    <p className="text-xs text-gray-500">Último heartbeat</p>
+                    <p className="text-sm font-semibold text-gray-800">
+                      {edgeStatusLoading
+                        ? "—"
+                        : formatTimestamp(edgeStatus?.last_heartbeat)}
+                    </p>
+                  </div>
                 </div>
 
                 <div className="mt-4">
@@ -548,6 +579,9 @@ const Dashboard = () => {
                               {cam.name}
                             </p>
                             <p className="text-xs text-gray-500">{cam.camera_id}</p>
+                            <p className="text-[11px] text-gray-400">
+                              Último: {formatTimestamp(cam.camera_last_heartbeat_ts)}
+                            </p>
                           </div>
                         <div className="flex flex-col items-end gap-1">
                           <span

@@ -5,7 +5,7 @@ import {
   type Store,
   type StoreEdgeStatus,
 } from "../../services/stores"
-import { formatAge, formatReason } from "../../utils/edgeReasons"
+import { formatAge, formatReason, formatTimestamp } from "../../utils/edgeReasons"
 
 const Cameras = () => {
   const [selectedStore, setSelectedStore] = useState("")
@@ -23,6 +23,8 @@ const Cameras = () => {
     queryKey: ["store-edge-status", selectedStore],
     queryFn: () => storesService.getStoreEdgeStatus(selectedStore),
     enabled: Boolean(selectedStore && selectedStore !== "all"),
+    refetchInterval: 20000,
+    refetchIntervalInBackground: true,
   })
 
 
@@ -184,6 +186,11 @@ const Cameras = () => {
                 <div className="mt-3 text-xs text-gray-600 flex items-center gap-2">
                   <span className="font-semibold text-gray-700">Idade:</span>
                   <span>{formatAge(cam.age_seconds)}</span>
+                </div>
+
+                <div className="mt-2 text-xs text-gray-600 flex items-center gap-2">
+                  <span className="font-semibold text-gray-700">Último:</span>
+                  <span>{formatTimestamp(cam.camera_last_heartbeat_ts)}</span>
                 </div>
 
                 {cam.reason && (

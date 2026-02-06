@@ -17,6 +17,11 @@ def _build_parser() -> argparse.ArgumentParser:
 
     run_p = sub.add_parser("run", help="Run the agent")
     run_p.add_argument("--config", default=DEFAULT_CONFIG, help="Path to agent.yaml")
+    run_p.add_argument(
+        "--heartbeat-only",
+        action="store_true",
+        help="Run only heartbeat loop (skip vision pipeline)",
+    )
 
     return parser
 
@@ -52,6 +57,8 @@ def main(argv=None) -> int:
             "--config",
             args.config,
         ]
+        if args.heartbeat_only:
+            cmd.append("--heartbeat-only")
         return subprocess.call(cmd, cwd=BASE_DIR)
 
     parser.print_help()

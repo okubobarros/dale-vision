@@ -101,10 +101,21 @@ class DetectionEventSerializer(serializers.ModelSerializer):
 
 
 class NotificationLogSerializer(serializers.ModelSerializer):
+    receipt_id = serializers.SerializerMethodField()
+
     class Meta:
         model = NotificationLog
         fields = "__all__"
         read_only_fields = ("id", "sent_at")
+
+    def get_receipt_id(self, obj):
+        try:
+            meta = getattr(obj.event, "metadata", None)
+            if isinstance(meta, dict):
+                return meta.get("receipt_id")
+        except Exception:
+            return None
+        return None
 
 
 class JourneyEventSerializer(serializers.ModelSerializer):

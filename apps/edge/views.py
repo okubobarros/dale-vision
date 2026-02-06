@@ -1,5 +1,7 @@
 # apps/edge/views.py
 from uuid import UUID
+import hashlib
+import json
 from django.conf import settings
 from django.contrib.auth import get_user_model
 from django.utils import timezone
@@ -22,6 +24,8 @@ from apps.alerts.views import AlertRuleViewSet
 from apps.core.models import Camera, CameraHealthLog
 from apps.core.models import Store
 from apps.stores.views import ensure_user_uuid, get_user_org_ids
+from apps.stores.views_edge_status import classify_age, compute_store_edge_status_snapshot
+from .status_events import emit_store_status_changed, emit_camera_status_changed
 
 
 def _is_uuid(x: str) -> bool:
@@ -30,6 +34,17 @@ def _is_uuid(x: str) -> bool:
         return True
     except Exception:
         return False
+
+def _compute_receipt_id(payload: dict) -> str:
+    base = {
+        "event_name": payload.get("event_name"),
+        "store_id": (payload.get("data") or {}).get("store_id") or payload.get("store_id"),
+        "camera_id": (payload.get("data") or {}).get("camera_id") or payload.get("camera_id"),
+        "ts": payload.get("ts") or (payload.get("data") or {}).get("ts"),
+        "event_version": payload.get("event_version", 1),
+    }
+    raw = json.dumps(base, sort_keys=True, ensure_ascii=False).encode("utf-8")
+    return hashlib.sha256(raw).hexdigest()
 
 logger = logging.getLogger(__name__)
 
@@ -118,9 +133,27 @@ class EdgeEventsIngestView(APIView):
                     return Response({"detail": err}, status=status.HTTP_403_FORBIDDEN)
                 return Response({"detail": "Edge token inválido."}, status=status.HTTP_403_FORBIDDEN)
 
+        # --- validar camera para eventos que dependem dela ---
+        camera_id = data.get("camera_id") or payload.get("camera_id") or data.get("external_id")
+        if camera_id and normalized not in ("edge_heartbeat", "camera_heartbeat", "edge_camera_heartbeat"):
+            camera_qs = Camera.objects.filter(store_id=store_id)
+            camera_obj = camera_qs.filter(external_id=camera_id).first()
+            if camera_obj is None and _is_uuid(camera_id):
+                camera_obj = camera_qs.filter(id=camera_id).first()
+            if camera_obj is None:
+                camera_obj = camera_qs.filter(name=camera_id).first()
+            if camera_obj is None:
+                return Response(
+                    {"detail": "camera not found", "stored": False, "reason": "camera_not_found"},
+                    status=status.HTTP_400_BAD_REQUEST,
+                )
+
         # --- dedupe por receipt_id ---
         stored = False
-        if receipt_id:
+        deduped = False
+        if not receipt_id:
+            receipt_id = _compute_receipt_id(payload)
+        try:
             _, created = EdgeEventReceipt.objects.get_or_create(
                 receipt_id=receipt_id,
                 defaults={
@@ -130,12 +163,36 @@ class EdgeEventsIngestView(APIView):
                     "payload": payload,
                 },
             )
-            if not created:
-                return Response({"ok": True, "deduped": True}, status=status.HTTP_200_OK)
-            stored = True
+        except (OperationalError, ProgrammingError):
+            logger.exception("[EDGE] receipt write failed")
+            return Response(
+                {"ok": False, "stored": False, "reason": "db_write_failed"},
+                status=status.HTTP_503_SERVICE_UNAVAILABLE,
+            )
+        except Exception:
+            logger.exception("[EDGE] receipt write failed")
+            return Response(
+                {"ok": False, "stored": False, "reason": "db_write_failed"},
+                status=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            )
+        if not created:
+            deduped = True
+            return Response(
+                {"ok": True, "receipt_id": receipt_id or None, "stored": True, "deduped": True},
+                status=status.HTTP_200_OK,
+            )
+        stored = True
 
         # --- persistir heartbeat do edge ---
         if normalized in ("edge_heartbeat", "camera_heartbeat", "edge_camera_heartbeat"):
+            store_obj = Store.objects.filter(id=store_id).first()
+            pre_snapshot = None
+            pre_reason = None
+            if store_obj:
+                pre_snapshot, pre_reason = compute_store_edge_status_snapshot(store_id)
+
+            camera_transitions = []
+            heartbeat_ok = True
             try:
                 ts = data.get("ts") or payload.get("ts")
                 if ts:
@@ -152,8 +209,18 @@ class EdgeEventsIngestView(APIView):
                     or payload.get("camera_heartbeats")
                     or []
                 )
-                if not cameras_in and (data.get("camera_id") or data.get("external_id") or data.get("name")):
-                    cameras_in = [data]
+                if not cameras_in:
+                    if data.get("camera_id") or data.get("external_id") or data.get("name"):
+                        cameras_in = [data]
+                    elif payload.get("camera_id") or payload.get("external_id") or payload.get("name"):
+                        cameras_in = [
+                            {
+                                "camera_id": payload.get("camera_id"),
+                                "external_id": payload.get("external_id"),
+                                "name": payload.get("name"),
+                                "rtsp_url": payload.get("rtsp_url"),
+                            }
+                        ]
 
                 try:
                     with connection.cursor() as cursor:
@@ -180,8 +247,13 @@ class EdgeEventsIngestView(APIView):
                     camera_obj = None
                     if external_id:
                         camera_obj = Camera.objects.filter(store_id=store_id, external_id=external_id).first()
+                        if camera_obj is None and _is_uuid(external_id):
+                            camera_obj = Camera.objects.filter(store_id=store_id, id=external_id).first()
                     if camera_obj is None:
                         camera_obj = Camera.objects.filter(store_id=store_id, name=name).first()
+
+                    prev_last_seen_at = getattr(camera_obj, "last_seen_at", None) if camera_obj else None
+                    prev_status, _prev_age, _prev_reason = classify_age(prev_last_seen_at)
 
                     if camera_obj is None:
                         camera_obj = Camera.objects.create(
@@ -206,6 +278,11 @@ class EdgeEventsIngestView(APIView):
                             updated_at=timezone.now(),
                         )
 
+                    camera_obj.external_id = external_id or camera_obj.external_id
+                    camera_obj.name = name or camera_obj.name
+                    camera_obj.status = "online"
+                    camera_obj.last_seen_at = ts_dt
+
                     CameraHealthLog.objects.create(
                         camera_id=camera_obj.id,
                         checked_at=ts_dt,
@@ -213,11 +290,48 @@ class EdgeEventsIngestView(APIView):
                         error=None,
                     )
 
+                    new_status, new_age, new_reason = classify_age(ts_dt)
+                    if prev_status != new_status:
+                        camera_transitions.append(
+                            (camera_obj, prev_status, new_status, new_reason, new_age, ts_dt)
+                        )
+
             except Exception:
+                heartbeat_ok = False
                 logger.exception("[WARN] heartbeat persist failed")
 
+            if heartbeat_ok and store_obj:
+                post_snapshot, post_reason = compute_store_edge_status_snapshot(store_id)
+                edge_meta = {"source": "edge_ingest"}
+                if receipt_id:
+                    edge_meta["receipt_id"] = receipt_id
+
+                if not pre_reason and not post_reason:
+                    prev_store_status = pre_snapshot.get("store_status") if pre_snapshot else None
+                    new_store_status = post_snapshot.get("store_status") if post_snapshot else None
+                    if prev_store_status and new_store_status and prev_store_status != new_store_status:
+                        emit_store_status_changed(
+                            store=store_obj,
+                            prev_status=prev_store_status,
+                            new_status=new_store_status,
+                            snapshot=post_snapshot,
+                            meta=edge_meta,
+                        )
+
+                for cam_obj, prev_status, new_status, reason, age_s, ts_dt_item in camera_transitions:
+                    emit_camera_status_changed(
+                        store=store_obj,
+                        camera=cam_obj,
+                        prev_status=prev_status,
+                        new_status=new_status,
+                        reason=reason,
+                        age_seconds=age_s,
+                        last_heartbeat_ts=ts_dt_item.isoformat() if ts_dt_item else None,
+                        meta=edge_meta,
+                    )
+
             return Response(
-                {"ok": True, "receipt_id": receipt_id or None, "stored": stored},
+                {"ok": True, "receipt_id": receipt_id or None, "stored": stored, "deduped": deduped or False},
                 status=status.HTTP_201_CREATED if stored else status.HTTP_200_OK,
             )
 
@@ -237,6 +351,8 @@ class EdgeEventsIngestView(APIView):
                 "snapshot_url": data.get("snapshot_url"),
                 "destinations": data.get("destinations") or {},
             }
+            if receipt_id:
+                ingest_payload["receipt_id"] = receipt_id
 
             service_user = self._get_service_user()
             if service_user is None:
@@ -254,10 +370,17 @@ class EdgeEventsIngestView(APIView):
             response = ingest_view(drf_req)
             if stored:
                 response.status_code = status.HTTP_201_CREATED
+            try:
+                if isinstance(response.data, dict):
+                    response.data.setdefault("receipt_id", receipt_id or None)
+                    response.data.setdefault("stored", stored)
+                    response.data.setdefault("deduped", deduped or False)
+            except Exception:
+                pass
             return response
 
         # por enquanto: heartbeat/bucket aceita e responde ok
         return Response(
-            {"ok": True, "receipt_id": receipt_id or None, "stored": stored},
+            {"ok": True, "receipt_id": receipt_id or None, "stored": stored, "deduped": deduped or False},
             status=status.HTTP_201_CREATED if stored else status.HTTP_200_OK,
         )

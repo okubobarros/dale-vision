@@ -3,15 +3,19 @@ import requests
 from typing import Any, Dict
 
 
+def build_edge_headers(token: str) -> Dict[str, str]:
+    return {
+        "X-EDGE-TOKEN": token,
+        "Content-Type": "application/json",
+    }
+
+
 class ApiClient:
     def __init__(self, base_url: str, token: str, timeout: int):
         self.base_url = base_url.rstrip("/")
         self.timeout = timeout
         self.session = requests.Session()
-        self.session.headers.update({
-            "X-EDGE-TOKEN": token,
-            "Content-Type": "application/json",
-        })
+        self.session.headers.update(build_edge_headers(token))
 
     def post_event(self, payload: Dict[str, Any]) -> Dict[str, Any]:
         """

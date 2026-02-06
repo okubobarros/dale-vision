@@ -177,6 +177,8 @@ export default function NotificationLogs() {
                   <th scope="col" className="text-left font-semibold px-4 py-3">Status</th>
                   <th scope="col" className="text-left font-semibold px-4 py-3">Destino</th>
                   <th scope="col" className="text-left font-semibold px-4 py-3">Event ID</th>
+                  <th scope="col" className="text-left font-semibold px-4 py-3">Receipt</th>
+                  <th scope="col" className="text-left font-semibold px-4 py-3">Provider ID</th>
                   <th scope="col" className="text-left font-semibold px-4 py-3">Erro</th>
                 </tr>
               </thead>
@@ -205,8 +207,42 @@ export default function NotificationLogs() {
                     </td>
 
                     <td className="px-4 py-3 whitespace-nowrap">
+                      {l.event_id ? (
+                        <a
+                          className="font-mono text-xs text-blue-600 hover:underline"
+                          href={`/app/alerts?event_id=${encodeURIComponent(
+                            String(l.event_id)
+                          )}`}
+                        >
+                          {String(l.event_id)}
+                        </a>
+                      ) : (
+                        <span className="font-mono text-xs text-gray-700">—</span>
+                      )}
+                    </td>
+
+                    <td className="px-4 py-3 whitespace-nowrap">
+                      {l.receipt_id ? (
+                        <button
+                          type="button"
+                          onClick={() => {
+                            if (navigator?.clipboard) {
+                              navigator.clipboard.writeText(String(l.receipt_id))
+                            }
+                          }}
+                          className="font-mono text-xs text-blue-600 hover:underline"
+                          title="Copiar receipt_id"
+                        >
+                          {String(l.receipt_id)}
+                        </button>
+                      ) : (
+                        <span className="text-gray-400 text-xs">—</span>
+                      )}
+                    </td>
+
+                    <td className="px-4 py-3 whitespace-nowrap">
                       <span className="font-mono text-xs text-gray-700">
-                        {l.event_id ? String(l.event_id) : "—"}
+                        {l.provider_message_id ? String(l.provider_message_id) : "—"}
                       </span>
                     </td>
 

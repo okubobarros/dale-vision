@@ -1,6 +1,7 @@
 // src/pages/Alerts/Alerts.tsx
-import { useMemo, useState } from "react"
+import { useMemo, useState, useEffect } from "react"
 import { useQuery } from "@tanstack/react-query"
+import { useSearchParams } from "react-router-dom"
 
 import {
   useAlertsEvents,
@@ -44,11 +45,14 @@ function normalizeArray<T = any>(input: any): T[] {
 }
 
 export default function Alerts() {
+  const [searchParams] = useSearchParams()
   const [query, setQuery] = useState("")
   const [severityFilter, setSeverityFilter] = useState<FilterSeverity>("all")
   const [statusFilter, setStatusFilter] = useState<FilterStatus>("open")
   const [storeId, setStoreId] = useState<string>("")
   const [selectedEventId, setSelectedEventId] = useState<string | null>(null)
+  const [dateFrom, setDateFrom] = useState<string>("")
+  const [dateTo, setDateTo] = useState<string>("")
 
   // lojas (CORE UUID) - pra filtro de alerts
   const { data: storesRaw, isLoading: storesLoading } = useQuery({
@@ -58,9 +62,22 @@ export default function Alerts() {
   const stores = normalizeArray<any>(storesRaw)
 
   // eventos
+  const occurredFrom = useMemo(() => {
+    if (!dateFrom) return undefined
+    return new Date(`${dateFrom}T00:00:00`).toISOString()
+  }, [dateFrom])
+
+  const occurredTo = useMemo(() => {
+    if (!dateTo) return undefined
+    return new Date(`${dateTo}T23:59:59`).toISOString()
+  }, [dateTo])
+
   const eventsQuery = useAlertsEvents({
     store_id: storeId || undefined,
     status: statusFilter === "all" ? undefined : statusFilter,
+    severity: severityFilter === "all" ? undefined : severityFilter,
+    occurred_from: occurredFrom,
+    occurred_to: occurredTo,
   })
 
   // ✅ evita crash: garante array
@@ -143,6 +160,13 @@ export default function Alerts() {
       events.find((e: any) => String(e.id) === String(selectedEventId)) || null
     )
   }, [events, selectedEventId])
+
+  useEffect(() => {
+    const eventIdFromUrl = searchParams.get("event_id")
+    if (eventIdFromUrl) {
+      setSelectedEventId(eventIdFromUrl)
+    }
+  }, [searchParams])
 
   return (
     <div className="space-y-5">
@@ -247,6 +271,34 @@ export default function Alerts() {
               <option value="all">Todos</option>
             </select>
           </div>
+
+          {/* período */}
+          <div className="flex flex-col sm:flex-row gap-2">
+            <div className="w-full sm:w-auto">
+              <label htmlFor="alerts-from" className="sr-only">
+                De
+              </label>
+              <input
+                id="alerts-from"
+                type="date"
+                value={dateFrom}
+                onChange={(e) => setDateFrom(e.target.value)}
+                className="w-full sm:w-auto rounded-lg border border-gray-300 px-4 py-2"
+              />
+            </div>
+            <div className="w-full sm:w-auto">
+              <label htmlFor="alerts-to" className="sr-only">
+                Até
+              </label>
+              <input
+                id="alerts-to"
+                type="date"
+                value={dateTo}
+                onChange={(e) => setDateTo(e.target.value)}
+                className="w-full sm:w-auto rounded-lg border border-gray-300 px-4 py-2"
+              />
+            </div>
+          </div>
         </div>
       </div>
 
@@ -269,6 +321,8 @@ export default function Alerts() {
           {filtered.map((e: any) => {
             const sev = e.severity || "info"
             const hhmm = formatHHMM(e.occurred_at)
+            const receiptId = e?.metadata?.receipt_id
+            const evidenceUrl = e?.media?.[0]?.url
 
             return (
               <div
@@ -303,6 +357,34 @@ export default function Alerts() {
                     <p className="mt-1 text-sm text-gray-600">
                       {e.description || "-"}
                     </p>
+                    {(receiptId || evidenceUrl) && (
+                      <div className="mt-2 flex flex-wrap items-center gap-3 text-xs">
+                        {receiptId && (
+                          <button
+                            type="button"
+                            className="text-blue-600 hover:underline"
+                            onClick={() => {
+                              if (navigator?.clipboard) {
+                                navigator.clipboard.writeText(String(receiptId))
+                                toast.success("receipt_id copiado")
+                              }
+                            }}
+                          >
+                            ver receipt_id
+                          </button>
+                        )}
+                        {evidenceUrl && (
+                          <a
+                            className="text-blue-600 hover:underline"
+                            href={evidenceUrl}
+                            target="_blank"
+                            rel="noopener noreferrer"
+                          >
+                            ver evidência
+                          </a>
+                        )}
+                      </div>
+                    )}
                   </div>
 
                   <button
@@ -430,6 +512,34 @@ export default function Alerts() {
                         </li>
                       ))}
                     </ul>
+                  )}
+                </div>
+              </div>
+
+              {/* Receipt */}
+              <div className="rounded-xl border border-gray-100 bg-gray-50 p-4">
+                <div className="text-sm font-semibold text-gray-800">
+                  Receipt ID
+                </div>
+                <div className="mt-2 text-sm text-gray-600 flex items-center gap-3">
+                  <span className="font-mono">
+                    {selectedEvent?.metadata?.receipt_id ?? "—"}
+                  </span>
+                  {selectedEvent?.metadata?.receipt_id && (
+                    <button
+                      type="button"
+                      className="text-blue-600 hover:underline text-xs"
+                      onClick={() => {
+                        if (navigator?.clipboard) {
+                          navigator.clipboard.writeText(
+                            String(selectedEvent?.metadata?.receipt_id)
+                          )
+                          toast.success("receipt_id copiado")
+                        }
+                      }}
+                    >
+                      copiar
+                    </button>
                   )}
                 </div>
               </div>

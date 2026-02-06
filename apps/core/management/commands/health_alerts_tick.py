@@ -164,22 +164,18 @@ class Command(BaseCommand):
             hb_status, hb_age_seconds, hb_reason = classify_age(last_heartbeat)
 
             if cameras_total == 0:
-                store_status = "unknown"
-                store_status_reason = "no_heartbeat"
+                store_status = "offline"
+                store_status_reason = "no_cameras"
             elif cameras_online >= 1:
                 if cameras_online < cameras_total:
                     store_status = "degraded"
                     store_status_reason = "partial_camera_coverage"
                 else:
                     store_status = "online"
-                    store_status_reason = "has_online_camera"
+                    store_status_reason = "all_cameras_online"
             else:
-                if last_heartbeat:
-                    store_status = hb_status
-                    store_status_reason = hb_reason
-                else:
-                    store_status = "unknown"
-                    store_status_reason = "no_heartbeat"
+                store_status = hb_status
+                store_status_reason = hb_reason
 
             if last_heartbeat:
                 store_status_age_seconds = hb_age_seconds

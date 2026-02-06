@@ -7,6 +7,9 @@ export function useAlertsEvents(
   params: {
   store_id?: string
   status?: "open" | "resolved" | "ignored"
+  severity?: "critical" | "warning" | "info"
+  occurred_from?: string
+  occurred_to?: string
   },
   options?: { enabled?: boolean }
 ) {

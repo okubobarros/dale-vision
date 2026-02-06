@@ -138,3 +138,21 @@ class EdgeEventsAuthTests(TestCase):
         )
         self.assertIn(resp.status_code, (200, 201))
         self.assertTrue(resp.data.get("ok"))
+
+    def test_edge_event_stored_true_generates_receipt(self):
+        self._skip_if_not_pg()
+        settings.EDGE_SHARED_TOKEN = "edge-shared"
+        payload = {
+            "event_name": "edge_heartbeat",
+            "data": {"store_id": str(uuid.uuid4())},
+        }
+        resp = self.client.post(
+            "/api/edge/events/",
+            payload,
+            format="json",
+            HTTP_X_EDGE_TOKEN="edge-shared",
+        )
+        self.assertIn(resp.status_code, (200, 201))
+        self.assertTrue(resp.data.get("ok"))
+        self.assertTrue(resp.data.get("stored"))
+        self.assertTrue(resp.data.get("receipt_id"))

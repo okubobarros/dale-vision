@@ -312,7 +312,9 @@ class AlertRuleViewSet(viewsets.ModelViewSet):
         severity = request.data.get("severity")
         title = request.data.get("title") or "Evento detectado"
         description = request.data.get("description") or request.data.get("message") or ""
-        metadata = request.data.get("metadata") or {}
+        metadata = request.data.get("metadata")
+        if not isinstance(metadata, dict):
+            metadata = {}
         occurred_at = request.data.get("occurred_at")  # opcional iso
         clip_url = request.data.get("clip_url")
         snapshot_url = request.data.get("snapshot_url")
@@ -321,6 +323,8 @@ class AlertRuleViewSet(viewsets.ModelViewSet):
 
         # ✅ NOVO: receipt_id (para rastreio / idempotência ponta-a-ponta)
         receipt_id = request.data.get("receipt_id")  # opcional
+        if receipt_id and not metadata.get("receipt_id"):
+            metadata["receipt_id"] = receipt_id
 
         if not store_id or not event_type or not severity:
             return Response(
@@ -629,6 +633,9 @@ class DetectionEventViewSet(viewsets.ModelViewSet):
     def get_queryset(self):
         store_id = self.request.query_params.get("store_id")
         status_q = self.request.query_params.get("status")
+        severity_q = self.request.query_params.get("severity")
+        occurred_from = self.request.query_params.get("occurred_from")
+        occurred_to = self.request.query_params.get("occurred_to")
 
         qs = DetectionEvent.objects.all().order_by("-occurred_at")
 
@@ -640,6 +647,25 @@ class DetectionEventViewSet(viewsets.ModelViewSet):
             if status_q not in ["open", "resolved", "ignored"]:
                 raise ValidationError({"status": "status deve ser open|resolved|ignored"})
             qs = qs.filter(status=status_q)
+
+        if severity_q:
+            if severity_q not in ["critical", "warning", "info"]:
+                raise ValidationError({"severity": "severity deve ser critical|warning|info"})
+            qs = qs.filter(severity=severity_q)
+
+        def _parse_dt(value: str, field: str):
+            try:
+                dt = timezone.datetime.fromisoformat(value.replace("Z", "+00:00"))
+                if timezone.is_naive(dt):
+                    dt = timezone.make_aware(dt)
+                return dt
+            except Exception:
+                raise ValidationError({field: "datetime inválido (use ISO 8601)"})
+
+        if occurred_from:
+            qs = qs.filter(occurred_at__gte=_parse_dt(occurred_from, "occurred_from"))
+        if occurred_to:
+            qs = qs.filter(occurred_at__lte=_parse_dt(occurred_to, "occurred_to"))
 
         return qs
 

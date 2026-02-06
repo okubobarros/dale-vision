@@ -18,3 +18,15 @@ export function formatAge(ageSeconds?: number | null): string {
   if (ageSeconds < 3600) return `${Math.floor(ageSeconds / 60)} min`
   return `${Math.floor(ageSeconds / 3600)} h`
 }
+
+export function formatTimestamp(value?: string | null): string {
+  if (!value) return "—"
+  const date = new Date(value)
+  if (Number.isNaN(date.getTime())) return "—"
+  return date.toLocaleString("pt-BR", {
+    hour: "2-digit",
+    minute: "2-digit",
+    day: "2-digit",
+    month: "2-digit",
+  })
+}

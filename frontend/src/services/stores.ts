@@ -65,12 +65,19 @@ export interface StoreEdgeStatus {
   last_heartbeat: string | null;
   last_metric_bucket: string | null;
   last_error: string | null;
+  cameras_total?: number;
+  cameras_online?: number;
+  cameras_degraded?: number;
+  cameras_offline?: number;
+  cameras_unknown?: number;
   cameras: Array<{
     camera_id: string;
+    external_id?: string | null;
     name: string;
     status: string;
     age_seconds?: number | null;
     reason?: string | null;
+    camera_last_heartbeat_ts?: string | null;
   }>;
 }
 
