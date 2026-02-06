@@ -1,5 +1,5 @@
-import { useEffect, useState } from "react"
-import { useQuery } from "@tanstack/react-query"
+import { useEffect, useMemo, useState } from "react"
+import { useQuery, useQueries } from "@tanstack/react-query"
 import { Link } from "react-router-dom"
 import { useAuth } from "../../contexts/AuthContext"
 import {
@@ -197,7 +197,104 @@ const Dashboard = () => {
     queryFn: storesService.getStores,
   })
 
-  const {
+  
+
+      {/* Stores Health (pilot v1) */}
+      {selectedStore === ALL_STORES_VALUE && (
+        <div className="bg-white rounded-xl border p-4 sm:p-6">
+          <div className="flex items-center justify-between gap-3">
+            <h2 className="text-lg sm:text-xl font-bold text-gray-800">
+              Stores Health
+            </h2>
+            <div className="text-xs sm:text-sm text-gray-500">
+              Atualiza a cada 20s
+            </div>
+          </div>
+
+          <div className="mt-4 space-y-3">
+            {(stores ?? []).map((s) => {
+              const st = storeEdgeStatusMap[s.id]
+              const status = st?.store_status || "unknown"
+              const age = st?.store_status_age_seconds ?? null
+              const reason = st?.store_status_reason || null
+              const online = st?.cameras_online ?? (st?.cameras?.filter((c) => c.status === "online").length || 0)
+              const total = st?.cameras_total ?? (st?.cameras?.length || 0)
+
+              return (
+                <div
+                  key={s.id}
+                  className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3 rounded-lg border p-4"
+                >
+                  <div className="min-w-0">
+                    <div className="flex items-center gap-2">
+                      <span
+                        className={`inline-flex h-2.5 w-2.5 rounded-full ${
+                          status === "online"
+                            ? "bg-green-500"
+                            : status === "degraded"
+                            ? "bg-yellow-500"
+                            : status === "offline"
+                            ? "bg-red-500"
+                            : "bg-gray-400"
+                        }`}
+                      />
+                      <div className="font-semibold text-gray-900 truncate">
+                        {s.name}
+                      </div>
+                    </div>
+                    <div className="mt-1 text-xs sm:text-sm text-gray-600 flex flex-wrap items-center gap-2">
+                      <span className="font-mono">{String(status).toUpperCase()}</span>
+                      {age !== null && <span>• {formatAge(age)}</span>}
+                      {reason && <span>• {formatReason(reason)}</span>}
+                    </div>
+                  </div>
+
+                  <div className="flex items-center gap-3">
+                    <div className="text-xs sm:text-sm text-gray-700">
+                      <span className="font-semibold">{online}</span>/{total} câmeras online
+                    </div>
+
+                    <button
+                      onClick={() => setSelectedStore(s.id)}
+                      className="px-3 py-2 rounded-lg bg-gray-900 text-white text-xs sm:text-sm hover:bg-gray-800"
+                    >
+                      Ver detalhes
+                    </button>
+
+                    <Link
+                      to={`/cameras?store=${encodeURIComponent(s.id)}`}
+                      className="px-3 py-2 rounded-lg border text-xs sm:text-sm hover:bg-gray-50"
+                    >
+                      Câmeras
+                    </Link>
+                  </div>
+                </div>
+              )
+            })}
+          </div>
+        </div>
+      )}
+
+
+  const storeEdgeStatusQueries = useQueries({
+    queries: (stores || []).map((s) => ({
+      queryKey: ["store-edge-status", s.id],
+      queryFn: () => storesService.getStoreEdgeStatus(s.id),
+      enabled: Boolean(s?.id),
+      refetchInterval: 20000,
+      refetchIntervalInBackground: true,
+    })),
+  })
+
+  const storeEdgeStatusMap = useMemo(() => {
+    const map: Record<string, StoreEdgeStatus | undefined> = {}
+    ;(stores || []).forEach((s, idx) => {
+      const q = storeEdgeStatusQueries[idx]
+      if (q?.data) map[s.id] = q.data
+    })
+    return map
+  }, [stores, storeEdgeStatusQueries])
+const {
     data: edgeStatus,
     isLoading: edgeStatusLoading,
   } = useQuery<StoreEdgeStatus>({
@@ -478,7 +575,7 @@ const Dashboard = () => {
                 aria-label="Selecionar loja para visualizar dashboard"
               >
                 <option value={ALL_STORES_VALUE}>Todas as lojas</option>
-                {stores.map((store) => (
+                {(stores ?? []).map((store) => (
                   <option key={store.id} value={store.id}>
                     {store.name}
                   </option>
@@ -979,4 +1076,3 @@ const Dashboard = () => {
 }
 
 export default Dashboard
-

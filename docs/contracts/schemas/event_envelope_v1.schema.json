@@ -1,0 +1,161 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://daleship.com/schemas/dale-vision/event-envelope-v1.json",
+  "title": "DALE Vision Event Envelope v1",
+  "type": "object",
+  "additionalProperties": false,
+  "required": [
+    "event_id",
+    "event_name",
+    "event_version",
+    "ts",
+    "source",
+    "data",
+    "meta"
+  ],
+  "properties": {
+    "event_id": {
+      "type": [
+        "string",
+        "null"
+      ]
+    },
+    "event_name": {
+      "type": "string"
+    },
+    "event_version": {
+      "type": "integer",
+      "minimum": 1
+    },
+    "ts": {
+      "type": "string",
+      "format": "date-time"
+    },
+    "source": {
+      "type": "string"
+    },
+    "lead_id": {
+      "type": [
+        "string",
+        "null"
+      ],
+      "format": "uuid"
+    },
+    "org_id": {
+      "type": [
+        "string",
+        "null"
+      ],
+      "format": "uuid"
+    },
+    "data": {
+      "$ref": "#/definitions/statusEventData"
+    },
+    "meta": {
+      "type": "object"
+    }
+  },
+  "definitions": {
+    "counts": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "online",
+        "total"
+      ],
+      "properties": {
+        "online": {
+          "type": "integer",
+          "minimum": 0
+        },
+        "total": {
+          "type": "integer",
+          "minimum": 0
+        }
+      }
+    },
+    "statusEnum": {
+      "type": "string",
+      "enum": [
+        "online",
+        "degraded",
+        "offline",
+        "unknown"
+      ]
+    },
+    "statusEventData": {
+      "type": "object",
+      "additionalProperties": true,
+      "required": [
+        "event_type",
+        "schema_version",
+        "occurred_at",
+        "receipt_id",
+        "cooldown_scope",
+        "store_id",
+        "previous_status",
+        "current_status",
+        "reason"
+      ],
+      "properties": {
+        "event_type": {
+          "type": "string",
+          "enum": [
+            "store_status_changed",
+            "camera_status_changed"
+          ]
+        },
+        "schema_version": {
+          "type": "integer",
+          "const": 1
+        },
+        "occurred_at": {
+          "type": "string",
+          "format": "date-time"
+        },
+        "receipt_id": {
+          "type": "string"
+        },
+        "cooldown_scope": {
+          "type": "string"
+        },
+        "store_id": {
+          "type": "string",
+          "format": "uuid"
+        },
+        "camera_id": {
+          "type": [
+            "string",
+            "null"
+          ],
+          "format": "uuid"
+        },
+        "external_id": {
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "previous_status": {
+          "$ref": "#/definitions/statusEnum"
+        },
+        "current_status": {
+          "$ref": "#/definitions/statusEnum"
+        },
+        "reason": {
+          "type": "string"
+        },
+        "age_seconds": {
+          "type": [
+            "integer",
+            "null"
+          ],
+          "minimum": 0
+        },
+        "counts": {
+          "$ref": "#/definitions/counts"
+        }
+      }
+    }
+  }
+}
