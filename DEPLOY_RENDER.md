@@ -1,5 +1,8 @@
 # Deploy Render
 
+Python:
+- Preferably set `PYTHON_VERSION=3.12.3` in Render env vars (fully qualified), or rely on `.python-version` at repo root.
+
 Build:
 `pip install -U pip setuptools wheel && pip install -r requirements.prod.txt`
 
