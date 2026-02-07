@@ -119,86 +119,47 @@ Exemplo (store):
   "meta": {}
 }
 
----
+## Status Events (store/camera)
 
-## JSON Schema — Event Envelope v1
+**Objetivo**: eventos de mudança de status (store/camera) enviados do backend → n8n, com idempotência (receipt_id) e cooldown (anti-spam).
 
+### event_type
+- `store_status_changed`
+- `camera_status_changed`
+
+### Status
+`online | degraded | offline | unknown`
+
+### JSON Schema — StatusEventPayload v1
 ```json
 {
   "$schema": "https://json-schema.org/draft/2020-12/schema",
-  "$id": "https://dalevision.ai/schemas/event-envelope-v1.json",
-  "title": "DALE Vision Event Envelope v1",
+  "$id": "https://dalevision.ai/schemas/status_event_payload_v1.json",
+  "title": "StatusEventPayloadV1",
   "type": "object",
-  "required": ["event_name", "event_version", "ts", "source", "data", "meta"],
-  "properties": {
-    "event_id": { "type": ["string","null"], "description": "Optional logical id; for status events we set to receipt_id when available." },
-    "event_name": { "type": "string" },
-    "event_version": { "type": "integer", "minimum": 1, "default": 1 },
-    "ts": { "type": "string", "format": "date-time", "description": "Occurred_at of the business event (not send time)." },
-    "source": { "type": "string", "description": "Producer identifier, e.g. edge-agent/edge-status-tick/backend" },
-    "lead_id": { "type": ["string","null"], "format": "uuid" },
-    "org_id": { "type": ["string","null"], "format": "uuid" },
-    "data": { "type": "object" },
-    "meta": {
-      "type": "object",
-      "properties": {
-        "receipt_id": { "type": "string" },
-        "idempotency_key": { "type": ["string","null"] }
-      },
-      "additionalProperties": true
-    }
-  },
-  "additionalProperties": true
-}
-```
-
-## JSON Schema — Status Events v1 (`store_status_changed` / `camera_status_changed`)
-
-```json
-{
-  "$schema": "https://json-schema.org/draft/2020-12/schema",
-  "$id": "https://dalevision.ai/schemas/status-events-v1.json",
-  "title": "DALE Vision Status Events v1",
-  "type": "object",
-  "required": ["event_type","entity_type","store_id","previous_status","current_status","reason","occurred_at","receipt_id"],
+  "required": ["event_type","schema_version","ts","receipt_id","store_id","previous_status","current_status","reason"],
   "properties": {
     "event_type": { "type": "string", "enum": ["store_status_changed","camera_status_changed"] },
-    "entity_type": { "type": "string", "enum": ["store","camera"] },
-
+    "schema_version": { "type": "integer", "const": 1 },
+    "ts": { "type": "string", "description": "occurred_at ISO 8601" },
+    "receipt_id": { "type": "string" },
+    "cooldown_scope": { "type": "string" },
     "store_id": { "type": "string", "format": "uuid" },
-    "store_name": { "type": ["string","null"] },
-
     "camera_id": { "type": ["string","null"], "format": "uuid" },
-    "camera_name": { "type": ["string","null"] },
-
+    "external_id": { "type": ["string","null"] },
     "previous_status": { "type": "string", "enum": ["online","degraded","offline","unknown"] },
     "current_status": { "type": "string", "enum": ["online","degraded","offline","unknown"] },
-
     "reason": { "type": "string" },
     "age_seconds": { "type": ["integer","null"], "minimum": 0 },
-
-    "cameras_online": { "type": ["integer","null"], "minimum": 0 },
-    "cameras_total": { "type": ["integer","null"], "minimum": 0 },
-
-    "occurred_at": { "type": "string", "format": "date-time" },
-    "receipt_id": { "type": "string" },
-
-    "channels": {
-      "type": "object",
+    "counts": {
+      "type": ["object","null"],
       "properties": {
-        "email": { "type": "boolean" },
-        "whatsapp": { "type": "boolean" },
-        "dashboard": { "type": "boolean" }
+        "online": { "type": "integer", "minimum": 0 },
+        "total": { "type": "integer", "minimum": 0 }
       },
-      "additionalProperties": true
+      "additionalProperties": false
     },
-    "destinations": {
-      "type": "object",
-      "properties": {
-        "email": { "type": "string" }
-      },
-      "additionalProperties": true
-    }
+    "org_id": { "type": ["string","null"], "format": "uuid" }
   },
   "additionalProperties": true
 }

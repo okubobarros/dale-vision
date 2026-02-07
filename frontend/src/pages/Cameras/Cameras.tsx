@@ -1,5 +1,4 @@
-import { useEffect, useMemo, useState } from "react"
-import { useLocation } from "react-router-dom"
+import { useState } from "react"
 import { useQuery } from "@tanstack/react-query"
 import {
   storesService,
@@ -9,25 +8,12 @@ import {
 import { formatAge, formatReason, formatTimestamp } from "../../utils/edgeReasons"
 
 const Cameras = () => {
-  const location = useLocation()
-
-  const initialStoreFromQuery = useMemo(() => {
-    const sp = new URLSearchParams(location.search)
-    return sp.get("store") || ""
-  }, [location.search])
-
-  const [selectedStore, setSelectedStore] = useState(initialStoreFromQuery)
+  const [selectedStore, setSelectedStore] = useState("")
 
   const { data: stores, isLoading: storesLoading } = useQuery<Store[]>({
     queryKey: ["stores"],
     queryFn: storesService.getStores,
   })
-
-  useEffect(() => {
-    if (!stores || stores.length === 0) return
-    if (selectedStore) return
-    setSelectedStore(stores[0].id)
-  }, [stores])
 
   const {
     data: edgeStatus,
@@ -83,42 +69,6 @@ const Cameras = () => {
                 <div className="animate-spin rounded-full h-5 w-5 border-t-2 border-b-2 border-blue-500" />
               )}
             </div>
-          </div>
-        )}
-
-        {edgeStatus && (
-          <div className="bg-white rounded-lg border p-4">
-            <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-2">
-              <div>
-                <div className="text-sm text-gray-500">Status da loja</div>
-                <div className="text-lg font-semibold text-gray-900">
-                  {String(edgeStatus.store_status || "unknown").toUpperCase()}
-                </div>
-                <div className="mt-1 text-sm text-gray-600">
-                  {edgeStatus.store_status_age_seconds != null ? (
-                    <>
-                      {formatAge(edgeStatus.store_status_age_seconds)} •{" "}
-                    </>
-                  ) : null}
-                  {edgeStatus.store_status_reason ? formatReason(edgeStatus.store_status_reason) : ""}
-                </div>
-              </div>
-
-              <div className="text-sm text-gray-700">
-                <span className="font-semibold">
-                  {edgeStatus.cameras_online ??
-                    edgeStatus.cameras.filter((c) => c.status === "online").length}
-                </span>
-                /{edgeStatus.cameras_total ?? edgeStatus.cameras.length} câmeras online
-              </div>
-            </div>
-
-            {edgeStatus.last_error && (
-              <div className="mt-3 text-sm text-red-700 bg-red-50 border border-red-200 rounded-md p-3">
-                <span className="font-semibold">Último erro:</span>{" "}
-                {edgeStatus.last_error}
-              </div>
-            )}
           </div>
         )}
       </div>

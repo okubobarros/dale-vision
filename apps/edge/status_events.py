@@ -2,7 +2,6 @@ import os
 import json
 import logging
 from datetime import datetime, timezone
-import hashlib
 from typing import Any, Dict, Optional, Tuple
 
 import requests
@@ -28,10 +27,10 @@ def build_envelope(
 ) -> Dict[str, Any]:
     # Compatível com edge-agent/src/events/builder.py
     return {
-        "event_id": data.get("receipt_id") or data.get("event_id") or None,
+        "event_id": data.get("event_id") or None,
         "event_name": str(event_name),
         "event_version": event_version,
-        "ts": data.get("occurred_at") or data.get("ts") or now_iso(),
+        "ts": data.get("ts") or now_iso(),
         "source": source,
         "lead_id": lead_id,
         "org_id": org_id,
@@ -193,30 +192,13 @@ def emit_enveloped_status_event(event_name: str, data: dict, meta: Optional[dict
         logger.exception("[STATUS_EVENTS] webhook exception")
 
 
-def _stable_occurred_at(*, heartbeat_iso: Optional[str]) -> str:
-    """Return a stable ISO timestamp for idempotent transition receipts.
-
-    - Prefer the heartbeat timestamp that caused the status classification (stable across retries).
-    - If missing (e.g., tick-based offline without ingest), bucket 'now' to the current minute.
-    """
-    if heartbeat_iso:
-        return heartbeat_iso
-    dt = datetime.now(timezone.utc).replace(second=0, microsecond=0)
-    return dt.isoformat()
-
-
 def make_receipt_id(prefix: str, entity_id: str, prev: str, curr: str, occurred_at_iso: str) -> str:
-    """Deterministic and compact receipt id (safe for retries).
-
-    Uses a short hash suffix to avoid extremely long IDs while preserving human readability.
-    """
-    base = f"{prefix}:{entity_id}:{prev}->{curr}:{occurred_at_iso}"
-    h = hashlib.sha1(base.encode("utf-8")).hexdigest()[:10]
-    return f"{prefix}:{entity_id}:{prev}->{curr}:{occurred_at_iso}:{h}"
+    # determinístico e legível (ótimo para piloto)
+    return f"{prefix}:{entity_id}:{prev}->{curr}:{occurred_at_iso}"
 
 
 def emit_store_status_changed(*, store, prev_status: str, new_status: str, snapshot: dict, meta: Optional[dict] = None) -> None:
-    occurred_at = _stable_occurred_at(heartbeat_iso=snapshot.get('last_heartbeat'))
+    occurred_at = now_iso()
     receipt_id = make_receipt_id("store", str(store.id), prev_status, new_status, occurred_at)
 
     counts = snapshot.get("counts") or {
@@ -226,9 +208,6 @@ def emit_store_status_changed(*, store, prev_status: str, new_status: str, snaps
 
     data = {
         "event_type": "store_status_changed",
-        "entity_type": "store",
-        "cameras_online": int(counts.get("online") or 0),
-        "cameras_total": int(counts.get("total") or 0),
         "schema_version": 1,
         "occurred_at": occurred_at,
         "receipt_id": receipt_id,
@@ -243,8 +222,6 @@ def emit_store_status_changed(*, store, prev_status: str, new_status: str, snaps
         "reason": snapshot.get("store_status_reason") or "status_changed",
         "age_seconds": snapshot.get("store_status_age_seconds"),
         "counts": {"online": int(counts.get("online") or 0), "total": int(counts.get("total") or 0)},
-        "store_name": getattr(store, "name", None),
-        "last_heartbeat": snapshot.get("last_heartbeat"),
         "org_id": str(store.org_id) if getattr(store, "org_id", None) else None,
     }
 
@@ -262,12 +239,11 @@ def emit_camera_status_changed(
     last_heartbeat_ts: Optional[str],
     meta: Optional[dict] = None,
 ) -> None:
-    occurred_at = _stable_occurred_at(heartbeat_iso=last_heartbeat_ts)
+    occurred_at = now_iso()
     receipt_id = make_receipt_id("camera", str(camera.id), prev_status, new_status, occurred_at)
 
     data = {
         "event_type": "camera_status_changed",
-        "entity_type": "camera",
         "schema_version": 1,
         "occurred_at": occurred_at,
         "receipt_id": receipt_id,
@@ -284,8 +260,6 @@ def emit_camera_status_changed(
         "counts": None,
         "last_heartbeat": last_heartbeat_ts,
         "org_id": str(store.org_id) if store and getattr(store, "org_id", None) else None,
-        "store_name": getattr(store, "name", None) if store else None,
-        "camera_name": getattr(camera, "name", None),
     }
 
     emit_enveloped_status_event("camera_status_changed", data, meta=meta)

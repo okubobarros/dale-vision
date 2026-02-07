@@ -1,5 +1,6 @@
 from dataclasses import dataclass
 from typing import Any, Dict, List, Optional
+from pathlib import Path
 import yaml
 import os
 
@@ -27,6 +28,7 @@ class Settings:
     target_width: int
     fps_limit: int
     frame_skip: int
+    queue_path: str
     buffer_sqlite_path: str
     max_queue_size: int
     log_level: str
@@ -50,6 +52,7 @@ def _env_override(d: Dict[str, Any]) -> Dict[str, Any]:
     edge_token = os.getenv("EDGE_TOKEN")
     token = edge_token or os.getenv("EDGE_CLOUD_TOKEN")
     heartbeat = os.getenv("HEARTBEAT_INTERVAL_SECONDS")
+    heartbeat_timeout = os.getenv("HEARTBEAT_TIMEOUT_SECONDS")
     vision_env = os.getenv("EDGE_VISION_ENABLED")
     vision_enabled = None
     if vision_env is not None:
@@ -65,6 +68,8 @@ def _env_override(d: Dict[str, Any]) -> Dict[str, Any]:
         d["cloud"]["token"] = token
     if heartbeat:
         d.setdefault("cloud", {})["heartbeat_interval_seconds"] = int(heartbeat)
+    if heartbeat_timeout:
+        d.setdefault("cloud", {})["timeout_seconds"] = int(heartbeat_timeout)
     if vision_enabled is not None:
         d.setdefault("runtime", {})["vision_enabled"] = vision_enabled
     return d
@@ -92,6 +97,13 @@ def load_settings(path: str) -> Settings:
         for c in cams
     ]
 
+    base_dir = Path(__file__).resolve().parents[2]
+    queue_path_raw = runtime.get("queue_path") or runtime.get("buffer_sqlite_path") or "./data/edge_queue.sqlite"
+    queue_path = Path(queue_path_raw)
+    if not queue_path.is_absolute():
+        queue_path = base_dir / queue_path
+    queue_path.parent.mkdir(parents=True, exist_ok=True)
+
     return Settings(
         agent_id=agent["agent_id"],
         store_id=agent["store_id"],
@@ -99,14 +111,15 @@ def load_settings(path: str) -> Settings:
 
         cloud_base_url=cloud["base_url"].rstrip("/"),
         cloud_token=cloud["token"],
-        cloud_timeout=int(cloud.get("timeout_seconds", 8)),
+        cloud_timeout=int(cloud.get("timeout_seconds", 15)),
         send_interval_seconds=int(cloud.get("send_interval_seconds", 2)),
         heartbeat_interval_seconds=int(cloud.get("heartbeat_interval_seconds", 30)),
 
         target_width=int(runtime.get("target_width", 960)),
         fps_limit=int(runtime.get("fps_limit", 8)),
         frame_skip=int(runtime.get("frame_skip", 2)),
-        buffer_sqlite_path=str(runtime.get("buffer_sqlite_path", "./data/edge_queue.db")),
+        queue_path=str(queue_path),
+        buffer_sqlite_path=str(queue_path),
         max_queue_size=int(runtime.get("max_queue_size", 50000)),
         log_level=str(runtime.get("log_level", "INFO")),
         vision_enabled=(

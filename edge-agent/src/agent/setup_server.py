@@ -1,7 +1,7 @@
-from fastapi import FastAPI, HTTPException, UploadFile, File
-from fastapi.responses import HTMLResponse
+from fastapi import FastAPI, HTTPException, UploadFile, File, Response
+from fastapi.responses import HTMLResponse, FileResponse
+from fastapi.staticfiles import StaticFiles
 from pydantic import BaseModel
-import cv2
 import yaml
 import os
 import subprocess
@@ -12,6 +12,8 @@ from pathlib import Path
 import re
 from typing import Dict, Any
 
+from .runtime_state import RUNTIME_STATE
+
 APP_PORT = 7860
 
 # BASE_DIR = pasta edge-agent
@@ -20,13 +22,39 @@ CONFIG_PATH = os.path.join(BASE_DIR, "config", "agent.yaml")
 
 # ROIs no lugar que você já usa hoje: edge-agent/config/rois
 ROIS_DIR = os.path.join(BASE_DIR, "config", "rois")
+STATIC_DIR = Path(__file__).resolve().parent / "static"
+FAVICON_PATH = STATIC_DIR / "favicon.ico"
+LOGO_PATH = STATIC_DIR / "logo.png"
 
 os.makedirs(os.path.dirname(CONFIG_PATH), exist_ok=True)
 os.makedirs(ROIS_DIR, exist_ok=True)
+STATIC_DIR.mkdir(parents=True, exist_ok=True)
 
 app = FastAPI(title="DALE Vision Edge Setup")
 
 FILE_PREFIX = "file://"
+
+
+# Optional dependency (setup must run without OpenCV)
+def _try_import_cv2():
+    try:
+        import cv2
+        return cv2
+    except Exception:
+        return None
+
+
+CV2 = _try_import_cv2()
+
+app.mount("/static", StaticFiles(directory=str(STATIC_DIR)), name="static")
+
+
+MULTIPART_OK = True
+try:
+    import multipart  # noqa: F401
+except Exception:
+    MULTIPART_OK = False
+    print("⚠️ python-multipart not installed; /roi/upload disabled")
 
 
 # -------------------------
@@ -77,14 +105,15 @@ def _ensure_defaults(cfg: dict) -> dict:
     cfg["agent"].setdefault("agent_id", str(uuid.uuid4()))
     cfg["agent"].setdefault("timezone", "America/Sao_Paulo")
 
-    cfg["cloud"].setdefault("timeout_seconds", 8)
+    cfg["cloud"].setdefault("timeout_seconds", 15)
     cfg["cloud"].setdefault("send_interval_seconds", 2)
     cfg["cloud"].setdefault("heartbeat_interval_seconds", 30)
 
     cfg["runtime"].setdefault("target_width", 960)
     cfg["runtime"].setdefault("fps_limit", 8)
     cfg["runtime"].setdefault("frame_skip", 2)
-    cfg["runtime"].setdefault("buffer_sqlite_path", "./data/edge_queue.db")
+    cfg["runtime"].setdefault("queue_path", "./data/edge_queue.sqlite")
+    cfg["runtime"].setdefault("buffer_sqlite_path", "./data/edge_queue.sqlite")
     cfg["runtime"].setdefault("max_queue_size", 50000)
     cfg["runtime"].setdefault("log_level", "INFO")
 
@@ -134,13 +163,19 @@ def _looks_like_private_store_rtsp(rtsp_url: str) -> bool:
 
 
 def test_rtsp_or_file(source: str):
+    if CV2 is None:
+        raise HTTPException(
+            status_code=501,
+            detail="OpenCV (cv2) não está instalado. Instale opencv-python para habilitar preview/snapshot.",
+        )
+
     src = _normalize_source(source)
 
-    cap = cv2.VideoCapture(src)
+    cap = CV2.VideoCapture(src)
 
     try:
-        cap.set(cv2.CAP_PROP_OPEN_TIMEOUT_MSEC, 5000)
-        cap.set(cv2.CAP_PROP_READ_TIMEOUT_MSEC, 5000)
+        cap.set(CV2.CAP_PROP_OPEN_TIMEOUT_MSEC, 5000)
+        cap.set(CV2.CAP_PROP_READ_TIMEOUT_MSEC, 5000)
     except Exception:
         pass
 
@@ -161,7 +196,7 @@ def test_rtsp_or_file(source: str):
     if not ok or frame is None:
         raise RuntimeError("Conectou, mas não conseguiu ler frame (stream/path/codec incorreto).")
 
-    ok2, buffer = cv2.imencode(".jpg", frame)
+    ok2, buffer = CV2.imencode(".jpg", frame)
     if not ok2:
         raise RuntimeError("Falha ao gerar snapshot JPG.")
 
@@ -201,6 +236,8 @@ def set_config(payload: CloudConfig):
 def camera_test(payload: CameraTestPayload):
     try:
         return test_rtsp_or_file(payload.rtsp_url)
+    except HTTPException:
+        raise
     except Exception as e:
         raise HTTPException(status_code=400, detail=str(e))
 
@@ -223,38 +260,53 @@ def camera_add(payload: CameraAddPayload):
     return {"ok": True, "camera_id": cam_id}
 
 
-@app.post("/roi/upload")
-def roi_upload(camera_id: str, file: UploadFile = File(...)):
-    if not file.filename.lower().endswith((".yaml", ".yml")):
-        raise HTTPException(status_code=400, detail="Arquivo deve ser .yaml ou .yml")
-
-    roi_path = os.path.join(ROIS_DIR, f"{camera_id}.yaml")
-    content = file.file.read()
-
-    # valida YAML e estrutura mínima de ROI (contrato do rtsp.py)
+@app.get("/favicon.ico")
+def favicon():
     try:
-        roi_cfg = yaml.safe_load(content)
+        if FAVICON_PATH.exists() and FAVICON_PATH.stat().st_size > 0:
+            return FileResponse(str(FAVICON_PATH), media_type="image/x-icon")
     except Exception:
-        raise HTTPException(status_code=400, detail="YAML inválido")
+        pass
+    return Response(status_code=204)
 
-    if not isinstance(roi_cfg, dict):
-        raise HTTPException(status_code=400, detail="ROI inválido: YAML deve ser um objeto (dict).")
 
-    has_zones = isinstance(roi_cfg.get("zones"), dict) and len(roi_cfg.get("zones")) > 0
-    has_lines = isinstance(roi_cfg.get("lines"), dict) and len(roi_cfg.get("lines")) > 0
-    has_params = isinstance(roi_cfg.get("params"), dict) and len(roi_cfg.get("params")) > 0
-    has_role = isinstance(roi_cfg.get("role"), str) and len(roi_cfg.get("role")) > 0
+if MULTIPART_OK:
+    @app.post("/roi/upload")
+    def roi_upload(camera_id: str, file: UploadFile = File(...)):
+        if not file.filename.lower().endswith((".yaml", ".yml")):
+            raise HTTPException(status_code=400, detail="Arquivo deve ser .yaml ou .yml")
 
-    if not (has_zones or has_lines or has_params or has_role):
-        raise HTTPException(
-            status_code=400,
-            detail="ROI inválido: esperado pelo menos uma das chaves 'zones', 'lines', 'params' ou 'role'. (isso evita upload do agent.yaml)",
-        )
+        roi_path = os.path.join(ROIS_DIR, f"{camera_id}.yaml")
+        content = file.file.read()
 
-    with open(roi_path, "wb") as f:
-        f.write(content)
+        # valida YAML e estrutura mínima de ROI (contrato do rtsp.py)
+        try:
+            roi_cfg = yaml.safe_load(content)
+        except Exception:
+            raise HTTPException(status_code=400, detail="YAML inválido")
 
-    return {"ok": True, "roi_file": f"config/rois/{camera_id}.yaml"}
+        if not isinstance(roi_cfg, dict):
+            raise HTTPException(status_code=400, detail="ROI inválido: YAML deve ser um objeto (dict).")
+
+        has_zones = isinstance(roi_cfg.get("zones"), dict) and len(roi_cfg.get("zones")) > 0
+        has_lines = isinstance(roi_cfg.get("lines"), dict) and len(roi_cfg.get("lines")) > 0
+        has_params = isinstance(roi_cfg.get("params"), dict) and len(roi_cfg.get("params")) > 0
+        has_role = isinstance(roi_cfg.get("role"), str) and len(roi_cfg.get("role")) > 0
+
+        if not (has_zones or has_lines or has_params or has_role):
+            raise HTTPException(
+                status_code=400,
+                detail="ROI inválido: esperado pelo menos uma das chaves 'zones', 'lines', 'params' ou 'role'. (isso evita upload do agent.yaml)",
+            )
+
+        with open(roi_path, "wb") as f:
+            f.write(content)
+
+        return {"ok": True, "roi_file": f"config/rois/{camera_id}.yaml"}
+else:
+    @app.get("/roi/upload-disabled")
+    def roi_upload_disabled():
+        return {"ok": False, "reason": "python-multipart not installed"}
 
 
 @app.get("/status")
@@ -263,6 +315,7 @@ def status() -> Dict[str, Any]:
     agent = cfg.get("agent") or {}
     cloud = cfg.get("cloud") or {}
     cams = cfg.get("cameras") or []
+    runtime = RUNTIME_STATE.snapshot()
 
     cameras_out = []
     for c in cams:
@@ -293,6 +346,17 @@ def status() -> Dict[str, Any]:
         "cloud": {
             "base_url": cloud.get("base_url"),
             "token_set": bool(cloud.get("token")),
+        },
+        "agent_running": runtime.get("agent_running"),
+        "heartbeat_only": runtime.get("heartbeat_only"),
+        "last_heartbeat_sent_at": runtime.get("last_heartbeat_sent_at"),
+        "last_heartbeat_ok": runtime.get("last_heartbeat_ok"),
+        "last_heartbeat_http_status": runtime.get("last_heartbeat_http_status"),
+        "last_heartbeat_error": runtime.get("last_heartbeat_error"),
+        "last_backend_seen_ok_at": runtime.get("last_backend_seen_ok_at"),
+        "counters": {
+            "sent_ok": runtime.get("sent_ok"),
+            "sent_fail": runtime.get("sent_fail"),
         },
         "cameras": cameras_out,
     }
@@ -350,6 +414,7 @@ def ui():
   <meta charset="utf-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1"/>
   <title>DALE Vision — Edge Setup</title>
+  <link rel="icon" href="/favicon.ico" />
   <style>
     body {{ font-family: Arial, sans-serif; margin: 24px; background: #0b0f14; color: #e6edf3; }}
     .wrap {{ max-width: 980px; margin: 0 auto; }}
@@ -373,6 +438,9 @@ def ui():
 <body>
 <div class="wrap">
   <h1>DALE Vision — Edge Setup (localhost:{APP_PORT})</h1>
+  <div style="margin: 8px 0 12px;">
+    <img src="/static/logo.png" alt="Dale Vision" style="height: 40px;" />
+  </div>
   <div class="small">DEV em casa: use <code>file://videos/cam01_balcao.mp4</code> (os vídeos estão em edge-agent/videos).</div>
 
   <div class="card">
