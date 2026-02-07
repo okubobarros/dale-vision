@@ -1,7 +1,7 @@
 # Deploy Render
 
 Build:
-`pip install -r requirements.prod.txt`
+`pip install -U pip setuptools wheel && pip install -r requirements.prod.txt`
 
 Predeploy:
 `python manage.py migrate --noinput && python manage.py collectstatic --noinput`
