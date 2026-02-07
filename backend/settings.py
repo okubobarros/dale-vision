@@ -1,6 +1,7 @@
 # backend/settings.py
 import os
 from pathlib import Path
+from urllib.parse import urlparse, parse_qs, unquote
 from dotenv import load_dotenv
 from datetime import timedelta
 # Carrega variáveis do .env
@@ -12,9 +13,29 @@ BASE_DIR = Path(__file__).resolve().parent.parent
 SECRET_KEY = os.getenv('DJANGO_SECRET_KEY', 'django-insecure-change-me-in-production!')
 
 # SECURITY WARNING: don't run with debug turned on in production!
-DEBUG = os.getenv('DEBUG', 'True') == 'True'
+def _env_bool(name: str, default: bool = False) -> bool:
+    raw = os.getenv(name)
+    if raw is None:
+        return default
+    value = raw.strip().lower()
+    if value in {"1", "true", "t", "yes", "y", "on"}:
+        return True
+    if value in {"0", "false", "f", "no", "n", "off"}:
+        return False
+    return default
 
-ALLOWED_HOSTS = os.getenv('ALLOWED_HOSTS', 'localhost,127.0.0.1').split(',')
+def _env_csv(name: str, default: list[str]) -> list[str]:
+    raw = os.getenv(name)
+    if raw is None:
+        return default
+    items = [item.strip() for item in raw.split(",")]
+    return [item for item in items if item]
+
+DEBUG = _env_bool("DEBUG", True)
+
+ALLOWED_HOSTS = _env_csv("ALLOWED_HOSTS", ["localhost", "127.0.0.1", ".onrender.com"])
+if ".onrender.com" not in ALLOWED_HOSTS:
+    ALLOWED_HOSTS.append(".onrender.com")
 
 # ⭐ APPLICATION DEFINITION - APENAS ESSENCIAIS INICIALMENTE
 INSTALLED_APPS = [
@@ -76,19 +97,46 @@ TEMPLATES = [
 WSGI_APPLICATION = 'backend.wsgi.application'
 
 # ⭐ DATABASE - Supabase Postgres (prod e dev)
-DATABASES = {
-    'default': {
-        'ENGINE': 'django.db.backends.postgresql',
-        'NAME': os.getenv('DB_NAME', 'postgres'),
-        'USER': os.getenv('DB_USER', 'postgres'),
-        'PASSWORD': os.getenv('DB_PASSWORD', ''),
-        'HOST': os.getenv('DB_HOST', ''),
-        'PORT': os.getenv('DB_PORT', '5432'),
-        'OPTIONS': {
-            'sslmode': os.getenv('DB_SSLMODE', 'require'),
+_database_url = os.getenv("DATABASE_URL")
+if _database_url:
+    parsed = urlparse(_database_url)
+    scheme = (parsed.scheme or "").split("+", 1)[0]
+    if scheme not in {"postgres", "postgresql"}:
+        # Fall back to env-based config if DATABASE_URL is not a Postgres URL.
+        parsed = None
+    if parsed:
+        query = parse_qs(parsed.query)
+        sslmode = (query.get("sslmode") or ["require"])[0]
+        DATABASES = {
+            "default": {
+                "ENGINE": "django.db.backends.postgresql",
+                "NAME": unquote(parsed.path.lstrip("/")),
+                "USER": unquote(parsed.username or ""),
+                "PASSWORD": unquote(parsed.password or ""),
+                "HOST": parsed.hostname or "",
+                "PORT": str(parsed.port or "5432"),
+                "OPTIONS": {"sslmode": sslmode},
+            }
+        }
+    else:
+        DATABASES = None
+else:
+    DATABASES = None
+
+if DATABASES is None:
+    DATABASES = {
+        'default': {
+            'ENGINE': 'django.db.backends.postgresql',
+            'NAME': os.getenv('DB_NAME', 'postgres'),
+            'USER': os.getenv('DB_USER', 'postgres'),
+            'PASSWORD': os.getenv('DB_PASSWORD', ''),
+            'HOST': os.getenv('DB_HOST', ''),
+            'PORT': os.getenv('DB_PORT', '5432'),
+            'OPTIONS': {
+                'sslmode': os.getenv('DB_SSLMODE', 'require'),
+            }
         }
     }
-}
 
 # Password validation
 AUTH_PASSWORD_VALIDATORS = [
@@ -121,10 +169,13 @@ REST_FRAMEWORK = {
 }
 
 # ⭐ CORS CONFIG
-CORS_ALLOWED_ORIGINS = [
-    "http://localhost:5173",
-    "http://127.0.0.1:5173",
-]
+CORS_ALLOWED_ORIGINS = _env_csv(
+    "CORS_ALLOWED_ORIGINS",
+    [
+        "http://localhost:5173",
+        "http://127.0.0.1:5173",
+    ],
+)
 CORS_ALLOW_CREDENTIALS = True
 
 CORS_ALLOW_METHODS = [
@@ -146,6 +197,8 @@ CORS_ALLOW_HEADERS = [
     'x-csrftoken',
     'x-requested-with',
 ]
+# ⭐ CSRF CONFIG
+CSRF_TRUSTED_ORIGINS = _env_csv("CSRF_TRUSTED_ORIGINS", [])
 # ⭐ KNOX CONFIG
 REST_KNOX = {
     'TOKEN_TTL': timedelta(days=30),
