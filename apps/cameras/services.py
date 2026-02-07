@@ -1,5 +1,4 @@
 import time
-import cv2
 import tempfile
 from django.utils import timezone
 
@@ -8,6 +7,11 @@ def rtsp_snapshot(rtsp_url: str, timeout_sec: int = 6) -> dict:
     Tenta capturar 1 frame do RTSP.
     Retorna: ok, latency_ms, tmp_path (jpg) ou error.
     """
+    try:
+        import cv2  # optional dependency
+    except Exception:
+        return {"ok": False, "error": "OpenCV (cv2) não está instalado."}
+
     start = time.time()
     cap = cv2.VideoCapture(rtsp_url)
 

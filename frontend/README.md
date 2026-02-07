@@ -71,3 +71,14 @@ export default defineConfig([
   },
 ])
 ```
+
+## Backend Deploy (Render)
+
+- Dev/local uses `requirements.txt`
+- Production uses `requirements.prod.txt` (no heavy vision deps like numpy/opencv/torch)
+
+Example:
+```
+pip install -r requirements.prod.txt
+gunicorn backend.wsgi:application
+```
