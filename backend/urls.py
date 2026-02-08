@@ -2,6 +2,7 @@
 from django.contrib import admin
 from django.urls import path, include
 from django.http import JsonResponse
+from backend.views import health
 from rest_framework import permissions
 from drf_yasg.views import get_schema_view
 from drf_yasg import openapi
@@ -56,6 +57,6 @@ urlpatterns = [
     path("api/v1/alerts/", include("apps.alerts.urls")),
     path("api/cameras/", include("apps.cameras.urls")),
 
-    path("health/", lambda r: JsonResponse({"ok": True})),
+    path("health/", health),
     path("api/edge/", include("apps.edge.urls")),
 ]

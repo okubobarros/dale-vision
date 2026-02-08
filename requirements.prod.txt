@@ -11,3 +11,4 @@ requests==2.31.0
 whitenoise==6.6.0
 setuptools>=70,<81
 wheel
+dj-database-url==2.2.0 

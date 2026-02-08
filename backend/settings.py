@@ -4,6 +4,7 @@ from pathlib import Path
 from urllib.parse import urlparse, parse_qs, unquote
 from dotenv import load_dotenv
 from datetime import timedelta
+import dj_database_url
 # Carrega variáveis do .env
 load_dotenv()
 
@@ -13,25 +14,14 @@ BASE_DIR = Path(__file__).resolve().parent.parent
 SECRET_KEY = os.getenv('DJANGO_SECRET_KEY', 'django-insecure-change-me-in-production!')
 
 # SECURITY WARNING: don't run with debug turned on in production!
-def _env_bool(name: str, default: bool = False) -> bool:
-    raw = os.getenv(name)
-    if raw is None:
-        return default
-    value = raw.strip().lower()
-    if value in {"1", "true", "t", "yes", "y", "on"}:
-        return True
-    if value in {"0", "false", "f", "no", "n", "off"}:
-        return False
-    return default
-
 def _env_csv(name: str, default: list[str]) -> list[str]:
     raw = os.getenv(name)
-    if raw is None:
+    if raw is None or raw.strip() == "":
         return default
     items = [item.strip() for item in raw.split(",")]
     return [item for item in items if item]
 
-DEBUG = _env_bool("DEBUG", True)
+DEBUG = os.getenv("DEBUG", "0") in ("1", "true", "True")
 
 ALLOWED_HOSTS = _env_csv("ALLOWED_HOSTS", ["localhost", "127.0.0.1", ".onrender.com"])
 if ".onrender.com" not in ALLOWED_HOSTS:
@@ -101,10 +91,7 @@ _database_url = os.getenv("DATABASE_URL")
 if _database_url:
     parsed = urlparse(_database_url)
     scheme = (parsed.scheme or "").split("+", 1)[0]
-    if scheme not in {"postgres", "postgresql"}:
-        # Fall back to env-based config if DATABASE_URL is not a Postgres URL.
-        parsed = None
-    if parsed:
+    if scheme in {"postgres", "postgresql"}:
         query = parse_qs(parsed.query)
         sslmode = (query.get("sslmode") or ["require"])[0]
         DATABASES = {
