@@ -1,0 +1,20 @@
+{
+  "redirects": [
+    {
+      "source": "/(.*)",
+      "has": [
+        { "type": "host", "value": "dalevision.com" }
+      ],
+      "destination": "https://app.dalevision.com/$1",
+      "permanent": true
+    },
+    {
+      "source": "/(.*)",
+      "has": [
+        { "type": "host", "value": "www.dalevision.com" }
+      ],
+      "destination": "https://app.dalevision.com/$1",
+      "permanent": true
+    }
+  ]
+}

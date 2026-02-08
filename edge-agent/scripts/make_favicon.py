@@ -7,7 +7,7 @@ except Exception:
     raise SystemExit(0)
 
 ROOT = Path(__file__).resolve().parents[1]
-src = ROOT / "assets" / "logo.png"  # ajuste se seu logo estiver em outro lugar
+src = ROOT / "src" / "agent" / "static" / "logo.png"
 out = ROOT / "src" / "agent" / "static" / "favicon.ico"
 
 out.parent.mkdir(parents=True, exist_ok=True)

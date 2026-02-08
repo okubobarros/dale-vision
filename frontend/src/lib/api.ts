@@ -1,6 +1,7 @@
-const FALLBACK_BASE_URL = "http://localhost:8000"
+const FALLBACK_ORIGIN = "http://localhost:8000"
 
-const rawBaseUrl = (import.meta.env.VITE_API_BASE_URL || "").trim()
-const baseUrl = rawBaseUrl.length > 0 ? rawBaseUrl : FALLBACK_BASE_URL
+const rawOrigin = (import.meta.env.VITE_API_ORIGIN || "").trim()
+const origin = rawOrigin.length > 0 ? rawOrigin : FALLBACK_ORIGIN
 
-export const API_BASE_URL = `${baseUrl.replace(/\/+$/, "")}/api`
+export const API_ORIGIN = origin.replace(/\/+$/, "")
+export const API_BASE_URL = `${API_ORIGIN}/api`

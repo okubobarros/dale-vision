@@ -15,6 +15,8 @@ const api = axios.create({
   withCredentials: false, // ✅ Knox não precisa de cookies
 })
 
+console.log("[API] baseURL =", API_BASE_URL)
+
 // Request interceptor
 api.interceptors.request.use(
   (config) => {
