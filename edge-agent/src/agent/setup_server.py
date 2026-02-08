@@ -105,7 +105,7 @@ def _ensure_defaults(cfg: dict) -> dict:
     cfg["agent"].setdefault("agent_id", str(uuid.uuid4()))
     cfg["agent"].setdefault("timezone", "America/Sao_Paulo")
 
-    cfg["cloud"].setdefault("base_url", os.getenv("CLOUD_BASE_URL", "https://api.dalevision.com"))
+    cfg["cloud"].setdefault("base_url", os.getenv("CLOUD_BASE_URL", "http://127.0.0.1:8000"))
     cfg["cloud"].setdefault("timeout_seconds", 15)
     cfg["cloud"].setdefault("send_interval_seconds", 2)
     cfg["cloud"].setdefault("heartbeat_interval_seconds", 30)
@@ -449,7 +449,7 @@ def ui():
     <div class="row">
       <div>
         <label>Cloud Base URL</label>
-        <input id="cloud_base_url" placeholder="https://api.dalevision.com" />
+        <input id="cloud_base_url" placeholder="http://127.0.0.1:8000" />
       </div>
       <div>
         <label>Store ID</label>

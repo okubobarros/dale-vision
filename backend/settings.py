@@ -5,6 +5,7 @@ from urllib.parse import urlparse, parse_qs, unquote
 from dotenv import load_dotenv
 from datetime import timedelta
 import dj_database_url
+
 # Carrega variáveis do .env
 load_dotenv()
 
@@ -23,14 +24,16 @@ def _env_csv(name: str, default: list[str]) -> list[str]:
 
 DEBUG = os.getenv("DEBUG", "0") in ("1", "true", "True")
 
+# Hardened settings for production
+if not DEBUG:
+    SECURE_PROXY_SSL_HEADER = ("HTTP_X_FORWARDED_PROTO", "https")
+    CSRF_COOKIE_SECURE = True
+    SESSION_COOKIE_SECURE = True
+
 ALLOWED_HOSTS = _env_csv(
     "ALLOWED_HOSTS",
-    ["localhost", "127.0.0.1", "api.dalevision.com", ".onrender.com"],
+    ["localhost", "127.0.0.1"],
 )
-if "api.dalevision.com" not in ALLOWED_HOSTS:
-    ALLOWED_HOSTS.append("api.dalevision.com")
-if ".onrender.com" not in ALLOWED_HOSTS:
-    ALLOWED_HOSTS.append(".onrender.com")
 
 # ⭐ APPLICATION DEFINITION - APENAS ESSENCIAIS INICIALMENTE
 INSTALLED_APPS = [
@@ -164,6 +167,9 @@ REST_FRAMEWORK = {
 CORS_ALLOWED_ORIGINS = _env_csv(
     "CORS_ALLOWED_ORIGINS",
     [
+        "https://app.dalevision.com",
+        "https://dalevision.com",
+        "https://www.dalevision.com",
         "http://localhost:5173",
         "http://127.0.0.1:5173",
     ],
@@ -190,7 +196,17 @@ CORS_ALLOW_HEADERS = [
     'x-requested-with',
 ]
 # ⭐ CSRF CONFIG
-CSRF_TRUSTED_ORIGINS = _env_csv("CSRF_TRUSTED_ORIGINS", [])
+CSRF_TRUSTED_ORIGINS = _env_csv(
+    "CSRF_TRUSTED_ORIGINS",
+    [
+        "https://app.dalevision.com",
+        "https://dalevision.com",
+        "https://www.dalevision.com",
+        "https://api.dalevision.com",
+        "http://localhost:5173",
+        "http://127.0.0.1:5173",
+    ],
+)
 # ⭐ KNOX CONFIG
 REST_KNOX = {
     'TOKEN_TTL': timedelta(days=30),

@@ -11,7 +11,7 @@ Currently, two official plugins are available:
 
 Set the environment variable `VITE_API_BASE_URL` in Vercel:
 - Production example: `https://api.dalevision.com`
-- Local/dev example: `http://127.0.0.1:8000`
+- Local/dev example: `http://localhost:8000`
 
 In Vercel: Project Settings -> Environment Variables -> add `VITE_API_BASE_URL`, then redeploy.
 

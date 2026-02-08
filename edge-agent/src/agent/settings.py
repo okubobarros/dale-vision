@@ -48,11 +48,7 @@ def _env_override(d: Dict[str, Any]) -> Dict[str, Any]:
     Ex: CLOUD_BASE_URL, EDGE_CLOUD_TOKEN, etc.
     """
     # mantenha simples no v1; expanda conforme precisar
-    base = (
-        os.getenv("CLOUD_BASE_URL")
-        or os.getenv("EDGE_CLOUD_BASE_URL")
-        or os.getenv("DALE_BASE_URL")
-    )
+    base = os.getenv("CLOUD_BASE_URL")
     edge_token = os.getenv("EDGE_TOKEN")
     token = edge_token or os.getenv("EDGE_CLOUD_TOKEN")
     heartbeat = os.getenv("HEARTBEAT_INTERVAL_SECONDS")
@@ -110,12 +106,7 @@ def load_settings(path: str) -> Settings:
 
     base_url = (cloud.get("base_url") or "").strip()
     if not base_url:
-        base_url = (
-            os.getenv("CLOUD_BASE_URL")
-            or os.getenv("EDGE_CLOUD_BASE_URL")
-            or os.getenv("DALE_BASE_URL")
-            or "https://api.dalevision.com"
-        )
+        base_url = os.getenv("CLOUD_BASE_URL") or "http://127.0.0.1:8000"
 
     return Settings(
         agent_id=agent["agent_id"],

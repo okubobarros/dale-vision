@@ -1,6 +1,6 @@
 // src/services/api.ts
 import axios from "axios"
-import { API_BASE_URL } from "../config/api"
+import { API_BASE_URL } from "../lib/api"
 
 const getTokenFromStorage = (): string | null => {
   return localStorage.getItem("authToken")
