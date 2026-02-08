@@ -3,7 +3,7 @@ agent:
   store_id: b259e974-46f6-4f95-a293-35845946de55
   timezone: America/Sao_Paulo
 cloud:
-  base_url: http://127.0.0.1:8000
+  base_url: https://api.dalevision.com
   token: edge-local-123
   timeout_seconds: 8
   send_interval_seconds: 2

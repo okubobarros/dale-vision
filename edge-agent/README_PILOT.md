@@ -19,6 +19,9 @@ Rodar o agente dentro da loja (sem VPN e sem abrir portas) e enviar apenas:
    - Store ID
    - Edge Token
    Clique em **Salvar Config**
+   Dica:
+   - local: `CLOUD_BASE_URL=http://127.0.0.1:8000`
+   - prod:  `CLOUD_BASE_URL=https://api.dalevision.com`
 4) Para cada câmera:
    - cole a URL RTSP
    - clique **Testar (preview)** (deve aparecer a imagem)

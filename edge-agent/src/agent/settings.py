@@ -45,10 +45,14 @@ class Settings:
 def _env_override(d: Dict[str, Any]) -> Dict[str, Any]:
     """
     Permite override via env (útil pra Docker depois).
-    Ex: EDGE_CLOUD_BASE_URL, EDGE_CLOUD_TOKEN, etc.
+    Ex: CLOUD_BASE_URL, EDGE_CLOUD_TOKEN, etc.
     """
     # mantenha simples no v1; expanda conforme precisar
-    base = os.getenv("EDGE_CLOUD_BASE_URL")
+    base = (
+        os.getenv("CLOUD_BASE_URL")
+        or os.getenv("EDGE_CLOUD_BASE_URL")
+        or os.getenv("DALE_BASE_URL")
+    )
     edge_token = os.getenv("EDGE_TOKEN")
     token = edge_token or os.getenv("EDGE_CLOUD_TOKEN")
     heartbeat = os.getenv("HEARTBEAT_INTERVAL_SECONDS")
@@ -104,12 +108,21 @@ def load_settings(path: str) -> Settings:
         queue_path = base_dir / queue_path
     queue_path.parent.mkdir(parents=True, exist_ok=True)
 
+    base_url = (cloud.get("base_url") or "").strip()
+    if not base_url:
+        base_url = (
+            os.getenv("CLOUD_BASE_URL")
+            or os.getenv("EDGE_CLOUD_BASE_URL")
+            or os.getenv("DALE_BASE_URL")
+            or "https://api.dalevision.com"
+        )
+
     return Settings(
         agent_id=agent["agent_id"],
         store_id=agent["store_id"],
         timezone=agent.get("timezone", "America/Sao_Paulo"),
 
-        cloud_base_url=cloud["base_url"].rstrip("/"),
+        cloud_base_url=base_url.rstrip("/"),
         cloud_token=cloud["token"],
         cloud_timeout=int(cloud.get("timeout_seconds", 15)),
         send_interval_seconds=int(cloud.get("send_interval_seconds", 2)),

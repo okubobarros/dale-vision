@@ -23,7 +23,12 @@ def _env_csv(name: str, default: list[str]) -> list[str]:
 
 DEBUG = os.getenv("DEBUG", "0") in ("1", "true", "True")
 
-ALLOWED_HOSTS = _env_csv("ALLOWED_HOSTS", ["localhost", "127.0.0.1", ".onrender.com"])
+ALLOWED_HOSTS = _env_csv(
+    "ALLOWED_HOSTS",
+    ["localhost", "127.0.0.1", "api.dalevision.com", ".onrender.com"],
+)
+if "api.dalevision.com" not in ALLOWED_HOSTS:
+    ALLOWED_HOSTS.append("api.dalevision.com")
 if ".onrender.com" not in ALLOWED_HOSTS:
     ALLOWED_HOSTS.append(".onrender.com")
 

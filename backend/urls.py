@@ -58,5 +58,6 @@ urlpatterns = [
     path("api/cameras/", include("apps.cameras.urls")),
 
     path("health/", health),
+    path("health", health),
     path("api/edge/", include("apps.edge.urls")),
 ]

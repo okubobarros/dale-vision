@@ -28,7 +28,7 @@ const Login = () => {
       // 🔵 OPÇÃO 2: Se quiser testar com fetch direto (descomente):
       /*
       console.log('Testando com fetch direto...');
-      const response = await fetch('http://localhost:8000/api/accounts/login/', {
+      const response = await fetch(`${API_BASE_URL}/accounts/login/`, {
         method: 'POST',
         headers: {
           'Content-Type': 'application/json',
