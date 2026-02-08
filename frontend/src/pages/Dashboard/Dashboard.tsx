@@ -8,7 +8,7 @@ import {
   type Store,
   type StoreEdgeStatus,
 } from "../../services/stores"
-import { formatAge, formatReason, formatStatusLabel, formatTimestamp, statusPillClass } from "../../utils/edgeReasons"
+import { formatAge, formatReason, formatTimestamp } from "../../utils/edgeReasons"
 import {
   useAlertsEvents,
   useIgnoreEvent,
@@ -979,4 +979,3 @@ const Dashboard = () => {
 }
 
 export default Dashboard
-

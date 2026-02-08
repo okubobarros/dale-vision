@@ -7,6 +7,8 @@ __pycache__/
 .env.*
 venv/
 .env.local
+!frontend/.env.example
+!edge-agent/.env.example
 
 # Django
 db.sqlite3

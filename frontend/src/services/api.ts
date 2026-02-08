@@ -7,7 +7,7 @@ const getTokenFromStorage = (): string | null => {
 }
 
 const api = axios.create({
-  baseURL: API_BASE_URL,
+  baseURL: `${API_BASE_URL}/api`,
   headers: {
     "Content-Type": "application/json",
   },
@@ -15,7 +15,9 @@ const api = axios.create({
   withCredentials: false, // ✅ Knox não precisa de cookies
 })
 
-console.log("[API] baseURL =", API_BASE_URL)
+if (import.meta.env.DEV) {
+  console.log("[API] API_BASE_URL =", API_BASE_URL)
+}
 
 // Request interceptor
 api.interceptors.request.use(

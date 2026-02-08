@@ -9,11 +9,11 @@ Currently, two official plugins are available:
 
 ## Frontend API (Vercel)
 
-Set the environment variable `VITE_API_ORIGIN` in Vercel:
+Set the environment variable `VITE_API_BASE_URL` in Vercel:
 - Production example: `https://api.dalevision.com`
 - Local/dev example: `http://localhost:8000`
 
-In Vercel: Project Settings -> Environment Variables -> add `VITE_API_ORIGIN`, then redeploy.
+In Vercel: Project Settings -> Environment Variables -> add `VITE_API_BASE_URL`, then redeploy.
 
 ## React Compiler
 

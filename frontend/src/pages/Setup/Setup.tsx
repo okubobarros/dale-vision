@@ -153,7 +153,7 @@ export default function Setup() {
       {/* Stepper */}
       <div className="bg-white border rounded-xl p-4">
         <div className="grid grid-cols-1 md:grid-cols-4 gap-3">
-          {steps.map((s, i) => {
+          {steps.map((s) => {
             const active = s.key === step
             const done =
               (s.key === "agent" && state.agent_online) ||
