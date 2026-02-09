@@ -1,6 +1,5 @@
 // frontend/src/pages/Onboarding/OnboardingSuccess.tsx
 import { useEffect, useMemo, useState } from "react"
-import { useNavigate } from "react-router-dom"
 
 type ConfettiPiece = {
   id: string
@@ -19,8 +18,6 @@ function rand(min: number, max: number) {
 type Phase = "celebrate" | "preparing" | "redirecting"
 
 export default function OnboardingSuccess() {
-  const navigate = useNavigate()
-
   // Se seu login é rota interna, use "/login".
   // Se precisa garantir domínio, use a URL completa.
   const LOGIN_URL = "https://app.dalevision.com/login"
