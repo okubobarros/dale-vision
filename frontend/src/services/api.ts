@@ -1,9 +1,19 @@
 // src/services/api.ts
 import axios from "axios"
+import toast from "react-hot-toast"
 import { API_BASE_URL } from "../lib/api"
 
 const getTokenFromStorage = (): string | null => {
   return localStorage.getItem("authToken")
+}
+
+const DEFAULT_TIMEOUT_MS = 30000
+const LONG_TIMEOUT_MS = 60000
+const RETRY_BACKOFF_MS = [800, 1600]
+
+const isLongTimeoutPath = (url?: string) => {
+  const u = String(url || "")
+  return /(^|\/)alerts\//.test(u) || /(^|\/)v1\/stores\//.test(u)
 }
 
 const api = axios.create({
@@ -11,7 +21,7 @@ const api = axios.create({
   headers: {
     "Content-Type": "application/json",
   },
-  timeout: 30000,
+  timeout: DEFAULT_TIMEOUT_MS,
   withCredentials: false, // ✅ Knox não precisa de cookies
 })
 
@@ -22,6 +32,9 @@ if (import.meta.env.DEV) {
 // Request interceptor
 api.interceptors.request.use(
   (config) => {
+    const timeout = isLongTimeoutPath(config.url) ? LONG_TIMEOUT_MS : DEFAULT_TIMEOUT_MS
+    config.timeout = Math.max(Number(config.timeout || 0), timeout)
+
     const token = getTokenFromStorage()
 
     // ✅ Axios v1: headers pode ser AxiosHeaders (tem .set)
@@ -73,6 +86,26 @@ api.interceptors.response.use(
     const isTimeout =
       error.code === "ECONNABORTED" ||
       String(error.message || "").toLowerCase().includes("timeout")
+    const status = error.response?.status
+    const shouldRetry = isTimeout || [502, 503, 504].includes(status)
+
+    const config = error.config as any
+    const retryCount = (config?._retryCount as number) || 0
+
+    if (shouldRetry && config && retryCount < RETRY_BACKOFF_MS.length) {
+      config._retryCount = retryCount + 1
+      const delay = RETRY_BACKOFF_MS[retryCount]
+
+      if (isTimeout) {
+        toast("Serviço acordando (Render free). Tentando novamente...", {
+          id: "render-wakeup",
+        })
+      }
+
+      return new Promise((resolve) => setTimeout(resolve, delay)).then(() =>
+        api.request(config)
+      )
+    }
 
     if (isTimeout) {
       console.warn("🟠 API Timeout:", {

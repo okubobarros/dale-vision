@@ -6,9 +6,11 @@ import {
   type StoreEdgeStatus,
 } from "../../services/stores"
 import { formatAge, formatReason, formatTimestamp } from "../../utils/edgeReasons"
+import EdgeSetupModal from "../../components/EdgeSetupModal"
 
 const Cameras = () => {
   const [selectedStore, setSelectedStore] = useState("")
+  const [edgeSetupOpen, setEdgeSetupOpen] = useState(false)
 
   const { data: stores, isLoading: storesLoading } = useQuery<Store[]>({
     queryKey: ["stores"],
@@ -79,25 +81,14 @@ const Cameras = () => {
         </h2>
         <button
           type="button"
-          onClick={async () => {
-            const url =
-              import.meta.env.VITE_EDGE_SETUP_URL || "http://localhost:7860/"
-            try {
-              await fetch(url, { method: "GET", mode: "no-cors" })
-              window.open(url, "_blank", "noreferrer")
-            } catch (error) {
-              window.alert(
-                "Não foi possível abrir o Edge Setup. Verifique se o serviço está rodando."
-              )
-            }
-          }}
+          onClick={() => setEdgeSetupOpen(true)}
           className="text-sm font-semibold text-blue-600 hover:text-blue-700"
         >
           Abrir Edge Setup
         </button>
       </div>
       <p className="text-xs text-gray-500">
-        Certifique-se de que o Edge Setup está rodando
+        Gere o .env do agente e valide a conexão com a API.
       </p>
 
       {!selectedStore || selectedStore === "all" ? (
@@ -207,24 +198,19 @@ const Cameras = () => {
           <p className="mb-3">Nenhuma câmera encontrada.</p>
           <button
             type="button"
-            onClick={async () => {
-              const url =
-                import.meta.env.VITE_EDGE_SETUP_URL || "http://localhost:7860/"
-              try {
-                await fetch(url, { method: "GET", mode: "no-cors" })
-                window.open(url, "_blank", "noreferrer")
-              } catch (error) {
-                window.alert(
-                  "Não foi possível abrir o Edge Setup. Verifique se o serviço está rodando."
-                )
-              }
-            }}
+            onClick={() => setEdgeSetupOpen(true)}
             className="text-sm font-semibold text-blue-600 hover:text-blue-700"
           >
             Abrir Edge Setup
           </button>
         </div>
       )}
+
+      <EdgeSetupModal
+        open={edgeSetupOpen}
+        onClose={() => setEdgeSetupOpen(false)}
+        defaultStoreId={selectedStore && selectedStore !== "all" ? selectedStore : ""}
+      />
     </div>
   )
 }
