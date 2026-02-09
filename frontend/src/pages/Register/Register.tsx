@@ -87,7 +87,7 @@ export default function Register() {
             </div>
 
             <div>
-              <label className="text-sm text-white/80">E-mail Corporativo</label>
+              <label className="text-sm text-white/80">E-mail Profissional</label>
               <div className="mt-2 flex items-center gap-2 rounded-2xl border border-white/10 bg-white/5 px-4 py-3">
                 <span className="text-white/60">✉️</span>
                 <input
