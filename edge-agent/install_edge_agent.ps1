@@ -50,7 +50,7 @@ if (-not (Test-Path $py)) {
 # 2) Escrever config/env (simples)
 $envFile = Join-Path $root ".env"
 $envLines = @(
-  "CLOUD_BASE_URL=$BaseUrl"
+  "DALE_CLOUD_BASE_URL=$BaseUrl"
   "DALE_STORE_ID=$StoreId"
   "DALE_EDGE_TOKEN=$EdgeToken"
   "DALE_AGENT_ID=$AgentId"

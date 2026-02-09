@@ -102,6 +102,7 @@ def main():
     setup_thread.start()
 
     settings = load_settings(args.config)
+    print(f"[DALE Vision] cloud_base_url = {settings.cloud_base_url}")
     run_agent(settings, heartbeat_only=args.heartbeat_only)
 
 
