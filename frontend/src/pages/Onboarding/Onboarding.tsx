@@ -8,8 +8,7 @@ import EmployeesSetup, { type EmployeeDraft } from "./components/EmployeesSetup"
 
 export default function Onboarding() {
   const navigate = useNavigate()
-  const totalSteps = 2
-  const [step, setStep] = useState(1)
+  const [step, setStep] = useState<1 | 2>(1)
 
   // estado local para demo (sem backend)
   const [store, setStore] = useState<StoreDraft | null>(null)
@@ -20,11 +19,13 @@ export default function Onboarding() {
   }, [step])
 
   function handleNext() {
-    if (step < totalSteps) setStep((s) => s + 1)
+    if (step === 1) setStep(2)
   }
 
   function handlePrev() {
-    if (step > 1) setStep((s) => s - 1)
+    if (step > 1) {
+      setStep((s) => (s === 2 ? 1 : s))
+    }
   }
 
   function handleComplete() {
@@ -43,7 +44,7 @@ export default function Onboarding() {
       <div className="relative max-w-5xl mx-auto px-4 sm:px-6 lg:px-8 py-10">
         {/* Card container para “premium feel” */}
         <div className="rounded-[28px] border border-slate-200/70 bg-white/75 backdrop-blur-xl shadow-[0_18px_60px_rgba(15,23,42,0.12)] p-6 sm:p-8">
-          <OnboardingProgress currentStep={step} totalSteps={totalSteps} />
+          <OnboardingProgress currentStep={step} />
 
           <div className="mt-10">
             {step === 1 && (

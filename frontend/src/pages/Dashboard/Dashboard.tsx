@@ -202,6 +202,7 @@ const Dashboard = () => {
   const [edgeSetupOpen, setEdgeSetupOpen] = useState(false)
   const [edgeSetupHighlight, setEdgeSetupHighlight] = useState(false)
   const [showActivationProgress, setShowActivationProgress] = useState(false)
+  const [activationBannerDismissed, setActivationBannerDismissed] = useState(false)
   const location = useLocation()
 
   const { data: stores, isLoading: storesLoading } = useQuery<Store[]>({
@@ -239,6 +240,8 @@ const Dashboard = () => {
     if (params.get("openEdgeSetup") === "1") {
       setEdgeSetupOpen(true)
       setEdgeSetupHighlight(true)
+      setShowActivationProgress(true)
+      setActivationBannerDismissed(false)
       params.delete("openEdgeSetup")
       const next = params.toString()
       const newUrl = `${location.pathname}${next ? `?${next}` : ""}`
@@ -266,6 +269,7 @@ const Dashboard = () => {
         localStorage.removeItem("dv_from_onboarding")
       } catch {}
       setShowActivationProgress(false)
+      setActivationBannerDismissed(true)
     }
   }, [showActivationProgress, selectedStore, edgeStatus?.store_status])
 
@@ -274,9 +278,14 @@ const Dashboard = () => {
       localStorage.removeItem("dv_from_onboarding")
     } catch {}
     setShowActivationProgress(false)
+    setActivationBannerDismissed(true)
   }
 
-  const activationBanner = showActivationProgress ? (
+  const shouldShowActivationBanner =
+    !activationBannerDismissed &&
+    (showActivationProgress || (!isLoadingDashboard && !dashboard))
+
+  const activationBanner = shouldShowActivationBanner ? (
     <div className="bg-white rounded-xl shadow-sm border border-gray-100 p-4 sm:p-6">
       <SetupProgress
         step={4}
@@ -285,7 +294,7 @@ const Dashboard = () => {
       />
       <h3 className="text-lg font-bold text-gray-800">Ativação do Trial</h3>
       <p className="text-sm text-gray-600 mt-1">
-        Conecte o Dale Vision ao ambiente da sua loja para começar a receber dados.
+        Conecte o Dale Vision na rede da sua loja para começar a receber dados em tempo real.
       </p>
 
       <div className="mt-4 flex flex-col sm:flex-row gap-3">
@@ -539,7 +548,7 @@ const Dashboard = () => {
             Conecte seu Edge Agent
           </h2>
           <p className="text-sm text-gray-600 mb-4">
-            Ainda não recebemos dados do agent. Gere o .env, execute o agent e aguarde os heartbeats.
+            Vamos conectar o Dale Vision ao computador/servidor da loja para identificar as câmeras e começar a receber dados.
           </p>
           <button
             type="button"
@@ -553,9 +562,9 @@ const Dashboard = () => {
             <h3 className="text-sm font-semibold text-gray-700 mb-2">Checklist</h3>
             <ul className="list-disc pl-5 text-sm text-gray-600">
               <li>Baixe o Edge Agent</li>
-              <li>Configure o .env com store_id e token</li>
-              <li>Rode o agent na máquina da loja</li>
-              <li>Aguarde o primeiro heartbeat</li>
+              <li>Insira o código da loja e o token de conexão</li>
+              <li>Rode o agent no computador da loja</li>
+              <li>Aguarde a primeira confirmação de conexão (Loja Online)</li>
             </ul>
           </div>
           {dashboardError && (
