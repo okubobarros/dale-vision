@@ -1,11 +1,13 @@
 from django.utils import timezone
 from rest_framework import viewsets, permissions, status
+from rest_framework.exceptions import ValidationError
 from rest_framework.decorators import action
 from rest_framework.response import Response
 
 from apps.core.models import Camera, CameraHealthLog
 from .serializers import CameraSerializer, CameraHealthLogSerializer
 from .services import rtsp_snapshot
+from .limits import enforce_trial_camera_limit, TRIAL_CAMERA_LIMIT_MESSAGE
 
 class CameraViewSet(viewsets.ModelViewSet):
     serializer_class = CameraSerializer
@@ -17,6 +19,17 @@ class CameraViewSet(viewsets.ModelViewSet):
         if store_id:
             qs = qs.filter(store_id=store_id)
         return qs
+
+    def perform_create(self, serializer):
+        store = serializer.validated_data.get("store")
+        store_id = getattr(store, "id", None) or serializer.validated_data.get("store_id")
+        requested_active = serializer.validated_data.get("active", True)
+        if store_id:
+            try:
+                enforce_trial_camera_limit(store_id, requested_active=requested_active)
+            except ValidationError:
+                raise ValidationError(TRIAL_CAMERA_LIMIT_MESSAGE)
+        serializer.save()
 
     @action(detail=True, methods=["post"], url_path="test-snapshot")
     def test_snapshot(self, request, pk=None):

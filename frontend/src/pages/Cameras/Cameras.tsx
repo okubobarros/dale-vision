@@ -1,5 +1,7 @@
-import { useEffect, useState } from "react"
+import { useEffect, useMemo, useState } from "react"
+import { useLocation } from "react-router-dom"
 import { useQuery } from "@tanstack/react-query"
+import toast from "react-hot-toast"
 import {
   storesService,
   type Store,
@@ -13,17 +15,49 @@ const Cameras = () => {
   const [selectedStore, setSelectedStore] = useState("")
   const [edgeSetupOpen, setEdgeSetupOpen] = useState(false)
   const isMobile = useIsMobile(768)
-  const [currentUrl, setCurrentUrl] = useState("")
+  const [origin, setOrigin] = useState("")
+  const location = useLocation()
 
   useEffect(() => {
     if (typeof window !== "undefined") {
-      setCurrentUrl(window.location.href)
+      setOrigin(window.location.origin)
     }
   }, [])
 
-  const qrUrl = currentUrl
+  useEffect(() => {
+    const params = new URLSearchParams(location.search)
+    const openEdgeSetup =
+      params.get("openEdgeSetup") === "1" || params.get("edgeSetup") === "1"
+    const storeFromQuery = params.get("store") || ""
+    if (storeFromQuery) {
+      setSelectedStore(storeFromQuery)
+    }
+    if (openEdgeSetup) {
+      setEdgeSetupOpen(true)
+      params.delete("openEdgeSetup")
+      params.delete("edgeSetup")
+      params.delete("store")
+      const next = params.toString()
+      const newUrl = `${location.pathname}${next ? `?${next}` : ""}`
+      if (typeof window !== "undefined") {
+        window.history.replaceState({}, "", newUrl)
+      }
+    }
+  }, [location.pathname, location.search])
+
+  const edgeSetupLink = useMemo(() => {
+    if (!origin) return ""
+    const params = new URLSearchParams()
+    if (selectedStore && selectedStore !== "all") {
+      params.set("store", selectedStore)
+    }
+    params.set("openEdgeSetup", "1")
+    return `${origin}/app/cameras?${params.toString()}`
+  }, [origin, selectedStore])
+
+  const qrUrl = edgeSetupLink
     ? `https://api.qrserver.com/v1/create-qr-code/?size=160x160&data=${encodeURIComponent(
-        currentUrl
+        edgeSetupLink
       )}`
     : ""
 
@@ -90,41 +124,79 @@ const Cameras = () => {
         )}
       </div>
 
-      <div className="flex items-center justify-between">
-        <h2 className="text-lg font-semibold text-gray-800">
-          Status das câmeras
-        </h2>
+      <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3">
+        <div>
+          <h2 className="text-lg font-semibold text-gray-800">
+            Status das câmeras
+          </h2>
+          <p className="text-xs text-gray-500">
+            Gere o .env do agente e valide a conexão com a API.
+          </p>
+        </div>
         <button
           type="button"
           onClick={() => setEdgeSetupOpen(true)}
-          className="text-sm font-semibold text-blue-600 hover:text-blue-700"
+          className="inline-flex w-full sm:w-auto items-center justify-center rounded-lg bg-blue-600 px-4 py-2 text-sm font-semibold text-white hover:bg-blue-700"
         >
           Abrir Edge Setup
         </button>
       </div>
-      <p className="text-xs text-gray-500">
-        Gere o .env do agente e valide a conexão com a API.
-      </p>
 
-      {isMobile && currentUrl && (
-        <div className="bg-white rounded-xl shadow-sm border border-gray-100 p-4">
-          <div className="flex flex-col sm:flex-row sm:items-center gap-4">
-            <img
-              src={qrUrl}
-              alt="QR code da página atual"
-              className="h-28 w-28 rounded-lg border border-gray-200"
-            />
-            <div>
-              <h3 className="text-sm font-semibold text-gray-800">
-                Continuar no computador
-              </h3>
-              <p className="text-xs text-gray-600 mt-1">
-                O Edge Agent requer desktop. Escaneie o QR code para abrir esta
-                página no computador.
-              </p>
-              <div className="mt-2 text-xs text-blue-600 break-all">
-                {currentUrl}
-              </div>
+      {isMobile && edgeSetupLink && (
+        <div className="bg-white rounded-xl shadow-sm border border-gray-100 p-4 space-y-3">
+          <div>
+            <h3 className="text-sm font-semibold text-gray-800">
+              Continuar no computador
+            </h3>
+            <p className="text-xs text-gray-600 mt-1">
+              Envie o link para abrir o Edge Setup no PC.
+            </p>
+          </div>
+          <div className="flex flex-col sm:flex-row gap-2">
+            <button
+              type="button"
+              onClick={async () => {
+                try {
+                  await navigator.clipboard.writeText(edgeSetupLink)
+                  toast.success("Link copiado")
+                } catch {
+                  toast.error("Falha ao copiar link")
+                }
+              }}
+              className="w-full rounded-lg border border-gray-200 px-4 py-2 text-sm font-semibold text-gray-700 hover:bg-gray-50"
+            >
+              Copiar link
+            </button>
+            <a
+              href={`https://wa.me/?text=${encodeURIComponent(
+                `Abra este link no computador para configurar o Edge Agent:\n${edgeSetupLink}`
+              )}`}
+              target="_blank"
+              rel="noreferrer"
+              className="w-full rounded-lg bg-green-600 px-4 py-2 text-sm font-semibold text-white text-center hover:bg-green-700"
+            >
+              Enviar por WhatsApp
+            </a>
+          </div>
+        </div>
+      )}
+
+      {!isMobile && edgeSetupLink && (
+        <div className="bg-white rounded-xl shadow-sm border border-gray-100 p-4 flex items-center gap-4">
+          <img
+            src={qrUrl}
+            alt="QR code do Edge Setup"
+            className="h-24 w-24 rounded-lg border border-gray-200"
+          />
+          <div>
+            <div className="text-sm font-semibold text-gray-800">
+              Continue no celular (opcional)
+            </div>
+            <div className="text-xs text-gray-600 mt-1">
+              Escaneie para abrir o Edge Setup no celular.
+            </div>
+            <div className="mt-2 text-xs text-blue-600 break-all">
+              {edgeSetupLink}
             </div>
           </div>
         </div>

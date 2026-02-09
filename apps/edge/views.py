@@ -13,6 +13,7 @@ import os
 from rest_framework.views import APIView
 from rest_framework.response import Response
 from rest_framework import status
+from rest_framework.exceptions import ValidationError
 from rest_framework.test import APIRequestFactory, force_authenticate
 from rest_framework.permissions import AllowAny
 from knox.auth import TokenAuthentication
@@ -25,6 +26,7 @@ from apps.core.models import Camera, CameraHealthLog
 from apps.core.models import Store
 from apps.stores.views import ensure_user_uuid, get_user_org_ids
 from apps.stores.views_edge_status import classify_age, compute_store_edge_status_snapshot
+from apps.cameras.limits import enforce_trial_camera_limit, TRIAL_CAMERA_LIMIT_MESSAGE
 from .status_events import emit_store_status_changed, emit_camera_status_changed
 
 
@@ -256,6 +258,13 @@ class EdgeEventsIngestView(APIView):
                     prev_status, _prev_age, _prev_reason = classify_age(prev_last_seen_at)
 
                     if camera_obj is None:
+                        try:
+                            enforce_trial_camera_limit(store_id, requested_active=True)
+                        except ValidationError:
+                            return Response(
+                                {"detail": TRIAL_CAMERA_LIMIT_MESSAGE, "reason": "trial_camera_limit"},
+                                status=status.HTTP_400_BAD_REQUEST,
+                            )
                         camera_obj = Camera.objects.create(
                             store_id=store_id,
                             external_id=external_id,

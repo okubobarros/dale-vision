@@ -5,17 +5,15 @@ import { useNavigate } from "react-router-dom"
 import OnboardingProgress from "./components/OnboardingProgress"
 import StoresSetup, { type StoreDraft } from "./components/StoresSetup"
 import EmployeesSetup, { type EmployeeDraft } from "./components/EmployeesSetup"
-import CamerasSetup, { type CameraDraft } from "./components/CamerasSetup"
 
 export default function Onboarding() {
   const navigate = useNavigate()
-  const totalSteps = 3
+  const totalSteps = 2
   const [step, setStep] = useState(1)
 
   // estado local para demo (sem backend)
   const [store, setStore] = useState<StoreDraft | null>(null)
   const [employees, setEmployees] = useState<EmployeeDraft[]>([])
-  const [cameras, setCameras] = useState<CameraDraft[]>([])
 
   useEffect(() => {
     window.scrollTo({ top: 0, behavior: "smooth" })
@@ -31,8 +29,8 @@ export default function Onboarding() {
 
   function handleComplete() {
     // salva localmente para demo
-    localStorage.setItem("demo_onboarding", JSON.stringify({ store, employees, cameras }))
-    navigate("/onboarding/success")
+    localStorage.setItem("demo_onboarding", JSON.stringify({ store, employees }))
+    navigate("/app/dashboard?openEdgeSetup=1")
   }
 
   return (
@@ -53,15 +51,6 @@ export default function Onboarding() {
             <EmployeesSetup
               employees={employees}
               onChange={setEmployees}
-              onPrev={handlePrev}
-              onNext={handleNext}
-            />
-          )}
-
-          {step === 3 && (
-            <CamerasSetup
-              cameras={cameras}
-              onChange={setCameras}
               onPrev={handlePrev}
               onNext={handleComplete}
             />

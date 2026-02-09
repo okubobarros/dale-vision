@@ -68,8 +68,10 @@ export default function EmployeesSetup({
   return (
     <div className="space-y-8">
       <div>
-        <h3 className="text-xl sm:text-2xl font-extrabold">Cadastrar Funcionários</h3>
-        <p className="text-white/60 mt-1">No trial, recomendamos cadastrar só o essencial.</p>
+        <h3 className="text-xl sm:text-2xl font-extrabold">Equipe (opcional)</h3>
+        <p className="text-white/60 mt-1">
+          Você pode pular esta etapa e completar depois.
+        </p>
       </div>
 
       <div className="rounded-2xl border border-white/10 bg-white/5 p-6 space-y-4">
@@ -179,7 +181,7 @@ export default function EmployeesSetup({
           onClick={onNext}
           className="w-full sm:w-1/2 rounded-2xl bg-blue-600 py-3 font-semibold hover:bg-blue-500"
         >
-          Próximo →
+          Finalizar →
         </button>
       </div>
     </div>

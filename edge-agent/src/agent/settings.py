@@ -43,17 +43,59 @@ class Settings:
     cameras: List[CameraConfig]
 
 
+def _pick_env(primary: str, fallback: str) -> tuple[Optional[str], Optional[str]]:
+    val = os.getenv(primary)
+    if val is not None and val.strip() != "":
+        return val.strip(), primary
+    val = os.getenv(fallback)
+    if val is not None and val.strip() != "":
+        return val.strip(), fallback
+    return None, None
+
+
+def _resolve_env_sources() -> Dict[str, Optional[str]]:
+    base, base_src = _pick_env("CLOUD_BASE_URL", "DALE_CLOUD_BASE_URL")
+    store_id, store_src = _pick_env("STORE_ID", "DALE_STORE_ID")
+    agent_id, agent_src = _pick_env("AGENT_ID", "DALE_AGENT_ID")
+    edge_token, edge_token_src = _pick_env("EDGE_TOKEN", "DALE_EDGE_TOKEN")
+
+    edge_cloud_token = os.getenv("EDGE_CLOUD_TOKEN")
+    if not edge_token and edge_cloud_token is not None and edge_cloud_token.strip() != "":
+        edge_token = edge_cloud_token.strip()
+        edge_token_src = "EDGE_CLOUD_TOKEN"
+
+    return {
+        "base": base,
+        "base_src": base_src,
+        "store_id": store_id,
+        "store_src": store_src,
+        "agent_id": agent_id,
+        "agent_src": agent_src,
+        "edge_token": edge_token,
+        "edge_token_src": edge_token_src,
+    }
+
+
+def _mask_secret(value: str) -> str:
+    v = (value or "").strip()
+    if not v:
+        return ""
+    if len(v) <= 8:
+        return "*" * len(v)
+    return f"{v[:4]}...{v[-4:]}"
+
+
 def _env_override(d: Dict[str, Any]) -> Dict[str, Any]:
     """
     Permite override via env (útil pra Docker depois).
     Ex: CLOUD_BASE_URL, EDGE_TOKEN, STORE_ID, AGENT_ID (com fallback DALE_*).
     """
     # mantenha simples no v1; expanda conforme precisar
-    base = os.getenv("CLOUD_BASE_URL") or os.getenv("DALE_CLOUD_BASE_URL")
-    edge_token = os.getenv("EDGE_TOKEN") or os.getenv("DALE_EDGE_TOKEN")
-    token = edge_token or os.getenv("EDGE_CLOUD_TOKEN")
-    store_id = os.getenv("STORE_ID") or os.getenv("DALE_STORE_ID")
-    agent_id = os.getenv("AGENT_ID") or os.getenv("DALE_AGENT_ID")
+    envs = _resolve_env_sources()
+    base = envs.get("base")
+    token = envs.get("edge_token")
+    store_id = envs.get("store_id")
+    agent_id = envs.get("agent_id")
     heartbeat = os.getenv("HEARTBEAT_INTERVAL_SECONDS")
     heartbeat_timeout = os.getenv("HEARTBEAT_TIMEOUT_SECONDS")
     vision_env = os.getenv("EDGE_VISION_ENABLED")
@@ -65,14 +107,17 @@ def _env_override(d: Dict[str, Any]) -> Dict[str, Any]:
         elif v in ("0", "false", "no", "n", "off"):
             vision_enabled = False
     if base:
-        d.setdefault("cloud", {})["base_url"] = base
+        d.setdefault("cloud", {})
+        d["cloud"]["base_url"] = base
     if token:
         d.setdefault("cloud", {})
         d["cloud"]["token"] = token
     if store_id:
-        d.setdefault("agent", {})["store_id"] = store_id
+        d.setdefault("agent", {})
+        d["agent"]["store_id"] = store_id
     if agent_id:
-        d.setdefault("agent", {})["agent_id"] = agent_id
+        d.setdefault("agent", {})
+        d["agent"]["agent_id"] = agent_id
     if heartbeat:
         d.setdefault("cloud", {})["heartbeat_interval_seconds"] = int(heartbeat)
     if heartbeat_timeout:
@@ -87,6 +132,7 @@ def load_settings(path: str) -> Settings:
         raw = yaml.safe_load(f) or {}
 
     raw = _env_override(raw)
+    envs = _resolve_env_sources()
 
     agent = raw.get("agent", {})
     cloud = raw.get("cloud", {})
@@ -129,6 +175,31 @@ def load_settings(path: str) -> Settings:
             + " (prefer STORE_ID, EDGE_TOKEN, CLOUD_BASE_URL)"
         )
         sys.exit(1)
+
+    base_src = envs.get("base_src")
+    store_src = envs.get("store_src")
+    agent_src = envs.get("agent_src")
+    token_src = envs.get("edge_token_src")
+
+    if base_src:
+        print(f"[EDGE] CLOUD_BASE_URL={base_url} (env:{base_src})")
+    else:
+        print(f"[EDGE] CLOUD_BASE_URL={base_url} (config/default)")
+
+    if store_src:
+        print(f"[EDGE] STORE_ID={agent.get('store_id')} (env:{store_src})")
+    else:
+        print(f"[EDGE] STORE_ID={agent.get('store_id')} (config)")
+
+    if agent_src:
+        print(f"[EDGE] AGENT_ID={agent.get('agent_id')} (env:{agent_src})")
+    else:
+        print(f"[EDGE] AGENT_ID={agent.get('agent_id')} (config)")
+
+    if token_src:
+        print(f"[EDGE] EDGE_TOKEN={_mask_secret(cloud.get('token', ''))} (env:{token_src})")
+    else:
+        print(f"[EDGE] EDGE_TOKEN={_mask_secret(cloud.get('token', ''))} (config)")
 
     return Settings(
         agent_id=agent["agent_id"],

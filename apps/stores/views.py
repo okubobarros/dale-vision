@@ -11,6 +11,7 @@ from django.conf import settings
 from datetime import timedelta
 from apps.core.models import Store, OrgMember, Organization, Camera
 from apps.edge.models import EdgeToken
+from apps.cameras.limits import enforce_trial_camera_limit, TRIAL_CAMERA_LIMIT_MESSAGE
 import hashlib
 import secrets
 import uuid
@@ -220,6 +221,19 @@ class StoreViewSet(viewsets.ModelViewSet):
         camera = camera_qs.first()
         if not camera:
             return Response({"detail": "Camera não encontrada."}, status=status.HTTP_404_NOT_FOUND)
+
+        if active and not getattr(camera, "active", False):
+            try:
+                enforce_trial_camera_limit(
+                    store.id,
+                    requested_active=True,
+                    exclude_camera_id=str(camera.id),
+                )
+            except ValidationError:
+                return Response(
+                    {"detail": TRIAL_CAMERA_LIMIT_MESSAGE, "reason": "trial_camera_limit"},
+                    status=status.HTTP_400_BAD_REQUEST,
+                )
 
         try:
             camera.active = active

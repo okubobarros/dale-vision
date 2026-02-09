@@ -1,6 +1,6 @@
 import { useEffect, useState } from "react"
 import { useQuery } from "@tanstack/react-query"
-import { Link } from "react-router-dom"
+import { Link, useLocation } from "react-router-dom"
 import { useAuth } from "../../contexts/AuthContext"
 import {
   storesService,
@@ -199,6 +199,8 @@ const Dashboard = () => {
   const [resolvingEventId, setResolvingEventId] = useState<string | null>(null)
   const [ignoringEventId, setIgnoringEventId] = useState<string | null>(null)
   const [edgeSetupOpen, setEdgeSetupOpen] = useState(false)
+  const [edgeSetupHighlight, setEdgeSetupHighlight] = useState(false)
+  const location = useLocation()
 
   const { data: stores, isLoading: storesLoading } = useQuery<Store[]>({
     queryKey: ["stores"],
@@ -229,6 +231,22 @@ const Dashboard = () => {
 
   const resolveEvent = useResolveEvent()
   const ignoreEvent = useIgnoreEvent()
+
+  useEffect(() => {
+    const params = new URLSearchParams(location.search)
+    if (params.get("openEdgeSetup") === "1") {
+      setEdgeSetupOpen(true)
+      setEdgeSetupHighlight(true)
+      params.delete("openEdgeSetup")
+      const next = params.toString()
+      const newUrl = `${location.pathname}${next ? `?${next}` : ""}`
+      if (typeof window !== "undefined") {
+        window.history.replaceState({}, "", newUrl)
+      }
+      const t = setTimeout(() => setEdgeSetupHighlight(false), 6000)
+      return () => clearTimeout(t)
+    }
+  }, [location.pathname, location.search])
 
   useEffect(() => {
     if (!stores || stores.length === 0) {
@@ -443,7 +461,12 @@ const Dashboard = () => {
   if (!isLoadingDashboard && !dashboard) {
     return (
       <div className="space-y-6 sm:space-y-8">
-        <div className="bg-white rounded-xl shadow-sm border border-gray-100 p-6">
+        <div
+          className={[
+            "bg-white rounded-xl shadow-sm border border-gray-100 p-6",
+            edgeSetupHighlight ? "ring-2 ring-blue-400" : "",
+          ].join(" ")}
+        >
           <h2 className="text-xl font-bold text-gray-800 mb-2">
             Conecte seu Edge Agent
           </h2>
@@ -1032,6 +1055,12 @@ const Dashboard = () => {
           </p>
         </div>
       )}
+
+      <EdgeSetupModal
+        open={edgeSetupOpen}
+        onClose={() => setEdgeSetupOpen(false)}
+        defaultStoreId={selectedStore !== ALL_STORES_VALUE ? selectedStore : ""}
+      />
     </div>
   )
 }

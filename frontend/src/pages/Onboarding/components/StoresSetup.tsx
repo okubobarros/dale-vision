@@ -1,35 +1,29 @@
-// frontend/src/pages/Onboarding/components/StoresSetup.tsx
 import { useMemo, useState } from "react"
 
 export type StoreDraft = {
   name: string
-  businessType: string
-  businessTypeOther: string
-  street: string
-  number: string
-  complement: string
   city: string
   state: string
-  zip: string
+  segment: string
+  segmentOther: string
+  businessModel: string
+  businessModelOther: string
   hoursWeekdays: string
   hoursSaturday: string
   hoursSundayHoliday: string
-  employeesCount: number
   camerasCount: number
-  pos: string
-  posOther: string
 }
 
-const BUSINESS_TYPES = [
+const SEGMENTS = [
   "Supermercado",
   "Farmácia",
-  "Loja de Roupas",
-  "Lavanderia",
-  "Cafeteria",
+  "Moda / Varejo",
+  "Restaurante / Café",
+  "Serviços",
   "Outro",
 ]
 
-const POS_OPTIONS = ["Nenhuma", "TEF", "Vindi", "ERP/POS próprio", "Outro"]
+const BUSINESS_MODELS = ["Próprio", "Franquia", "Rede", "Quiosque", "Outro"]
 
 function clamp(n: number, min: number, max: number) {
   return Math.max(min, Math.min(max, n))
@@ -48,42 +42,36 @@ export default function StoresSetup({
 
   const form = value ?? {
     name: "",
-    businessType: "",
-    businessTypeOther: "",
-    street: "",
-    number: "",
-    complement: "",
     city: "",
     state: "",
-    zip: "",
+    segment: "",
+    segmentOther: "",
+    businessModel: "",
+    businessModelOther: "",
     hoursWeekdays: "",
     hoursSaturday: "",
     hoursSundayHoliday: "",
-    employeesCount: 1,
     camerasCount: 1,
-    pos: "",
-    posOther: "",
   }
 
   const errors = useMemo(() => {
     const e: Record<string, string> = {}
     if (!form.name.trim()) e.name = "Informe o nome da loja."
-    if (!form.businessType) e.businessType = "Selecione o tipo de negócio."
-    if (form.businessType === "Outro" && !form.businessTypeOther.trim()) {
-      e.businessTypeOther = "Informe o tipo de negócio."
-    }
-    if (!form.street.trim()) e.street = "Informe a rua."
-    if (!form.number.trim()) e.number = "Informe o número."
     if (!form.city.trim()) e.city = "Informe a cidade."
     if (!form.state.trim() || form.state.trim().length !== 2) e.state = "UF com 2 letras."
-    if (!form.zip.trim()) e.zip = "Informe o CEP."
+    if (!form.segment) e.segment = "Selecione o segmento."
+    if (form.segment === "Outro" && !form.segmentOther.trim()) {
+      e.segmentOther = "Informe o segmento."
+    }
+    if (!form.businessModel) e.businessModel = "Selecione o modelo de negócio."
+    if (form.businessModel === "Outro" && !form.businessModelOther.trim()) {
+      e.businessModelOther = "Informe o modelo."
+    }
     if (!form.hoursWeekdays.trim()) e.hoursWeekdays = "Informe o horário de dias úteis."
     if (!form.hoursSaturday.trim()) e.hoursSaturday = "Informe o horário de sábado."
     if (!form.hoursSundayHoliday.trim()) e.hoursSundayHoliday = "Informe o horário de domingo/feriado."
-    if (!form.employeesCount || form.employeesCount < 1) e.employeesCount = "Informe funcionários."
     if (!form.camerasCount || form.camerasCount < 1) e.camerasCount = "Informe câmeras."
     if (form.camerasCount > 3) e.camerasCount = "Trial permite até 3 câmeras."
-    if (form.pos === "Outro" && !form.posOther.trim()) e.posOther = "Informe o sistema."
     return e
   }, [form])
 
@@ -103,8 +91,8 @@ export default function StoresSetup({
   return (
     <div className="space-y-8">
       <div>
-        <h3 className="text-xl sm:text-2xl font-extrabold">Cadastre sua primeira loja</h3>
-        <p className="text-white/60 mt-1">Informações básicas para começarmos o piloto.</p>
+        <h3 className="text-xl sm:text-2xl font-extrabold">Cadastre sua loja (rápido)</h3>
+        <p className="text-white/60 mt-1">Só o essencial para liberar o trial em minutos.</p>
       </div>
 
       <div className="grid grid-cols-1 lg:grid-cols-3 gap-8">
@@ -114,65 +102,63 @@ export default function StoresSetup({
             <Field label="Nome da Loja *" error={touched ? errors.name : ""}>
               <input
                 className="w-full rounded-xl border border-white/10 bg-black/20 px-4 py-3 outline-none placeholder:text-white/30"
-                placeholder="Ex: Gelateria Centro"
+                placeholder="Ex: Loja Centro"
                 value={form.name}
                 onChange={(e) => set("name", e.target.value)}
               />
             </Field>
 
-            <Field label="Tipo de Negócio *" error={touched ? errors.businessType : ""}>
+            <Field label="Segmento *" error={touched ? errors.segment : ""}>
               <select
                 className="w-full rounded-xl border border-white/10 bg-black/20 px-4 py-3 outline-none"
-                value={form.businessType}
-                onChange={(e) => set("businessType", e.target.value)}
+                value={form.segment}
+                onChange={(e) => set("segment", e.target.value)}
               >
                 <option value="">Selecione...</option>
-                {BUSINESS_TYPES.map((b) => (
-                  <option key={b} value={b}>
-                    {b}
+                {SEGMENTS.map((s) => (
+                  <option key={s} value={s}>
+                    {s}
                   </option>
                 ))}
               </select>
             </Field>
-            {form.businessType === "Outro" && (
-              <Field label="Qual tipo de negócio? *" error={touched ? errors.businessTypeOther : ""}>
+
+            {form.segment === "Outro" && (
+              <Field label="Qual segmento? *" error={touched ? errors.segmentOther : ""}>
                 <input
                   className="w-full rounded-xl border border-white/10 bg-black/20 px-4 py-3 outline-none"
-                  placeholder="Descreva o tipo"
-                  value={form.businessTypeOther}
-                  onChange={(e) => set("businessTypeOther", e.target.value)}
+                  placeholder="Descreva o segmento"
+                  value={form.segmentOther}
+                  onChange={(e) => set("segmentOther", e.target.value)}
                 />
               </Field>
             )}
 
-            <Field label="Rua *" error={touched ? errors.street : ""}>
-              <input
+            <Field label="Modelo de Negócio *" error={touched ? errors.businessModel : ""}>
+              <select
                 className="w-full rounded-xl border border-white/10 bg-black/20 px-4 py-3 outline-none"
-                placeholder="Nome da rua"
-                value={form.street}
-                onChange={(e) => set("street", e.target.value)}
-              />
+                value={form.businessModel}
+                onChange={(e) => set("businessModel", e.target.value)}
+              >
+                <option value="">Selecione...</option>
+                {BUSINESS_MODELS.map((m) => (
+                  <option key={m} value={m}>
+                    {m}
+                  </option>
+                ))}
+              </select>
             </Field>
 
-            <Field label="Nº *" error={touched ? errors.number : ""}>
-              <input
-                className="w-full rounded-xl border border-white/10 bg-black/20 px-4 py-3 outline-none"
-                placeholder="123"
-                value={form.number}
-                onChange={(e) => set("number", e.target.value)}
-              />
-            </Field>
-
-            <div className="sm:col-span-2">
-              <Field label="Complemento">
+            {form.businessModel === "Outro" && (
+              <Field label="Qual modelo? *" error={touched ? errors.businessModelOther : ""}>
                 <input
                   className="w-full rounded-xl border border-white/10 bg-black/20 px-4 py-3 outline-none"
-                  placeholder="Apt, sala, etc."
-                  value={form.complement}
-                  onChange={(e) => set("complement", e.target.value)}
+                  placeholder="Descreva o modelo"
+                  value={form.businessModelOther}
+                  onChange={(e) => set("businessModelOther", e.target.value)}
                 />
               </Field>
-            </div>
+            )}
 
             <Field label="Cidade *" error={touched ? errors.city : ""}>
               <input
@@ -190,15 +176,6 @@ export default function StoresSetup({
                 maxLength={2}
                 value={form.state}
                 onChange={(e) => set("state", e.target.value.toUpperCase())}
-              />
-            </Field>
-
-            <Field label="CEP *" error={touched ? errors.zip : ""}>
-              <input
-                className="w-full rounded-xl border border-white/10 bg-black/20 px-4 py-3 outline-none"
-                placeholder="01000-000"
-                value={form.zip}
-                onChange={(e) => set("zip", e.target.value)}
               />
             </Field>
 
@@ -229,17 +206,6 @@ export default function StoresSetup({
               />
             </Field>
 
-            <Field label="Nº de Funcionários * (recomendado até 5)" error={touched ? errors.employeesCount : ""}>
-              <input
-                type="number"
-                min={1}
-                className="w-full rounded-xl border border-white/10 bg-black/20 px-4 py-3 outline-none"
-                value={form.employeesCount}
-                onChange={(e) => set("employeesCount", clamp(Number(e.target.value || 1), 1, 999))}
-              />
-              <p className="mt-2 text-xs text-white/50">Recomendamos começar com o essencial.</p>
-            </Field>
-
             <Field label="Nº de Câmeras * (1–3)" error={touched ? errors.camerasCount : ""}>
               <input
                 type="number"
@@ -249,35 +215,8 @@ export default function StoresSetup({
                 value={form.camerasCount}
                 onChange={(e) => set("camerasCount", clamp(Number(e.target.value || 1), 1, 3))}
               />
-              <p className="mt-2 text-xs text-white/50">Você pode adicionar mais depois do piloto.</p>
+              <p className="mt-2 text-xs text-white/50">No trial, até 3 câmeras.</p>
             </Field>
-
-            <div className="sm:col-span-2">
-              <Field label="Integração com POS (opcional)">
-                <select
-                  className="w-full rounded-xl border border-white/10 bg-black/20 px-4 py-3 outline-none"
-                  value={form.pos}
-                  onChange={(e) => set("pos", e.target.value)}
-                >
-                  <option value="">Selecione...</option>
-                  {POS_OPTIONS.map((p) => (
-                    <option key={p} value={p}>
-                      {p}
-                    </option>
-                  ))}
-                </select>
-              </Field>
-              {form.pos === "Outro" && (
-                <Field label="Qual sistema? *" error={touched ? errors.posOther : ""}>
-                  <input
-                    className="w-full rounded-xl border border-white/10 bg-black/20 px-4 py-3 outline-none"
-                    placeholder="Informe o sistema"
-                    value={form.posOther}
-                    onChange={(e) => set("posOther", e.target.value)}
-                  />
-                </Field>
-              )}
-            </div>
           </div>
 
           <div className="pt-4 border-t border-white/10">
@@ -307,14 +246,14 @@ export default function StoresSetup({
 
           <div className="rounded-2xl border border-purple-500/30 bg-purple-500/10 p-4">
             <div className="text-sm text-white/70">Próximo</div>
-            <div className="text-lg font-bold text-purple-300">Equipe</div>
-            <div className="text-xs text-white/50 mt-1">Cadastre o essencial</div>
+            <div className="text-lg font-bold text-purple-300">Equipe (opcional)</div>
+            <div className="text-xs text-white/50 mt-1">Você pode pular.</div>
           </div>
 
           <div className="rounded-2xl border border-green-500/30 bg-green-500/10 p-4">
             <div className="text-sm text-white/70">Depois</div>
-            <div className="text-lg font-bold text-green-300">Câmeras</div>
-            <div className="text-xs text-white/50 mt-1">Conecte até 3 câmeras</div>
+            <div className="text-lg font-bold text-green-300">Conectar Edge</div>
+            <div className="text-xs text-white/50 mt-1">Gerar .env e iniciar o agent.</div>
           </div>
         </div>
       </div>
