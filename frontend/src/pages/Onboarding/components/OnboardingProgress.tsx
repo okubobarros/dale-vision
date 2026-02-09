@@ -1,65 +1,23 @@
 // frontend/src/pages/Onboarding/components/OnboardingProgress.tsx
-interface Props {
-  currentStep: number
-  totalSteps: number
-}
+import SetupProgress from "../../Onboarding/components/SetupProgress"
 
-export default function OnboardingProgress({ currentStep, totalSteps }: Props) {
-  const steps = ["Loja", "Equipe"]
-  const pct = Math.round((currentStep / totalSteps) * 100)
+export default function OnboardingProgress({
+  currentStep,
+}: {
+  currentStep: 1 | 2
+}) {
+  // No seu onboarding: step 1 = Loja, step 2 = Equipe
+  // Mapeia para o fluxo global: Loja = 2, Equipe = 3
+  const step = currentStep === 1 ? 2 : 3
 
   return (
-    <div className="space-y-4">
-      <div className="flex items-end justify-between gap-4">
-        <div>
-          <h2 className="text-2xl sm:text-3xl font-extrabold">
-            Configurar sua Loja
-          </h2>
-          <p className="text-white/60 text-sm mt-1">
-            Passo {currentStep} de {totalSteps}
-          </p>
-        </div>
+    <div className="mb-8">
+      <h2 className="text-3xl font-extrabold text-slate-900">Configure sua loja piloto</h2>
+      <p className="text-slate-500 mt-2">
+        Vamos preparar sua loja para receber dados em tempo real.
+      </p>
 
-        <div className="text-sm text-white/60">{pct}% completo</div>
-      </div>
-
-      <div className="w-full h-2 rounded-full overflow-hidden border border-white/10 bg-white/5">
-        <div
-          className="h-full bg-gradient-to-r from-blue-500 to-purple-500 transition-all duration-300"
-          style={{ width: `${(currentStep / totalSteps) * 100}%` }}
-        />
-      </div>
-
-      <div className="grid grid-cols-3 gap-4 mt-6">
-        {steps.map((label, idx) => {
-          const n = idx + 1
-          const active = n <= currentStep
-          return (
-            <div key={label} className="flex flex-col items-center gap-2">
-              <div
-                className={[
-                  "w-10 h-10 rounded-full flex items-center justify-center font-bold",
-                  active
-                    ? "bg-gradient-to-r from-blue-500 to-purple-500 text-white shadow-lg shadow-blue-500/25"
-                    : "bg-white/5 text-white/50 border border-white/10",
-                ].join(" ")}
-              >
-                {n}
-              </div>
-              <p className={active ? "text-sm font-medium" : "text-sm text-white/50"}>
-                {label}
-              </p>
-            </div>
-          )
-        })}
-      </div>
-
-      <div className="mt-2 rounded-2xl border border-white/10 bg-white/5 p-4">
-        <p className="text-sm text-white/70">
-          <span className="font-semibold text-white">Trial 48h:</span>{" "}
-          1 loja • até 3 câmeras • equipe opcional. Você pode ajustar depois.
-        </p>
-      </div>
+      <SetupProgress step={step} className="mt-6" />
     </div>
   )
 }

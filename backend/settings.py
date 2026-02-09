@@ -4,7 +4,6 @@ from pathlib import Path
 from urllib.parse import urlparse, parse_qs, unquote
 from dotenv import load_dotenv
 from datetime import timedelta
-import dj_database_url
 
 # Carrega variáveis do .env
 load_dotenv()

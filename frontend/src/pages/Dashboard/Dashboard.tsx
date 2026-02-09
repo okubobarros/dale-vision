@@ -19,6 +19,7 @@ import {
 import type { StoreDashboard } from "../../types/dashboard"
 import { LineChart } from "../../components/Charts/LineChart"
 import { PieChart } from "../../components/Charts/PieChart"
+import SetupProgress from "../Onboarding/components/SetupProgress"
 
 interface MetricCardProps {
   title: string
@@ -200,6 +201,7 @@ const Dashboard = () => {
   const [ignoringEventId, setIgnoringEventId] = useState<string | null>(null)
   const [edgeSetupOpen, setEdgeSetupOpen] = useState(false)
   const [edgeSetupHighlight, setEdgeSetupHighlight] = useState(false)
+  const [showActivationProgress, setShowActivationProgress] = useState(false)
   const location = useLocation()
 
   const { data: stores, isLoading: storesLoading } = useQuery<Store[]>({
@@ -247,6 +249,71 @@ const Dashboard = () => {
       return () => clearTimeout(t)
     }
   }, [location.pathname, location.search])
+
+  useEffect(() => {
+    if (typeof window === "undefined") return
+    try {
+      if (localStorage.getItem("dv_from_onboarding") === "1") {
+        setShowActivationProgress(true)
+      }
+    } catch {}
+  }, [])
+
+  useEffect(() => {
+    if (!showActivationProgress) return
+    if (selectedStore !== ALL_STORES_VALUE && edgeStatus?.store_status === "online") {
+      try {
+        localStorage.removeItem("dv_from_onboarding")
+      } catch {}
+      setShowActivationProgress(false)
+    }
+  }, [showActivationProgress, selectedStore, edgeStatus?.store_status])
+
+  const dismissActivationProgress = () => {
+    try {
+      localStorage.removeItem("dv_from_onboarding")
+    } catch {}
+    setShowActivationProgress(false)
+  }
+
+  const activationBanner = showActivationProgress ? (
+    <div className="bg-white rounded-xl shadow-sm border border-gray-100 p-4 sm:p-6">
+      <SetupProgress
+        step={4}
+        titleRight="Ativação"
+        className="mb-4"
+      />
+      <h3 className="text-lg font-bold text-gray-800">Ativação do Trial</h3>
+      <p className="text-sm text-gray-600 mt-1">
+        Conecte o Dale Vision ao ambiente da sua loja para começar a receber dados.
+      </p>
+
+      <div className="mt-4 flex flex-col sm:flex-row gap-3">
+        <button
+          type="button"
+          onClick={() => {
+            setEdgeSetupOpen(true)
+            dismissActivationProgress()
+          }}
+          className="inline-flex items-center justify-center rounded-lg bg-blue-600 px-4 py-2 text-sm font-semibold text-white hover:bg-blue-700"
+        >
+          Abrir Assistente de Conexão
+        </button>
+
+        <button
+          type="button"
+          onClick={dismissActivationProgress}
+          className="inline-flex items-center justify-center rounded-lg border border-gray-200 bg-white px-4 py-2 text-sm font-semibold text-gray-800 hover:bg-gray-50"
+        >
+          Fazer depois
+        </button>
+      </div>
+
+      <p className="mt-3 text-sm text-gray-600">
+        Você só precisa de um computador/servidor que tenha acesso às câmeras. Nós guiamos o passo a passo.
+      </p>
+    </div>
+  ) : null
 
   useEffect(() => {
     if (!stores || stores.length === 0) {
@@ -461,6 +528,7 @@ const Dashboard = () => {
   if (!isLoadingDashboard && !dashboard) {
     return (
       <div className="space-y-6 sm:space-y-8">
+        {activationBanner}
         <div
           className={[
             "bg-white rounded-xl shadow-sm border border-gray-100 p-6",
@@ -506,6 +574,7 @@ const Dashboard = () => {
 
   return (
     <div className="space-y-6 sm:space-y-8">
+      {activationBanner}
       {/* Header (mobile-first) */}
       <div className="flex flex-col gap-4">
         <div className="min-w-0">

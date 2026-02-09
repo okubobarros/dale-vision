@@ -28,34 +28,40 @@ export default function Onboarding() {
   }
 
   function handleComplete() {
-    // salva localmente para demo
     localStorage.setItem("demo_onboarding", JSON.stringify({ store, employees }))
     navigate("/app/dashboard?openEdgeSetup=1")
   }
 
   return (
-    <main className="min-h-screen w-full bg-[#070B18] text-white">
-      <div className="max-w-5xl mx-auto px-4 sm:px-6 lg:px-8 py-10">
-        <OnboardingProgress currentStep={step} totalSteps={totalSteps} />
+    <main className="relative min-h-screen w-full bg-gradient-to-b from-white to-slate-50 text-slate-900 overflow-hidden">
+      {/* Brand glow background */}
+      <div className="pointer-events-none absolute inset-0">
+        <div className="absolute -top-28 left-1/2 h-[620px] w-[620px] -translate-x-1/2 rounded-full blur-3xl opacity-35 bg-gradient-to-r from-blue-400 via-cyan-300 to-purple-500" />
+        <div className="absolute -bottom-40 left-1/2 h-[620px] w-[620px] -translate-x-1/2 rounded-full blur-3xl opacity-20 bg-gradient-to-r from-purple-500 via-cyan-300 to-blue-400" />
+      </div>
 
-        <div className="mt-10">
-          {step === 1 && (
-            <StoresSetup
-              value={store}
-              onChange={setStore}
-              onNext={handleNext}
-            />
-          )}
+      <div className="relative max-w-5xl mx-auto px-4 sm:px-6 lg:px-8 py-10">
+        {/* Card container para “premium feel” */}
+        <div className="rounded-[28px] border border-slate-200/70 bg-white/75 backdrop-blur-xl shadow-[0_18px_60px_rgba(15,23,42,0.12)] p-6 sm:p-8">
+          <OnboardingProgress currentStep={step} totalSteps={totalSteps} />
 
-          {step === 2 && (
-            <EmployeesSetup
-              employees={employees}
-              onChange={setEmployees}
-              onPrev={handlePrev}
-              onNext={handleComplete}
-            />
-          )}
+          <div className="mt-10">
+            {step === 1 && (
+              <StoresSetup value={store} onChange={setStore} onNext={handleNext} />
+            )}
+
+            {step === 2 && (
+              <EmployeesSetup
+                employees={employees}
+                onChange={setEmployees}
+                onPrev={handlePrev}
+                onNext={handleComplete}
+              />
+            )}
+          </div>
         </div>
+
+        <div className="mt-6 text-center text-xs text-slate-400">© {new Date().getFullYear()} DaleVision</div>
       </div>
     </main>
   )
