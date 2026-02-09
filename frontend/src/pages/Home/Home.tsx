@@ -490,7 +490,7 @@ export default function HomePage() {
               </div>
 
               {/* SLIDER */}
-              <div className="relative h-[150px] md:h-[165px] overflow-hidden">
+              <div className="relative min-h-[220px] sm:min-h-[190px] md:min-h-[165px] overflow-hidden">
                 {pains.map((item, i) => (
                   <div
                     key={i}
@@ -504,14 +504,14 @@ export default function HomePage() {
                         : "opacity-0 translate-x-full",
                     ].join(" ")}
                   >
-                    <h2 className="text-3xl md:text-4xl font-bold text-white leading-tight">
+                    <h2 className="text-2xl sm:text-3xl md:text-4xl font-bold text-white leading-tight">
                       {item.title}{" "}
                       <span className="block">
                         <GradientTitle>{item.highlight}</GradientTitle>
                       </span>
                     </h2>
 
-                    <p className="mt-4 text-lg text-white/70 max-w-2xl mx-auto">
+                    <p className="mt-4 text-base sm:text-lg text-white/70 max-w-2xl mx-auto">
                       {item.sub}
                     </p>
                   </div>
