@@ -1,6 +1,7 @@
 // src/services/stores.ts
 import api from './api';
 import type { StoreDashboard } from '../types/dashboard';
+import { USE_MOCK_DATA } from '../lib/mock';
 
 export type StoreStatus = 'active' | 'inactive' | 'maintenance';
 export type StorePlan = 'trial' | 'basic' | 'pro' | 'enterprise';
@@ -205,8 +206,10 @@ export const storesService = {
     } catch (error) {
       console.error('❌ Erro ao buscar dashboard:', error);
       
-      // Fallback com dados mock
-      return getMockDashboard(storeId);
+      if (USE_MOCK_DATA) {
+        return getMockDashboard(storeId);
+      }
+      throw error;
     }
   },
 
@@ -233,20 +236,22 @@ export const storesService = {
     } catch (error) {
       console.error('❌ Erro ao buscar network dashboard:', error);
       
-      // Fallback mock
-      const stores = await this.getStores();
-      return {
-        total_stores: stores.length,
-        total_cameras: stores.length * 3,
-        active_alerts: stores.length * 2,
-        stores: stores.map(store => ({
-          id: store.id,
-          name: store.name,
-          status: store.status,
-          camera_count: 3,
-          last_activity: new Date().toISOString()
-        }))
-      };
+      if (USE_MOCK_DATA) {
+        const stores = await this.getStores();
+        return {
+          total_stores: stores.length,
+          total_cameras: stores.length * 3,
+          active_alerts: stores.length * 2,
+          stores: stores.map(store => ({
+            id: store.id,
+            name: store.name,
+            status: store.status,
+            camera_count: 3,
+            last_activity: new Date().toISOString()
+          }))
+        };
+      }
+      throw error;
     }
   },
 

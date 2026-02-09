@@ -57,7 +57,7 @@ export default function OnboardingProgress({ currentStep, totalSteps }: Props) {
       <div className="mt-2 rounded-2xl border border-white/10 bg-white/5 p-4">
         <p className="text-sm text-white/70">
           <span className="font-semibold text-white">Trial 48h:</span>{" "}
-          1 loja • até 3 câmeras • até 5 funcionários. Você pode ajustar depois.
+          1 loja • até 3 câmeras • equipe inicial recomendada. Você pode ajustar depois.
         </p>
       </div>
     </div>

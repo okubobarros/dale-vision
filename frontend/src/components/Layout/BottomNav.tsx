@@ -9,9 +9,9 @@ type BottomNavProps = {
 export default function BottomNav({ onOpenAgent }: BottomNavProps) {
   const items = useMemo(
     () => [
-      { label: "Radar", to: "/app/dashboard", icon: "🏠" },
+      { label: "Dashboard", to: "/app/dashboard", icon: "🏠" },
       { label: "Lojas", to: "/app/stores", icon: "🏪" },
-      { label: "Analytics", to: "/app/analytics", icon: "📊" },
+      { label: "Câmeras", to: "/app/cameras", icon: "📹" },
       { label: "Alertas", to: "/app/alerts", icon: "🔔" },
     ],
     []

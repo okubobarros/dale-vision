@@ -3,6 +3,7 @@ from typing import Any, Dict, List, Optional
 from pathlib import Path
 import yaml
 import os
+import sys
 
 
 @dataclass
@@ -45,12 +46,14 @@ class Settings:
 def _env_override(d: Dict[str, Any]) -> Dict[str, Any]:
     """
     Permite override via env (útil pra Docker depois).
-    Ex: DALE_CLOUD_BASE_URL, CLOUD_BASE_URL, EDGE_CLOUD_TOKEN, etc.
+    Ex: CLOUD_BASE_URL, EDGE_TOKEN, STORE_ID, AGENT_ID (com fallback DALE_*).
     """
     # mantenha simples no v1; expanda conforme precisar
-    base = os.getenv("DALE_CLOUD_BASE_URL") or os.getenv("CLOUD_BASE_URL")
-    edge_token = os.getenv("EDGE_TOKEN")
+    base = os.getenv("CLOUD_BASE_URL") or os.getenv("DALE_CLOUD_BASE_URL")
+    edge_token = os.getenv("EDGE_TOKEN") or os.getenv("DALE_EDGE_TOKEN")
     token = edge_token or os.getenv("EDGE_CLOUD_TOKEN")
+    store_id = os.getenv("STORE_ID") or os.getenv("DALE_STORE_ID")
+    agent_id = os.getenv("AGENT_ID") or os.getenv("DALE_AGENT_ID")
     heartbeat = os.getenv("HEARTBEAT_INTERVAL_SECONDS")
     heartbeat_timeout = os.getenv("HEARTBEAT_TIMEOUT_SECONDS")
     vision_env = os.getenv("EDGE_VISION_ENABLED")
@@ -66,6 +69,10 @@ def _env_override(d: Dict[str, Any]) -> Dict[str, Any]:
     if token:
         d.setdefault("cloud", {})
         d["cloud"]["token"] = token
+    if store_id:
+        d.setdefault("agent", {})["store_id"] = store_id
+    if agent_id:
+        d.setdefault("agent", {})["agent_id"] = agent_id
     if heartbeat:
         d.setdefault("cloud", {})["heartbeat_interval_seconds"] = int(heartbeat)
     if heartbeat_timeout:
@@ -106,7 +113,22 @@ def load_settings(path: str) -> Settings:
 
     base_url = (cloud.get("base_url") or "").strip()
     if not base_url:
-        base_url = os.getenv("DALE_CLOUD_BASE_URL") or os.getenv("CLOUD_BASE_URL") or "http://127.0.0.1:8000"
+        base_url = os.getenv("CLOUD_BASE_URL") or os.getenv("DALE_CLOUD_BASE_URL") or "http://127.0.0.1:8000"
+
+    missing = []
+    if not agent.get("store_id"):
+        missing.append("STORE_ID")
+    if not cloud.get("token"):
+        missing.append("EDGE_TOKEN")
+    if not base_url:
+        missing.append("CLOUD_BASE_URL")
+    if missing:
+        print(
+            "[EDGE] Missing required env/config: "
+            + ", ".join(missing)
+            + " (prefer STORE_ID, EDGE_TOKEN, CLOUD_BASE_URL)"
+        )
+        sys.exit(1)
 
     return Settings(
         agent_id=agent["agent_id"],

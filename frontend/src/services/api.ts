@@ -1,5 +1,6 @@
 // src/services/api.ts
 import axios from "axios"
+import { createElement } from "react"
 import toast from "react-hot-toast"
 import { API_BASE_URL } from "../lib/api"
 
@@ -7,9 +8,9 @@ const getTokenFromStorage = (): string | null => {
   return localStorage.getItem("authToken")
 }
 
-const DEFAULT_TIMEOUT_MS = 30000
+const DEFAULT_TIMEOUT_MS = import.meta.env.PROD ? 60000 : 30000
 const LONG_TIMEOUT_MS = 60000
-const RETRY_BACKOFF_MS = [800, 1600]
+const RETRY_BACKOFF_MS = [1000, 3000]
 
 const isLongTimeoutPath = (url?: string) => {
   const u = String(url || "")
@@ -27,6 +28,42 @@ const api = axios.create({
 
 if (import.meta.env.DEV) {
   console.log("[API] API_BASE_URL =", API_BASE_URL)
+}
+
+const showTimeoutRetryToast = (config: any) => {
+  const id = "api-timeout-retry"
+  toast.custom(
+    (t) =>
+      createElement(
+        "div",
+        {
+          className:
+            "flex items-center gap-3 rounded-xl border border-gray-200 bg-white px-4 py-3 shadow-lg",
+        },
+        createElement(
+          "div",
+          { className: "text-sm text-gray-700" },
+          "Acordando servidor... tente novamente"
+        ),
+        createElement(
+          "button",
+          {
+            type: "button",
+            className:
+              "rounded-lg bg-blue-600 px-3 py-1.5 text-xs font-semibold text-white hover:bg-blue-700",
+            onClick: () => {
+              toast.dismiss(t.id)
+              if (config) {
+                config._retryCount = 0
+                api.request(config)
+              }
+            },
+          },
+          "Retry"
+        )
+      ),
+    { id }
+  )
 }
 
 // Request interceptor
@@ -87,7 +124,9 @@ api.interceptors.response.use(
       error.code === "ECONNABORTED" ||
       String(error.message || "").toLowerCase().includes("timeout")
     const status = error.response?.status
-    const shouldRetry = isTimeout || [502, 503, 504].includes(status)
+    const method = String(error.config?.method || "get").toLowerCase()
+    const isGet = method === "get"
+    const shouldRetry = isGet && (isTimeout || [502, 503, 504].includes(status))
 
     const config = error.config as any
     const retryCount = (config?._retryCount as number) || 0
@@ -96,15 +135,13 @@ api.interceptors.response.use(
       config._retryCount = retryCount + 1
       const delay = RETRY_BACKOFF_MS[retryCount]
 
-      if (isTimeout) {
-        toast("Serviço acordando (Render free). Tentando novamente...", {
-          id: "render-wakeup",
-        })
-      }
-
       return new Promise((resolve) => setTimeout(resolve, delay)).then(() =>
         api.request(config)
       )
+    }
+
+    if (isTimeout && isGet) {
+      showTimeoutRetryToast(config)
     }
 
     if (isTimeout) {

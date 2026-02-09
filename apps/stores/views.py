@@ -56,6 +56,19 @@ def filter_stores_for_user(qs, user):
         return qs.none()
     return qs.filter(org_id__in=org_ids)
 
+def _require_store_owner_or_admin(user, store):
+    if getattr(user, "is_superuser", False) or getattr(user, "is_staff", False):
+        return
+    user_uuid = ensure_user_uuid(user)
+    allowed_roles = ("owner", "admin")
+    is_allowed = OrgMember.objects.filter(
+        org_id=store.org_id,
+        user_id=user_uuid,
+        role__in=allowed_roles,
+    ).exists()
+    if not is_allowed:
+        raise PermissionDenied("Você não tem permissão para acessar as credenciais do edge.")
+
 def _camera_active_column_exists():
     try:
         with connection.cursor() as cursor:
@@ -115,6 +128,65 @@ class StoreViewSet(viewsets.ModelViewSet):
             "store_id": str(store.id),
             "token": raw_token,
         })
+
+    @action(detail=True, methods=["get"], url_path="edge-credentials")
+    def edge_credentials(self, request, pk=None):
+        """
+        Retorna credenciais do edge (gera token se necessário).
+        Apenas owner/admin da store pode acessar.
+        """
+        store = self.get_object()
+        _require_store_owner_or_admin(request.user, store)
+
+        # Sempre retorna um token novo (hash é persistido)
+        raw_token = secrets.token_urlsafe(32)
+        token_hash = hashlib.sha256(raw_token.encode("utf-8")).hexdigest()
+        EdgeToken.objects.update_or_create(
+            store_id=store.id,
+            defaults={
+                "token_hash": token_hash,
+                "active": True,
+                "created_at": timezone.now(),
+            },
+        )
+
+        return Response(
+            {
+                "store_id": str(store.id),
+                "edge_token": raw_token,
+                "agent_id_default": "edge-001",
+                "cloud_base_url": "https://api.dalevision.com",
+            }
+        )
+
+    @action(detail=True, methods=["get"], url_path="edge-setup")
+    def edge_setup(self, request, pk=None):
+        """
+        Retorna credenciais do edge para setup (gera token se necessário).
+        Apenas owner/admin da store pode acessar.
+        """
+        store = self.get_object()
+        _require_store_owner_or_admin(request.user, store)
+
+        raw_token = secrets.token_urlsafe(32)
+        token_hash = hashlib.sha256(raw_token.encode("utf-8")).hexdigest()
+        EdgeToken.objects.update_or_create(
+            store_id=store.id,
+            defaults={
+                "token_hash": token_hash,
+                "active": True,
+                "created_at": timezone.now(),
+            },
+        )
+
+        return Response(
+            {
+                "store_id": str(store.id),
+                "edge_token": raw_token,
+                "agent_id_suggested": "edge-001",
+                "cloud_base_url": "https://api.dalevision.com",
+            }
+        )
 
     @action(detail=True, methods=["patch"], url_path=r"cameras/(?P<camera_id>[^/.]+)")
     def set_camera_active(self, request, pk=None, camera_id=None):

@@ -4,17 +4,20 @@ import { useMemo, useState } from "react"
 export type StoreDraft = {
   name: string
   businessType: string
+  businessTypeOther: string
   street: string
   number: string
   complement: string
   city: string
   state: string
   zip: string
-  openTime: string
-  closeTime: string
+  hoursWeekdays: string
+  hoursSaturday: string
+  hoursSundayHoliday: string
   employeesCount: number
   camerasCount: number
   pos: string
+  posOther: string
 }
 
 const BUSINESS_TYPES = [
@@ -46,34 +49,41 @@ export default function StoresSetup({
   const form = value ?? {
     name: "",
     businessType: "",
+    businessTypeOther: "",
     street: "",
     number: "",
     complement: "",
     city: "",
     state: "",
     zip: "",
-    openTime: "",
-    closeTime: "",
+    hoursWeekdays: "",
+    hoursSaturday: "",
+    hoursSundayHoliday: "",
     employeesCount: 1,
     camerasCount: 1,
     pos: "",
+    posOther: "",
   }
 
   const errors = useMemo(() => {
     const e: Record<string, string> = {}
     if (!form.name.trim()) e.name = "Informe o nome da loja."
     if (!form.businessType) e.businessType = "Selecione o tipo de negócio."
+    if (form.businessType === "Outro" && !form.businessTypeOther.trim()) {
+      e.businessTypeOther = "Informe o tipo de negócio."
+    }
     if (!form.street.trim()) e.street = "Informe a rua."
     if (!form.number.trim()) e.number = "Informe o número."
     if (!form.city.trim()) e.city = "Informe a cidade."
     if (!form.state.trim() || form.state.trim().length !== 2) e.state = "UF com 2 letras."
     if (!form.zip.trim()) e.zip = "Informe o CEP."
-    if (!form.openTime) e.openTime = "Informe horário de abertura."
-    if (!form.closeTime) e.closeTime = "Informe horário de fechamento."
+    if (!form.hoursWeekdays.trim()) e.hoursWeekdays = "Informe o horário de dias úteis."
+    if (!form.hoursSaturday.trim()) e.hoursSaturday = "Informe o horário de sábado."
+    if (!form.hoursSundayHoliday.trim()) e.hoursSundayHoliday = "Informe o horário de domingo/feriado."
     if (!form.employeesCount || form.employeesCount < 1) e.employeesCount = "Informe funcionários."
     if (!form.camerasCount || form.camerasCount < 1) e.camerasCount = "Informe câmeras."
-    if (form.employeesCount > 5) e.employeesCount = "Trial permite até 5 funcionários."
     if (form.camerasCount > 3) e.camerasCount = "Trial permite até 3 câmeras."
+    if (form.pos === "Outro" && !form.posOther.trim()) e.posOther = "Informe o sistema."
     return e
   }, [form])
 
@@ -124,6 +134,16 @@ export default function StoresSetup({
                 ))}
               </select>
             </Field>
+            {form.businessType === "Outro" && (
+              <Field label="Qual tipo de negócio? *" error={touched ? errors.businessTypeOther : ""}>
+                <input
+                  className="w-full rounded-xl border border-white/10 bg-black/20 px-4 py-3 outline-none"
+                  placeholder="Descreva o tipo"
+                  value={form.businessTypeOther}
+                  onChange={(e) => set("businessTypeOther", e.target.value)}
+                />
+              </Field>
+            )}
 
             <Field label="Rua *" error={touched ? errors.street : ""}>
               <input
@@ -182,34 +202,42 @@ export default function StoresSetup({
               />
             </Field>
 
-            <Field label="Abre às *" error={touched ? errors.openTime : ""}>
+            <Field label="Horário (dias úteis) *" error={touched ? errors.hoursWeekdays : ""}>
               <input
-                type="time"
                 className="w-full rounded-xl border border-white/10 bg-black/20 px-4 py-3 outline-none"
-                value={form.openTime}
-                onChange={(e) => set("openTime", e.target.value)}
+                placeholder="08:00–18:00"
+                value={form.hoursWeekdays}
+                onChange={(e) => set("hoursWeekdays", e.target.value)}
               />
             </Field>
 
-            <Field label="Fecha às *" error={touched ? errors.closeTime : ""}>
+            <Field label="Horário (sábado) *" error={touched ? errors.hoursSaturday : ""}>
               <input
-                type="time"
                 className="w-full rounded-xl border border-white/10 bg-black/20 px-4 py-3 outline-none"
-                value={form.closeTime}
-                onChange={(e) => set("closeTime", e.target.value)}
+                placeholder="09:00–13:00"
+                value={form.hoursSaturday}
+                onChange={(e) => set("hoursSaturday", e.target.value)}
               />
             </Field>
 
-            <Field label="Nº de Funcionários * (máx. 5)" error={touched ? errors.employeesCount : ""}>
+            <Field label="Horário (domingo/feriado) *" error={touched ? errors.hoursSundayHoliday : ""}>
+              <input
+                className="w-full rounded-xl border border-white/10 bg-black/20 px-4 py-3 outline-none"
+                placeholder="Fechado"
+                value={form.hoursSundayHoliday}
+                onChange={(e) => set("hoursSundayHoliday", e.target.value)}
+              />
+            </Field>
+
+            <Field label="Nº de Funcionários * (recomendado até 5)" error={touched ? errors.employeesCount : ""}>
               <input
                 type="number"
                 min={1}
-                max={5}
                 className="w-full rounded-xl border border-white/10 bg-black/20 px-4 py-3 outline-none"
                 value={form.employeesCount}
-                onChange={(e) => set("employeesCount", clamp(Number(e.target.value || 1), 1, 5))}
+                onChange={(e) => set("employeesCount", clamp(Number(e.target.value || 1), 1, 999))}
               />
-              <p className="mt-2 text-xs text-white/50">No trial, limitamos a 5 para setup rápido.</p>
+              <p className="mt-2 text-xs text-white/50">Recomendamos começar com o essencial.</p>
             </Field>
 
             <Field label="Nº de Câmeras * (1–3)" error={touched ? errors.camerasCount : ""}>
@@ -239,6 +267,16 @@ export default function StoresSetup({
                   ))}
                 </select>
               </Field>
+              {form.pos === "Outro" && (
+                <Field label="Qual sistema? *" error={touched ? errors.posOther : ""}>
+                  <input
+                    className="w-full rounded-xl border border-white/10 bg-black/20 px-4 py-3 outline-none"
+                    placeholder="Informe o sistema"
+                    value={form.posOther}
+                    onChange={(e) => set("posOther", e.target.value)}
+                  />
+                </Field>
+              )}
             </div>
           </div>
 
@@ -252,7 +290,7 @@ export default function StoresSetup({
             </button>
             {!canNext && touched && (
               <p className="mt-3 text-xs text-red-300">
-                Revise os campos obrigatórios (trial: até 3 câmeras e 5 funcionários).
+                Revise os campos obrigatórios (trial: até 3 câmeras).
               </p>
             )}
           </div>
@@ -270,7 +308,7 @@ export default function StoresSetup({
           <div className="rounded-2xl border border-purple-500/30 bg-purple-500/10 p-4">
             <div className="text-sm text-white/70">Próximo</div>
             <div className="text-lg font-bold text-purple-300">Equipe</div>
-            <div className="text-xs text-white/50 mt-1">Cadastre até 5 funcionários</div>
+            <div className="text-xs text-white/50 mt-1">Cadastre o essencial</div>
           </div>
 
           <div className="rounded-2xl border border-green-500/30 bg-green-500/10 p-4">

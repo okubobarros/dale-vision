@@ -5,6 +5,7 @@ export type EmployeeDraft = {
   id: string
   name: string
   role: string
+  roleOther: string
   email: string
 }
 
@@ -27,6 +28,7 @@ export default function EmployeesSetup({
 }) {
   const [name, setName] = useState("")
   const [role, setRole] = useState("")
+  const [roleOther, setRoleOther] = useState("")
   const [email, setEmail] = useState("")
   const [touched, setTouched] = useState(false)
 
@@ -34,10 +36,10 @@ export default function EmployeesSetup({
     const e: Record<string, string> = {}
     if (!name.trim()) e.name = "Informe o nome."
     if (!role) e.role = "Selecione o cargo."
+    if (role === "Outro" && !roleOther.trim()) e.roleOther = "Informe o cargo."
     if (!email.trim() || !isValidEmail(email)) e.email = "Informe um e-mail válido."
-    if (employees.length >= 5) e.limit = "Trial permite até 5 funcionários."
     return e
-  }, [name, role, email, employees.length])
+  }, [name, role, roleOther, email])
 
   const canAdd = Object.keys(errors).length === 0
 
@@ -48,11 +50,13 @@ export default function EmployeesSetup({
       id: String(Date.now()),
       name: name.trim(),
       role,
+      roleOther: roleOther.trim(),
       email: email.trim(),
     }
     onChange([...employees, next])
     setName("")
     setRole("")
+    setRoleOther("")
     setEmail("")
     setTouched(false)
   }
@@ -65,7 +69,7 @@ export default function EmployeesSetup({
     <div className="space-y-8">
       <div>
         <h3 className="text-xl sm:text-2xl font-extrabold">Cadastrar Funcionários</h3>
-        <p className="text-white/60 mt-1">No trial, recomendamos cadastrar só o essencial (até 5).</p>
+        <p className="text-white/60 mt-1">No trial, recomendamos cadastrar só o essencial.</p>
       </div>
 
       <div className="rounded-2xl border border-white/10 bg-white/5 p-6 space-y-4">
@@ -100,6 +104,19 @@ export default function EmployeesSetup({
             {touched && errors.role && <p className="mt-2 text-xs text-red-300">{errors.role}</p>}
           </div>
 
+          {role === "Outro" && (
+            <div>
+              <label className="text-sm text-white/80">Qual cargo? *</label>
+              <input
+                className="mt-2 w-full rounded-xl border border-white/10 bg-black/20 px-4 py-3 outline-none"
+                placeholder="Descreva o cargo"
+                value={roleOther}
+                onChange={(e) => setRoleOther(e.target.value)}
+              />
+              {touched && errors.roleOther && <p className="mt-2 text-xs text-red-300">{errors.roleOther}</p>}
+            </div>
+          )}
+
           <div>
             <label className="text-sm text-white/80">E-mail *</label>
             <input
@@ -111,8 +128,6 @@ export default function EmployeesSetup({
             {touched && errors.email && <p className="mt-2 text-xs text-red-300">{errors.email}</p>}
           </div>
         </div>
-
-        {errors.limit && <p className="text-xs text-yellow-300">{errors.limit}</p>}
 
         <button
           onClick={addEmployee}
@@ -128,7 +143,7 @@ export default function EmployeesSetup({
         <div className="rounded-2xl border border-white/10 bg-white/5 overflow-hidden">
           <div className="px-6 py-4 border-b border-white/10 flex items-center justify-between">
             <div className="font-semibold">Equipe registrada</div>
-            <div className="text-sm text-white/60">{employees.length}/5</div>
+            <div className="text-sm text-white/60">{employees.length}</div>
           </div>
 
           <div className="divide-y divide-white/10">
@@ -137,7 +152,7 @@ export default function EmployeesSetup({
                 <div>
                   <div className="font-semibold">{e.name}</div>
                   <div className="text-sm text-white/60">
-                    {e.role} • {e.email}
+                    {(e.role === "Outro" ? e.roleOther : e.role) || e.role} • {e.email}
                   </div>
                 </div>
 

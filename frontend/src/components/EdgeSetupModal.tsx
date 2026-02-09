@@ -1,5 +1,8 @@
 import { useEffect, useMemo, useState } from "react"
+import { useQuery } from "@tanstack/react-query"
+import toast from "react-hot-toast"
 import api from "../services/api"
+import { storesService, type Store } from "../services/stores"
 
 type EdgeSetupModalProps = {
   open: boolean
@@ -16,8 +19,15 @@ const EdgeSetupModal = ({ open, onClose, defaultStoreId }: EdgeSetupModalProps) 
   const [cloudBaseUrl, setCloudBaseUrl] = useState(DEFAULT_CLOUD_BASE_URL)
   const [validationMsg, setValidationMsg] = useState<string | null>(null)
   const [validating, setValidating] = useState(false)
+  const [loadingCreds, setLoadingCreds] = useState(false)
 
   const downloadUrl = (import.meta.env.VITE_EDGE_AGENT_DOWNLOAD_URL || "").trim()
+
+  const { data: stores } = useQuery<Store[]>({
+    queryKey: ["stores"],
+    queryFn: storesService.getStores,
+    enabled: open && !defaultStoreId,
+  })
 
   useEffect(() => {
     if (open) {
@@ -25,8 +35,37 @@ const EdgeSetupModal = ({ open, onClose, defaultStoreId }: EdgeSetupModalProps) 
       setCloudBaseUrl(DEFAULT_CLOUD_BASE_URL)
       setValidationMsg(null)
       setValidating(false)
+      setLoadingCreds(false)
     }
   }, [open, defaultStoreId])
+
+  useEffect(() => {
+    const loadCreds = async () => {
+      if (!open || !storeId) return
+      setLoadingCreds(true)
+      setValidationMsg(null)
+      try {
+        const res = await api.get(`/v1/stores/${storeId}/edge-setup/`)
+        const data = res.data || {}
+        setEdgeToken(data.edge_token || "")
+        setAgentId(data.agent_id_suggested || data.agent_id_default || "")
+        setCloudBaseUrl(data.cloud_base_url || DEFAULT_CLOUD_BASE_URL)
+      } catch (err: any) {
+        setEdgeToken("")
+        setAgentId("")
+        setCloudBaseUrl(DEFAULT_CLOUD_BASE_URL)
+        setValidationMsg(
+          err?.response?.data?.detail ||
+            err?.message ||
+            "Falha ao obter credenciais do edge."
+        )
+      } finally {
+        setLoadingCreds(false)
+      }
+    }
+
+    loadCreds()
+  }, [open, storeId])
 
   const envContent = useMemo(() => {
     const lines = [
@@ -81,39 +120,59 @@ const EdgeSetupModal = ({ open, onClose, defaultStoreId }: EdgeSetupModalProps) 
         <div className="p-5 space-y-4">
           <div className="rounded-xl border border-gray-200 bg-gray-50 px-4 py-3">
             <div className="text-sm text-gray-700 font-semibold">1) Download do Edge Agent</div>
-            {downloadUrl ? (
-              <a
-                href={downloadUrl}
-                target="_blank"
-                rel="noreferrer"
-                className="text-sm text-blue-600 hover:text-blue-700 font-semibold"
-              >
-                Baixar Edge Agent
-              </a>
-            ) : (
-              <div className="text-xs text-gray-500">
-                Configure `VITE_EDGE_AGENT_DOWNLOAD_URL` para mostrar o link de download.
-              </div>
-            )}
+            <div className="mt-2 flex flex-col sm:flex-row sm:items-center gap-2">
+              {downloadUrl ? (
+                <a
+                  href={downloadUrl}
+                  target="_blank"
+                  rel="noreferrer"
+                  className="inline-flex w-full sm:w-auto items-center justify-center rounded-lg bg-blue-600 px-4 py-2 text-sm font-semibold text-white hover:bg-blue-700"
+                >
+                  Download do Edge Agent
+                </a>
+              ) : (
+                <div className="text-xs text-gray-500">
+                  Configurar VITE_EDGE_AGENT_DOWNLOAD_URL
+                </div>
+              )}
+            </div>
           </div>
+
+          {!defaultStoreId && (
+            <div>
+              <label className="block text-xs font-semibold text-gray-600 mb-1">Selecionar loja</label>
+              <select
+                value={storeId}
+                onChange={(e) => setStoreId(e.target.value)}
+                className="w-full rounded-lg border border-gray-300 px-3 py-2 text-sm"
+              >
+                <option value="">Selecione uma loja</option>
+                {(stores || []).map((store) => (
+                  <option key={store.id} value={store.id}>
+                    {store.name}
+                  </option>
+                ))}
+              </select>
+            </div>
+          )}
 
           <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
             <div>
               <label className="block text-xs font-semibold text-gray-600 mb-1">store_id</label>
               <input
                 value={storeId}
-                onChange={(e) => setStoreId(e.target.value)}
                 className="w-full rounded-lg border border-gray-300 px-3 py-2 text-sm"
                 placeholder="UUID da store"
+                readOnly
               />
             </div>
             <div>
               <label className="block text-xs font-semibold text-gray-600 mb-1">edge_token</label>
               <input
                 value={edgeToken}
-                onChange={(e) => setEdgeToken(e.target.value)}
                 className="w-full rounded-lg border border-gray-300 px-3 py-2 text-sm"
-                placeholder="Token do Edge"
+                placeholder={loadingCreds ? "Carregando..." : "Token do Edge"}
+                readOnly
               />
             </div>
             <div>
@@ -144,6 +203,20 @@ const EdgeSetupModal = ({ open, onClose, defaultStoreId }: EdgeSetupModalProps) 
               rows={6}
               className="w-full rounded-lg border border-gray-200 bg-white px-3 py-2 text-xs font-mono text-gray-700"
             />
+            <button
+              type="button"
+              onClick={async () => {
+                try {
+                  await navigator.clipboard.writeText(envContent)
+                  toast.success("Conteúdo copiado ✅")
+                } catch (err) {
+                  toast.error("Falha ao copiar. Copie manualmente.")
+                }
+              }}
+              className="mt-3 inline-flex items-center rounded-lg border border-gray-200 px-3 py-2 text-xs font-semibold text-gray-700 hover:bg-gray-50"
+            >
+              Copiar
+            </button>
           </div>
 
           <div className="flex items-center gap-3">

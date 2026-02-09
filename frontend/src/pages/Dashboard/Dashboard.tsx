@@ -9,6 +9,8 @@ import {
   type StoreEdgeStatus,
 } from "../../services/stores"
 import { formatAge, formatReason, formatTimestamp } from "../../utils/edgeReasons"
+import EdgeSetupModal from "../../components/EdgeSetupModal"
+import { USE_MOCK_DATA } from "../../lib/mock"
 import {
   useAlertsEvents,
   useIgnoreEvent,
@@ -117,7 +119,11 @@ const ALL_STORES_VALUE = "all"
 const buildNetworkDashboard = (
   network: NetworkDashboard | null,
   stores: Store[]
-): StoreDashboard => {
+): StoreDashboard | null => {
+  if (!USE_MOCK_DATA) {
+    return null
+  }
+
   const storeCount = network?.total_stores ?? stores.length
   const activeAlerts = network?.active_alerts ?? Math.max(0, storeCount - 1)
 
@@ -188,9 +194,11 @@ const Dashboard = () => {
   const { user } = useAuth()
   const [selectedStore, setSelectedStore] = useState<string>(ALL_STORES_VALUE)
   const [dashboard, setDashboard] = useState<StoreDashboard | null>(null)
+  const [dashboardError, setDashboardError] = useState<string | null>(null)
   const [isLoadingDashboard, setIsLoadingDashboard] = useState(false)
   const [resolvingEventId, setResolvingEventId] = useState<string | null>(null)
   const [ignoringEventId, setIgnoringEventId] = useState<string | null>(null)
+  const [edgeSetupOpen, setEdgeSetupOpen] = useState(false)
 
   const { data: stores, isLoading: storesLoading } = useQuery<Store[]>({
     queryKey: ["stores"],
@@ -230,11 +238,19 @@ const Dashboard = () => {
     }
 
     setIsLoadingDashboard(true)
+    setDashboardError(null)
     const loadDashboard = async () => {
       try {
         if (selectedStore === ALL_STORES_VALUE) {
+          if (!USE_MOCK_DATA) {
+            setDashboard(null)
+            setDashboardError("Sem dados para dashboard agregado.")
+            return
+          }
           const network = await storesService.getNetworkDashboard()
-          setDashboard(buildNetworkDashboard(network, stores))
+          const built = buildNetworkDashboard(network, stores)
+          setDashboard(built)
+          if (!built) setDashboardError("Sem dados para dashboard agregado.")
           return
         }
 
@@ -242,7 +258,8 @@ const Dashboard = () => {
         setDashboard(storeDashboard)
       } catch (error) {
         console.error("? Erro ao buscar dashboard:", error)
-        setDashboard(buildNetworkDashboard(null, stores))
+        setDashboard(null)
+        setDashboardError("Sem dados para dashboard.")
       } finally {
         setIsLoadingDashboard(false)
       }
@@ -419,6 +436,47 @@ const Dashboard = () => {
         >
           Criar loja
         </Link>
+      </div>
+    )
+  }
+
+  if (!isLoadingDashboard && !dashboard) {
+    return (
+      <div className="space-y-6 sm:space-y-8">
+        <div className="bg-white rounded-xl shadow-sm border border-gray-100 p-6">
+          <h2 className="text-xl font-bold text-gray-800 mb-2">
+            Conecte seu Edge Agent
+          </h2>
+          <p className="text-sm text-gray-600 mb-4">
+            Ainda não recebemos dados do agent. Gere o .env, execute o agent e aguarde os heartbeats.
+          </p>
+          <button
+            type="button"
+            onClick={() => setEdgeSetupOpen(true)}
+            className="inline-flex items-center rounded-lg bg-blue-600 px-4 py-2 text-sm font-semibold text-white hover:bg-blue-700"
+          >
+            Abrir Edge Setup
+          </button>
+
+          <div className="mt-6">
+            <h3 className="text-sm font-semibold text-gray-700 mb-2">Checklist</h3>
+            <ul className="list-disc pl-5 text-sm text-gray-600">
+              <li>Baixe o Edge Agent</li>
+              <li>Configure o .env com store_id e token</li>
+              <li>Rode o agent na máquina da loja</li>
+              <li>Aguarde o primeiro heartbeat</li>
+            </ul>
+          </div>
+          {dashboardError && (
+            <p className="text-xs text-gray-500 mt-4">{dashboardError}</p>
+          )}
+        </div>
+
+        <EdgeSetupModal
+          open={edgeSetupOpen}
+          onClose={() => setEdgeSetupOpen(false)}
+          defaultStoreId={selectedStore !== ALL_STORES_VALUE ? selectedStore : ""}
+        />
       </div>
     )
   }

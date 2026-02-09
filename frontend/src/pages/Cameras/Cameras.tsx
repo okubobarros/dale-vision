@@ -1,4 +1,4 @@
-import { useState } from "react"
+import { useEffect, useState } from "react"
 import { useQuery } from "@tanstack/react-query"
 import {
   storesService,
@@ -7,10 +7,25 @@ import {
 } from "../../services/stores"
 import { formatAge, formatReason, formatTimestamp } from "../../utils/edgeReasons"
 import EdgeSetupModal from "../../components/EdgeSetupModal"
+import { useIsMobile } from "../../hooks/useIsMobile"
 
 const Cameras = () => {
   const [selectedStore, setSelectedStore] = useState("")
   const [edgeSetupOpen, setEdgeSetupOpen] = useState(false)
+  const isMobile = useIsMobile(768)
+  const [currentUrl, setCurrentUrl] = useState("")
+
+  useEffect(() => {
+    if (typeof window !== "undefined") {
+      setCurrentUrl(window.location.href)
+    }
+  }, [])
+
+  const qrUrl = currentUrl
+    ? `https://api.qrserver.com/v1/create-qr-code/?size=160x160&data=${encodeURIComponent(
+        currentUrl
+      )}`
+    : ""
 
   const { data: stores, isLoading: storesLoading } = useQuery<Store[]>({
     queryKey: ["stores"],
@@ -90,6 +105,30 @@ const Cameras = () => {
       <p className="text-xs text-gray-500">
         Gere o .env do agente e valide a conexão com a API.
       </p>
+
+      {isMobile && currentUrl && (
+        <div className="bg-white rounded-xl shadow-sm border border-gray-100 p-4">
+          <div className="flex flex-col sm:flex-row sm:items-center gap-4">
+            <img
+              src={qrUrl}
+              alt="QR code da página atual"
+              className="h-28 w-28 rounded-lg border border-gray-200"
+            />
+            <div>
+              <h3 className="text-sm font-semibold text-gray-800">
+                Continuar no computador
+              </h3>
+              <p className="text-xs text-gray-600 mt-1">
+                O Edge Agent requer desktop. Escaneie o QR code para abrir esta
+                página no computador.
+              </p>
+              <div className="mt-2 text-xs text-blue-600 break-all">
+                {currentUrl}
+              </div>
+            </div>
+          </div>
+        </div>
+      )}
 
       {!selectedStore || selectedStore === "all" ? (
         <div className="bg-white rounded-xl shadow-sm p-6 text-center border border-gray-100 text-gray-500">

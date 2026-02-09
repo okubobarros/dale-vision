@@ -1,7 +1,7 @@
 // frontend/src/pages/Register/Register.tsx
 import { useMemo, useState } from "react"
 import { Link, useNavigate } from "react-router-dom"
-
+import logo from "../../assets/logo.png"
 function isValidEmail(email: string) {
   return /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email.trim())
 }
@@ -55,7 +55,7 @@ export default function Register() {
           {/* Header */}
           <div className="flex items-center gap-3">
             <div className="h-12 w-12 rounded-2xl bg-gradient-to-br from-blue-500 to-cyan-400 flex items-center justify-center shadow-lg">
-              <span className="text-xl">👁️</span>
+              <img src={logo} alt="DaleVision" className="h-10 w-auto" />
             </div>
             <div>
               <div className="font-semibold text-lg">Dale Vision</div>
