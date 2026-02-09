@@ -11,7 +11,7 @@ const api = axios.create({
   headers: {
     "Content-Type": "application/json",
   },
-  timeout: 10000,
+  timeout: 30000,
   withCredentials: false, // ✅ Knox não precisa de cookies
 })
 
@@ -70,12 +70,30 @@ api.interceptors.response.use(
     return response
   },
   (error) => {
-    console.error("🔴 API Response Error:", {
-      url: error.config?.url,
-      status: error.response?.status,
-      data: error.response?.data,
-      message: error.message,
-    })
+    const isTimeout =
+      error.code === "ECONNABORTED" ||
+      String(error.message || "").toLowerCase().includes("timeout")
+
+    if (isTimeout) {
+      console.warn("🟠 API Timeout:", {
+        url: error.config?.url,
+        timeoutMs: error.config?.timeout,
+        message: error.message,
+      })
+    } else if (error.response) {
+      console.error("🔴 API HTTP Error:", {
+        url: error.config?.url,
+        status: error.response?.status,
+        data: error.response?.data,
+        message: error.message,
+      })
+    } else {
+      console.error("🔴 API Network Error:", {
+        url: error.config?.url,
+        code: error.code,
+        message: error.message,
+      })
+    }
     return Promise.reject(error)
   }
 )
