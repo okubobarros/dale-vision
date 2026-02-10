@@ -1,6 +1,7 @@
-import { useEffect, useState } from "react"
+import { useEffect, useMemo, useState } from "react"
 import { useQuery } from "@tanstack/react-query"
 import { Link, useLocation } from "react-router-dom"
+import toast from "react-hot-toast"
 import { useAuth } from "../../contexts/AuthContext"
 import {
   storesService,
@@ -20,6 +21,7 @@ import type { StoreDashboard } from "../../types/dashboard"
 import { LineChart } from "../../components/Charts/LineChart"
 import { PieChart } from "../../components/Charts/PieChart"
 import SetupProgress from "../Onboarding/components/SetupProgress"
+import { useIsMobile } from "../../hooks/useIsMobile"
 
 interface MetricCardProps {
   title: string
@@ -200,9 +202,10 @@ const Dashboard = () => {
   const [resolvingEventId, setResolvingEventId] = useState<string | null>(null)
   const [ignoringEventId, setIgnoringEventId] = useState<string | null>(null)
   const [edgeSetupOpen, setEdgeSetupOpen] = useState(false)
-  const [edgeSetupHighlight, setEdgeSetupHighlight] = useState(false)
   const [showActivationProgress, setShowActivationProgress] = useState(false)
   const [activationBannerDismissed, setActivationBannerDismissed] = useState(false)
+  const [origin, setOrigin] = useState("")
+  const isMobile = useIsMobile(768)
   const location = useLocation()
 
   const { data: stores, isLoading: storesLoading } = useQuery<Store[]>({
@@ -236,20 +239,28 @@ const Dashboard = () => {
   const ignoreEvent = useIgnoreEvent()
 
   useEffect(() => {
+    if (typeof window !== "undefined") {
+      setOrigin(window.location.origin)
+    }
+  }, [])
+
+  useEffect(() => {
     const params = new URLSearchParams(location.search)
+    const storeFromQuery = params.get("store") || ""
+    if (storeFromQuery) {
+      setSelectedStore(storeFromQuery)
+    }
     if (params.get("openEdgeSetup") === "1") {
       setEdgeSetupOpen(true)
-      setEdgeSetupHighlight(true)
       setShowActivationProgress(true)
       setActivationBannerDismissed(false)
       params.delete("openEdgeSetup")
+      params.delete("store")
       const next = params.toString()
       const newUrl = `${location.pathname}${next ? `?${next}` : ""}`
       if (typeof window !== "undefined") {
         window.history.replaceState({}, "", newUrl)
       }
-      const t = setTimeout(() => setEdgeSetupHighlight(false), 6000)
-      return () => clearTimeout(t)
     }
   }, [location.pathname, location.search])
 
@@ -281,6 +292,26 @@ const Dashboard = () => {
     setActivationBannerDismissed(true)
   }
 
+  const edgeSetupLink = useMemo(() => {
+    if (!origin) return ""
+    const params = new URLSearchParams()
+    if (selectedStore && selectedStore !== ALL_STORES_VALUE) {
+      params.set("store", selectedStore)
+    }
+    params.set("openEdgeSetup", "1")
+    return `${origin}/app/dashboard?${params.toString()}`
+  }, [origin, selectedStore])
+
+  const edgeSetupLinkShort = edgeSetupLink
+    ? edgeSetupLink.replace(/^https?:\/\//, "")
+    : ""
+
+  const edgeSetupQrUrl = edgeSetupLink
+    ? `https://api.qrserver.com/v1/create-qr-code/?size=140x140&data=${encodeURIComponent(
+        edgeSetupLink
+      )}`
+    : ""
+
   const shouldShowActivationBanner =
     !activationBannerDismissed &&
     (showActivationProgress || (!isLoadingDashboard && !dashboard))
@@ -308,7 +339,6 @@ const Dashboard = () => {
         >
           Abrir Assistente de Conexão
         </button>
-
         <button
           type="button"
           onClick={dismissActivationProgress}
@@ -321,6 +351,88 @@ const Dashboard = () => {
       <p className="mt-3 text-sm text-gray-600">
         Você só precisa de um computador/servidor que tenha acesso às câmeras. Nós guiamos o passo a passo.
       </p>
+
+      <div className="mt-4">
+        <h4 className="text-sm font-semibold text-gray-700 mb-2">Checklist</h4>
+        <ul className="list-disc pl-5 text-sm text-gray-600 space-y-1">
+          <li>Selecionar a loja correta</li>
+          <li>Baixar o Edge Agent</li>
+          <li>
+            Criar o <span className="font-mono">.env</span> com{" "}
+            <span className="font-mono">STORE_ID</span>,{" "}
+            <span className="font-mono">EDGE_TOKEN</span> e{" "}
+            <span className="font-mono">CLOUD_BASE_URL</span>
+          </li>
+          <li>Rodar o agent no computador/servidor da loja</li>
+          <li>Aguardar o primeiro heartbeat</li>
+          <li>Quando o heartbeat for confirmado, a loja fica “Loja Online”</li>
+        </ul>
+      </div>
+
+      {edgeSetupLink && isMobile && (
+        <div className="mt-4 rounded-xl border border-gray-200 bg-gray-50 p-4 space-y-2">
+          <div className="text-sm font-semibold text-gray-800">
+            Continuar no computador
+          </div>
+          <p className="text-xs text-gray-600">
+            Abra este link no computador que fica na loja.
+          </p>
+          <div className="text-xs text-blue-600 break-all">{edgeSetupLinkShort}</div>
+          <button
+            type="button"
+            onClick={async () => {
+              try {
+                await navigator.clipboard.writeText(edgeSetupLink)
+                toast.success("Link copiado")
+              } catch {
+                toast.error("Falha ao copiar link")
+              }
+            }}
+            className="w-full rounded-lg border border-gray-200 bg-white px-4 py-2 text-xs font-semibold text-gray-700 hover:bg-gray-50"
+          >
+            Copiar link
+          </button>
+        </div>
+      )}
+
+      {edgeSetupLink && !isMobile && (
+        <div className="mt-4 rounded-xl border border-gray-200 bg-gray-50 p-4 flex flex-col sm:flex-row gap-4">
+          {edgeSetupQrUrl && (
+            <img
+              src={edgeSetupQrUrl}
+              alt="QR code do Edge Setup"
+              className="h-24 w-24 rounded-lg border border-gray-200"
+            />
+          )}
+          <div className="flex-1">
+            <div className="text-sm font-semibold text-gray-800">
+              Abra no computador da loja
+            </div>
+            <p className="text-xs text-gray-600 mt-1">
+              Copie o link abaixo (ou escaneie o QR) no computador que ficará com o Edge Agent.
+            </p>
+            <div className="mt-2 text-xs text-blue-600 break-all">{edgeSetupLink}</div>
+            <button
+              type="button"
+              onClick={async () => {
+                try {
+                  await navigator.clipboard.writeText(edgeSetupLink)
+                  toast.success("Link copiado")
+                } catch {
+                  toast.error("Falha ao copiar link")
+                }
+              }}
+              className="mt-2 inline-flex w-full sm:w-auto items-center justify-center rounded-lg border border-gray-200 bg-white px-4 py-2 text-xs font-semibold text-gray-700 hover:bg-gray-50"
+            >
+              Copiar link
+            </button>
+          </div>
+        </div>
+      )}
+
+      {!dashboard && dashboardError && (
+        <p className="text-xs text-gray-500 mt-3">{dashboardError}</p>
+      )}
     </div>
   ) : null
 
@@ -348,6 +460,12 @@ const Dashboard = () => {
           return
         }
 
+        if (USE_MOCK_DATA && edgeStatus?.store_status === "offline") {
+          setDashboard(null)
+          setDashboardError("Sem dados ainda. Aguardando conexão do Edge Agent.")
+          return
+        }
+
         const storeDashboard = await storesService.getStoreDashboard(selectedStore)
         setDashboard(storeDashboard)
       } catch (error) {
@@ -360,7 +478,7 @@ const Dashboard = () => {
     }
 
     loadDashboard()
-  }, [selectedStore, stores])
+  }, [selectedStore, stores, edgeStatus?.store_status])
 
   const icons = {
     health: (
@@ -538,39 +656,6 @@ const Dashboard = () => {
     return (
       <div className="space-y-6 sm:space-y-8">
         {activationBanner}
-        <div
-          className={[
-            "bg-white rounded-xl shadow-sm border border-gray-100 p-6",
-            edgeSetupHighlight ? "ring-2 ring-blue-400" : "",
-          ].join(" ")}
-        >
-          <h2 className="text-xl font-bold text-gray-800 mb-2">
-            Conecte seu Edge Agent
-          </h2>
-          <p className="text-sm text-gray-600 mb-4">
-            Vamos conectar o Dale Vision ao computador/servidor da loja para identificar as câmeras e começar a receber dados.
-          </p>
-          <button
-            type="button"
-            onClick={() => setEdgeSetupOpen(true)}
-            className="inline-flex items-center rounded-lg bg-blue-600 px-4 py-2 text-sm font-semibold text-white hover:bg-blue-700"
-          >
-            Abrir Edge Setup
-          </button>
-
-          <div className="mt-6">
-            <h3 className="text-sm font-semibold text-gray-700 mb-2">Checklist</h3>
-            <ul className="list-disc pl-5 text-sm text-gray-600">
-              <li>Baixe o Edge Agent</li>
-              <li>Insira o código da loja e o token de conexão</li>
-              <li>Rode o agent no computador da loja</li>
-              <li>Aguarde a primeira confirmação de conexão (Loja Online)</li>
-            </ul>
-          </div>
-          {dashboardError && (
-            <p className="text-xs text-gray-500 mt-4">{dashboardError}</p>
-          )}
-        </div>
 
         <EdgeSetupModal
           open={edgeSetupOpen}

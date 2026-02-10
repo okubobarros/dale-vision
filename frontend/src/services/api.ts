@@ -124,6 +124,7 @@ api.interceptors.response.use(
       error.code === "ECONNABORTED" ||
       String(error.message || "").toLowerCase().includes("timeout")
     const status = error.response?.status
+    const paywall = error.response?.data
     const method = String(error.config?.method || "get").toLowerCase()
     const isGet = method === "get"
     const shouldRetry = isGet && (isTimeout || [502, 503, 504].includes(status))
@@ -142,6 +143,10 @@ api.interceptors.response.use(
 
     if (isTimeout && isGet) {
       showTimeoutRetryToast(config)
+    }
+
+    if (paywall?.code === "PAYWALL_TRIAL_LIMIT" && paywall?.meta?.entity === "camera") {
+      toast.error("Seu trial permite até 3 câmeras por loja.")
     }
 
     if (isTimeout) {

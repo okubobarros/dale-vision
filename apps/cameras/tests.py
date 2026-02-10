@@ -1,5 +1,5 @@
 from django.test import SimpleTestCase
-from rest_framework.exceptions import ValidationError
+from apps.billing.utils import PaywallError
 from unittest.mock import MagicMock, patch
 
 from apps.cameras.limits import enforce_trial_camera_limit, TRIAL_CAMERA_LIMIT_MESSAGE
@@ -26,7 +26,7 @@ class TrialCameraLimitTests(SimpleTestCase):
         store_mock.objects.filter.return_value = self._mock_store_qs("trial")
         camera_mock.objects.filter.return_value = self._mock_camera_qs(3)
 
-        with self.assertRaises(ValidationError) as ctx:
+        with self.assertRaises(PaywallError) as ctx:
             enforce_trial_camera_limit("store-id", requested_active=True)
 
         self.assertIn(TRIAL_CAMERA_LIMIT_MESSAGE, str(ctx.exception))

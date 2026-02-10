@@ -24,11 +24,73 @@ const STATUS_OPTIONS: Array<{ value: StoreStatus; label: string }> = [
   { value: 'maintenance', label: 'Manutencao' },
 ];
 
+const DEMO_URL = 'https://app.dalevision.com/agendar-demo';
+const WHATSAPP_URL = `https://wa.me/?text=${encodeURIComponent(
+  'Olá! Quero fazer upgrade do meu trial do Dale Vision.'
+)}`;
+
+type PaywallState = {
+  open: boolean;
+  title: string;
+  message: string;
+};
+
+const PaywallModal = ({ state, onClose }: { state: PaywallState; onClose: () => void }) => {
+  if (!state.open) return null;
+
+  return (
+    <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-[60] p-4">
+      <div className="bg-white rounded-2xl shadow-2xl max-w-md w-full p-6">
+        <div className="flex items-start justify-between gap-4">
+          <div>
+            <h3 className="text-lg font-bold text-gray-900">{state.title}</h3>
+            <p className="text-sm text-gray-600 mt-2">{state.message}</p>
+          </div>
+          <button
+            type="button"
+            onClick={onClose}
+            className="rounded-full p-2 text-gray-400 hover:text-gray-600 hover:bg-gray-100"
+            aria-label="Fechar"
+          >
+            <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" />
+            </svg>
+          </button>
+        </div>
+
+        <div className="mt-5 flex flex-col sm:flex-row gap-3">
+          <a
+            href={DEMO_URL}
+            className="inline-flex items-center justify-center rounded-lg bg-blue-600 px-4 py-2 text-sm font-semibold text-white hover:bg-blue-700"
+            target="_blank"
+            rel="noreferrer"
+          >
+            Agendar demonstração
+          </a>
+          <a
+            href={WHATSAPP_URL}
+            className="inline-flex items-center justify-center rounded-lg border border-gray-200 px-4 py-2 text-sm font-semibold text-gray-700 hover:bg-gray-50"
+            target="_blank"
+            rel="noreferrer"
+          >
+            Falar no WhatsApp
+          </a>
+        </div>
+      </div>
+    </div>
+  );
+};
+
 // =======================
 // Create Store Modal
 // =======================
 const CreateStoreModal = ({ isOpen, onClose }: { isOpen: boolean; onClose: () => void }) => {
   const queryClient = useQueryClient();
+  const [paywall, setPaywall] = useState<PaywallState>({
+    open: false,
+    title: '',
+    message: '',
+  });
   const [formData, setFormData] = useState<CreateStorePayload>({
     name: '',
     description: '',
@@ -57,7 +119,17 @@ const CreateStoreModal = ({ isOpen, onClose }: { isOpen: boolean; onClose: () =>
         status: 'active',
       });
     },
-    onError: (error) => {
+    onError: (error: any) => {
+      const payload = error?.response?.data;
+      if (payload?.code === 'PAYWALL_TRIAL_LIMIT') {
+        setPaywall({
+          open: true,
+          title: 'Disponível no plano Pro',
+          message: 'Seu trial permite 1 loja. Fale com nosso time para liberar mais lojas.',
+        });
+        return;
+      }
+
       toast.error('Erro ao criar loja. Tente novamente.');
       console.error('Create store error:', error);
     },
@@ -66,9 +138,10 @@ const CreateStoreModal = ({ isOpen, onClose }: { isOpen: boolean; onClose: () =>
   if (!isOpen) return null;
 
   return (
-    <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50 p-4">
-      <div className="bg-white rounded-xl shadow-2xl max-w-md w-full max-h-[90vh] overflow-y-auto">
-        <div className="p-6">
+    <>
+      <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50 p-4">
+        <div className="bg-white rounded-xl shadow-2xl max-w-md w-full max-h-[90vh] overflow-y-auto">
+          <div className="p-6">
           <div className="flex justify-between items-center mb-6">
             <h2 className="text-xl font-bold text-gray-800">Nova Loja</h2>
             <button
@@ -234,9 +307,14 @@ const CreateStoreModal = ({ isOpen, onClose }: { isOpen: boolean; onClose: () =>
               </button>
             </div>
           </form>
+          </div>
         </div>
       </div>
-    </div>
+      <PaywallModal
+        state={paywall}
+        onClose={() => setPaywall({ open: false, title: '', message: '' })}
+      />
+    </>
   );
 };
 
@@ -762,6 +840,4 @@ const Stores = () => {
 };
 
 export default Stores;
-
-
 

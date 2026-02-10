@@ -1,13 +1,14 @@
 from django.utils import timezone
 from rest_framework import viewsets, permissions, status
-from rest_framework.exceptions import ValidationError
 from rest_framework.decorators import action
 from rest_framework.response import Response
 
 from apps.core.models import Camera, CameraHealthLog
 from .serializers import CameraSerializer, CameraHealthLogSerializer
 from .services import rtsp_snapshot
-from .limits import enforce_trial_camera_limit, TRIAL_CAMERA_LIMIT_MESSAGE
+from .limits import enforce_trial_camera_limit
+from apps.billing.utils import PaywallError
+from apps.stores.views import ensure_user_uuid
 
 class CameraViewSet(viewsets.ModelViewSet):
     serializer_class = CameraSerializer
@@ -26,9 +27,18 @@ class CameraViewSet(viewsets.ModelViewSet):
         requested_active = serializer.validated_data.get("active", True)
         if store_id:
             try:
-                enforce_trial_camera_limit(store_id, requested_active=requested_active)
-            except ValidationError:
-                raise ValidationError(TRIAL_CAMERA_LIMIT_MESSAGE)
+                actor_user_id = None
+                try:
+                    actor_user_id = ensure_user_uuid(self.request.user)
+                except Exception:
+                    actor_user_id = None
+                enforce_trial_camera_limit(
+                    store_id,
+                    requested_active=requested_active,
+                    actor_user_id=actor_user_id,
+                )
+            except PaywallError as exc:
+                raise exc
         serializer.save()
 
     @action(detail=True, methods=["post"], url_path="test-snapshot")

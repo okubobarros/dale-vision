@@ -11,7 +11,11 @@ from django.conf import settings
 from datetime import timedelta
 from apps.core.models import Store, OrgMember, Organization, Camera
 from apps.edge.models import EdgeToken
-from apps.cameras.limits import enforce_trial_camera_limit, TRIAL_CAMERA_LIMIT_MESSAGE
+from apps.cameras.limits import enforce_trial_camera_limit
+from apps.billing.utils import (
+    PaywallError,
+    enforce_trial_store_limit,
+)
 import hashlib
 import secrets
 import uuid
@@ -224,16 +228,20 @@ class StoreViewSet(viewsets.ModelViewSet):
 
         if active and not getattr(camera, "active", False):
             try:
+                actor_user_id = None
+                try:
+                    actor_user_id = ensure_user_uuid(request.user)
+                except Exception:
+                    actor_user_id = None
+
                 enforce_trial_camera_limit(
                     store.id,
                     requested_active=True,
                     exclude_camera_id=str(camera.id),
+                    actor_user_id=actor_user_id,
                 )
-            except ValidationError:
-                return Response(
-                    {"detail": TRIAL_CAMERA_LIMIT_MESSAGE, "reason": "trial_camera_limit"},
-                    status=status.HTTP_400_BAD_REQUEST,
-                )
+            except PaywallError as exc:
+                return Response(exc.detail, status=exc.status_code)
 
         try:
             camera.active = active
@@ -274,11 +282,23 @@ class StoreViewSet(viewsets.ModelViewSet):
                 if not is_member:
                     print(f"[RBAC] user {user.id} tentou criar store em org {requested_org_id} sem membership.")
                     raise PermissionDenied("Você não tem acesso a esta organização.")
+            if not user_uuid:
+                try:
+                    user_uuid = ensure_user_uuid(user)
+                except Exception:
+                    user_uuid = None
+            enforce_trial_store_limit(org_id=requested_org_id, actor_user_id=user_uuid)
             serializer.save(org_id=requested_org_id, created_at=now, updated_at=now)
             return
 
         org_ids = get_user_org_ids(user)
         if len(org_ids) == 1:
+            if not user_uuid:
+                try:
+                    user_uuid = ensure_user_uuid(user)
+                except Exception:
+                    user_uuid = None
+            enforce_trial_store_limit(org_id=org_ids[0], actor_user_id=user_uuid)
             serializer.save(org_id=org_ids[0], created_at=now, updated_at=now)
             return
         if len(org_ids) > 1:
@@ -300,6 +320,7 @@ class StoreViewSet(viewsets.ModelViewSet):
                 role="owner",
                 created_at=timezone.now(),
             )
+            enforce_trial_store_limit(org_id=org.id, actor_user_id=user_uuid)
             serializer.save(org=org, created_at=now, updated_at=now)
         except (ProgrammingError, OperationalError) as exc:
             print(f"[RBAC] falha ao criar org padrão: {exc}")

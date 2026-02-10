@@ -1,7 +1,10 @@
 # apps/accounts/serializers.py
+import logging
 from rest_framework import serializers
 from django.contrib.auth.models import User
 from django.contrib.auth import authenticate
+
+logger = logging.getLogger(__name__)
 class UserSerializer(serializers.ModelSerializer):
     class Meta:
         model = User
@@ -30,14 +33,36 @@ class RegisterSerializer(serializers.ModelSerializer):
         )
 
 class LoginSerializer(serializers.Serializer):
-    username = serializers.CharField(required=True)
+    # Compatibilidade: aceita "username" (legado) ou "identifier" (novo).
+    username = serializers.CharField(required=False, allow_blank=True)
+    identifier = serializers.CharField(required=False, allow_blank=True)
     password = serializers.CharField(required=True, write_only=True)
 
     def validate(self, attrs):
+        identifier = (attrs.get("identifier") or attrs.get("username") or "").strip()
+        password = attrs.get("password") or ""
+        if not identifier or not password:
+            raise serializers.ValidationError("Credenciais inválidas.")
+
+        auth_username = identifier
+        if "@" in identifier:
+            matches = User.objects.filter(email__iexact=identifier)
+            count = matches.count()
+            if count == 1:
+                auth_username = matches.first().username
+            else:
+                if count > 1:
+                    logger.error(
+                        "Duplicate emails found for login identifier: %s (count=%s)",
+                        identifier,
+                        count,
+                    )
+                raise serializers.ValidationError("Credenciais inválidas.")
+
         user = authenticate(
             request=self.context.get("request"),
-            username=attrs["username"],
-            password=attrs["password"],
+            username=auth_username,
+            password=password,
         )
         if not user:
             raise serializers.ValidationError("Credenciais inválidas.")

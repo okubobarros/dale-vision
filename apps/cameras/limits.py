@@ -3,15 +3,17 @@ from typing import Optional
 from django.core.exceptions import FieldError
 from django.db import connection
 from django.db.utils import OperationalError, ProgrammingError
-from rest_framework.exceptions import ValidationError
 
 from apps.core.models import Camera, Store
+from apps.billing.utils import (
+    PaywallError,
+    PAYWALL_TRIAL_MESSAGE,
+    is_trial,
+    log_paywall_block,
+)
 
 TRIAL_CAMERA_LIMIT = 3
-TRIAL_CAMERA_LIMIT_MESSAGE = (
-    "Limite do trial: máximo de 3 câmeras ativas por loja. "
-    "Faça upgrade ou fale com nosso time."
-)
+TRIAL_CAMERA_LIMIT_MESSAGE = PAYWALL_TRIAL_MESSAGE
 
 
 def camera_active_column_exists() -> bool:
@@ -23,11 +25,9 @@ def camera_active_column_exists() -> bool:
         return False
 
 
-def get_store_status(store_id: str) -> Optional[str]:
-    row = Store.objects.filter(id=store_id).values("status").first()
-    if not row:
-        return None
-    return row.get("status")
+def get_store_meta(store_id: str) -> dict:
+    row = Store.objects.filter(id=store_id).values("status", "org_id").first()
+    return row or {}
 
 
 def count_active_cameras(store_id: str, *, exclude_camera_id: Optional[str] = None) -> int:
@@ -50,14 +50,24 @@ def enforce_trial_camera_limit(
     *,
     requested_active: bool = True,
     exclude_camera_id: Optional[str] = None,
+    actor_user_id: Optional[str] = None,
 ) -> None:
     if not requested_active:
         return
 
-    status = get_store_status(store_id)
-    if status != "trial":
+    meta = get_store_meta(store_id)
+    status = meta.get("status")
+    org_id = meta.get("org_id")
+    if status != "trial" and not is_trial(org_id):
         return
 
     active_count = count_active_cameras(store_id, exclude_camera_id=exclude_camera_id)
     if active_count >= TRIAL_CAMERA_LIMIT:
-        raise ValidationError(TRIAL_CAMERA_LIMIT_MESSAGE)
+        log_paywall_block(
+            org_id=org_id,
+            store_id=store_id,
+            actor_user_id=actor_user_id,
+            entity="camera",
+            limit=TRIAL_CAMERA_LIMIT,
+        )
+        raise PaywallError(meta={"limit": TRIAL_CAMERA_LIMIT, "entity": "camera"})

@@ -1,6 +1,5 @@
 import { useAuth } from "../../contexts/AuthContext"
 import { useNavigate } from "react-router-dom"
-import logo from "../../assets/logo.png"
 
 type HeaderProps = {
   onOpenAgent?: () => void
@@ -26,7 +25,13 @@ const Header = ({ onOpenAgent }: HeaderProps) => {
 
         {/* Left: Brand */}
         <div className="flex items-center gap-3 min-w-0">
-          <img src={logo} alt="DALE Vision" className="h-12 w-auto" />
+          <div className="h-8 w-8 rounded-xl bg-white ring-1 ring-slate-200 shadow-sm p-1 flex items-center justify-center">
+            <img
+              src="/android-chrome-192x192.png"
+              alt="DALE Vision"
+              className="h-full w-full object-contain"
+            />
+          </div>
           <h1 className="text-xl sm:text-2xl font-bold leading-none bg-gradient-to-r from-blue-500 to-purple-600 bg-clip-text text-transparent">
             DALE Vision
           </h1>
