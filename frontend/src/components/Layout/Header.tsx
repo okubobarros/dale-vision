@@ -32,9 +32,17 @@ const Header = ({ onOpenAgent }: HeaderProps) => {
               className="h-full w-full object-contain"
             />
           </div>
-          <h1 className="text-xl sm:text-2xl font-bold leading-none bg-gradient-to-r from-blue-500 to-purple-600 bg-clip-text text-transparent">
-            DALE Vision
-          </h1>
+          <div className="flex items-center gap-2 min-w-0">
+            <h1 className="text-xl sm:text-2xl font-semibold leading-none tracking-tight text-slate-900 whitespace-nowrap">
+              DALE
+            </h1>
+            <span className="text-xl sm:text-2xl font-semibold leading-none tracking-tight bg-gradient-to-r from-blue-500 to-purple-600 bg-clip-text text-transparent whitespace-nowrap">
+              Vision
+            </span>
+            <span className="hidden sm:inline-flex items-center rounded-full border border-slate-200 bg-slate-50 px-2 py-0.5 text-[11px] font-semibold text-slate-600">
+              IA
+            </span>
+          </div>
 
         </div>
 
