@@ -6,8 +6,6 @@ import requests
 from django.conf import settings
 from django.contrib.auth.models import User
 from django.utils import timezone
-from rest_framework.authentication import BaseAuthentication, get_authorization_header
-from rest_framework.exceptions import AuthenticationFailed
 
 from apps.core.models import Organization, OrgMember
 from apps.stores.services.user_uuid import ensure_user_uuid
@@ -24,7 +22,7 @@ def _get_supabase_config() -> Tuple[Optional[str], Optional[str]]:
 def _fetch_supabase_user(token: str) -> dict:
     url, key = _get_supabase_config()
     if not url:
-        raise AuthenticationFailed("Supabase não configurado.")
+        raise ValueError("Supabase não configurado.")
 
     headers = {"Authorization": f"Bearer {token}"}
     if key:
@@ -34,11 +32,11 @@ def _fetch_supabase_user(token: str) -> dict:
         resp = requests.get(f"{url.rstrip('/')}/auth/v1/user", headers=headers, timeout=6)
     except requests.RequestException:
         logger.exception("[SUPABASE] auth user request failed")
-        raise AuthenticationFailed("Token inválido.")
+        raise ValueError("Token inválido.")
 
     if resp.status_code != 200:
         logger.warning("[SUPABASE] auth user invalid status=%s", resp.status_code)
-        raise AuthenticationFailed("Token inválido.")
+        raise ValueError("Token inválido.")
     return resp.json() or {}
 
 
@@ -53,7 +51,7 @@ def _get_or_create_user_from_supabase(user_info: dict) -> User:
     email = (user_info.get("email") or "").strip().lower()
     supa_id = (user_info.get("id") or "").strip()
     if not email and not supa_id:
-        raise AuthenticationFailed("Token inválido.")
+        raise ValueError("Token inválido.")
 
     user = None
     if email:
@@ -73,6 +71,7 @@ def _get_or_create_user_from_supabase(user_info: dict) -> User:
             first_name=user_info.get("user_metadata", {}).get("first_name", "") or "",
             last_name=user_info.get("user_metadata", {}).get("last_name", "") or "",
         )
+        logger.info("[SUPABASE] user created username=%s email=%s", user.username, user.email or "n/a")
 
     if not user.is_active:
         user.is_active = True
@@ -99,6 +98,7 @@ def ensure_org_membership(user: User) -> None:
         role="owner",
         created_at=timezone.now(),
     )
+    logger.info("[SUPABASE] org created org_id=%s user_uuid=%s", str(org.id), str(user_uuid))
 
 
 def get_user_from_supabase_token(token: str, ensure_org: bool = True) -> User:
@@ -109,12 +109,15 @@ def get_user_from_supabase_token(token: str, ensure_org: bool = True) -> User:
     return user
 
 
-class SupabaseJWTAuthentication(BaseAuthentication):
+class SupabaseJWTAuthentication:
     """
     Accepts Supabase access tokens in Authorization: Bearer <jwt>.
     """
 
     def authenticate(self, request):
+        from rest_framework.authentication import get_authorization_header
+        from rest_framework.exceptions import AuthenticationFailed
+
         auth = get_authorization_header(request).split()
         if not auth or auth[0].lower() != b"bearer":
             return None
@@ -124,5 +127,8 @@ class SupabaseJWTAuthentication(BaseAuthentication):
             raise AuthenticationFailed("Token inválido.")
 
         token = auth[1].decode("utf-8")
-        user = get_user_from_supabase_token(token, ensure_org=True)
+        try:
+            user = get_user_from_supabase_token(token, ensure_org=True)
+        except ValueError as exc:
+            raise AuthenticationFailed(str(exc) or "Token inválido.")
         return (user, token)

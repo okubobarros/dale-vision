@@ -1,4 +1,5 @@
 # apps/stores/views.py 
+import logging
 from rest_framework import viewsets, status, permissions
 from rest_framework.decorators import action
 from rest_framework.exceptions import PermissionDenied, ValidationError
@@ -21,6 +22,8 @@ import secrets
 import uuid
 from .serializers import StoreSerializer
 from apps.stores.services.user_uuid import ensure_user_uuid
+
+logger = logging.getLogger(__name__)
 
 def get_user_org_ids(user):
     user_uuid = ensure_user_uuid(user)
@@ -266,7 +269,8 @@ class StoreViewSet(viewsets.ModelViewSet):
                 except Exception:
                     user_uuid = None
             enforce_trial_store_limit(org_id=requested_org_id, actor_user_id=user_uuid)
-            serializer.save(org_id=requested_org_id, created_at=now, updated_at=now)
+            store = serializer.save(org_id=requested_org_id, created_at=now, updated_at=now)
+            logger.info("[STORE] created store_id=%s org_id=%s user_id=%s", str(store.id), str(requested_org_id), getattr(user, "id", None))
             return
 
         org_ids = get_user_org_ids(user)
@@ -277,7 +281,8 @@ class StoreViewSet(viewsets.ModelViewSet):
                 except Exception:
                     user_uuid = None
             enforce_trial_store_limit(org_id=org_ids[0], actor_user_id=user_uuid)
-            serializer.save(org_id=org_ids[0], created_at=now, updated_at=now)
+            store = serializer.save(org_id=org_ids[0], created_at=now, updated_at=now)
+            logger.info("[STORE] created store_id=%s org_id=%s user_id=%s", str(store.id), str(org_ids[0]), getattr(user, "id", None))
             return
         if len(org_ids) > 1:
             raise ValidationError("Informe org_id para criar a store.")
@@ -298,8 +303,10 @@ class StoreViewSet(viewsets.ModelViewSet):
                 role="owner",
                 created_at=timezone.now(),
             )
+            logger.info("[ORG] created org_id=%s user_uuid=%s", str(org.id), str(user_uuid))
             enforce_trial_store_limit(org_id=org.id, actor_user_id=user_uuid)
-            serializer.save(org=org, created_at=now, updated_at=now)
+            store = serializer.save(org=org, created_at=now, updated_at=now)
+            logger.info("[STORE] created store_id=%s org_id=%s user_id=%s", str(store.id), str(org.id), getattr(user, "id", None))
         except (ProgrammingError, OperationalError) as exc:
             print(f"[RBAC] falha ao criar org padrão: {exc}")
             raise ValidationError("Não foi possível criar organização padrão.")

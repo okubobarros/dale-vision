@@ -4,6 +4,7 @@ from datetime import timedelta
 from uuid import UUID
 from django.conf import settings
 from django.contrib.auth import get_user_model
+from django.db import transaction
 from apps.core.models import StoreManager
 
 
@@ -147,14 +148,21 @@ class DemoLeadCreateView(APIView):
 
     def post(self, request):
         now = timezone.now()
+        payload = request.data.copy()
+        meta_in = payload.get("metadata")
+        if not isinstance(meta_in, dict):
+            meta_in = {}
+        payload["metadata"] = meta_in
 
-        email = (request.data.get("email") or "").strip()
-        whatsapp = (request.data.get("whatsapp") or "").strip()
+        email = (payload.get("email") or "").strip()
+        whatsapp = (payload.get("whatsapp") or "").strip()
+        source = (payload.get("source") or "").strip()
         try:
             db_conf = settings.DATABASES.get("default", {})
             logger.info(
-                "[DEMO] lead request email=%s db_host=%s db_name=%s",
+                "[DEMO] lead request email=%s source=%s db_host=%s db_name=%s",
                 email or "n/a",
+                source or "n/a",
                 db_conf.get("HOST"),
                 db_conf.get("NAME"),
             )
@@ -221,17 +229,24 @@ class DemoLeadCreateView(APIView):
             except Exception:
                 pass
 
-            return Response(DemoLeadSerializer(existing).data, status=status.HTTP_200_OK)
+            return Response({"ok": True, "id": str(existing.id)}, status=status.HTTP_200_OK)
 
         # 1) Cria lead
-        serializer = DemoLeadSerializer(data=request.data)
+        serializer = DemoLeadSerializer(data=payload)
         serializer.is_valid(raise_exception=True)
         try:
-            lead = serializer.save(status="new", created_at=now)
+            with transaction.atomic():
+                lead = serializer.save(status="new", created_at=now)
         except Exception:
             logger.exception("[DEMO] insert failed email=%s", email or "n/a")
             raise
-        logger.info("[DEMO] lead created id=%s email=%s", str(lead.id), lead.email)
+        logger.info(
+            "[DEMO] lead created id=%s email=%s status=%s source=%s",
+            str(lead.id),
+            lead.email,
+            lead.status,
+            lead.source or "n/a",
+        )
 
         # 2) JourneyEvent: lead_created
         je = JourneyEvent.objects.create(
@@ -283,7 +298,7 @@ class DemoLeadCreateView(APIView):
             },
         )
 
-        return Response(DemoLeadSerializer(lead).data, status=status.HTTP_201_CREATED)
+        return Response({"ok": True, "id": str(lead.id)}, status=status.HTTP_201_CREATED)
 
 
 # =========================

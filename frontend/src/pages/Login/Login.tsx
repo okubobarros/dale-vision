@@ -3,12 +3,16 @@ import { useState } from "react"
 import { useNavigate } from "react-router-dom"
 import logo from "../../assets/logo.png"
 import { useAuth } from "../../contexts/AuthContext"
+import { supabase } from "../../lib/supabase"
 
 const Login = () => {
   const [username, setUsername] = useState("")
   const [password, setPassword] = useState("")
   const [showPassword, setShowPassword] = useState(false)
   const [error, setError] = useState("")
+  const [showResend, setShowResend] = useState(false)
+  const [resendMessage, setResendMessage] = useState("")
+  const [resendLoading, setResendLoading] = useState(false)
   const [isLoading, setIsLoading] = useState(false)
 
   const { login } = useAuth()
@@ -21,21 +25,60 @@ const Login = () => {
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault()
     setError("")
+    setShowResend(false)
+    setResendMessage("")
     setIsLoading(true)
 
     try {
       await login({ username, password })
       navigate("/app/dashboard")
     } catch (err: any) {
-      const errorMessage =
-        err.response?.data?.detail ||
-        err.response?.data?.non_field_errors?.[0] ||
-        err.message ||
-        "Usuário ou senha incorretos"
+      const errMessage = err?.message || ""
+      const errCode = String(err?.code || "").toLowerCase()
+      const isEmailNotConfirmed =
+        errCode === "email_not_confirmed" ||
+        errMessage.toLowerCase().includes("email not confirmed") ||
+        errMessage.toLowerCase().includes("confirm") ||
+        errMessage.toLowerCase().includes("confirma")
 
-      setError(errorMessage)
+      if (isEmailNotConfirmed) {
+        setError("Seu e-mail ainda não foi confirmado. Verifique sua caixa de entrada.")
+        setShowResend(true)
+      } else {
+        const errorMessage =
+          err.response?.data?.detail ||
+          err.response?.data?.non_field_errors?.[0] ||
+          err.message ||
+          "Usuário ou senha incorretos"
+        setError(errorMessage)
+      }
     } finally {
       setIsLoading(false)
+    }
+  }
+
+  const handleResend = async () => {
+    const email = username.trim()
+    if (!email || !email.includes("@")) {
+      setResendMessage("Informe um e-mail válido para reenviar.")
+      return
+    }
+    setResendLoading(true)
+    setResendMessage("")
+    try {
+      const { error: resendError } = await supabase.auth.resend({
+        type: "signup",
+        email,
+      })
+      if (resendError) {
+        setResendMessage(resendError.message || "Não foi possível reenviar o e-mail.")
+      } else {
+        setResendMessage("E-mail de confirmação reenviado.")
+      }
+    } catch {
+      setResendMessage("Não foi possível reenviar o e-mail.")
+    } finally {
+      setResendLoading(false)
     }
   }
 
@@ -79,6 +122,21 @@ const Login = () => {
                   </svg>
                   <span className="text-sm">{error}</span>
                 </div>
+                {showResend && (
+                  <div className="mt-3 flex flex-col sm:flex-row sm:items-center gap-2">
+                    <button
+                      type="button"
+                      onClick={handleResend}
+                      disabled={resendLoading}
+                      className="inline-flex items-center justify-center rounded-xl border border-red-200 bg-white px-3 py-2 text-xs font-semibold text-red-700 hover:bg-red-100 disabled:opacity-60"
+                    >
+                      {resendLoading ? "Reenviando..." : "Reenviar e-mail"}
+                    </button>
+                    {resendMessage && (
+                      <span className="text-xs text-red-700">{resendMessage}</span>
+                    )}
+                  </div>
+                )}
               </div>
             )}
 

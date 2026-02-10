@@ -18,24 +18,13 @@ type GoalValue =
 
 type SetupWhereValue = "store_pc" | "nvr_server" | "not_sure"
 type AccessWhoValue = "owner" | "store_manager" | "staff" | "not_sure"
-type HowHeardValue =
-  | "referral"
-  | "instagram"
-  | "linkedin"
-  | "google"
-  | "youtube"
-  | "partner"
-  | "event"
-  | "other"
+type HowHeardValue = "referral" | "instagram" | "google" | "youtube" | "other"
 
 const HOW_HEARD: { label: string; value: HowHeardValue }[] = [
-  { label: "Indicação", value: "referral" },
   { label: "Instagram", value: "instagram" },
-  { label: "LinkedIn", value: "linkedin" },
-  { label: "Google / Busca", value: "google" },
   { label: "YouTube", value: "youtube" },
-  { label: "Parceiro", value: "partner" },
-  { label: "Evento", value: "event" },
+  { label: "Indicação", value: "referral" },
+  { label: "Google / Busca", value: "google" },
   { label: "Outro", value: "other" },
 ]
 
@@ -140,6 +129,7 @@ export default function AgendarDemo() {
   const [consent, setConsent] = useState(false)
 
   const hasOther = goals.includes("other")
+  const needsSourceDetail = howHeard === "other" || howHeard === "referral"
 
   const primaryGoal: GoalValue | "" = useMemo(() => {
     if (!goals.length) return ""
@@ -191,9 +181,9 @@ export default function AgendarDemo() {
     if (!goals.length) return toast.error("Selecione pelo menos 1 objetivo.")
     if (hasOther && !goalOther.trim()) return toast.error('Preencha o campo "Outro" (objetivo).')
     if (!consent) return toast.error("É necessário concordar em receber comunicações sobre a demo.")
-    if (!howHeard) return toast.error("Diga como você soube de nós.")
-    if (howHeard === "other" && !howHeardOther.trim()) {
-      return toast.error('Preencha o campo "Outro" (como soube de nós).')
+    if (!howHeard) return toast.error("Selecione a origem do contato.")
+    if (needsSourceDetail && !howHeardOther.trim()) {
+      return toast.error('Preencha o campo de detalhes da origem.')
     }
 
     try {
@@ -215,7 +205,7 @@ export default function AgendarDemo() {
         primary_goal: primaryGoal || null,
         primary_goals: goals,
 
-        source: "web",
+        source: howHeard,
         utm: {
           utm_source: "dalevision_site",
           utm_medium: "demo_form",
@@ -227,8 +217,8 @@ export default function AgendarDemo() {
           goal_other: hasOther ? goalOther.trim() : null,
           goals_selected: goals,
 
-          how_heard: howHeard || null,
-          how_heard_other: howHeard === "other" ? howHeardOther.trim() : null,
+          source_detail: needsSourceDetail ? howHeardOther.trim() : null,
+          source_channel: "web",
 
           activation_setup_where: setupWhere || null,
           activation_access_who: accessWho || null,
@@ -250,9 +240,14 @@ export default function AgendarDemo() {
       calendlyUrl.searchParams.set("email", payload.email)
 
       window.location.href = calendlyUrl.toString()
-    } catch (err) {
+    } catch (err: any) {
       console.error(err)
-      toast.error("Erro ao enviar dados. Tente novamente.")
+      const msg =
+        err?.response?.data?.detail ||
+        err?.response?.data?.message ||
+        err?.message ||
+        "Erro ao enviar dados. Tente novamente."
+      toast.error(msg)
     } finally {
       setLoading(false)
     }
@@ -359,19 +354,19 @@ export default function AgendarDemo() {
 
           {/* Como soube */}
           <div className="space-y-4">
-            <h2 className="font-semibold text-slate-900">Como você soube de nós? *</h2>
+            <h2 className="font-semibold text-slate-900">Origem do contato *</h2>
 
             <div>
-              <label className="text-sm font-medium text-slate-700" htmlFor="demo-how-heard">
-                Selecione uma opção *
-              </label>
-              <select
-                id="demo-how-heard"
-                className={selectBase}
-                value={howHeard}
-                onChange={(e) => setHowHeard(e.target.value as HowHeardValue)}
-              >
-                <option value="">Selecione</option>
+                <label className="text-sm font-medium text-slate-700" htmlFor="demo-how-heard">
+                  Selecione uma opção *
+                </label>
+                <select
+                  id="demo-how-heard"
+                  className={selectBase}
+                  value={howHeard}
+                  onChange={(e) => setHowHeard(e.target.value as HowHeardValue)}
+                >
+                  <option value="">Selecione</option>
                 {HOW_HEARD.map((o) => (
                   <option key={o.value} value={o.value}>
                     {o.label}
@@ -380,15 +375,19 @@ export default function AgendarDemo() {
               </select>
             </div>
 
-            {howHeard === "other" && (
+            {needsSourceDetail && (
               <div>
                 <label className="text-sm font-medium text-slate-700" htmlFor="demo-how-heard-other">
-                  Descreva (Outro) *
+                  {howHeard === "referral" ? "Quem indicou?" : "Descreva (Outro)"} *
                 </label>
                 <input
                   id="demo-how-heard-other"
                   className={inputBase}
-                  placeholder="Ex: grupo do WhatsApp, recomendação de consultor..."
+                  placeholder={
+                    howHeard === "referral"
+                      ? "Ex: consultor, parceiro, amigo..."
+                      : "Ex: grupo do WhatsApp, recomendação de consultor..."
+                  }
                   value={howHeardOther}
                   onChange={(e) => setHowHeardOther(e.target.value)}
                 />

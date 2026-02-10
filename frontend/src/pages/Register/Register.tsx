@@ -40,7 +40,7 @@ export default function Register() {
       email: email.trim(),
       password,
       options: {
-        emailRedirectTo: "https://app.dalevision.com/auth/callback",
+        emailRedirectTo: "https://app.dalevision.com/login",
         data: {
           full_name: fullName.trim(),
           company: company.trim(),
