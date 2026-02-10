@@ -1,9 +1,10 @@
 // src/pages/Login/Login.tsx
-import { useState } from "react"
-import { useNavigate } from "react-router-dom"
+import { useEffect, useState } from "react"
+import { useLocation, useNavigate } from "react-router-dom"
 import logo from "../../assets/logo.png"
 import { useAuth } from "../../contexts/AuthContext"
 import { supabase } from "../../lib/supabase"
+import { getSiteUrl } from "../../lib/siteUrl"
 
 const Login = () => {
   const [username, setUsername] = useState("")
@@ -17,10 +18,18 @@ const Login = () => {
 
   const { login } = useAuth()
   const navigate = useNavigate()
+  const location = useLocation()
 
   const HOME_URL = "https://app.dalevision.com/"
   const DEMO_URL = "https://app.dalevision.com/agendar-demo"
   const PRIVACY_URL = "https://app.dalevision.com/politica-de-privacidade"
+
+  useEffect(() => {
+    const params = new URLSearchParams(location.search)
+    if (params.get("verified") === "1") {
+      setError("E-mail verificado. Agora faça login.")
+    }
+  }, [location.search])
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault()
@@ -69,6 +78,9 @@ const Login = () => {
       const { error: resendError } = await supabase.auth.resend({
         type: "signup",
         email,
+        options: {
+          emailRedirectTo: `${getSiteUrl()}/auth/callback`,
+        },
       })
       if (resendError) {
         setResendMessage(resendError.message || "Não foi possível reenviar o e-mail.")
