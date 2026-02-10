@@ -107,6 +107,8 @@ const selectBase =
 export default function AgendarDemo() {
   const [loading, setLoading] = useState(false)
   const [success, setSuccess] = useState(false)
+  const [submitError, setSubmitError] = useState("")
+  const [fieldErrors, setFieldErrors] = useState<Record<string, string>>({})
 
   const [name, setName] = useState("")
   const [email, setEmail] = useState("")
@@ -168,6 +170,8 @@ export default function AgendarDemo() {
 
   async function handleSubmit() {
     if (loading || success) return
+    setSubmitError("")
+    setFieldErrors({})
     const nameClean = name.trim()
     const emailClean = email.trim()
     const whatsappClean = normalizeWhatsappToBR11(whatsapp)
@@ -228,7 +232,7 @@ export default function AgendarDemo() {
             "Após a demo, enviamos link do Edge Agent (.exe) por WhatsApp/e-mail para instalar no computador da loja ou no servidor/NVR e testar conexão com câmeras.",
         },
 
-        qualified_score: qualifiedScore,
+        qualified_score: Number(qualifiedScore),
       }
 
       const lead = await demoService.createLead(payload)
@@ -242,16 +246,33 @@ export default function AgendarDemo() {
       calendlyUrl.searchParams.set("email", payload.email)
 
       setSuccess(true)
+      toast.success("Recebemos seus dados. Abrindo o Calendly…")
       setTimeout(() => {
         window.location.href = calendlyUrl.toString()
-      }, 300)
+      }, 2500)
     } catch (err: any) {
       console.error(err)
+      if (err?.response?.status === 400 && err?.response?.data && typeof err.response.data === "object") {
+        const data = err.response.data as Record<string, unknown>
+        const nextErrors: Record<string, string> = {}
+        for (const [key, value] of Object.entries(data)) {
+          const message = Array.isArray(value)
+            ? value.filter(Boolean).join(", ")
+            : typeof value === "string"
+              ? value
+              : "Campo inválido."
+          nextErrors[key] = message
+        }
+        setFieldErrors(nextErrors)
+        setSubmitError("Confira os campos destacados.")
+        return
+      }
       const msg =
         err?.response?.data?.detail ||
         err?.response?.data?.message ||
         err?.message ||
         "Erro ao enviar dados. Tente novamente."
+      setSubmitError(msg)
       toast.error(msg)
     } finally {
       setLoading(false)
@@ -271,6 +292,20 @@ export default function AgendarDemo() {
           {success && (
             <div className="rounded-2xl border border-emerald-200 bg-emerald-50 p-4 text-emerald-800 text-sm">
               Dados enviados com sucesso. Redirecionando para o Calendly…
+            </div>
+          )}
+          {submitError && !success && (
+            <div className="rounded-2xl border border-red-200 bg-red-50 p-4 text-red-700 text-sm">
+              <p>{submitError}</p>
+              {Object.keys(fieldErrors).length > 0 && (
+                <div className="mt-2 space-y-1">
+                  {Object.entries(fieldErrors).map(([key, message]) => (
+                    <p key={key} className="text-xs text-red-600">
+                      {message}
+                    </p>
+                  ))}
+                </div>
+              )}
             </div>
           )}
           {/* Header */}
@@ -328,6 +363,9 @@ export default function AgendarDemo() {
                 onChange={(e) => setName(e.target.value)}
                 autoComplete="name"
               />
+              {fieldErrors.contact_name && (
+                <p className="mt-2 text-xs text-red-600">{fieldErrors.contact_name}</p>
+              )}
             </div>
 
             <div>
@@ -343,6 +381,9 @@ export default function AgendarDemo() {
                 autoComplete="email"
                 inputMode="email"
               />
+              {fieldErrors.email && (
+                <p className="mt-2 text-xs text-red-600">{fieldErrors.email}</p>
+              )}
             </div>
 
             <div>
@@ -359,6 +400,9 @@ export default function AgendarDemo() {
                 autoComplete="tel"
               />
               <p className="text-xs text-slate-500 mt-1">Enviaremos confirmação, lembrete e o link do Agent.</p>
+              {fieldErrors.whatsapp && (
+                <p className="mt-2 text-xs text-red-600">{fieldErrors.whatsapp}</p>
+              )}
             </div>
           </div>
 
@@ -420,6 +464,9 @@ export default function AgendarDemo() {
                 value={operationType}
                 onChange={(e) => setOperationType(e.target.value)}
               />
+              {fieldErrors.operation_type && (
+                <p className="mt-2 text-xs text-red-600">{fieldErrors.operation_type}</p>
+              )}
             </div>
 
             <div className="flex gap-3">
@@ -467,6 +514,9 @@ export default function AgendarDemo() {
                 <option value="6-20">6–20</option>
                 <option value="20+">20+</option>
               </select>
+              {fieldErrors.stores_range && (
+                <p className="mt-2 text-xs text-red-600">{fieldErrors.stores_range}</p>
+              )}
             </div>
 
             <div>
@@ -485,6 +535,9 @@ export default function AgendarDemo() {
                 <option value="11-50">11–50</option>
                 <option value="50+">50+</option>
               </select>
+              {fieldErrors.cameras_range && (
+                <p className="mt-2 text-xs text-red-600">{fieldErrors.cameras_range}</p>
+              )}
             </div>
 
             {/* Marcas */}
@@ -591,6 +644,9 @@ export default function AgendarDemo() {
                   onChange={(e) => setGoalOther(e.target.value)}
                 />
               </div>
+            )}
+            {fieldErrors.primary_goals && (
+              <p className="text-xs text-red-600">{fieldErrors.primary_goals}</p>
             )}
           </div>
 
