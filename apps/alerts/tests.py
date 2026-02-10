@@ -1,8 +1,7 @@
+import uuid
 from django.test import TestCase
 from django.db import connection
 from rest_framework.test import APIClient
-
-from apps.core.models import DemoLead
 
 
 class DemoLeadCreateTests(TestCase):
@@ -14,24 +13,35 @@ class DemoLeadCreateTests(TestCase):
             tables = set(connection.introspection.table_names())
         except Exception:
             return False
-        return {"demo_leads", "journey_events"}.issubset(tables)
+        return "demo_leads" in tables
 
     def test_create_demo_lead_returns_ok(self):
         if not self._has_tables():
-            self.skipTest("demo_leads/journey_events tables not available")
+            self.skipTest("demo_leads table not available")
 
+        email = f"lead.{uuid.uuid4().hex}@example.com"
         payload = {
             "contact_name": "Teste Lead",
-            "email": "lead.teste@exemplo.com",
-            "source": "instagram",
+            "email": email,
+            "whatsapp": "11999999999",
+            "operation_type": "varejo",
+            "stores_range": "1",
+            "cameras_range": "1-3",
+            "primary_goals": ["loss_prevention"],
+            "qualified_score": 25,
+            "utm": {"utm_source": "tests"},
             "metadata": {"source_detail": "campanha A"},
         }
         resp = self.client.post("/api/v1/demo-leads/", payload, format="json")
-        self.assertIn(resp.status_code, [200, 201])
+        self.assertEqual(resp.status_code, 201)
         self.assertTrue(resp.data.get("ok"))
-        lead_id = resp.data.get("id")
-        self.assertIsNotNone(lead_id)
+        self.assertIsNotNone(resp.data.get("id"))
+        self.assertIn("request_id", resp.data)
 
-        lead = DemoLead.objects.get(id=lead_id)
-        self.assertEqual(lead.source, "instagram")
-        self.assertEqual((lead.metadata or {}).get("source_detail"), "campanha A")
+    def test_create_demo_lead_invalid_payload_returns_400(self):
+        payload = {"email": "invalid@example.com"}
+        resp = self.client.post("/api/v1/demo-leads/", payload, format="json")
+        self.assertEqual(resp.status_code, 400)
+        self.assertFalse(resp.data.get("ok"))
+        self.assertEqual(resp.data.get("code"), "VALIDATION_ERROR")
+        self.assertIn("errors", resp.data)

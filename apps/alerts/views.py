@@ -1,10 +1,10 @@
 # apps/alerts/views.py
 import logging
 from datetime import timedelta
-from uuid import UUID
+from uuid import UUID, uuid4
 from django.conf import settings
 from django.contrib.auth import get_user_model
-from django.db import transaction
+from django.db import connection, transaction
 from apps.core.models import StoreManager
 
 
@@ -17,7 +17,6 @@ from rest_framework.response import Response
 from rest_framework.views import APIView
 
 from apps.core.models import (
-    DemoLead,
     AlertRule,
     DetectionEvent,
     EventMedia,
@@ -146,159 +145,250 @@ class DemoLeadCreateView(APIView):
     permission_classes = [permissions.AllowAny]
 
     def post(self, request):
+        request_id = request.headers.get("X-Request-ID") or uuid4().hex
         now = timezone.now()
-        payload = request.data.copy()
-        errors = {}
 
-        def _require_str(field_name: str) -> str:
-            value = (payload.get(field_name) or "").strip()
-            if not value:
-                errors[field_name] = "Campo obrigatório."
-            return value
-
-        contact_name = _require_str("contact_name")
-        email = _require_str("email").lower()
-        whatsapp = _require_str("whatsapp")
-        operation_type = _require_str("operation_type")
-        stores_range = _require_str("stores_range")
-        cameras_range = _require_str("cameras_range")
-
-        primary_goals = payload.get("primary_goals")
-        if not isinstance(primary_goals, list) or not primary_goals:
-            errors["primary_goals"] = "Informe pelo menos 1 objetivo."
-
-        qualified_score_raw = payload.get("qualified_score")
-        qualified_score = None
-        try:
-            qualified_score = int(qualified_score_raw)
-        except Exception:
-            errors["qualified_score"] = "qualified_score inválido."
-
-        utm = payload.get("utm")
-        if not isinstance(utm, dict):
-            errors["utm"] = "utm inválido."
-
-        metadata = payload.get("metadata")
-        if not isinstance(metadata, dict):
-            errors["metadata"] = "metadata inválido."
-
-        if errors:
-            return Response(errors, status=status.HTTP_400_BAD_REQUEST)
-
-        source = (payload.get("source") or "").strip()
-        try:
-            db_conf = settings.DATABASES.get("default", {})
-            logger.info(
-                "[DEMO] lead request email=%s source=%s db_engine=%s db_host=%s db_name=%s",
-                email or "n/a",
-                source or "n/a",
-                db_conf.get("ENGINE"),
-                db_conf.get("HOST"),
-                db_conf.get("NAME"),
-            )
-        except Exception:
-            logger.exception("[DEMO] failed to log db config")
+        def error_response(*, code: str, status_code: int, message: str = "", errors: dict | None = None):
+            payload = {"ok": False, "code": code, "request_id": request_id}
+            if message:
+                payload["message"] = message
+            if errors is not None:
+                payload["errors"] = errors
+            return Response(payload, status=status_code)
 
         try:
-            with transaction.atomic():
-                existing = (
-                    DemoLead.objects.filter(email__iexact=email)
-                    .order_by("-created_at")
-                    .first()
+            raw_payload = request.data.copy() if hasattr(request.data, "copy") else request.data
+            if isinstance(raw_payload, dict):
+                payload = raw_payload
+            elif hasattr(raw_payload, "dict"):
+                payload = raw_payload.dict()
+            else:
+                payload = {}
+
+            errors: dict[str, str] = {}
+
+            def _require_str(field_name: str) -> str:
+                value = str(payload.get(field_name) or "").strip()
+                if not value:
+                    errors[field_name] = "Campo obrigatório."
+                return value
+
+            contact_name = _require_str("contact_name")
+            email = _require_str("email").lower()
+            whatsapp = _require_str("whatsapp")
+            operation_type = _require_str("operation_type")
+            stores_range = _require_str("stores_range")
+            cameras_range = _require_str("cameras_range")
+
+            primary_goals = payload.get("primary_goals")
+            if primary_goals is None:
+                primary_goals = []
+            if not isinstance(primary_goals, list):
+                errors["primary_goals"] = "primary_goals deve ser uma lista."
+                primary_goals = []
+            if not primary_goals:
+                errors["primary_goals"] = "Informe pelo menos 1 objetivo."
+
+            qualified_score_raw = payload.get("qualified_score")
+            qualified_score = 0
+            if qualified_score_raw not in (None, ""):
+                try:
+                    qualified_score = int(qualified_score_raw)
+                except Exception:
+                    errors["qualified_score"] = "qualified_score inválido."
+
+            utm = payload.get("utm")
+            if utm is None:
+                utm = {}
+            if not isinstance(utm, dict):
+                errors["utm"] = "utm inválido."
+                utm = {}
+
+            metadata = payload.get("metadata")
+            if metadata is None:
+                metadata = {}
+            if not isinstance(metadata, dict):
+                errors["metadata"] = "metadata inválido."
+                metadata = {}
+
+            if errors:
+                return error_response(
+                    code="VALIDATION_ERROR",
+                    status_code=status.HTTP_400_BAD_REQUEST,
+                    errors=errors,
                 )
-                if existing:
-                    logger.info("[DEMO] deduped lead email=%s lead_id=%s", email, str(existing.id))
-                    return Response(
-                        {"id": str(existing.id), "deduped": True},
-                        status=status.HTTP_200_OK,
+
+            source = str(payload.get("source") or "").strip()
+            try:
+                db_conf = settings.DATABASES.get("default", {})
+                logger.info(
+                    "[DEMO] request_id=%s email=%s source=%s db_engine=%s db_host=%s db_name=%s",
+                    request_id,
+                    email or "n/a",
+                    source or "n/a",
+                    db_conf.get("ENGINE"),
+                    db_conf.get("HOST"),
+                    db_conf.get("NAME"),
+                )
+            except Exception:
+                logger.exception("[DEMO] failed to log db config request_id=%s", request_id)
+
+            lead_id = None
+            deduped = False
+
+            with transaction.atomic():
+                with connection.cursor() as cursor:
+                    columns = connection.introspection.get_table_description(cursor, "demo_leads")
+                    column_names = {col.name for col in columns}
+
+                    if "email" not in column_names:
+                        return error_response(
+                            code="INTERNAL_ERROR",
+                            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+                            message="Schema inválido para demo_leads.",
+                        )
+
+                    cursor.execute(
+                        """
+                        SELECT id
+                          FROM public.demo_leads
+                         WHERE lower(email) = lower(%s)
+                         ORDER BY created_at DESC
+                         LIMIT 1
+                        """,
+                        [email],
+                    )
+                    row = cursor.fetchone()
+                    if row and row[0]:
+                        lead_id = str(row[0])
+                        deduped = True
+                    else:
+                        payload_map = {
+                            "id": str(uuid4()),
+                            "contact_name": contact_name,
+                            "email": email,
+                            "whatsapp": whatsapp,
+                            "operation_type": operation_type,
+                            "stores_range": stores_range,
+                            "cameras_range": cameras_range,
+                            "camera_brands_json": payload.get("camera_brands_json") or [],
+                            "pilot_city": payload.get("pilot_city"),
+                            "pilot_state": payload.get("pilot_state"),
+                            "primary_goal": payload.get("primary_goal")
+                            or (primary_goals[0] if primary_goals else None),
+                            "primary_goals": primary_goals,
+                            "qualified_score": qualified_score,
+                            "source": source or None,
+                            "utm": utm,
+                            "metadata": metadata,
+                            "status": "new",
+                            "created_at": now,
+                            "updated_at": now,
+                        }
+
+                        insert_cols = [col for col in payload_map.keys() if col in column_names]
+                        if not insert_cols:
+                            return error_response(
+                                code="INTERNAL_ERROR",
+                                status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+                                message="Schema inválido para demo_leads.",
+                            )
+
+                        values = [payload_map[col] for col in insert_cols]
+                        placeholders = ", ".join(["%s"] * len(insert_cols))
+                        col_list = ", ".join(insert_cols)
+
+                        cursor.execute(
+                            f"INSERT INTO public.demo_leads ({col_list}) VALUES ({placeholders}) RETURNING id",
+                            values,
+                        )
+                        lead_row = cursor.fetchone()
+                        lead_id = str(lead_row[0]) if lead_row else None
+
+            if not lead_id:
+                return error_response(
+                    code="INTERNAL_ERROR",
+                    status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+                    message="Falha ao salvar lead.",
+                )
+
+            logger.info(
+                "[DEMO] request_id=%s lead_id=%s deduped=%s",
+                request_id,
+                lead_id,
+                deduped,
+            )
+
+            if not deduped:
+                try:
+                    je = JourneyEvent.objects.create(
+                        lead_id=lead_id,
+                        org_id=None,
+                        event_name="lead_created",
+                        payload={
+                            "event_category": "onboarding",
+                            "source": "demo_form",
+                            "lead_id": str(lead_id),
+                            "email": email,
+                            "whatsapp": whatsapp,
+                            "operation_type": operation_type,
+                            "stores_range": stores_range,
+                            "cameras_range": cameras_range,
+                            "primary_goal": payload.get("primary_goal"),
+                            "primary_goals": primary_goals,
+                            "qualified_score": qualified_score,
+                        },
+                        created_at=now,
                     )
 
-                lead = DemoLead.objects.create(
-                    contact_name=contact_name,
-                    email=email,
-                    whatsapp=whatsapp,
-                    operation_type=operation_type,
-                    stores_range=stores_range,
-                    cameras_range=cameras_range,
-                    camera_brands_json=payload.get("camera_brands_json") or [],
-                    pilot_city=payload.get("pilot_city"),
-                    pilot_state=payload.get("pilot_state"),
-                    primary_goal=payload.get("primary_goal")
-                    or (primary_goals[0] if primary_goals else None),
-                    primary_goals=primary_goals,
-                    qualified_score=qualified_score,
-                    source=payload.get("source"),
-                    utm=utm,
-                    metadata=metadata,
-                    status="new",
-                    created_at=now,
-                )
-        except Exception:
-            logger.exception("[DEMO] insert failed email=%s", email or "n/a")
-            raise
+                    resp = send_event_to_n8n(
+                        event_name="lead_created",
+                        event_id=str(je.id),
+                        lead_id=str(lead_id),
+                        org_id=None,
+                        source="backend",
+                        data={
+                            "event_category": "onboarding",
+                            "lead_id": str(lead_id),
+                            "contact_name": contact_name,
+                            "email": email,
+                            "whatsapp": whatsapp,
+                            "operation_type": operation_type,
+                            "stores_range": stores_range,
+                            "cameras_range": cameras_range,
+                            "primary_goal": payload.get("primary_goal"),
+                            "primary_goals": primary_goals,
+                            "qualified_score": qualified_score,
+                            "utm": utm,
+                            "metadata": metadata,
+                        },
+                        meta={
+                            "source": "demo_form",
+                            "ip": request.META.get("REMOTE_ADDR"),
+                            "user_agent": request.META.get("HTTP_USER_AGENT"),
+                            "request_id": request_id,
+                        },
+                    )
+                    if not resp.get("ok"):
+                        logger.warning(
+                            "[DEMO] request_id=%s n8n lead_created failed response=%s",
+                            request_id,
+                            resp,
+                        )
+                except Exception:
+                    logger.exception("[DEMO] request_id=%s failed to emit lead_created event", request_id)
 
-        logger.info(
-            "[DEMO] lead created id=%s email=%s status=%s source=%s",
-            str(lead.id),
-            lead.email,
-            lead.status,
-            lead.source or "n/a",
-        )
-
-        try:
-            je = JourneyEvent.objects.create(
-                lead_id=lead.id,
-                org_id=None,
-                event_name="lead_created",
-                payload={
-                    "event_category": "onboarding",
-                    "source": "demo_form",
-                    "lead_id": str(lead.id),
-                    "email": lead.email,
-                    "whatsapp": lead.whatsapp,
-                    "operation_type": getattr(lead, "operation_type", None),
-                    "stores_range": getattr(lead, "stores_range", None),
-                    "cameras_range": getattr(lead, "cameras_range", None),
-                    "primary_goal": getattr(lead, "primary_goal", None),
-                    "primary_goals": getattr(lead, "primary_goals", None),
-                    "qualified_score": getattr(lead, "qualified_score", None),
-                },
-                created_at=now,
+            return Response(
+                {"ok": True, "id": lead_id, "deduped": deduped, "request_id": request_id},
+                status=status.HTTP_200_OK if deduped else status.HTTP_201_CREATED,
             )
-
-            resp = send_event_to_n8n(
-                event_name="lead_created",
-                event_id=str(je.id),
-                lead_id=str(lead.id),
-                org_id=None,
-                source="backend",
-                data={
-                    "event_category": "onboarding",
-                    "lead_id": str(lead.id),
-                    "contact_name": lead.contact_name,
-                    "email": lead.email,
-                    "whatsapp": lead.whatsapp,
-                    "operation_type": getattr(lead, "operation_type", None),
-                    "stores_range": getattr(lead, "stores_range", None),
-                    "cameras_range": getattr(lead, "cameras_range", None),
-                    "primary_goal": getattr(lead, "primary_goal", None),
-                    "primary_goals": getattr(lead, "primary_goals", None),
-                    "qualified_score": getattr(lead, "qualified_score", None),
-                    "utm": getattr(lead, "utm", None),
-                    "metadata": getattr(lead, "metadata", None),
-                },
-                meta={
-                    "source": "demo_form",
-                    "ip": request.META.get("REMOTE_ADDR"),
-                    "user_agent": request.META.get("HTTP_USER_AGENT"),
-                },
-            )
-            if not resp.get("ok"):
-                logger.warning("[DEMO] n8n lead_created failed response=%s", resp)
         except Exception:
-            logger.exception("[DEMO] failed to emit lead_created event")
-
-        return Response({"id": str(lead.id), "deduped": False}, status=status.HTTP_201_CREATED)
+            logger.exception("[DEMO] request_id=%s internal error", request_id)
+            return error_response(
+                code="INTERNAL_ERROR",
+                status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+                message="Erro interno ao processar o lead.",
+            )
 
 
 # =========================
