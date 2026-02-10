@@ -15,6 +15,7 @@ from rest_framework.decorators import action
 from rest_framework.exceptions import ValidationError
 from rest_framework.response import Response
 from rest_framework.views import APIView
+from psycopg2.extras import Json
 
 from apps.core.models import (
     AlertRule,
@@ -211,6 +212,13 @@ class DemoLeadCreateView(APIView):
                 errors["metadata"] = "metadata inválido."
                 metadata = {}
 
+            camera_brands_json = payload.get("camera_brands_json")
+            if camera_brands_json is None:
+                camera_brands_json = []
+            if not isinstance(camera_brands_json, (list, dict)):
+                errors["camera_brands_json"] = "camera_brands_json inválido."
+                camera_brands_json = []
+
             if errors:
                 return error_response(
                     code="VALIDATION_ERROR",
@@ -238,15 +246,27 @@ class DemoLeadCreateView(APIView):
 
             with transaction.atomic():
                 with connection.cursor() as cursor:
-                    columns = connection.introspection.get_table_description(cursor, "demo_leads")
-                    column_names = {col.name for col in columns}
-
-                    if "email" not in column_names:
-                        return error_response(
-                            code="INTERNAL_ERROR",
-                            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
-                            message="Schema inválido para demo_leads.",
-                        )
+                    insert_columns = [
+                        "id",
+                        "contact_name",
+                        "email",
+                        "whatsapp",
+                        "operation_type",
+                        "stores_range",
+                        "cameras_range",
+                        "pilot_city",
+                        "pilot_state",
+                        "primary_goal",
+                        "primary_goals",
+                        "qualified_score",
+                        "source",
+                        "utm",
+                        "metadata",
+                        "status",
+                        "created_at",
+                        "timezone",
+                        "camera_brands_json",
+                    ]
 
                     cursor.execute(
                         """
@@ -263,6 +283,7 @@ class DemoLeadCreateView(APIView):
                         lead_id = str(row[0])
                         deduped = True
                     else:
+                        timezone_value = str(payload.get("timezone") or "").strip() or None
                         payload_map = {
                             "id": str(uuid4()),
                             "contact_name": contact_name,
@@ -271,32 +292,24 @@ class DemoLeadCreateView(APIView):
                             "operation_type": operation_type,
                             "stores_range": stores_range,
                             "cameras_range": cameras_range,
-                            "camera_brands_json": payload.get("camera_brands_json") or [],
+                            "camera_brands_json": Json(camera_brands_json),
                             "pilot_city": payload.get("pilot_city"),
                             "pilot_state": payload.get("pilot_state"),
                             "primary_goal": payload.get("primary_goal")
                             or (primary_goals[0] if primary_goals else None),
-                            "primary_goals": primary_goals,
+                            "primary_goals": Json(primary_goals),
                             "qualified_score": qualified_score,
                             "source": source or None,
-                            "utm": utm,
-                            "metadata": metadata,
+                            "utm": Json(utm),
+                            "metadata": Json(metadata),
                             "status": "new",
                             "created_at": now,
-                            "updated_at": now,
+                            "timezone": timezone_value,
                         }
 
-                        insert_cols = [col for col in payload_map.keys() if col in column_names]
-                        if not insert_cols:
-                            return error_response(
-                                code="INTERNAL_ERROR",
-                                status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
-                                message="Schema inválido para demo_leads.",
-                            )
-
-                        values = [payload_map[col] for col in insert_cols]
-                        placeholders = ", ".join(["%s"] * len(insert_cols))
-                        col_list = ", ".join(insert_cols)
+                        values = [payload_map.get(col) for col in insert_columns]
+                        placeholders = ", ".join(["%s"] * len(insert_columns))
+                        col_list = ", ".join(insert_columns)
 
                         cursor.execute(
                             f"INSERT INTO public.demo_leads ({col_list}) VALUES ({placeholders}) RETURNING id",
@@ -382,8 +395,8 @@ class DemoLeadCreateView(APIView):
                 {"ok": True, "id": lead_id, "deduped": deduped, "request_id": request_id},
                 status=status.HTTP_200_OK if deduped else status.HTTP_201_CREATED,
             )
-        except Exception:
-            logger.exception("[DEMO] request_id=%s internal error", request_id)
+        except Exception as exc:
+            logger.exception("[DEMO] request_id=%s error=%s", request_id, exc)
             return error_response(
                 code="INTERNAL_ERROR",
                 status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,

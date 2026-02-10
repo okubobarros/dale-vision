@@ -45,3 +45,31 @@ class DemoLeadCreateTests(TestCase):
         self.assertFalse(resp.data.get("ok"))
         self.assertEqual(resp.data.get("code"), "VALIDATION_ERROR")
         self.assertIn("errors", resp.data)
+
+    def test_create_demo_lead_dedupes_by_email(self):
+        if not self._has_tables():
+            self.skipTest("demo_leads table not available")
+
+        email = f"lead.{uuid.uuid4().hex}@example.com"
+        payload = {
+            "contact_name": "Teste Lead",
+            "email": email,
+            "whatsapp": "11999999999",
+            "operation_type": "varejo",
+            "stores_range": "1",
+            "cameras_range": "1-3",
+            "primary_goals": ["loss_prevention"],
+            "qualified_score": 25,
+            "utm": {"utm_source": "tests"},
+            "metadata": {"source_detail": "campanha A"},
+        }
+        first = self.client.post("/api/v1/demo-leads/", payload, format="json")
+        self.assertEqual(first.status_code, 201)
+        self.assertTrue(first.data.get("ok"))
+        self.assertIsNotNone(first.data.get("id"))
+
+        second = self.client.post("/api/v1/demo-leads/", payload, format="json")
+        self.assertEqual(second.status_code, 200)
+        self.assertTrue(second.data.get("ok"))
+        self.assertTrue(second.data.get("deduped"))
+        self.assertEqual(first.data.get("id"), second.data.get("id"))
