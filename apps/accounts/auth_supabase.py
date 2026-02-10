@@ -1,6 +1,7 @@
 import logging
 import os
 from typing import Optional, Tuple
+from uuid import uuid4
 
 import requests
 from django.conf import settings
@@ -19,10 +20,17 @@ def _get_supabase_config() -> Tuple[Optional[str], Optional[str]]:
     return url, key
 
 
+def _mask_token(token: str) -> str:
+    token = token or ""
+    if len(token) <= 12:
+        return f"{token[:3]}...{token[-3:]}" if token else "n/a"
+    return f"{token[:6]}...{token[-6:]}"
+
+
 def _fetch_supabase_user(token: str) -> dict:
     url, key = _get_supabase_config()
-    if not url:
-        raise ValueError("Supabase não configurado.")
+    if not url or not key:
+        raise ValueError("Supabase not configured")
 
     headers = {"Authorization": f"Bearer {token}"}
     if key:
@@ -147,9 +155,39 @@ class SupabaseJWTAuthentication:
         if len(auth) > 2:
             raise AuthenticationFailed("Token inválido.")
 
-        token = auth[1].decode("utf-8")
+        token = auth[1].decode("utf-8", errors="ignore")
+        token_short = _mask_token(token)
+        request_id = request.headers.get("X-Request-ID") or uuid4().hex
+
         try:
+            url, key = _get_supabase_config()
+            if not url or not key:
+                logger.error(
+                    "[SUPABASE] request_id=%s token=%s missing_config url=%s key=%s",
+                    request_id,
+                    token_short,
+                    bool(url),
+                    bool(key),
+                )
+                raise AuthenticationFailed("Supabase not configured")
+
             user = get_user_from_supabase_token(token, ensure_org=True)
+            return (user, token)
+        except AuthenticationFailed:
+            raise
         except ValueError as exc:
+            logger.warning(
+                "[SUPABASE] request_id=%s token=%s auth_failed error=%s",
+                request_id,
+                token_short,
+                str(exc) or "invalid_token",
+            )
             raise AuthenticationFailed(str(exc) or "Token inválido.")
-        return (user, token)
+        except Exception as exc:
+            logger.exception(
+                "[SUPABASE] request_id=%s token=%s unexpected_error=%s",
+                request_id,
+                token_short,
+                exc,
+            )
+            raise AuthenticationFailed("Token inválido.")

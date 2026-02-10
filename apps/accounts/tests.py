@@ -1,8 +1,10 @@
 import uuid
 from django.contrib.auth.models import User
 from django.db import connection
-from rest_framework.test import APITestCase
-from .auth_supabase import provision_user_from_supabase_info
+from django.test import override_settings
+from rest_framework.exceptions import AuthenticationFailed
+from rest_framework.test import APITestCase, APIRequestFactory
+from .auth_supabase import provision_user_from_supabase_info, SupabaseJWTAuthentication
 
 
 class LoginIdentifierTests(APITestCase):
@@ -110,3 +112,15 @@ class SupabaseProvisionTests(APITestCase):
         # Idempotência: segunda chamada não deve criar novo user_id_map
         user_again = provision_user_from_supabase_info(user_info, ensure_org=False)
         self.assertEqual(user_again.id, user.id)
+
+
+class SupabaseAuthFailureTests(APITestCase):
+    def test_auth_missing_config_returns_authentication_failed(self):
+        factory = APIRequestFactory()
+        request = factory.get("/api/me/setup-state/")
+        request.META["HTTP_AUTHORIZATION"] = "Bearer testtoken1234567890"
+
+        auth = SupabaseJWTAuthentication()
+        with override_settings(SUPABASE_URL=None, SUPABASE_KEY=None):
+            with self.assertRaises(AuthenticationFailed):
+                auth.authenticate(request)
