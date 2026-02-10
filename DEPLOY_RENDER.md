@@ -8,7 +8,7 @@ Build:
 `pip install -U pip setuptools wheel && pip install -r requirements.prod.txt`
 
 Start:
-`bash -lc "python manage.py migrate --noinput && python manage.py collectstatic --noinput && gunicorn backend.wsgi:application --bind 0.0.0.0:$PORT --timeout 120"`
+`bash -lc "python manage.py migrate --noinput && gunicorn backend.wsgi:application --bind 0.0.0.0:$PORT --timeout 120"`
 
 Variaveis recomendadas:
 - PYTHON_VERSION=3.12.3
