@@ -7,6 +7,7 @@ import { useAuth } from "../../contexts/AuthContext"
 const Login = () => {
   const [username, setUsername] = useState("")
   const [password, setPassword] = useState("")
+  const [showPassword, setShowPassword] = useState(false)
   const [error, setError] = useState("")
   const [isLoading, setIsLoading] = useState(false)
 
@@ -105,18 +106,57 @@ const Login = () => {
                 <label htmlFor="password" className="block text-sm font-medium text-slate-700 mb-2">
                   Senha
                 </label>
-                <input
-                  id="password"
-                  type="password"
-                  value={password}
-                  onChange={(e) => setPassword(e.target.value)}
-                  className="w-full px-4 py-3 rounded-2xl bg-white border border-slate-200 text-slate-900 placeholder:text-slate-400
-                             shadow-[inset_0_1px_0_rgba(255,255,255,0.9)]
-                             focus:outline-none focus:ring-4 focus:ring-cyan-100 focus:border-cyan-300 transition"
-                  placeholder="Digite sua senha"
-                  required
-                  disabled={isLoading}
-                />
+                <div className="relative">
+                  <input
+                    id="password"
+                    type={showPassword ? "text" : "password"}
+                    value={password}
+                    onChange={(e) => setPassword(e.target.value)}
+                    className="w-full px-4 py-3 pr-12 rounded-2xl bg-white border border-slate-200 text-slate-900 placeholder:text-slate-400
+                               shadow-[inset_0_1px_0_rgba(255,255,255,0.9)]
+                               focus:outline-none focus:ring-4 focus:ring-cyan-100 focus:border-cyan-300 transition"
+                    placeholder="Digite sua senha"
+                    required
+                    autoComplete="current-password"
+                    disabled={isLoading}
+                  />
+                  <button
+                    type="button"
+                    onClick={() => setShowPassword((prev) => !prev)}
+                    className="absolute right-3 top-1/2 -translate-y-1/2 text-slate-500 hover:text-slate-900"
+                    aria-label={showPassword ? "Ocultar senha" : "Mostrar senha"}
+                  >
+                    {showPassword ? (
+                      <svg
+                        className="h-5 w-5"
+                        viewBox="0 0 24 24"
+                        fill="none"
+                        stroke="currentColor"
+                        strokeWidth="2"
+                        strokeLinecap="round"
+                        strokeLinejoin="round"
+                      >
+                        <path d="M3 3l18 18" />
+                        <path d="M10.58 10.58A2 2 0 0012 14a2 2 0 001.42-.58" />
+                        <path d="M9.88 4.24A9.94 9.94 0 0112 4c5.05 0 9.27 3.11 11 8-0.56 1.58-1.49 3-2.7 4.12" />
+                        <path d="M6.23 6.23A11.76 11.76 0 001 12c1.73 4.89 5.95 8 11 8 1.59 0 3.12-.31 4.52-.87" />
+                      </svg>
+                    ) : (
+                      <svg
+                        className="h-5 w-5"
+                        viewBox="0 0 24 24"
+                        fill="none"
+                        stroke="currentColor"
+                        strokeWidth="2"
+                        strokeLinecap="round"
+                        strokeLinejoin="round"
+                      >
+                        <path d="M1 12s4-8 11-8 11 8 11 8-4 8-11 8-11-8-11-8z" />
+                        <circle cx="12" cy="12" r="3" />
+                      </svg>
+                    )}
+                  </button>
+                </div>
               </div>
 
               {/* CTA (brand gradient) */}

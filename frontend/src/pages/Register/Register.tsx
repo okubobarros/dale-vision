@@ -135,6 +135,7 @@ export default function Register() {
                   placeholder="Mínimo 8 caracteres"
                   value={password}
                   onChange={(e) => setPassword(e.target.value)}
+                  autoComplete="new-password"
                 />
                 <button
                   type="button"
@@ -142,7 +143,35 @@ export default function Register() {
                   className="text-slate-500 hover:text-slate-900"
                   aria-label={showPass ? "Ocultar senha" : "Mostrar senha"}
                 >
-                  {showPass ? "🙈" : "👁️"}
+                  {showPass ? (
+                    <svg
+                      className="h-5 w-5"
+                      viewBox="0 0 24 24"
+                      fill="none"
+                      stroke="currentColor"
+                      strokeWidth="2"
+                      strokeLinecap="round"
+                      strokeLinejoin="round"
+                    >
+                      <path d="M3 3l18 18" />
+                      <path d="M10.58 10.58A2 2 0 0012 14a2 2 0 001.42-.58" />
+                      <path d="M9.88 4.24A9.94 9.94 0 0112 4c5.05 0 9.27 3.11 11 8-0.56 1.58-1.49 3-2.7 4.12" />
+                      <path d="M6.23 6.23A11.76 11.76 0 001 12c1.73 4.89 5.95 8 11 8 1.59 0 3.12-.31 4.52-.87" />
+                    </svg>
+                  ) : (
+                    <svg
+                      className="h-5 w-5"
+                      viewBox="0 0 24 24"
+                      fill="none"
+                      stroke="currentColor"
+                      strokeWidth="2"
+                      strokeLinecap="round"
+                      strokeLinejoin="round"
+                    >
+                      <path d="M1 12s4-8 11-8 11 8 11 8-4 8-11 8-11-8-11-8z" />
+                      <circle cx="12" cy="12" r="3" />
+                    </svg>
+                  )}
                 </button>
               </div>
               {errors.password && <p className="mt-2 text-xs text-red-600">{errors.password}</p>}

@@ -306,11 +306,6 @@ const Dashboard = () => {
     ? edgeSetupLink.replace(/^https?:\/\//, "")
     : ""
 
-  const edgeSetupQrUrl = edgeSetupLink
-    ? `https://api.qrserver.com/v1/create-qr-code/?size=140x140&data=${encodeURIComponent(
-        edgeSetupLink
-      )}`
-    : ""
 
   const shouldShowActivationBanner =
     !activationBannerDismissed &&
@@ -325,8 +320,14 @@ const Dashboard = () => {
       />
       <h3 className="text-lg font-bold text-gray-800">Ativação do Trial</h3>
       <p className="text-sm text-gray-600 mt-1">
-        Conecte o Dale Vision na rede da sua loja para começar a receber dados em tempo real.
+        Você só precisa de um computador na loja com acesso às câmeras. Nós guiamos o passo a passo.
       </p>
+
+      {selectedStore !== ALL_STORES_VALUE && edgeStatus?.store_status === "online" && (
+        <span className="mt-3 inline-flex items-center rounded-full bg-green-100 px-3 py-1 text-xs font-semibold text-green-700">
+          Loja Online
+        </span>
+      )}
 
       <div className="mt-4 flex flex-col sm:flex-row gap-3">
         <button
@@ -339,33 +340,20 @@ const Dashboard = () => {
         >
           Abrir Assistente de Conexão
         </button>
-        <button
-          type="button"
-          onClick={dismissActivationProgress}
-          className="inline-flex items-center justify-center rounded-lg border border-gray-200 bg-white px-4 py-2 text-sm font-semibold text-gray-800 hover:bg-gray-50"
-        >
-          Fazer depois
-        </button>
-      </div>
 
-      <p className="mt-3 text-sm text-gray-600">
-        Você só precisa de um computador/servidor que tenha acesso às câmeras. Nós guiamos o passo a passo.
-      </p>
+      </div>
 
       <div className="mt-4">
         <h4 className="text-sm font-semibold text-gray-700 mb-2">Checklist</h4>
         <ul className="list-disc pl-5 text-sm text-gray-600 space-y-1">
-          <li>Selecionar a loja correta</li>
-          <li>Baixar o Edge Agent</li>
+          <li>Selecione a loja</li>
+          <li>Abra o Assistente de Conexão (Edge Setup)</li>
+          <li>Baixe o Edge Agent</li>
           <li>
-            Criar o <span className="font-mono">.env</span> com{" "}
-            <span className="font-mono">STORE_ID</span>,{" "}
-            <span className="font-mono">EDGE_TOKEN</span> e{" "}
-            <span className="font-mono">CLOUD_BASE_URL</span>
+            Copie o <span className="font-mono">.env</span> e cole na pasta do agent
           </li>
-          <li>Rodar o agent no computador/servidor da loja</li>
-          <li>Aguardar o primeiro heartbeat</li>
-          <li>Quando o heartbeat for confirmado, a loja fica “Loja Online”</li>
+          <li>Inicie o agent no computador da loja</li>
+          <li>Aguarde a confirmação “Loja Online” (heartbeat)</li>
         </ul>
       </div>
 
@@ -395,40 +383,7 @@ const Dashboard = () => {
         </div>
       )}
 
-      {edgeSetupLink && !isMobile && (
-        <div className="mt-4 rounded-xl border border-gray-200 bg-gray-50 p-4 flex flex-col sm:flex-row gap-4">
-          {edgeSetupQrUrl && (
-            <img
-              src={edgeSetupQrUrl}
-              alt="QR code do Edge Setup"
-              className="h-24 w-24 rounded-lg border border-gray-200"
-            />
-          )}
-          <div className="flex-1">
-            <div className="text-sm font-semibold text-gray-800">
-              Abra no computador da loja
-            </div>
-            <p className="text-xs text-gray-600 mt-1">
-              Copie o link abaixo (ou escaneie o QR) no computador que ficará com o Edge Agent.
-            </p>
-            <div className="mt-2 text-xs text-blue-600 break-all">{edgeSetupLink}</div>
-            <button
-              type="button"
-              onClick={async () => {
-                try {
-                  await navigator.clipboard.writeText(edgeSetupLink)
-                  toast.success("Link copiado")
-                } catch {
-                  toast.error("Falha ao copiar link")
-                }
-              }}
-              className="mt-2 inline-flex w-full sm:w-auto items-center justify-center rounded-lg border border-gray-200 bg-white px-4 py-2 text-xs font-semibold text-gray-700 hover:bg-gray-50"
-            >
-              Copiar link
-            </button>
-          </div>
-        </div>
-      )}
+      
 
       {!dashboard && dashboardError && (
         <p className="text-xs text-gray-500 mt-3">{dashboardError}</p>
