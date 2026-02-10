@@ -12,11 +12,15 @@ type EdgeSetupModalProps = {
 }
 
 type EdgeStatusPayload = {
+  ok?: boolean
+  online?: boolean
   store_status?: string
   store_status_reason?: string
   last_heartbeat?: string | null
-  last_seen_at?: string | null
   last_heartbeat_at?: string | null
+  last_seen_at?: string | null
+  agent_id?: string | null
+  version?: string | null
 }
 
 type EdgeSetupPayload = {
@@ -64,10 +68,10 @@ const EdgeSetupModal = ({ open, onClose, defaultStoreId }: EdgeSetupModalProps) 
   const [storeId, setStoreId] = useState(defaultStoreId || "")
   const [edgeToken, setEdgeToken] = useState("")
   const [agentId, setAgentId] = useState(DEFAULT_AGENT_ID)
-  const [cloudBaseUrl, setCloudBaseUrl] = useState(DEFAULT_CLOUD_BASE_URL)
   const [loadingCreds, setLoadingCreds] = useState(false)
 
   const [downloadConfirmed, setDownloadConfirmed] = useState(false)
+  const [envCopied, setEnvCopied] = useState(false)
   const [agentRunningConfirmed, setAgentRunningConfirmed] = useState(false)
   const [heartbeatOk, setHeartbeatOk] = useState(false)
 
@@ -110,9 +114,9 @@ const EdgeSetupModal = ({ open, onClose, defaultStoreId }: EdgeSetupModalProps) 
     setStoreId(defaultStoreId || "")
     setEdgeToken("")
     setAgentId(DEFAULT_AGENT_ID)
-    setCloudBaseUrl(DEFAULT_CLOUD_BASE_URL)
     setLoadingCreds(false)
     setDownloadConfirmed(false)
+    setEnvCopied(false)
     setAgentRunningConfirmed(false)
     setHeartbeatOk(false)
     setValidationMsg(null)
@@ -130,6 +134,7 @@ const EdgeSetupModal = ({ open, onClose, defaultStoreId }: EdgeSetupModalProps) 
   useEffect(() => {
     if (!open) return
     setDownloadConfirmed(false)
+    setEnvCopied(false)
     setAgentRunningConfirmed(false)
     setHeartbeatOk(false)
     setValidationMsg(null)
@@ -161,12 +166,10 @@ const EdgeSetupModal = ({ open, onClose, defaultStoreId }: EdgeSetupModalProps) 
         const data = res.data || {}
         setEdgeToken(data.edge_token || "")
         setAgentId(data.agent_id_suggested || data.agent_id_default || DEFAULT_AGENT_ID)
-        setCloudBaseUrl(data.cloud_base_url || DEFAULT_CLOUD_BASE_URL)
       } catch (err) {
         const apiErr = getApiError(err)
         setEdgeToken("")
         setAgentId(DEFAULT_AGENT_ID)
-        setCloudBaseUrl(DEFAULT_CLOUD_BASE_URL)
         setValidationError(
           apiErr.response?.data?.detail ||
             apiErr.message ||
@@ -181,7 +184,7 @@ const EdgeSetupModal = ({ open, onClose, defaultStoreId }: EdgeSetupModalProps) 
   }, [open, storeId])
 
   const envReady = Boolean(storeId && edgeToken && !loadingCreds)
-  const resolvedCloudBaseUrl = cloudBaseUrl || DEFAULT_CLOUD_BASE_URL
+  const resolvedCloudBaseUrl = DEFAULT_CLOUD_BASE_URL
 
   const envContent = useMemo(() => {
     const lines = [
@@ -205,7 +208,10 @@ const EdgeSetupModal = ({ open, onClose, defaultStoreId }: EdgeSetupModalProps) 
   const isEdgeOnline = (payload: EdgeStatusPayload) => {
     const status = String(payload?.store_status || "").toLowerCase()
     const heartbeatTs =
-      payload?.last_heartbeat || payload?.last_seen_at || payload?.last_heartbeat_at
+      payload?.last_heartbeat_at || payload?.last_heartbeat || payload?.last_seen_at
+    if (typeof payload?.online === "boolean") {
+      return payload.online
+    }
     return status === "online" || status === "degraded" || Boolean(heartbeatTs)
   }
 
@@ -215,7 +221,7 @@ const EdgeSetupModal = ({ open, onClose, defaultStoreId }: EdgeSetupModalProps) 
       const data = res.data || {}
       const reason = String(data?.store_status_reason || "")
       const heartbeatTs =
-        data?.last_heartbeat || data?.last_seen_at || data?.last_heartbeat_at
+        data?.last_heartbeat_at || data?.last_heartbeat || data?.last_seen_at
       setLastHeartbeat(heartbeatTs || null)
       setPollError(null)
 
@@ -281,7 +287,11 @@ const EdgeSetupModal = ({ open, onClose, defaultStoreId }: EdgeSetupModalProps) 
   }
 
   const handleDownload = () => {
-    if (!downloadUrl) return
+    if (!downloadUrl) {
+      setDownloadBlocked(false)
+      setDownloadConfirmed(false)
+      return
+    }
     setDownloadBlocked(false)
     try {
       const opened = window.open(downloadUrl, "_blank", "noopener,noreferrer")
@@ -302,14 +312,20 @@ const EdgeSetupModal = ({ open, onClose, defaultStoreId }: EdgeSetupModalProps) 
   }
 
   const handleCopyEnv = async () => {
-    if (!envReady) {
+    if (!storeId) {
       toast.error("Selecione uma loja antes de copiar.")
+      return
+    }
+    if (!envReady) {
+      toast.error("Aguarde as credenciais do Edge carregarem.")
       return
     }
     try {
       await navigator.clipboard.writeText(envContent)
+      setEnvCopied(true)
       toast.success("Copiado")
     } catch {
+      setEnvCopied(false)
       toast.error("Falha ao copiar. Copie manualmente.")
     }
   }
@@ -331,6 +347,7 @@ const EdgeSetupModal = ({ open, onClose, defaultStoreId }: EdgeSetupModalProps) 
     setValidationMsg(null)
     setValidationError(null)
     setPollError(null)
+    setShowTroubleshoot(false)
     try {
       await api.get(`/v1/stores/${storeId}/edge-setup/`)
       setValidationMsg("Conexão com a API ok. Monitorando heartbeat...")
@@ -369,11 +386,12 @@ const EdgeSetupModal = ({ open, onClose, defaultStoreId }: EdgeSetupModalProps) 
         { rotate: true }
       )
       const data = res.data || {}
-      if (data.edge_token) {
-        setEdgeToken(data.edge_token)
-        setDownloadConfirmed(false)
-        setAgentRunningConfirmed(false)
-        setHeartbeatOk(false)
+        if (data.edge_token) {
+          setEdgeToken(data.edge_token)
+          setDownloadConfirmed(false)
+          setEnvCopied(false)
+          setAgentRunningConfirmed(false)
+          setHeartbeatOk(false)
         setPollError(null)
         setValidationMsg("Token regenerado. Atualize o .env do agent.")
       }
@@ -394,33 +412,36 @@ const EdgeSetupModal = ({ open, onClose, defaultStoreId }: EdgeSetupModalProps) 
     onClose()
   }
 
+  const isStoreSelected = Boolean(storeId)
+  const lastHeartbeatLabel = formatRelativeTime(lastHeartbeat)
+  const canStartAgent = downloadConfirmed && envCopied
+
   const statusLabel = (() => {
+    if (!isStoreSelected) return "Selecione uma loja"
     if (pollError || validationError) return "Erro"
-    if (!envReady) return "Aguardando"
-    if (heartbeatOk) return "Heartbeat ok"
+    if (heartbeatOk) return "Loja Online"
     if (agentRunningConfirmed) return "Rodando"
     if (downloadConfirmed) return "Baixado"
-    return "Gerado"
+    return "Loja selecionada"
   })()
 
   const statusClass = (() => {
+    if (!isStoreSelected) return "bg-gray-100 text-gray-700"
     if (pollError || validationError) return "bg-red-100 text-red-700"
-    if (!envReady) return "bg-gray-100 text-gray-700"
     if (heartbeatOk) return "bg-green-100 text-green-700"
     if (agentRunningConfirmed) return "bg-yellow-100 text-yellow-800"
     if (downloadConfirmed) return "bg-blue-100 text-blue-700"
     return "bg-gray-100 text-gray-700"
   })()
 
-  const isStoreSelected = Boolean(storeId)
-  const lastHeartbeatLabel = formatRelativeTime(lastHeartbeat)
-  const statusStepIndex = heartbeatOk
-    ? 3
-    : agentRunningConfirmed
-    ? 2
-    : downloadConfirmed
-    ? 1
-    : 0
+  const statusSteps = [
+    { label: "Loja", done: isStoreSelected },
+    { label: "Download", done: downloadConfirmed },
+    { label: "Rodando", done: agentRunningConfirmed },
+    { label: "Online", done: heartbeatOk },
+  ]
+  const firstIncomplete = statusSteps.findIndex((step) => !step.done)
+  const activeStepIndex = firstIncomplete === -1 ? statusSteps.length - 1 : firstIncomplete
 
   if (!open) return null
 
@@ -487,37 +508,37 @@ const EdgeSetupModal = ({ open, onClose, defaultStoreId }: EdgeSetupModalProps) 
               )}
             </div>
 
-            <div className="mt-3 grid grid-cols-2 sm:grid-cols-4 gap-2">
-              {["Gerado", "Baixado", "Rodando", "Heartbeat ok"].map((label, idx) => {
-                const done = idx < statusStepIndex
-                const active = idx === statusStepIndex
-                return (
-                  <div
-                    key={label}
-                    className={[
-                      "rounded-lg border px-3 py-2 text-xs font-semibold text-center",
-                      done
-                        ? "border-green-200 bg-green-50 text-green-700"
-                        : active
-                        ? "border-blue-200 bg-blue-50 text-blue-700"
-                        : "border-gray-200 bg-gray-50 text-gray-500",
-                    ].join(" ")}
-                  >
-                    {label}
-                  </div>
-                )
-              })}
-            </div>
+          <div className="mt-3 grid grid-cols-2 sm:grid-cols-4 gap-2">
+            {statusSteps.map((step, idx) => {
+              const done = step.done
+              const active = idx === activeStepIndex
+              return (
+                <div
+                  key={step.label}
+                  className={[
+                    "rounded-lg border px-3 py-2 text-xs font-semibold text-center",
+                    done
+                      ? "border-green-200 bg-green-50 text-green-700"
+                      : active
+                      ? "border-blue-200 bg-blue-50 text-blue-700"
+                      : "border-gray-200 bg-gray-50 text-gray-500",
+                  ].join(" ")}
+                >
+                  {step.label}
+                </div>
+              )
+            })}
+          </div>
           </div>
 
           <div className={!isStoreSelected ? "opacity-50 pointer-events-none space-y-4" : "space-y-4"}>
             <div className="rounded-xl border border-gray-200 bg-gray-50 px-4 py-3">
-              <div className="text-sm text-gray-700 font-semibold">1) Baixar Edge Agent</div>
+              <div className="text-sm text-gray-700 font-semibold">1. Baixar Edge Agent</div>
               <div className="mt-2 flex flex-col sm:flex-row sm:items-center gap-3">
                 <button
                   type="button"
                   onClick={handleDownload}
-                  disabled={!canDownload || !envReady}
+                  disabled={!canDownload || !isStoreSelected}
                   className="inline-flex w-full sm:w-auto items-center justify-center rounded-lg bg-blue-600 px-4 py-2.5 text-sm font-semibold text-white hover:bg-blue-700 disabled:opacity-60"
                 >
                   Baixar Edge Agent
@@ -548,7 +569,7 @@ const EdgeSetupModal = ({ open, onClose, defaultStoreId }: EdgeSetupModalProps) 
             </div>
 
             <div className="rounded-xl border border-gray-200 bg-gray-50 p-4">
-              <div className="text-sm font-semibold text-gray-700 mb-2">2) Copiar .env</div>
+              <div className="text-sm font-semibold text-gray-700 mb-2">2. Copiar .env</div>
               <p className="text-xs text-gray-500 mb-3">
                 Crie um arquivo chamado <span className="font-mono">.env</span> na
                 pasta do agent (mesma do executável) e cole o conteúdo abaixo.
@@ -562,24 +583,41 @@ const EdgeSetupModal = ({ open, onClose, defaultStoreId }: EdgeSetupModalProps) 
               <button
                 type="button"
                 onClick={handleCopyEnv}
-                disabled={!envReady}
+                disabled={!isStoreSelected}
                 className="mt-3 inline-flex w-full sm:w-auto items-center justify-center rounded-lg border border-gray-200 px-4 py-2.5 text-xs font-semibold text-gray-700 hover:bg-gray-50 disabled:opacity-60"
               >
                 Copiar .env
               </button>
+              {loadingCreds && (
+                <div className="mt-2 text-xs text-gray-500">Carregando credenciais...</div>
+              )}
+              {envCopied && (
+                <div className="mt-2 text-xs text-green-600 font-semibold">.env copiado</div>
+              )}
             </div>
 
             <div className="rounded-xl border border-gray-200 bg-gray-50 px-4 py-3">
-              <div className="text-sm text-gray-700 font-semibold">3) Rodar o agent</div>
+              <div className="text-sm text-gray-700 font-semibold">3. Rodar o agent</div>
               <p className="text-xs text-gray-500 mt-1">
                 Após copiar o <span className="font-mono">.env</span>, execute o agent
-                no computador da loja.
+                no computador da loja e deixe a janela aberta.
               </p>
+              <div className="mt-2 grid grid-cols-1 sm:grid-cols-3 gap-2 text-xs text-gray-600">
+                <div className="rounded-lg border border-gray-200 bg-white px-3 py-2">
+                  Windows: abra o executável e mantenha o terminal aberto.
+                </div>
+                <div className="rounded-lg border border-gray-200 bg-white px-3 py-2">
+                  macOS: execute no Terminal e mantenha a janela aberta.
+                </div>
+                <div className="rounded-lg border border-gray-200 bg-white px-3 py-2">
+                  Linux: execute no Terminal e mantenha a janela aberta.
+                </div>
+              </div>
               <div className="mt-2 flex flex-col sm:flex-row sm:items-center gap-3">
                 <button
                   type="button"
                   onClick={handleConfirmRunning}
-                  disabled={!downloadConfirmed}
+                  disabled={!canStartAgent}
                   className="inline-flex w-full sm:w-auto items-center justify-center rounded-lg border border-gray-200 px-4 py-2.5 text-sm font-semibold text-gray-700 hover:bg-gray-50 disabled:opacity-60"
                 >
                   Já iniciei o agent
@@ -592,10 +630,10 @@ const EdgeSetupModal = ({ open, onClose, defaultStoreId }: EdgeSetupModalProps) 
 
             <div className="rounded-xl border border-gray-200 bg-gray-50 px-4 py-3">
               <div className="text-sm text-gray-700 font-semibold">
-                4) Validar e acompanhar
+                4. Verificar conexão
               </div>
               <p className="text-xs text-gray-500 mt-1">
-                Clique em “Validar conexão” para iniciar o monitoramento de heartbeat.
+                Clique em “Começar verificação” para iniciar o monitoramento de heartbeat.
               </p>
               <div className="mt-2 flex flex-col sm:flex-row sm:items-center gap-3">
                 <button
@@ -604,13 +642,16 @@ const EdgeSetupModal = ({ open, onClose, defaultStoreId }: EdgeSetupModalProps) 
                   disabled={validating || polling || !agentRunningConfirmed}
                   className="w-full sm:w-auto rounded-lg bg-blue-600 px-4 py-2.5 text-sm font-semibold text-white hover:bg-blue-700 disabled:opacity-60"
                 >
-                  {validating ? "Validando..." : polling ? "Aguardando heartbeat..." : "Validar conexão"}
+                  {validating ? "Verificando..." : polling ? "Aguardando heartbeat..." : "Começar verificação"}
                 </button>
                 {validationMsg && <div className="text-sm text-gray-700">{validationMsg}</div>}
               </div>
 
               {validationError && (
                 <div className="mt-2 text-xs text-red-600">{validationError}</div>
+              )}
+              {heartbeatOk && (
+                <div className="mt-2 text-xs font-semibold text-green-700">🟢 Loja Online</div>
               )}
 
               {polling && (
@@ -636,8 +677,8 @@ const EdgeSetupModal = ({ open, onClose, defaultStoreId }: EdgeSetupModalProps) 
                   Sem heartbeat após 2 minutos
                 </div>
                 <p className="mt-1 text-xs text-yellow-700">
-                  Possíveis causas: token inválido, agent rodando em outra pasta,
-                  firewall bloqueando ou API ainda acordando.
+                  Possíveis causas: token desatualizado, agent rodando fora da pasta
+                  correta ou bloqueio de rede/firewall.
                 </p>
                 <div className="mt-3 flex flex-col sm:flex-row gap-2">
                   <button
@@ -652,14 +693,14 @@ const EdgeSetupModal = ({ open, onClose, defaultStoreId }: EdgeSetupModalProps) 
                     onClick={() => setShowChecklist((prev) => !prev)}
                     className="rounded-lg border border-yellow-200 bg-white px-3 py-2 text-xs font-semibold text-yellow-800 hover:bg-yellow-100"
                   >
-                    Ver checklist
+                    Ver instruções
                   </button>
                   <button
                     type="button"
-                    onClick={() => navigator.clipboard.writeText("edge-agent")}
+                    onClick={() => window.open(`${resolvedCloudBaseUrl}/health/`, "_blank", "noopener,noreferrer")}
                     className="rounded-lg border border-yellow-200 bg-white px-3 py-2 text-xs font-semibold text-yellow-800 hover:bg-yellow-100"
                   >
-                    Copiar comando de execução
+                    Testar conectividade
                   </button>
                 </div>
                 {showChecklist && (
@@ -667,7 +708,7 @@ const EdgeSetupModal = ({ open, onClose, defaultStoreId }: EdgeSetupModalProps) 
                     <div>1. Confirme que o arquivo .env está na mesma pasta do agent.</div>
                     <div>2. Verifique se STORE_ID e EDGE_TOKEN estão corretos.</div>
                     <div>3. Execute o agent como administrador (Windows) se necessário.</div>
-                    <div>4. Veja os logs no terminal onde o agent está rodando.</div>
+                    <div>4. Confira os logs no terminal onde o agent está rodando.</div>
                   </div>
                 )}
               </div>

@@ -1,16 +1,18 @@
 // frontend/src/pages/Register/Register.tsx
 import { useMemo, useState } from "react"
-import { Link, useNavigate } from "react-router-dom"
+import { Link } from "react-router-dom"
 import logo from "../../assets/logo.png"
 import SetupProgress from "../Onboarding/components/SetupProgress"
+import { supabase } from "../../lib/supabase"
 
 function isValidEmail(email: string) {
   return /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email.trim())
 }
 
 export default function Register() {
-  const navigate = useNavigate()
   const [loading, setLoading] = useState(false)
+  const [success, setSuccess] = useState(false)
+  const [submitError, setSubmitError] = useState("")
 
   const [fullName, setFullName] = useState("")
   const [email, setEmail] = useState("")
@@ -32,20 +34,28 @@ export default function Register() {
   async function handleSubmit() {
     if (!canSubmit) return
     setLoading(true)
+    setSubmitError("")
 
-    await new Promise((r) => setTimeout(r, 700))
+    const { error } = await supabase.auth.signUp({
+      email: email.trim(),
+      password,
+      options: {
+        emailRedirectTo: "https://app.dalevision.com/auth/callback",
+        data: {
+          full_name: fullName.trim(),
+          company: company.trim(),
+        },
+      },
+    })
 
-    localStorage.setItem(
-      "demo_user",
-      JSON.stringify({
-        fullName: fullName.trim(),
-        email: email.trim(),
-        company: company.trim(),
-      })
-    )
+    if (error) {
+      setSubmitError(error.message || "Não foi possível criar sua conta.")
+      setLoading(false)
+      return
+    }
 
+    setSuccess(true)
     setLoading(false)
-    navigate("/onboarding")
   }
 
   return (
@@ -83,6 +93,20 @@ export default function Register() {
 
           {/* Form */}
           <div className="mt-8 space-y-5">
+            {success && (
+              <div className="rounded-2xl border border-emerald-200 bg-emerald-50 p-4 text-emerald-800">
+                <div className="font-semibold">Verifique seu e-mail para ativar sua conta</div>
+                <p className="mt-1 text-sm text-emerald-700">
+                  Enviamos um link de confirmação para <b>{email}</b>.
+                  Após confirmar, você será redirecionado para continuar o onboarding.
+                </p>
+              </div>
+            )}
+            {submitError && (
+              <div className="rounded-2xl border border-red-200 bg-red-50 p-4 text-red-700">
+                {submitError}
+              </div>
+            )}
             <div>
               <label className="text-sm text-slate-700">Nome Completo</label>
               <div className="mt-2 flex items-center gap-2 rounded-2xl border border-slate-200 bg-white px-4 py-3 shadow-[inset_0_1px_0_rgba(255,255,255,0.9)] focus-within:ring-4 focus-within:ring-cyan-100 focus-within:border-cyan-300 transition">
@@ -92,6 +116,7 @@ export default function Register() {
                   placeholder="Ex: João Silva"
                   value={fullName}
                   onChange={(e) => setFullName(e.target.value)}
+                  disabled={loading || success}
                 />
               </div>
               {errors.fullName && <p className="mt-2 text-xs text-red-600">{errors.fullName}</p>}
@@ -106,6 +131,7 @@ export default function Register() {
                   placeholder="nome@empresa.com.br"
                   value={email}
                   onChange={(e) => setEmail(e.target.value)}
+                  disabled={loading || success}
                 />
               </div>
               {errors.email && <p className="mt-2 text-xs text-red-600">{errors.email}</p>}
@@ -120,6 +146,7 @@ export default function Register() {
                   placeholder="Sua rede de lojas"
                   value={company}
                   onChange={(e) => setCompany(e.target.value)}
+                  disabled={loading || success}
                 />
               </div>
               {errors.company && <p className="mt-2 text-xs text-red-600">{errors.company}</p>}
@@ -136,12 +163,16 @@ export default function Register() {
                   value={password}
                   onChange={(e) => setPassword(e.target.value)}
                   autoComplete="new-password"
+                  autoCapitalize="none"
+                  autoCorrect="off"
+                  disabled={loading || success}
                 />
                 <button
                   type="button"
                   onClick={() => setShowPass((s) => !s)}
                   className="text-slate-500 hover:text-slate-900"
                   aria-label={showPass ? "Ocultar senha" : "Mostrar senha"}
+                  disabled={loading || success}
                 >
                   {showPass ? (
                     <svg
@@ -180,7 +211,7 @@ export default function Register() {
             {/* CTA (brand gradient) */}
             <button
               onClick={handleSubmit}
-              disabled={!canSubmit || loading}
+              disabled={!canSubmit || loading || success}
               className="relative mt-4 w-full rounded-2xl bg-gradient-to-r from-blue-400 via-cyan-300 to-purple-500 py-4 font-semibold text-black
                          shadow-[0_18px_40px_rgba(59,130,246,0.18)] hover:opacity-95 transition disabled:opacity-60"
             >

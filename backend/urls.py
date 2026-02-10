@@ -3,6 +3,7 @@ from django.contrib import admin
 from django.urls import path, include
 from django.http import JsonResponse
 from backend.views import health
+from apps.alerts.views import DemoLeadCreateView
 from rest_framework import permissions
 from drf_yasg.views import get_schema_view
 from drf_yasg import openapi
@@ -56,6 +57,7 @@ urlpatterns = [
     path("api/alerts/", include("apps.alerts.urls")),
     path("api/v1/alerts/", include("apps.alerts.urls")),
     path("api/cameras/", include("apps.cameras.urls")),
+    path("api/v1/demo-leads/", DemoLeadCreateView.as_view()),
 
     path("health/", health),
     path("health", health),

@@ -1,4 +1,5 @@
 # apps/alerts/views.py
+import logging
 from datetime import timedelta
 from uuid import UUID
 from django.conf import settings
@@ -34,6 +35,8 @@ from .serializers import (
 )
 
 from .services import send_event_to_n8n
+
+logger = logging.getLogger(__name__)
 
 
 # =========================
@@ -147,6 +150,16 @@ class DemoLeadCreateView(APIView):
 
         email = (request.data.get("email") or "").strip()
         whatsapp = (request.data.get("whatsapp") or "").strip()
+        try:
+            db_conf = settings.DATABASES.get("default", {})
+            logger.info(
+                "[DEMO] lead request email=%s db_host=%s db_name=%s",
+                email or "n/a",
+                db_conf.get("HOST"),
+                db_conf.get("NAME"),
+            )
+        except Exception:
+            logger.exception("[DEMO] failed to log db config")
 
         active_statuses = ["new", "contacted", "scheduled"]
         existing = None
@@ -166,6 +179,7 @@ class DemoLeadCreateView(APIView):
             )
 
         if existing:
+            logger.info("[DEMO] duplicate lead email=%s status=%s", existing.email, existing.status)
             # 1) grava JourneyEvent
             je = JourneyEvent.objects.create(
                 lead_id=existing.id,
@@ -212,7 +226,12 @@ class DemoLeadCreateView(APIView):
         # 1) Cria lead
         serializer = DemoLeadSerializer(data=request.data)
         serializer.is_valid(raise_exception=True)
-        lead = serializer.save(status="new", created_at=now)
+        try:
+            lead = serializer.save(status="new", created_at=now)
+        except Exception:
+            logger.exception("[DEMO] insert failed email=%s", email or "n/a")
+            raise
+        logger.info("[DEMO] lead created id=%s email=%s", str(lead.id), lead.email)
 
         # 2) JourneyEvent: lead_created
         je = JourneyEvent.objects.create(

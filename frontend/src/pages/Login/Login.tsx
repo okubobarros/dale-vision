@@ -85,7 +85,7 @@ const Login = () => {
             <div className="space-y-5">
               <div>
                 <label htmlFor="username" className="block text-sm font-medium text-slate-700 mb-2">
-                  Usuário ou e-mail
+                  E-mail
                 </label>
                 <input
                   id="username"
@@ -95,7 +95,7 @@ const Login = () => {
                   className="w-full px-4 py-3 rounded-2xl bg-white border border-slate-200 text-slate-900 placeholder:text-slate-400
                              shadow-[inset_0_1px_0_rgba(255,255,255,0.9)]
                              focus:outline-none focus:ring-4 focus:ring-cyan-100 focus:border-cyan-300 transition"
-                  placeholder="Digite seu usuário ou e-mail"
+                  placeholder="Digite seu e-mail"
                   required
                   autoFocus
                   disabled={isLoading}
@@ -115,11 +115,13 @@ const Login = () => {
                     className="w-full px-4 py-3 pr-12 rounded-2xl bg-white border border-slate-200 text-slate-900 placeholder:text-slate-400
                                shadow-[inset_0_1px_0_rgba(255,255,255,0.9)]
                                focus:outline-none focus:ring-4 focus:ring-cyan-100 focus:border-cyan-300 transition"
-                    placeholder="Digite sua senha"
-                    required
-                    autoComplete="current-password"
-                    disabled={isLoading}
-                  />
+                  placeholder="Digite sua senha"
+                  required
+                  autoComplete="current-password"
+                  autoCapitalize="none"
+                  autoCorrect="off"
+                  disabled={isLoading}
+                />
                   <button
                     type="button"
                     onClick={() => setShowPassword((prev) => !prev)}

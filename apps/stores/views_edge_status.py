@@ -51,13 +51,18 @@ def classify_age(dt):
     return ("offline", int(age), "heartbeat_expired")
 
 
-def _empty_payload(store_id, reason: str, detail: str = None):
+def _empty_payload(store_id, reason: str, detail: str = None, ok: bool = False):
     payload = {
+        "ok": ok,
+        "online": False,
         "store_id": str(store_id),
         "store_status": "offline",
         "store_status_age_seconds": None,
         "store_status_reason": reason,
         "last_heartbeat": None,
+        "last_heartbeat_at": None,
+        "agent_id": None,
+        "version": None,
         "cameras_total": 0,
         "cameras_online": 0,
         "cameras_degraded": 0,
@@ -69,6 +74,17 @@ def _empty_payload(store_id, reason: str, detail: str = None):
     }
     if detail:
         payload["detail"] = detail
+    return payload
+
+
+def _with_stable_contract(payload: dict) -> dict:
+    heartbeat = payload.get("last_heartbeat")
+    status = str(payload.get("store_status") or "").lower()
+    payload["ok"] = payload.get("ok", True)
+    payload["online"] = status in ("online", "degraded") or bool(heartbeat)
+    payload["last_heartbeat_at"] = payload.get("last_heartbeat_at") or heartbeat
+    payload.setdefault("agent_id", None)
+    payload.setdefault("version", None)
     return payload
 
 
@@ -152,7 +168,8 @@ def compute_store_edge_status_snapshot(store_id):
         return (_empty_payload(store.id, "unexpected_error", "unexpected_error"), "unexpected_error")
 
     return (
-        {
+        _with_stable_contract({
+            "ok": True,
             "store_id": str(store.id),
             "store_status": store_status,
             "store_status_age_seconds": store_status_age_seconds,
@@ -166,7 +183,7 @@ def compute_store_edge_status_snapshot(store_id):
             "cameras": cameras_out,
             "last_metric_bucket": None,
             "last_error": last_error,
-        },
+        }),
         None,
     )
 

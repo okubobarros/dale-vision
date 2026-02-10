@@ -225,6 +225,16 @@ class EdgeEventsIngestView(APIView):
                         ]
 
                 try:
+                    logger.info(
+                        "[EDGE] heartbeat store=%s cameras=%s ts=%s",
+                        store_id,
+                        len(cameras_in),
+                        ts_dt.isoformat() if ts_dt else None,
+                    )
+                except Exception:
+                    pass
+
+                try:
                     with connection.cursor() as cursor:
                         cursor.execute(
                             """

@@ -11,6 +11,7 @@ from drf_yasg.utils import swagger_auto_schema  # ✅
 from drf_yasg import openapi  # (opcional)
 
 from .serializers import RegisterSerializer, LoginSerializer
+from .auth_supabase import get_user_from_supabase_token
 from apps.core.models import OrgMember
 
 
@@ -60,6 +61,57 @@ class LoginView(APIView):
                     "last_name": user.last_name,
                 },
                 "token": token,
+            },
+            status=status.HTTP_200_OK,
+        )
+
+
+class SupabaseBootstrapView(APIView):
+    permission_classes = [AllowAny]
+
+    def post(self, request):
+        auth = request.headers.get("Authorization") or ""
+        token = ""
+        if auth.lower().startswith("bearer "):
+            token = auth.split(" ", 1)[1].strip()
+        if not token:
+            token = (request.data or {}).get("access_token") or ""
+        if not token:
+            return Response({"detail": "Token ausente."}, status=status.HTTP_400_BAD_REQUEST)
+
+        user = get_user_from_supabase_token(token, ensure_org=True)
+
+        # retornar orgs atuais
+        with connection.cursor() as cursor:
+            cursor.execute(
+                "SELECT user_uuid FROM public.user_id_map WHERE django_user_id = %s",
+                [user.id],
+            )
+            row = cursor.fetchone()
+            user_uuid = row[0] if row else None
+
+        orgs = []
+        if user_uuid:
+            memberships = (
+                OrgMember.objects
+                .filter(user_id=user_uuid)
+                .select_related("org")
+            )
+            orgs = [
+                {"id": str(m.org.id), "name": m.org.name, "role": m.role}
+                for m in memberships
+            ]
+
+        return Response(
+            {
+                "user": {
+                    "id": user.id,
+                    "username": user.username,
+                    "email": user.email,
+                    "first_name": user.first_name,
+                    "last_name": user.last_name,
+                },
+                "orgs": orgs,
             },
             status=status.HTTP_200_OK,
         )

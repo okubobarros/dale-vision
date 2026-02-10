@@ -77,10 +77,10 @@ api.interceptors.request.use(
     // ✅ Axios v1: headers pode ser AxiosHeaders (tem .set)
     if (token) {
       if (config.headers && typeof (config.headers as any).set === "function") {
-        ;(config.headers as any).set("Authorization", `Token ${token}`)
+        ;(config.headers as any).set("Authorization", `Bearer ${token}`)
       } else {
         config.headers = config.headers ?? {}
-        ;(config.headers as any)["Authorization"] = `Token ${token}`
+        ;(config.headers as any)["Authorization"] = `Bearer ${token}`
       }
     } else {
       // remove Authorization se não tiver token

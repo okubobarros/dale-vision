@@ -5,6 +5,7 @@ import Layout from "./components/Layout/Layout"
 import HomePage from "./pages/Home/Home"
 import Login from "./pages/Login/Login"
 import AgendarDemo from "./pages/AgendarDemo/AgendarDemo"
+import AuthCallback from "./pages/AuthCallback/AuthCallback"
 
 import Dashboard from "./pages/Dashboard/Dashboard"
 import Stores from "./pages/Stores/Stores"
@@ -32,6 +33,7 @@ function App() {
       {/* Rotas públicas */}
       <Route path="/" element={<HomePage />} />
       <Route path="/login" element={<Login />} />
+      <Route path="/auth/callback" element={<AuthCallback />} />
       <Route path="/agendar-demo" element={<AgendarDemo />} />
 
       {/* Registro + onboarding (público por enquanto) */}

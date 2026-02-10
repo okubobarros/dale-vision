@@ -201,12 +201,11 @@ export default function OnboardingSuccess() {
 
           {/* Copy (orientada ao uau) */}
           <h1 className="mt-7 text-3xl font-extrabold leading-tight fade-up">
-            ✅ Conta criada. Agora vamos colocar sua 1ª loja online.
+            ✅ Conta ativada — você receberá um e-mail com instruções de conexão.
           </h1>
 
           <p className="mt-3 text-white/60 fade-up" style={{ animationDelay: "90ms" }}>
-            Em poucos minutos você vai ver: <b>Loja Online (heartbeat)</b> → <b>1 câmera online</b> →{" "}
-            <b>dashboard saindo de “sem dados”</b> → <b>1 alerta real</b>.
+            Você já pode seguir para a ativação e colocar sua 1ª loja online.
           </p>
 
           {/* Checklist teaser (sensação de caminho claro) */}
