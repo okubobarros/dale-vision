@@ -106,6 +106,7 @@ const selectBase =
 
 export default function AgendarDemo() {
   const [loading, setLoading] = useState(false)
+  const [success, setSuccess] = useState(false)
 
   const [name, setName] = useState("")
   const [email, setEmail] = useState("")
@@ -166,6 +167,7 @@ export default function AgendarDemo() {
   }
 
   async function handleSubmit() {
+    if (loading || success) return
     const nameClean = name.trim()
     const emailClean = email.trim()
     const whatsappClean = normalizeWhatsappToBR11(whatsapp)
@@ -239,7 +241,10 @@ export default function AgendarDemo() {
       calendlyUrl.searchParams.set("name", payload.contact_name)
       calendlyUrl.searchParams.set("email", payload.email)
 
-      window.location.href = calendlyUrl.toString()
+      setSuccess(true)
+      setTimeout(() => {
+        window.location.href = calendlyUrl.toString()
+      }, 300)
     } catch (err: any) {
       console.error(err)
       const msg =
@@ -263,6 +268,11 @@ export default function AgendarDemo() {
 
       <div className="relative w-full max-w-2xl">
         <div className="rounded-[28px] border border-slate-200/70 bg-white/75 backdrop-blur-xl shadow-[0_18px_60px_rgba(15,23,42,0.12)] p-6 sm:p-8 space-y-6">
+          {success && (
+            <div className="rounded-2xl border border-emerald-200 bg-emerald-50 p-4 text-emerald-800 text-sm">
+              Dados enviados com sucesso. Redirecionando para o Calendly…
+            </div>
+          )}
           {/* Header */}
           <div className="flex items-start gap-3">
             <div className="relative h-11 w-11 rounded-2xl bg-white border border-slate-200 flex items-center justify-center shadow-sm">
@@ -606,7 +616,7 @@ export default function AgendarDemo() {
           {/* CTA */}
           <button
             onClick={handleSubmit}
-            disabled={loading}
+            disabled={loading || success}
             className="w-full rounded-2xl bg-gradient-to-r from-blue-400 via-cyan-300 to-purple-500 py-3.5 font-semibold text-black
                        shadow-[0_18px_40px_rgba(59,130,246,0.16)] hover:opacity-95 transition disabled:opacity-60"
           >

@@ -17,3 +17,24 @@ export const getSiteUrl = (): string => {
   const base = (envUrl || origin || "https://app.dalevision.com").replace(/\/$/, "")
   return base
 }
+
+export const getAuthCallbackUrl = (): string => {
+  const explicit = import.meta.env.VITE_AUTH_CALLBACK_URL
+  if (explicit) {
+    return explicit.replace(/\/$/, "")
+  }
+
+  const envUrl = import.meta.env.VITE_SITE_URL
+  const origin = typeof window !== "undefined" ? window.location.origin : ""
+  const base = (envUrl || origin || "").replace(/\/$/, "")
+
+  if (!base) {
+    if (import.meta.env.PROD) {
+      // eslint-disable-next-line no-console
+      console.warn("[siteUrl] VITE_SITE_URL/VITE_AUTH_CALLBACK_URL não configurado.")
+    }
+    return "/auth/callback"
+  }
+
+  return `${base}/auth/callback`
+}

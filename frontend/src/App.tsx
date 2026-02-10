@@ -22,7 +22,6 @@ import NotificationLogs from "./pages/NotificationLogs/NotificationLogs"
 // 🆕 Onboarding / Register
 import Register from "./pages/Register/Register"
 import Onboarding from "./pages/Onboarding/Onboarding"
-import OnboardingSuccess from "./pages/Onboarding/OnboardingSuccess"
 
 // 🆕 Setup técnico (EDGE-first)
 import Setup from "./pages/Setup/Setup"
@@ -39,7 +38,6 @@ function App() {
       {/* Registro + onboarding (público por enquanto) */}
       <Route path="/register" element={<Register />} />
       <Route path="/onboarding" element={<Onboarding />} />
-      <Route path="/onboarding/success" element={<OnboardingSuccess />} />
 
       {/* Rotas protegidas */}
       <Route
@@ -81,7 +79,6 @@ function App() {
       <Route path="/notification-logs" element={<Navigate to="/app/notification-logs" replace />} />
 
       {/* ✅ Redirects Onboarding */}
-      <Route path="/onboarding-success" element={<Navigate to="/onboarding/success" replace />} />
 
       {/* ✅ Redirect Setup (opcional) */}
       <Route path="/setup" element={<Navigate to="/app/setup" replace />} />

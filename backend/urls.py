@@ -4,6 +4,7 @@ from django.urls import path, include
 from django.http import JsonResponse
 from backend.views import health
 from apps.alerts.views import DemoLeadCreateView
+from apps.accounts.views import SetupStateView
 from rest_framework import permissions
 from drf_yasg.views import get_schema_view
 from drf_yasg import openapi
@@ -46,6 +47,7 @@ urlpatterns = [
 
     # ✅ Accounts centralizado
     path("api/accounts/", include("apps.accounts.urls")),
+    path("api/me/setup-state/", SetupStateView.as_view(), name="setup-state"),
 
     # ✅ Core (demo lead etc) — se você for colocar aqui depois
     # path("api/core/", include("apps.core.urls")),

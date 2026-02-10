@@ -13,7 +13,7 @@ export default function SetupProgress({
     { n: 1, label: "Conta" },
     { n: 2, label: "Loja" },
     { n: 3, label: "Equipe" },
-    { n: 4, label: "Ativação" },
+    { n: 4, label: "Ativação (Edge)" },
   ] as const
 
   const pct = Math.round((step / 4) * 100)

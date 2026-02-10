@@ -95,10 +95,14 @@ api.interceptors.request.use(
     console.log("🔵 API Request:", {
       url: `${config.baseURL}${config.url}`,
       method: config.method,
-      authHeader:
-        config.headers && typeof (config.headers as any).get === "function"
-          ? (config.headers as any).get("Authorization")
-          : (config.headers as any)?.Authorization,
+      auth: (() => {
+        const headerValue =
+          config.headers && typeof (config.headers as any).get === "function"
+            ? (config.headers as any).get("Authorization")
+            : (config.headers as any)?.Authorization
+        const scheme = typeof headerValue === "string" ? headerValue.split(" ")[0] : null
+        return { present: !!headerValue, scheme }
+      })(),
       data: config.data,
     })
 

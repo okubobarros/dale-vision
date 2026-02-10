@@ -4,7 +4,7 @@ import { useLocation, useNavigate } from "react-router-dom"
 import logo from "../../assets/logo.png"
 import { useAuth } from "../../contexts/AuthContext"
 import { supabase } from "../../lib/supabase"
-import { getSiteUrl } from "../../lib/siteUrl"
+import { getAuthCallbackUrl } from "../../lib/siteUrl"
 
 const Login = () => {
   const [username, setUsername] = useState("")
@@ -79,7 +79,7 @@ const Login = () => {
         type: "signup",
         email,
         options: {
-          emailRedirectTo: `${getSiteUrl()}/auth/callback`,
+          emailRedirectTo: getAuthCallbackUrl(),
         },
       })
       if (resendError) {

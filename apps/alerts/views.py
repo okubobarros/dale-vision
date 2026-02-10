@@ -27,7 +27,6 @@ from apps.core.models import (
 )
 
 from .serializers import (
-    DemoLeadSerializer,
     AlertRuleSerializer,
     DetectionEventSerializer,
     EventMediaSerializer,
@@ -149,97 +148,95 @@ class DemoLeadCreateView(APIView):
     def post(self, request):
         now = timezone.now()
         payload = request.data.copy()
-        meta_in = payload.get("metadata")
-        if not isinstance(meta_in, dict):
-            meta_in = {}
-        payload["metadata"] = meta_in
+        errors = {}
 
-        email = (payload.get("email") or "").strip()
-        whatsapp = (payload.get("whatsapp") or "").strip()
+        def _require_str(field_name: str) -> str:
+            value = (payload.get(field_name) or "").strip()
+            if not value:
+                errors[field_name] = "Campo obrigatório."
+            return value
+
+        contact_name = _require_str("contact_name")
+        email = _require_str("email").lower()
+        whatsapp = _require_str("whatsapp")
+        operation_type = _require_str("operation_type")
+        stores_range = _require_str("stores_range")
+        cameras_range = _require_str("cameras_range")
+
+        primary_goals = payload.get("primary_goals")
+        if not isinstance(primary_goals, list) or not primary_goals:
+            errors["primary_goals"] = "Informe pelo menos 1 objetivo."
+
+        qualified_score_raw = payload.get("qualified_score")
+        qualified_score = None
+        try:
+            qualified_score = int(qualified_score_raw)
+        except Exception:
+            errors["qualified_score"] = "qualified_score inválido."
+
+        utm = payload.get("utm")
+        if not isinstance(utm, dict):
+            errors["utm"] = "utm inválido."
+
+        metadata = payload.get("metadata")
+        if not isinstance(metadata, dict):
+            errors["metadata"] = "metadata inválido."
+
+        if errors:
+            return Response(errors, status=status.HTTP_400_BAD_REQUEST)
+
         source = (payload.get("source") or "").strip()
         try:
             db_conf = settings.DATABASES.get("default", {})
             logger.info(
-                "[DEMO] lead request email=%s source=%s db_host=%s db_name=%s",
+                "[DEMO] lead request email=%s source=%s db_engine=%s db_host=%s db_name=%s",
                 email or "n/a",
                 source or "n/a",
+                db_conf.get("ENGINE"),
                 db_conf.get("HOST"),
                 db_conf.get("NAME"),
             )
         except Exception:
             logger.exception("[DEMO] failed to log db config")
 
-        active_statuses = ["new", "contacted", "scheduled"]
-        existing = None
-
-        if email:
-            existing = (
-                DemoLead.objects.filter(email__iexact=email, status__in=active_statuses)
-                .order_by("-created_at")
-                .first()
-            )
-
-        if not existing and whatsapp:
-            existing = (
-                DemoLead.objects.filter(whatsapp=whatsapp, status__in=active_statuses)
-                .order_by("-created_at")
-                .first()
-            )
-
-        if existing:
-            logger.info("[DEMO] duplicate lead email=%s status=%s", existing.email, existing.status)
-            # 1) grava JourneyEvent
-            je = JourneyEvent.objects.create(
-                lead_id=existing.id,
-                org_id=None,
-                event_name="lead_duplicate_attempt",
-                payload={
-                    "event_category": "onboarding",
-                    "source": "demo_form",
-                    "reason": "duplicate_active_lead",
-                    "status": existing.status,
-                    "email": email or existing.email,
-                    "whatsapp": whatsapp or existing.whatsapp,
-                },
-                created_at=now,
-            )
-
-            # 2) dispara n8n (webhook único)
-            try:
-                send_event_to_n8n(
-                    event_name="lead_duplicate_attempt",
-                    event_id=str(je.id),
-                    lead_id=str(existing.id),
-                    org_id=None,
-                    source="backend",
-                    data={
-                        "event_category": "onboarding",
-                        "lead_id": str(existing.id),
-                        "status": existing.status,
-                        "email": existing.email,
-                        "whatsapp": existing.whatsapp,
-                        "created_at": existing.created_at.isoformat() if existing.created_at else None,
-                    },
-                    meta={
-                        "source": "demo_form",
-                        "ip": request.META.get("REMOTE_ADDR"),
-                        "user_agent": request.META.get("HTTP_USER_AGENT"),
-                    },
-                )
-            except Exception:
-                pass
-
-            return Response({"ok": True, "id": str(existing.id)}, status=status.HTTP_200_OK)
-
-        # 1) Cria lead
-        serializer = DemoLeadSerializer(data=payload)
-        serializer.is_valid(raise_exception=True)
         try:
             with transaction.atomic():
-                lead = serializer.save(status="new", created_at=now)
+                existing = (
+                    DemoLead.objects.filter(email__iexact=email)
+                    .order_by("-created_at")
+                    .first()
+                )
+                if existing:
+                    logger.info("[DEMO] deduped lead email=%s lead_id=%s", email, str(existing.id))
+                    return Response(
+                        {"id": str(existing.id), "deduped": True},
+                        status=status.HTTP_200_OK,
+                    )
+
+                lead = DemoLead.objects.create(
+                    contact_name=contact_name,
+                    email=email,
+                    whatsapp=whatsapp,
+                    operation_type=operation_type,
+                    stores_range=stores_range,
+                    cameras_range=cameras_range,
+                    camera_brands_json=payload.get("camera_brands_json") or [],
+                    pilot_city=payload.get("pilot_city"),
+                    pilot_state=payload.get("pilot_state"),
+                    primary_goal=payload.get("primary_goal")
+                    or (primary_goals[0] if primary_goals else None),
+                    primary_goals=primary_goals,
+                    qualified_score=qualified_score,
+                    source=payload.get("source"),
+                    utm=utm,
+                    metadata=metadata,
+                    status="new",
+                    created_at=now,
+                )
         except Exception:
             logger.exception("[DEMO] insert failed email=%s", email or "n/a")
             raise
+
         logger.info(
             "[DEMO] lead created id=%s email=%s status=%s source=%s",
             str(lead.id),
@@ -248,57 +245,60 @@ class DemoLeadCreateView(APIView):
             lead.source or "n/a",
         )
 
-        # 2) JourneyEvent: lead_created
-        je = JourneyEvent.objects.create(
-            lead_id=lead.id,
-            org_id=None,
-            event_name="lead_created",
-            payload={
-                "event_category": "onboarding",
-                "source": "demo_form",
-                "lead_id": str(lead.id),
-                "email": lead.email,
-                "whatsapp": lead.whatsapp,
-                "operation_type": getattr(lead, "operation_type", None),
-                "stores_range": getattr(lead, "stores_range", None),
-                "cameras_range": getattr(lead, "cameras_range", None),
-                "primary_goal": getattr(lead, "primary_goal", None),
-                "primary_goals": getattr(lead, "primary_goals", None),
-                "qualified_score": getattr(lead, "qualified_score", None),
-            },
-            created_at=now,
-        )
+        try:
+            je = JourneyEvent.objects.create(
+                lead_id=lead.id,
+                org_id=None,
+                event_name="lead_created",
+                payload={
+                    "event_category": "onboarding",
+                    "source": "demo_form",
+                    "lead_id": str(lead.id),
+                    "email": lead.email,
+                    "whatsapp": lead.whatsapp,
+                    "operation_type": getattr(lead, "operation_type", None),
+                    "stores_range": getattr(lead, "stores_range", None),
+                    "cameras_range": getattr(lead, "cameras_range", None),
+                    "primary_goal": getattr(lead, "primary_goal", None),
+                    "primary_goals": getattr(lead, "primary_goals", None),
+                    "qualified_score": getattr(lead, "qualified_score", None),
+                },
+                created_at=now,
+            )
 
-        # 3) Dispara n8n (webhook único)
-        send_event_to_n8n(
-            event_name="lead_created",
-            event_id=str(je.id),
-            lead_id=str(lead.id),
-            org_id=None,
-            source="backend",
-            data={
-                "event_category": "onboarding",
-                "lead_id": str(lead.id),
-                "contact_name": lead.contact_name,
-                "email": lead.email,
-                "whatsapp": lead.whatsapp,
-                "operation_type": getattr(lead, "operation_type", None),
-                "stores_range": getattr(lead, "stores_range", None),
-                "cameras_range": getattr(lead, "cameras_range", None),
-                "primary_goal": getattr(lead, "primary_goal", None),
-                "primary_goals": getattr(lead, "primary_goals", None),
-                "qualified_score": getattr(lead, "qualified_score", None),
-                "utm": getattr(lead, "utm", None),
-                "metadata": getattr(lead, "metadata", None),
-            },
-            meta={
-                "source": "demo_form",
-                "ip": request.META.get("REMOTE_ADDR"),
-                "user_agent": request.META.get("HTTP_USER_AGENT"),
-            },
-        )
+            resp = send_event_to_n8n(
+                event_name="lead_created",
+                event_id=str(je.id),
+                lead_id=str(lead.id),
+                org_id=None,
+                source="backend",
+                data={
+                    "event_category": "onboarding",
+                    "lead_id": str(lead.id),
+                    "contact_name": lead.contact_name,
+                    "email": lead.email,
+                    "whatsapp": lead.whatsapp,
+                    "operation_type": getattr(lead, "operation_type", None),
+                    "stores_range": getattr(lead, "stores_range", None),
+                    "cameras_range": getattr(lead, "cameras_range", None),
+                    "primary_goal": getattr(lead, "primary_goal", None),
+                    "primary_goals": getattr(lead, "primary_goals", None),
+                    "qualified_score": getattr(lead, "qualified_score", None),
+                    "utm": getattr(lead, "utm", None),
+                    "metadata": getattr(lead, "metadata", None),
+                },
+                meta={
+                    "source": "demo_form",
+                    "ip": request.META.get("REMOTE_ADDR"),
+                    "user_agent": request.META.get("HTTP_USER_AGENT"),
+                },
+            )
+            if not resp.get("ok"):
+                logger.warning("[DEMO] n8n lead_created failed response=%s", resp)
+        except Exception:
+            logger.exception("[DEMO] failed to emit lead_created event")
 
-        return Response({"ok": True, "id": str(lead.id)}, status=status.HTTP_201_CREATED)
+        return Response({"id": str(lead.id), "deduped": False}, status=status.HTTP_201_CREATED)
 
 
 # =========================

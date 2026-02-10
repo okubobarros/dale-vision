@@ -4,7 +4,7 @@ import { Link } from "react-router-dom"
 import logo from "../../assets/logo.png"
 import SetupProgress from "../Onboarding/components/SetupProgress"
 import { supabase } from "../../lib/supabase"
-import { getSiteUrl } from "../../lib/siteUrl"
+import { getAuthCallbackUrl } from "../../lib/siteUrl"
 
 function isValidEmail(email: string) {
   return /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email.trim())
@@ -37,7 +37,7 @@ export default function Register() {
     setLoading(true)
     setSubmitError("")
 
-    const redirectTo = `${getSiteUrl()}/auth/callback`
+    const redirectTo = getAuthCallbackUrl()
 
     const { error } = await supabase.auth.signUp({
       email: email.trim(),

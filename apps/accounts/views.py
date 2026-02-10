@@ -1,4 +1,5 @@
 # apps/accounts/views.py
+import logging
 from rest_framework import status
 from rest_framework.response import Response
 from rest_framework.views import APIView
@@ -12,7 +13,10 @@ from drf_yasg import openapi  # (opcional)
 
 from .serializers import RegisterSerializer, LoginSerializer
 from .auth_supabase import get_user_from_supabase_token
-from apps.core.models import OrgMember
+from apps.core.models import OrgMember, Store, Camera
+from apps.stores.services.user_uuid import ensure_user_uuid
+
+logger = logging.getLogger(__name__)
 
 
 class RegisterView(APIView):
@@ -166,3 +170,61 @@ class MeView(APIView):
             },
             status=status.HTTP_200_OK,
         )
+
+
+class SetupStateView(APIView):
+    permission_classes = [IsAuthenticated]
+
+    def get(self, request):
+        user = request.user
+        if not user or not getattr(user, "id", None):
+            return Response({"detail": "Usuário não autenticado."}, status=status.HTTP_403_FORBIDDEN)
+
+        try:
+            if getattr(user, "is_superuser", False) or getattr(user, "is_staff", False):
+                store_ids = list(Store.objects.values_list("id", flat=True))
+                org_count = OrgMember.objects.values("org_id").distinct().count()
+            else:
+                user_uuid = ensure_user_uuid(user)
+                org_ids = list(
+                    OrgMember.objects.filter(user_id=user_uuid).values_list("org_id", flat=True)
+                )
+                org_count = len(org_ids)
+                store_ids = list(Store.objects.filter(org_id__in=org_ids).values_list("id", flat=True))
+
+            store_count = len(store_ids)
+            has_store = store_count > 0
+
+            has_edge = False
+            if has_store:
+                has_edge = Store.objects.filter(id__in=store_ids, last_seen_at__isnull=False).exists()
+                if not has_edge:
+                    has_edge = Camera.objects.filter(
+                        store_id__in=store_ids,
+                        last_seen_at__isnull=False,
+                    ).exists()
+
+            logger.info(
+                "[SETUP_STATE] user_id=%s has_store=%s has_edge=%s store_count=%s",
+                user.id,
+                has_store,
+                has_edge,
+                store_count,
+            )
+
+            return Response(
+                {
+                    "has_store": has_store,
+                    "has_edge": has_edge,
+                    "store_count": store_count,
+                    "org_count": org_count,
+                    "primary_store_id": str(store_ids[0]) if store_ids else None,
+                },
+                status=status.HTTP_200_OK,
+            )
+        except Exception:
+            logger.exception("[SETUP_STATE] failed user_id=%s", getattr(user, "id", None))
+            return Response(
+                {"detail": "Falha ao carregar setup state."},
+                status=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            )

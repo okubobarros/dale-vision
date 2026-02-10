@@ -1,3 +1,6 @@
+.agent/
+.codex/skills/
+.agent/skills-src/
 # Python
 __pycache__/
 *.pyc

@@ -1,5 +1,5 @@
 // src/contexts/AuthContext.tsx
-import { createContext, useContext, useState, useEffect } from "react"
+import { createContext, useContext, useState, useEffect, useCallback } from "react"
 import type { ReactNode } from "react"
 import { authService } from "../services/auth"
 import type { User, LoginCredentials } from "../services/auth"
@@ -11,6 +11,7 @@ interface AuthContextType {
   isLoading: boolean
   login: (credentials: LoginCredentials) => Promise<void>
   logout: () => Promise<void>
+  refreshAuth: () => void
 }
 
 const AuthContext = createContext<AuthContextType | undefined>(undefined)
@@ -47,6 +48,13 @@ export const AuthProvider: React.FC<AuthProviderProps> = ({ children }) => {
     // Debug
     console.log("AuthProvider - Usuário carregado:", currentUser)
     console.log("AuthProvider - Token existe:", !!currentToken)
+  }, [])
+
+  const refreshAuth = useCallback(() => {
+    const currentUser = authService.getCurrentUser()
+    const currentToken = authService.getToken()
+    setUser(currentUser)
+    setToken(currentToken)
   }, [])
 
   const login = async (credentials: LoginCredentials) => {
@@ -98,6 +106,7 @@ export const AuthProvider: React.FC<AuthProviderProps> = ({ children }) => {
     isLoading,
     login,
     logout,
+    refreshAuth,
   }
 
   console.log("AuthProvider - Valor do contexto:", {

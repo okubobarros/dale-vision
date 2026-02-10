@@ -8,7 +8,7 @@ from django.contrib.auth.models import User
 from django.utils import timezone
 
 from apps.core.models import Organization, OrgMember
-from apps.stores.services.user_uuid import ensure_user_uuid
+from apps.stores.services.user_uuid import upsert_user_id_map
 
 logger = logging.getLogger(__name__)
 
@@ -40,50 +40,49 @@ def _fetch_supabase_user(token: str) -> dict:
     return resp.json() or {}
 
 
-def _normalize_username(email: str, supa_id: str) -> str:
-    base = (email or "").strip().lower()
-    if base:
-        return base
-    return (supa_id or "user").strip().lower()
+def _get_or_create_user_from_supabase(email: str, supa_id: str, user_info: dict) -> User:
+    if not email:
+        raise ValueError("Email ausente.")
 
-
-def _get_or_create_user_from_supabase(user_info: dict) -> User:
-    email = (user_info.get("email") or "").strip().lower()
-    supa_id = (user_info.get("id") or "").strip()
-    if not email and not supa_id:
-        raise ValueError("Token inválido.")
-
-    user = None
-    if email:
-        user = User.objects.filter(email__iexact=email).first()
-    if user is None and supa_id:
-        user = User.objects.filter(username__iexact=supa_id).first()
+    user = User.objects.filter(email__iexact=email).first()
+    if user is None:
+        user = User.objects.filter(username__iexact=email).first()
 
     if user is None:
-        username = _normalize_username(email, supa_id)
-        if User.objects.filter(username__iexact=username).exists():
-            suffix = supa_id[:8] if supa_id else "user"
-            username = f"{username}-{suffix}"
         user = User.objects.create_user(
-            username=username,
-            email=email or None,
+            username=email,
+            email=email,
             password=User.objects.make_random_password(),
             first_name=user_info.get("user_metadata", {}).get("first_name", "") or "",
             last_name=user_info.get("user_metadata", {}).get("last_name", "") or "",
         )
-        logger.info("[SUPABASE] user created username=%s email=%s", user.username, user.email or "n/a")
+        logger.info("[SUPABASE] user created email=%s", user.email or "n/a")
+
+    updated_fields = []
+    if user.username != email:
+        if not User.objects.filter(username__iexact=email).exclude(id=user.id).exists():
+            user.username = email
+            updated_fields.append("username")
+        else:
+            logger.warning("[SUPABASE] username collision for email=%s user_id=%s", email, user.id)
+
+    if user.email != email:
+        user.email = email
+        updated_fields.append("email")
 
     if not user.is_active:
         user.is_active = True
-        user.save(update_fields=["is_active"])
-    if email and user.email != email:
-        user.email = email
-        user.save(update_fields=["email"])
+        updated_fields.append("is_active")
+
+    if updated_fields:
+        user.save(update_fields=updated_fields)
+
     return user
 
 
-def ensure_org_membership(user: User) -> None:
-    user_uuid = ensure_user_uuid(user)
+def ensure_org_membership(user: User, *, user_uuid: Optional[str] = None) -> None:
+    mapped_uuid = upsert_user_id_map(user, user_uuid=user_uuid, email=user.email)
+    user_uuid = mapped_uuid
     if OrgMember.objects.filter(user_id=user_uuid).exists():
         return
 
@@ -101,12 +100,34 @@ def ensure_org_membership(user: User) -> None:
     logger.info("[SUPABASE] org created org_id=%s user_uuid=%s", str(org.id), str(user_uuid))
 
 
+def _extract_supabase_identity(user_info: dict) -> Tuple[str, str]:
+    sub = (user_info.get("id") or user_info.get("sub") or "").strip()
+    email = (user_info.get("email") or "").strip().lower()
+    if not sub:
+        raise ValueError("Supabase sub ausente.")
+    if not email:
+        raise ValueError("Email ausente.")
+    return sub, email
+
+
+def provision_user_from_supabase_info(user_info: dict, *, ensure_org: bool = True) -> User:
+    sub, email = _extract_supabase_identity(user_info)
+    user = _get_or_create_user_from_supabase(email, sub, user_info)
+    mapped_uuid = upsert_user_id_map(user, user_uuid=sub, email=email)
+    logger.info(
+        "[SUPABASE] provisioned user_id=%s email=%s user_uuid=%s",
+        user.id,
+        email,
+        mapped_uuid,
+    )
+    if ensure_org:
+        ensure_org_membership(user, user_uuid=mapped_uuid)
+    return user
+
+
 def get_user_from_supabase_token(token: str, ensure_org: bool = True) -> User:
     user_info = _fetch_supabase_user(token)
-    user = _get_or_create_user_from_supabase(user_info)
-    if ensure_org:
-        ensure_org_membership(user)
-    return user
+    return provision_user_from_supabase_info(user_info, ensure_org=ensure_org)
 
 
 class SupabaseJWTAuthentication:
