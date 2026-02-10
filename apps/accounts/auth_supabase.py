@@ -10,7 +10,7 @@ from rest_framework.authentication import BaseAuthentication, get_authorization_
 from rest_framework.exceptions import AuthenticationFailed
 
 from apps.core.models import Organization, OrgMember
-from apps.stores.views import ensure_user_uuid
+from apps.stores.services.user_uuid import ensure_user_uuid
 
 logger = logging.getLogger(__name__)
 
