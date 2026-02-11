@@ -1,22 +1,29 @@
 import { useCallback, useEffect, useMemo, useState } from "react"
 import { useNavigate } from "react-router-dom"
 import axios from "axios"
+import toast from "react-hot-toast"
 import { supabase } from "../../lib/supabase"
-import api from "../../services/api"
+import { API_BASE_URL } from "../../lib/api"
 import { authService } from "../../services/auth"
 import { useAuth } from "../../contexts/AuthContext"
 
 type SetupState = {
+  ok?: boolean
   state?: "no_store" | "ready"
   has_store?: boolean
   has_edge?: boolean
   store_count?: number
   primary_store_id?: string | null
+  code?: string
+  message?: string
+  request_id?: string
 }
 
 type CallbackStatus = "loading" | "error" | "timeout"
+type DiagnosticInfo = { status?: number; code?: string; requestId?: string }
 
-const CALLBACK_TIMEOUT_MS = 5000
+const CALLBACK_TIMEOUT_MS = 10000
+const SETUP_STATE_TIMEOUT_MS = 10000
 
 const getErrorMessage = (error: unknown, fallback: string) => {
   if (error && typeof error === "object") {
@@ -43,6 +50,7 @@ const AuthCallback: React.FC = () => {
   const [status, setStatus] = useState<CallbackStatus>("loading")
   const [errorMessage, setErrorMessage] = useState("")
   const [attempt, setAttempt] = useState(0)
+  const [diagnostic, setDiagnostic] = useState<DiagnosticInfo | null>(null)
   const navigate = useNavigate()
   const { refreshAuth } = useAuth()
 
@@ -54,10 +62,29 @@ const AuthCallback: React.FC = () => {
     setAttempt((prev) => prev + 1)
   }, [])
 
+  const handleCopyDiagnostic = useCallback(async () => {
+    if (!diagnostic) {
+      return
+    }
+    const payload = {
+      status: diagnostic.status ?? "n/a",
+      code: diagnostic.code ?? "n/a",
+      request_id: diagnostic.requestId ?? "n/a",
+    }
+    try {
+      await navigator.clipboard.writeText(JSON.stringify(payload, null, 2))
+      toast.success("Diagnóstico copiado")
+    } catch (error) {
+      console.warn("[AuthCallback] clipboard failed", error)
+      toast.error("Não foi possível copiar o diagnóstico.")
+    }
+  }, [diagnostic])
+
   useEffect(() => {
     let active = true
     setStatus("loading")
     setErrorMessage("")
+    setDiagnostic(null)
 
     const timeoutId = window.setTimeout(() => {
       if (active) {
@@ -124,15 +151,42 @@ const AuthCallback: React.FC = () => {
         const accessToken = session.access_token
         let setupState: SetupState | null = null
         try {
-          const response = await api.get<SetupState>("/me/setup-state/", {
-            headers: { Authorization: `Bearer ${accessToken}` },
-          })
+          const response = await axios.get<SetupState>(
+            `${API_BASE_URL}/api/me/setup-state/`,
+            {
+              headers: { Authorization: `Bearer ${accessToken}` },
+              timeout: SETUP_STATE_TIMEOUT_MS,
+            }
+          )
           setupState = response.data
         } catch (setupError) {
           if (axios.isAxiosError(setupError)) {
             const statusCode = setupError.response?.status
-            if (statusCode === 401) {
-              throw new Error("Sessão expirada. Faça login novamente.")
+            const data = (setupError.response?.data || {}) as SetupState
+            const errorCode = data.code
+
+            if (errorCode === "SUPABASE_MISSING_CONFIG") {
+              if (active) {
+                setDiagnostic({
+                  status: statusCode,
+                  code: errorCode,
+                  requestId: data.request_id,
+                })
+                setErrorMessage(
+                  "Estamos finalizando a configuração do ambiente. Tente novamente em alguns minutos."
+                )
+                setStatus("error")
+              }
+              return
+            }
+
+            if (statusCode === 401 || errorCode === "SUPABASE_TOKEN_INVALID") {
+              await authService.logout()
+              if (active) {
+                toast.error("Sessão expirada, faça login novamente.")
+                navigate("/login", { replace: true })
+              }
+              return
             }
             if (statusCode === 404) {
               setupState = (setupError.response?.data as SetupState) || { state: "no_store" }
@@ -140,7 +194,13 @@ const AuthCallback: React.FC = () => {
               console.warn("[AuthCallback] setup-state failed", {
                 status: statusCode,
               })
-              throw new Error("Não foi possível verificar seu setup.")
+              if (
+                setupError.code === "ECONNABORTED" ||
+                String(setupError.message || "").toLowerCase().includes("timeout")
+              ) {
+                throw new Error("Não foi possível confirmar seu acesso a tempo.")
+              }
+              throw new Error("Não foi possível verificar seu acesso.")
             }
           } else {
             throw setupError
@@ -249,6 +309,15 @@ const AuthCallback: React.FC = () => {
                 Voltar para Login
               </button>
             </div>
+            {diagnostic && (
+              <button
+                type="button"
+                onClick={handleCopyDiagnostic}
+                className="text-xs text-slate-400 hover:text-slate-600"
+              >
+                Copiar diagnóstico
+              </button>
+            )}
           </div>
         )}
       </div>

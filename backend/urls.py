@@ -2,7 +2,7 @@
 from django.contrib import admin
 from django.urls import path, include
 from django.http import JsonResponse
-from backend.views import health
+from backend.views import health, auth_health
 from apps.alerts.views import DemoLeadCreateView
 from apps.accounts.views import SetupStateView
 from rest_framework import permissions
@@ -63,5 +63,6 @@ urlpatterns = [
 
     path("health/", health),
     path("health", health),
+    path("api/health/auth/", auth_health),
     path("api/edge/", include("apps.edge.urls")),
 ]

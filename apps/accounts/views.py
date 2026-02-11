@@ -15,7 +15,12 @@ from drf_yasg.utils import swagger_auto_schema  # ✅
 from drf_yasg import openapi  # (opcional)
 
 from .serializers import RegisterSerializer, LoginSerializer
-from .auth_supabase import get_user_from_supabase_token, SupabaseJWTAuthentication
+from .auth_supabase import (
+    get_user_from_supabase_token,
+    SupabaseJWTAuthentication,
+    SupabaseConfigError,
+    SupabaseProvisioningError,
+)
 from apps.core.models import OrgMember, Store, Camera
 from apps.stores.services.user_uuid import upsert_user_id_map
 
@@ -188,7 +193,38 @@ class SetupStateView(APIView):
 
         def not_authenticated(reason: str):
             logger.info("[SETUP_STATE] request_id=%s not_authenticated reason=%s", request_id, reason)
-            return respond({"ok": False, "error": "not_authenticated"}, status.HTTP_401_UNAUTHORIZED)
+            return respond(
+                {
+                    "ok": False,
+                    "code": "SUPABASE_TOKEN_INVALID",
+                    "message": "Token inválido ou expirado",
+                    "error": "not_authenticated",
+                },
+                status.HTTP_401_UNAUTHORIZED,
+            )
+
+        def missing_config():
+            logger.error("[SETUP_STATE] request_id=%s supabase_missing_config", request_id)
+            return respond(
+                {
+                    "ok": False,
+                    "code": "SUPABASE_MISSING_CONFIG",
+                    "message": "Auth provider not configured",
+                },
+                status.HTTP_500_INTERNAL_SERVER_ERROR,
+            )
+
+        def provisioning_error(reason: str):
+            logger.error("[SETUP_STATE] request_id=%s provisioning_failed reason=%s", request_id, reason)
+            return respond(
+                {
+                    "ok": False,
+                    "code": "PROVISIONING_ERROR",
+                    "message": "Erro ao provisionar usuário",
+                    "error": "provisioning_error",
+                },
+                status.HTTP_500_INTERNAL_SERVER_ERROR,
+            )
 
         user = None
         try:
@@ -196,6 +232,10 @@ class SetupStateView(APIView):
             supa_result = supa_auth.authenticate(request)
             if supa_result:
                 user = supa_result[0]
+        except SupabaseConfigError:
+            return missing_config()
+        except SupabaseProvisioningError:
+            return provisioning_error("supabase_provisioning_error")
         except AuthenticationFailed as exc:
             logger.warning(
                 "[SETUP_STATE] request_id=%s supabase_auth_failed error=%s",
@@ -240,14 +280,15 @@ class SetupStateView(APIView):
                 org_count = OrgMember.objects.values("org_id").distinct().count()
             else:
                 try:
-                    user_uuid = upsert_user_id_map(user, email=getattr(user, "email", None))
-                except Exception:
-                    logger.warning(
-                        "[SETUP_STATE] request_id=%s user_id_map failed user_id=%s",
+                    user_uuid = upsert_user_id_map(user)
+                except Exception as exc:
+                    logger.exception(
+                        "[SETUP_STATE] request_id=%s user_id_map failed user_id=%s error=%s",
                         request_id,
                         user.id,
+                        exc,
                     )
-                    return _no_store_response()
+                    return provisioning_error("user_id_map_failed")
 
                 org_ids = list(
                     OrgMember.objects.filter(user_id=user_uuid).values_list("org_id", flat=True)
@@ -304,5 +345,5 @@ class SetupStateView(APIView):
                     "org_count": 0,
                     "primary_store_id": None,
                 },
-                status.HTTP_200_OK,
+                status.HTTP_500_INTERNAL_SERVER_ERROR,
             )

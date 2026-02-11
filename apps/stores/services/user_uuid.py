@@ -24,7 +24,6 @@ def upsert_user_id_map(
     user,
     *,
     user_uuid: Optional[str] = None,
-    email: Optional[str] = None,
 ) -> str:
     """
     Map Django auth_user.id -> public.user_id_map.(user_uuid|user_id).
@@ -34,7 +33,6 @@ def upsert_user_id_map(
         raise PermissionDenied("Usuário não autenticado.")
 
     uuid_col = _get_user_id_map_uuid_column()
-    safe_email = (email or getattr(user, "email", None) or "").strip() or None
     desired_uuid = str(user_uuid) if user_uuid else None
 
     with connection.cursor() as cursor:
@@ -60,30 +58,24 @@ def upsert_user_id_map(
                     )
                     return existing_uuid
                 cursor.execute(
-                    f"UPDATE public.user_id_map SET {uuid_col} = %s, email = COALESCE(%s, email) "
-                    "WHERE django_user_id = %s",
-                    [desired_uuid, safe_email, user.id],
+                    f"UPDATE public.user_id_map SET {uuid_col} = %s WHERE django_user_id = %s",
+                    [desired_uuid, user.id],
                 )
                 return desired_uuid
 
-            if safe_email:
-                cursor.execute(
-                    "UPDATE public.user_id_map SET email = COALESCE(%s, email) WHERE django_user_id = %s",
-                    [safe_email, user.id],
-                )
             return existing_uuid
 
         if desired_uuid:
             cursor.execute(
-                f"INSERT INTO public.user_id_map ({uuid_col}, django_user_id, email, created_at) "
-                f"VALUES (%s, %s, %s, now()) RETURNING {uuid_col}",
-                [desired_uuid, user.id, safe_email],
+                f"INSERT INTO public.user_id_map ({uuid_col}, django_user_id, created_at) "
+                f"VALUES (%s, %s, now()) RETURNING {uuid_col}",
+                [desired_uuid, user.id],
             )
         else:
             cursor.execute(
-                f"INSERT INTO public.user_id_map ({uuid_col}, django_user_id, email, created_at) "
-                f"VALUES (gen_random_uuid(), %s, %s, now()) RETURNING {uuid_col}",
-                [user.id, safe_email],
+                f"INSERT INTO public.user_id_map ({uuid_col}, django_user_id, created_at) "
+                f"VALUES (gen_random_uuid(), %s, now()) RETURNING {uuid_col}",
+                [user.id],
             )
         return str(cursor.fetchone()[0])
 

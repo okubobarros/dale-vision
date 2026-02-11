@@ -1,10 +1,12 @@
 import uuid
+from unittest.mock import patch
 from django.contrib.auth.models import User
 from django.db import connection
 from django.test import override_settings
 from rest_framework.exceptions import AuthenticationFailed
 from rest_framework.test import APITestCase, APIRequestFactory
 from .auth_supabase import provision_user_from_supabase_info, SupabaseJWTAuthentication
+from apps.stores.services.user_uuid import upsert_user_id_map
 
 
 class LoginIdentifierTests(APITestCase):
@@ -62,12 +64,13 @@ class SupabaseProvisionTests(APITestCase):
 
     def _ensure_user_id_map(self):
         with connection.cursor() as cursor:
+            cursor.execute("CREATE EXTENSION IF NOT EXISTS pgcrypto;")
             cursor.execute(
                 """
                 CREATE TABLE IF NOT EXISTS public.user_id_map (
-                    user_id uuid PRIMARY KEY,
+                    id uuid PRIMARY KEY DEFAULT gen_random_uuid(),
                     django_user_id int NOT NULL UNIQUE,
-                    email text,
+                    user_uuid uuid UNIQUE NOT NULL DEFAULT gen_random_uuid(),
                     created_at timestamptz DEFAULT now()
                 );
                 """
@@ -78,6 +81,32 @@ class SupabaseProvisionTests(APITestCase):
             columns = connection.introspection.get_table_description(cursor, "user_id_map")
         names = {col.name for col in columns}
         return "user_uuid" if "user_uuid" in names else "user_id"
+
+    def test_upsert_user_id_map_creates_uuid_mapping(self):
+        self._skip_if_not_pg()
+        self._ensure_user_id_map()
+
+        user = User.objects.create_user(
+            username="mapuser",
+            email="mapuser@example.com",
+            password="pass1234",
+        )
+        user_uuid = str(uuid.uuid4())
+
+        mapped_uuid = upsert_user_id_map(user, user_uuid=user_uuid)
+        self.assertEqual(mapped_uuid, user_uuid)
+
+        uuid_col = self._get_uuid_column()
+        with connection.cursor() as cursor:
+            cursor.execute(
+                f"SELECT {uuid_col}, django_user_id FROM public.user_id_map WHERE django_user_id = %s",
+                [user.id],
+            )
+            row = cursor.fetchone()
+
+        self.assertIsNotNone(row)
+        self.assertEqual(str(row[0]), user_uuid)
+        self.assertEqual(int(row[1]), user.id)
 
     def test_provision_creates_user_and_user_id_map(self):
         self._skip_if_not_pg()
@@ -99,7 +128,7 @@ class SupabaseProvisionTests(APITestCase):
         uuid_col = self._get_uuid_column()
         with connection.cursor() as cursor:
             cursor.execute(
-                f"SELECT {uuid_col}, django_user_id, email FROM public.user_id_map WHERE django_user_id = %s",
+                f"SELECT {uuid_col}, django_user_id FROM public.user_id_map WHERE django_user_id = %s",
                 [user.id],
             )
             row = cursor.fetchone()
@@ -107,7 +136,6 @@ class SupabaseProvisionTests(APITestCase):
         self.assertIsNotNone(row)
         self.assertEqual(str(row[0]), sub)
         self.assertEqual(int(row[1]), user.id)
-        self.assertEqual(row[2], email)
 
         # Idempotência: segunda chamada não deve criar novo user_id_map
         user_again = provision_user_from_supabase_info(user_info, ensure_org=False)
@@ -133,3 +161,36 @@ class SetupStateUnauthenticatedTests(APITestCase):
         self.assertFalse(response.data.get("ok"))
         self.assertEqual(response.data.get("error"), "not_authenticated")
         self.assertIn("request_id", response.data)
+
+
+class SetupStateProvisioningTests(APITestCase):
+    def test_setup_state_with_bearer_token_provisions_and_returns_ok(self):
+        user = User.objects.create_user(
+            username="setupstate",
+            email="setupstate@example.com",
+            password="pass1234",
+        )
+        mapped_uuid = str(uuid.uuid4())
+
+        with (
+            patch(
+                "apps.accounts.views.SupabaseJWTAuthentication.authenticate",
+                return_value=(user, "token"),
+            ) as auth_mock,
+            patch(
+                "apps.accounts.views.upsert_user_id_map",
+                return_value=mapped_uuid,
+            ) as upsert_mock,
+            patch("apps.accounts.views.OrgMember.objects.filter") as filter_mock,
+        ):
+            filter_mock.return_value.values_list.return_value = []
+            response = self.client.get(
+                "/api/me/setup-state/",
+                HTTP_AUTHORIZATION="Bearer testtoken123",
+            )
+
+        self.assertEqual(response.status_code, 200)
+        self.assertTrue(response.data.get("ok"))
+        self.assertEqual(response.data.get("state"), "no_store")
+        auth_mock.assert_called()
+        upsert_mock.assert_called_once_with(user)

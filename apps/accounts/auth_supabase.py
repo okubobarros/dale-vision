@@ -6,20 +6,41 @@ from uuid import uuid4
 import requests
 from django.conf import settings
 from django.contrib.auth.models import User
+from django.db import DatabaseError
 from django.utils import timezone
+from rest_framework.exceptions import APIException
 
 from apps.core.models import Organization, OrgMember
 from apps.stores.services.user_uuid import upsert_user_id_map
 
 logger = logging.getLogger(__name__)
 
+class SupabaseConfigError(APIException):
+    status_code = 500
+    default_detail = {
+        "ok": False,
+        "code": "SUPABASE_MISSING_CONFIG",
+        "message": "Auth provider not configured",
+    }
+    default_code = "supabase_missing_config"
+
+
+class SupabaseProvisioningError(APIException):
+    status_code = 500
+    default_detail = {
+        "ok": False,
+        "code": "SUPABASE_PROVISIONING_ERROR",
+        "message": "Erro ao provisionar usuário",
+    }
+    default_code = "supabase_provisioning_error"
+
 
 def _get_supabase_config() -> Tuple[Optional[str], Optional[str]]:
     url = getattr(settings, "SUPABASE_URL", None) or os.getenv("SUPABASE_URL")
-    key = getattr(settings, "SUPABASE_KEY", None) or os.getenv("SUPABASE_KEY")
-    if not key:
-        key = getattr(settings, "SUPABASE_ANON_KEY", None) or os.getenv("SUPABASE_ANON_KEY")
-    return url, key
+    anon_key = getattr(settings, "SUPABASE_ANON_KEY", None) or os.getenv("SUPABASE_ANON_KEY")
+    if not anon_key:
+        anon_key = getattr(settings, "SUPABASE_KEY", None) or os.getenv("SUPABASE_KEY")
+    return url, anon_key
 
 
 def _mask_token(token: str) -> str:
@@ -32,7 +53,8 @@ def _mask_token(token: str) -> str:
 def _fetch_supabase_user(token: str) -> dict:
     url, key = _get_supabase_config()
     if not url or not key:
-        raise ValueError("Supabase not configured")
+        logger.error("[SUPABASE] missing_config url=%s key=%s", bool(url), bool(key))
+        raise SupabaseConfigError()
 
     headers = {"Authorization": f"Bearer {token}"}
     if key:
@@ -91,7 +113,7 @@ def _get_or_create_user_from_supabase(email: str, supa_id: str, user_info: dict)
 
 
 def ensure_org_membership(user: User, *, user_uuid: Optional[str] = None) -> None:
-    mapped_uuid = upsert_user_id_map(user, user_uuid=user_uuid, email=user.email)
+    mapped_uuid = upsert_user_id_map(user, user_uuid=user_uuid)
     user_uuid = mapped_uuid
     if OrgMember.objects.filter(user_id=user_uuid).exists():
         return
@@ -123,7 +145,7 @@ def _extract_supabase_identity(user_info: dict) -> Tuple[str, str]:
 def provision_user_from_supabase_info(user_info: dict, *, ensure_org: bool = True) -> User:
     sub, email = _extract_supabase_identity(user_info)
     user = _get_or_create_user_from_supabase(email, sub, user_info)
-    mapped_uuid = upsert_user_id_map(user, user_uuid=sub, email=email)
+    mapped_uuid = upsert_user_id_map(user, user_uuid=sub)
     logger.info(
         "[SUPABASE] provisioned user_id=%s email=%s user_uuid=%s",
         user.id,
@@ -171,12 +193,22 @@ class SupabaseJWTAuthentication:
                     bool(url),
                     bool(key),
                 )
-                raise AuthenticationFailed("Supabase not configured")
+                raise SupabaseConfigError()
 
             user = get_user_from_supabase_token(token, ensure_org=True)
             return (user, token)
+        except SupabaseConfigError:
+            raise
         except AuthenticationFailed:
             raise
+        except DatabaseError as exc:
+            logger.exception(
+                "[SUPABASE] request_id=%s token=%s provisioning_error=%s",
+                request_id,
+                token_short,
+                exc,
+            )
+            raise SupabaseProvisioningError()
         except ValueError as exc:
             logger.warning(
                 "[SUPABASE] request_id=%s token=%s auth_failed error=%s",

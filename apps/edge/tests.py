@@ -18,9 +18,9 @@ class EdgeEventsAuthTests(TestCase):
             cursor.execute(
                 """
                 CREATE TABLE IF NOT EXISTS public.user_id_map (
-                    user_id uuid PRIMARY KEY,
+                    id uuid PRIMARY KEY DEFAULT gen_random_uuid(),
                     django_user_id int NOT NULL UNIQUE,
-                    email text,
+                    user_uuid uuid UNIQUE NOT NULL DEFAULT gen_random_uuid(),
                     created_at timestamptz DEFAULT now()
                 );
                 """
@@ -102,9 +102,9 @@ class EdgeEventsAuthTests(TestCase):
 
         with connection.cursor() as cursor:
             cursor.execute(
-                "INSERT INTO public.user_id_map (user_id, django_user_id, email) "
-                "VALUES (gen_random_uuid(), %s, %s) RETURNING user_id",
-                [user.id, user.email],
+                "INSERT INTO public.user_id_map (user_uuid, django_user_id) "
+                "VALUES (gen_random_uuid(), %s) RETURNING user_uuid",
+                [user.id],
             )
             user_uuid = cursor.fetchone()[0]
 
