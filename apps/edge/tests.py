@@ -1,11 +1,13 @@
+import hashlib
 import uuid
 from django.test import TestCase
-from django.conf import settings
+from django.test import override_settings
 from django.db import connection
 from django.contrib.auth import get_user_model
 from rest_framework.test import APIClient
 from knox.models import AuthToken
 from apps.core.models import Organization, OrgMember, Store
+from apps.edge.models import EdgeToken
 
 
 class EdgeEventsAuthTests(TestCase):
@@ -68,9 +70,13 @@ class EdgeEventsAuthTests(TestCase):
         if connection.vendor != "postgresql":
             self.skipTest("Requires PostgreSQL for unmanaged models.")
 
+    def _create_edge_token(self, store_id: uuid.UUID, raw_token: str) -> EdgeToken:
+        token_hash = hashlib.sha256(raw_token.encode("utf-8")).hexdigest()
+        return EdgeToken.objects.create(store_id=store_id, token_hash=token_hash, active=True)
+
+    @override_settings(DEBUG=True, EDGE_SHARED_TOKEN="edge-shared")
     def test_edge_token_allows_event(self):
         self._skip_if_not_pg()
-        settings.EDGE_SHARED_TOKEN = "edge-shared"
         payload = {
             "event_name": "edge_heartbeat",
             "receipt_id": "test-receipt-1",
@@ -81,6 +87,25 @@ class EdgeEventsAuthTests(TestCase):
             payload,
             format="json",
             HTTP_X_EDGE_TOKEN="edge-shared",
+        )
+        self.assertIn(resp.status_code, (200, 201))
+        self.assertTrue(resp.data.get("ok"))
+
+    def test_edge_store_token_allows_event(self):
+        self._skip_if_not_pg()
+        store_id = uuid.uuid4()
+        token = "edge-store-token"
+        self._create_edge_token(store_id, token)
+        payload = {
+            "event_name": "edge_heartbeat",
+            "receipt_id": "test-receipt-store-1",
+            "data": {"store_id": str(store_id)},
+        }
+        resp = self.client.post(
+            "/api/edge/events/",
+            payload,
+            format="json",
+            HTTP_X_EDGE_TOKEN=token,
         )
         self.assertIn(resp.status_code, (200, 201))
         self.assertTrue(resp.data.get("ok"))
@@ -141,16 +166,18 @@ class EdgeEventsAuthTests(TestCase):
 
     def test_edge_event_stored_true_generates_receipt(self):
         self._skip_if_not_pg()
-        settings.EDGE_SHARED_TOKEN = "edge-shared"
+        store_id = uuid.uuid4()
+        token = "edge-store-token-2"
+        self._create_edge_token(store_id, token)
         payload = {
             "event_name": "edge_heartbeat",
-            "data": {"store_id": str(uuid.uuid4())},
+            "data": {"store_id": str(store_id)},
         }
         resp = self.client.post(
             "/api/edge/events/",
             payload,
             format="json",
-            HTTP_X_EDGE_TOKEN="edge-shared",
+            HTTP_X_EDGE_TOKEN=token,
         )
         self.assertIn(resp.status_code, (200, 201))
         self.assertTrue(resp.data.get("ok"))

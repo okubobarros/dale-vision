@@ -93,7 +93,6 @@ const EdgeSetupModal = ({ open, onClose, defaultStoreId }: EdgeSetupModalProps) 
   const [lastHeartbeat, setLastHeartbeat] = useState<string | null>(null)
   const [showTroubleshoot, setShowTroubleshoot] = useState(false)
   const [showChecklist, setShowChecklist] = useState(false)
-  const [downloadBlocked, setDownloadBlocked] = useState(false)
   const [rotateSupported, setRotateSupported] = useState(true)
 
   const pollTimer = useRef<ReturnType<typeof setTimeout> | null>(null)
@@ -101,6 +100,8 @@ const EdgeSetupModal = ({ open, onClose, defaultStoreId }: EdgeSetupModalProps) 
   const navigate = useNavigate()
 
   const downloadUrl = (import.meta.env.VITE_EDGE_AGENT_DOWNLOAD_URL || "").trim()
+  const siteUrl = (import.meta.env.VITE_SITE_URL || "").trim()
+  const docsUrl = siteUrl ? `${siteUrl.replace(/\/$/, "")}/docs/edge-agent` : "/docs/edge-agent"
   const canDownload = Boolean(downloadUrl)
 
   const { data: stores } = useQuery<Store[]>({
@@ -136,7 +137,6 @@ const EdgeSetupModal = ({ open, onClose, defaultStoreId }: EdgeSetupModalProps) 
     setLastHeartbeat(null)
     setShowTroubleshoot(false)
     setShowChecklist(false)
-    setDownloadBlocked(false)
     setRotateSupported(true)
     stopPolling()
   }, [open, defaultStoreId])
@@ -155,7 +155,6 @@ const EdgeSetupModal = ({ open, onClose, defaultStoreId }: EdgeSetupModalProps) 
     setLastHeartbeat(null)
     setShowTroubleshoot(false)
     setShowChecklist(false)
-    setDownloadBlocked(false)
     setRotateSupported(true)
     stopPolling()
   }, [open, storeId])
@@ -169,7 +168,6 @@ const EdgeSetupModal = ({ open, onClose, defaultStoreId }: EdgeSetupModalProps) 
   useEffect(() => {
     if (!canDownload) {
       setDownloadConfirmed(false)
-      setDownloadBlocked(false)
     }
   }, [canDownload])
 
@@ -303,29 +301,11 @@ const EdgeSetupModal = ({ open, onClose, defaultStoreId }: EdgeSetupModalProps) 
     pollEdgeStatus(storeId)
   }
 
-  const handleDownload = () => {
-    if (!downloadUrl) {
-      setDownloadBlocked(false)
-      setDownloadConfirmed(false)
-      return
-    }
-    setDownloadBlocked(false)
-    try {
-      const opened = window.open(downloadUrl, "_blank", "noopener,noreferrer")
-      if (!opened) {
-        setDownloadBlocked(true)
-        setDownloadConfirmed(false)
-        toast.error("Seu navegador bloqueou o pop-up. Abra em nova aba.")
-        return
-      }
-      setDownloadConfirmed(true)
-      setValidationError(null)
-      setPollError(null)
-    } catch {
-      setDownloadBlocked(true)
-      setDownloadConfirmed(false)
-      toast.error("Falha ao abrir o download. Tente novamente.")
-    }
+  const handleConfirmDownload = () => {
+    setDownloadConfirmed(true)
+    setValidationError(null)
+    setPollError(null)
+    toast.success("Download confirmado")
   }
 
   const handleCopyEnv = async () => {
@@ -433,7 +413,7 @@ const EdgeSetupModal = ({ open, onClose, defaultStoreId }: EdgeSetupModalProps) 
   const isStoreSelected = Boolean(storeId)
   const lastHeartbeatLabel = formatRelativeTime(lastHeartbeat)
   const canStartAgent = downloadConfirmed && envCopied
-  const canCopyEnv = downloadConfirmed
+  const canCopyEnv = isStoreSelected
   const logCommand = [
     "Windows (PowerShell): Get-Content .\\logs\\agent.log -Tail 80",
     "Linux: tail -n 80 ./logs/agent.log",
@@ -442,8 +422,8 @@ const EdgeSetupModal = ({ open, onClose, defaultStoreId }: EdgeSetupModalProps) 
   const statusSteps = [
     { label: "Loja", done: isStoreSelected },
     { label: "Download", done: downloadConfirmed },
-    { label: ".env", done: envCopied },
-    { label: "Rodando", done: agentRunningConfirmed },
+    { label: "Copiar .env", done: envCopied },
+    { label: "Rodar", done: agentRunningConfirmed },
     { label: "Online", done: heartbeatOk },
   ]
   const firstIncomplete = statusSteps.findIndex((step) => !step.done)
@@ -534,46 +514,79 @@ const EdgeSetupModal = ({ open, onClose, defaultStoreId }: EdgeSetupModalProps) 
 
           <div className={!isStoreSelected ? "opacity-50 pointer-events-none space-y-4" : "space-y-4"}>
             <div className="rounded-xl border border-gray-200 bg-gray-50 px-4 py-3">
-              <div className="text-sm text-gray-700 font-semibold">2. Baixar Edge Agent</div>
-              <div className="mt-2 flex flex-col sm:flex-row sm:items-center gap-3">
+              <div className="text-sm text-gray-700 font-semibold">2. Download do Edge Agent</div>
+              <p className="mt-1 text-xs text-gray-500">
+                Baixe o Edge Agent no computador da loja. Se preferir, você pode baixar
+                manualmente e seguir o passo a passo.
+              </p>
+              <div className="mt-3 flex flex-col sm:flex-row sm:items-center gap-3">
+                {canDownload ? (
+                  <a
+                    href={downloadUrl}
+                    target="_blank"
+                    rel="noreferrer"
+                    className="inline-flex w-full sm:w-auto items-center justify-center rounded-lg bg-blue-600 px-4 py-2.5 text-sm font-semibold text-white hover:bg-blue-700"
+                  >
+                    Baixar Edge Agent
+                  </a>
+                ) : (
+                  <button
+                    type="button"
+                    disabled
+                    className="inline-flex w-full sm:w-auto items-center justify-center rounded-lg bg-blue-600 px-4 py-2.5 text-sm font-semibold text-white opacity-60"
+                  >
+                    Baixar Edge Agent
+                  </button>
+                )}
                 <button
                   type="button"
-                  onClick={handleDownload}
-                  disabled={!canDownload || !isStoreSelected}
-                  className="inline-flex w-full sm:w-auto items-center justify-center rounded-lg bg-blue-600 px-4 py-2.5 text-sm font-semibold text-white hover:bg-blue-700 disabled:opacity-60"
+                  onClick={handleConfirmDownload}
+                  disabled={!isStoreSelected}
+                  className="inline-flex w-full sm:w-auto items-center justify-center rounded-lg border border-gray-200 px-4 py-2.5 text-sm font-semibold text-gray-700 hover:bg-gray-50 disabled:opacity-60"
                 >
-                  Baixar Edge Agent
+                  Já baixei e extraí
                 </button>
-                {!canDownload && (
-                  <div className="text-xs text-gray-500">
-                    Download indisponível. Configure{" "}
-                    <span className="font-mono">VITE_EDGE_AGENT_DOWNLOAD_URL</span>.
-                  </div>
-                )}
-                {downloadBlocked && (
-                  <div className="text-xs text-amber-700">
-                    Seu navegador bloqueou o pop-up. Clique com o botão direito e abra em nova aba:
-                    <a
-                      href={downloadUrl}
-                      target="_blank"
-                      rel="noreferrer"
-                      className="ml-1 break-all text-blue-700 underline"
-                    >
-                      {downloadUrl}
-                    </a>
-                  </div>
-                )}
-                {downloadConfirmed && (
-                  <div className="text-xs text-green-600 font-semibold">Download concluído</div>
-                )}
               </div>
+              {canDownload && (
+                <div className="mt-2 text-xs text-gray-500">
+                  Link direto:{" "}
+                  <a
+                    href={downloadUrl}
+                    target="_blank"
+                    rel="noreferrer"
+                    className="text-blue-700 underline break-all"
+                  >
+                    {downloadUrl}
+                  </a>
+                </div>
+              )}
+              {!canDownload && (
+                <div className="mt-2 text-xs text-amber-700">
+                  Download indisponível. Veja as instruções em{" "}
+                  <a
+                    href={docsUrl}
+                    target="_blank"
+                    rel="noreferrer"
+                    className="text-blue-700 underline"
+                  >
+                    docs do Edge Agent
+                  </a>
+                  .
+                </div>
+              )}
+              {downloadConfirmed && (
+                <div className="mt-2 text-xs text-green-600 font-semibold">
+                  Download confirmado
+                </div>
+              )}
             </div>
 
             <div className="rounded-xl border border-gray-200 bg-gray-50 p-4">
               <div className="text-sm font-semibold text-gray-700 mb-2">3. Copiar .env</div>
               <p className="text-xs text-gray-500 mb-3">
                 Crie um arquivo chamado <span className="font-mono">.env</span> dentro da
-                pasta do Edge Agent e cole o conteúdo abaixo.
+                pasta do Edge Agent e cole o conteúdo abaixo. Você pode seguir mesmo se
+                baixou manualmente.
               </p>
               <textarea
                 value={envContent}
@@ -589,9 +602,10 @@ const EdgeSetupModal = ({ open, onClose, defaultStoreId }: EdgeSetupModalProps) 
               >
                 Copiar .env
               </button>
-              {!canCopyEnv && (
-                <div className="mt-2 text-xs text-gray-500">
-                  Finalize o download para liberar este passo.
+              {!downloadConfirmed && (
+                <div className="mt-2 text-xs text-amber-700">
+                  Se você já baixou manualmente, clique em “Já baixei e extraí” no passo 2
+                  para liberar o restante.
                 </div>
               )}
               {loadingCreds && (
@@ -605,16 +619,19 @@ const EdgeSetupModal = ({ open, onClose, defaultStoreId }: EdgeSetupModalProps) 
             <div className="rounded-xl border border-gray-200 bg-gray-50 px-4 py-3">
               <div className="text-sm text-gray-700 font-semibold">4. Rodar o agent</div>
               <p className="text-xs text-gray-500 mt-1">
-                Após copiar o <span className="font-mono">.env</span>, execute o agent
-                no computador da loja e deixe a janela aberta.
+                Antes de rodar, extraia o ZIP. Depois copie o{" "}
+                <span className="font-mono">.env</span> na pasta correta e execute o agent
+                no computador da loja.
               </p>
               <div className="mt-2 grid grid-cols-1 sm:grid-cols-2 gap-2 text-xs text-gray-600">
                 <div className="rounded-lg border border-gray-200 bg-white px-3 py-2">
                   <div className="font-semibold text-gray-700 mb-1">Windows</div>
+                  <div className="text-[11px] text-gray-600">Extraia o ZIP e abra a pasta</div>
                   <div className="font-mono text-[11px] text-gray-700">.\02_run.bat</div>
                 </div>
                 <div className="rounded-lg border border-gray-200 bg-white px-3 py-2">
                   <div className="font-semibold text-gray-700 mb-1">Linux</div>
+                  <div className="text-[11px] text-gray-600">Extraia o ZIP antes de rodar</div>
                   <div className="font-mono text-[11px] text-gray-700">
                     python -m src.agent.main --config ./config/agent.yaml
                   </div>
@@ -639,11 +656,10 @@ const EdgeSetupModal = ({ open, onClose, defaultStoreId }: EdgeSetupModalProps) 
             </div>
 
             <div className="rounded-xl border border-gray-200 bg-gray-50 px-4 py-3">
-              <div className="text-sm text-gray-700 font-semibold">
-                5. Verificar conexão
-              </div>
+              <div className="text-sm text-gray-700 font-semibold">5. Online</div>
               <p className="text-xs text-gray-500 mt-1">
                 Clique em “Começar verificação” para monitorar a conexão por até 2 minutos.
+                Se não conectar, mostramos dicas de solução.
               </p>
               <div className="mt-2 flex flex-col sm:flex-row sm:items-center gap-3">
                 <button
@@ -687,8 +703,8 @@ const EdgeSetupModal = ({ open, onClose, defaultStoreId }: EdgeSetupModalProps) 
                   Sem heartbeat após 2 minutos
                 </div>
                 <p className="mt-1 text-xs text-yellow-700">
-                  Possíveis causas: token desatualizado, agent rodando fora da pasta
-                  correta ou bloqueio de rede/firewall.
+                  Possíveis causas: ZIP não extraído, token desatualizado, agent rodando
+                  fora da pasta correta ou bloqueio de rede/firewall.
                 </p>
                 <div className="mt-3 flex flex-col sm:flex-row gap-2">
                   {rotateSupported && (

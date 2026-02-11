@@ -18,7 +18,7 @@ from rest_framework.permissions import AllowAny
 from knox.auth import TokenAuthentication
 
 from .serializers import EdgeEventSerializer
-from .models import EdgeEventReceipt
+from .models import EdgeEventReceipt, EdgeToken
 
 from apps.alerts.views import AlertRuleViewSet
 from apps.core.models import Camera, CameraHealthLog
@@ -76,19 +76,35 @@ class EdgeEventsIngestView(APIView):
         return u
 
     def _is_edge_request(self, request):
-        expected = getattr(settings, "EDGE_SHARED_TOKEN", None) or os.getenv("EDGE_SHARED_TOKEN")
-        if not expected:
-            print("[EDGE] EDGE_SHARED_TOKEN não configurado")
-            return (False, "EDGE_SHARED_TOKEN não configurado")
         provided = request.headers.get("X-EDGE-TOKEN") or ""
         if not provided:
             print("[EDGE] missing X-EDGE-TOKEN")
             return (False, "missing X-EDGE-TOKEN")
-        if provided != expected:
-            print("[EDGE] invalid edge token")
-            return (False, "invalid edge token")
-        print("[EDGE] request autorizado via EDGE token")
-        return (True, None)
+
+        store_id = (request.data.get("data") or {}).get("store_id")
+        if not store_id:
+            print("[EDGE] missing store_id for edge auth")
+            return (False, "missing store_id")
+
+        token_hash = hashlib.sha256(provided.encode("utf-8")).hexdigest()
+        edge_token = EdgeToken.objects.filter(
+            store_id=store_id,
+            token_hash=token_hash,
+            active=True,
+        ).first()
+        if edge_token:
+            EdgeToken.objects.filter(id=edge_token.id).update(last_used_at=timezone.now())
+            print("[EDGE] request autorizado via store token")
+            return (True, None)
+
+        if getattr(settings, "DEBUG", False):
+            expected = getattr(settings, "EDGE_SHARED_TOKEN", None) or os.getenv("EDGE_SHARED_TOKEN")
+            if expected and provided == expected:
+                print("[EDGE] request autorizado via EDGE_SHARED_TOKEN (DEBUG)")
+                return (True, None)
+
+        print("[EDGE] invalid edge token")
+        return (False, "invalid edge token")
 
     def _user_has_store_access(self, user, store_id: str) -> bool:
         org_ids = get_user_org_ids(user)
@@ -131,8 +147,11 @@ class EdgeEventsIngestView(APIView):
         else:
             ok, err = self._is_edge_request(request)
             if not ok:
-                if err == "EDGE_SHARED_TOKEN não configurado":
-                    return Response({"detail": err}, status=status.HTTP_403_FORBIDDEN)
+                if err == "missing store_id":
+                    return Response(
+                        {"detail": "store_id ausente para autenticação do edge."},
+                        status=status.HTTP_400_BAD_REQUEST,
+                    )
                 return Response({"detail": "Edge token inválido."}, status=status.HTTP_403_FORBIDDEN)
 
         # --- validar camera para eventos que dependem dela ---
