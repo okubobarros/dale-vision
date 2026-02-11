@@ -213,6 +213,25 @@ const Dashboard = () => {
     queryFn: storesService.getStores,
   })
 
+  const checkoutUrl = import.meta.env.VITE_STRIPE_CHECKOUT_URL || "/agendar-demo"
+
+  const trialBlockedStore = useMemo(() => {
+    return (stores ?? []).find(
+      (s) => s.status === "blocked" && s.blocked_reason === "trial_expired"
+    ) ?? null
+  }, [stores])
+
+  const trialEndsAtLabel = useMemo(() => {
+    if (!trialBlockedStore?.trial_ends_at) return null
+    try {
+      return new Date(trialBlockedStore.trial_ends_at).toLocaleString("pt-BR")
+    } catch {
+      return null
+    }
+  }, [trialBlockedStore])
+
+  const isTrialBlocked = Boolean(trialBlockedStore)
+
   const {
     data: edgeStatus,
     isLoading: edgeStatusLoading,
@@ -603,6 +622,69 @@ const Dashboard = () => {
         >
           Criar loja
         </Link>
+      </div>
+    )
+  }
+
+  if (isTrialBlocked) {
+    return (
+      <div className="space-y-6 sm:space-y-8">
+        <div className="bg-white rounded-2xl border border-gray-200 p-6 sm:p-8 shadow-sm">
+          <div className="flex items-center justify-between gap-4">
+            <div>
+              <h2 className="text-2xl font-bold text-gray-900">
+                Seu trial terminou
+              </h2>
+              <p className="text-sm text-gray-600 mt-2">
+                A loja{" "}
+                <span className="font-semibold">
+                  {trialBlockedStore?.name ?? "do trial"}
+                </span>{" "}
+                está bloqueada porque o período de teste acabou.
+              </p>
+              {trialEndsAtLabel && (
+                <p className="text-xs text-gray-500 mt-2">
+                  Expirou em: <span className="font-mono">{trialEndsAtLabel}</span>
+                </p>
+              )}
+            </div>
+            <div className="hidden sm:flex items-center justify-center rounded-full bg-red-50 px-4 py-2 text-xs font-semibold text-red-700 border border-red-200">
+              Trial expirado
+            </div>
+          </div>
+
+          <div className="mt-6 grid grid-cols-1 md:grid-cols-3 gap-4">
+            {[
+              "Alertas em tempo real",
+              "Relatórios e evidências",
+              "Monitoramento multi-lojas",
+            ].map((item) => (
+              <div
+                key={item}
+                className="rounded-xl border border-gray-100 bg-gray-50 p-4 text-sm text-gray-700"
+              >
+                {item}
+              </div>
+            ))}
+          </div>
+
+          <div className="mt-6 flex flex-col sm:flex-row gap-3">
+            <a
+              href={checkoutUrl}
+              target="_blank"
+              rel="noopener noreferrer"
+              className="inline-flex items-center justify-center rounded-lg bg-blue-600 px-5 py-3 text-sm font-semibold text-white hover:bg-blue-700"
+            >
+              Assinar agora
+            </a>
+            <Link
+              to="/agendar-demo"
+              className="inline-flex items-center justify-center rounded-lg border border-gray-200 bg-white px-5 py-3 text-sm font-semibold text-gray-700 hover:bg-gray-50"
+            >
+              Falar com especialista
+            </Link>
+          </div>
+        </div>
       </div>
     )
   }

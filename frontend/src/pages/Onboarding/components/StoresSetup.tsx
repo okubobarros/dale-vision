@@ -10,10 +10,14 @@ export default function StoresSetup({
   value,
   onChange,
   onNext,
+  isSubmitting = false,
+  submitError = "",
 }: {
   value: StoreDraft | null
   onChange: (v: StoreDraft) => void
-  onNext: () => void
+  onNext: (draft: StoreDraft) => Promise<void>
+  isSubmitting?: boolean
+  submitError?: string
 }) {
   const [touched, setTouched] = useState(false)
 
@@ -37,10 +41,10 @@ export default function StoresSetup({
     onChange(next)
   }
 
-  function handleNext() {
+  async function handleNext() {
     setTouched(true)
-    if (!canNext) return
-    onNext()
+    if (!canNext || isSubmitting) return
+    await onNext(form)
   }
 
   return (
@@ -64,6 +68,7 @@ export default function StoresSetup({
                 placeholder="Ex: Loja Centro"
                 value={form.name}
                 onChange={(e) => set("name", e.target.value)}
+                disabled={isSubmitting}
               />
             </Field>
 
@@ -74,6 +79,7 @@ export default function StoresSetup({
                 placeholder="São Paulo"
                 value={form.city}
                 onChange={(e) => set("city", e.target.value)}
+                disabled={isSubmitting}
               />
             </Field>
 
@@ -85,6 +91,7 @@ export default function StoresSetup({
                 maxLength={2}
                 value={form.state}
                 onChange={(e) => set("state", e.target.value.toUpperCase())}
+                disabled={isSubmitting}
               />
             </Field>
           </div>
@@ -92,16 +99,21 @@ export default function StoresSetup({
           <div className="pt-4 border-t border-slate-200">
             <button
               onClick={handleNext}
-              disabled={!canNext}
+              disabled={!canNext || isSubmitting}
               className="relative w-full rounded-2xl bg-gradient-to-r from-blue-400 via-cyan-300 to-purple-500 py-3.5 font-semibold text-black
                          shadow-[0_18px_40px_rgba(59,130,246,0.16)] hover:opacity-95 transition disabled:opacity-60"
             >
-              Próximo →
+              {isSubmitting ? "Salvando..." : "Próximo →"}
             </button>
 
             {!canNext && touched && (
               <p className="mt-3 text-xs text-red-600">
                 Revise os campos obrigatórios.
+              </p>
+            )}
+            {submitError && (
+              <p className="mt-3 text-xs text-red-600">
+                {submitError}
               </p>
             )}
           </div>

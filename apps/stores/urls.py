@@ -1,11 +1,12 @@
 # apps/stores/urls.py (crie se não existe)
 from django.urls import path, include
 from rest_framework.routers import DefaultRouter
-from .views import StoreViewSet
+from .views import StoreViewSet, EmployeeViewSet
 from .views_edge_status import StoreEdgeStatusView
 
 router = DefaultRouter()
 router.register(r'stores', StoreViewSet)
+router.register(r'employees', EmployeeViewSet, basename="employees")
 
 urlpatterns = [
     path('', include(router.urls)),

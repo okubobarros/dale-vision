@@ -10,7 +10,7 @@ from django.db import connection
 from django.utils import timezone
 from django.conf import settings
 from datetime import timedelta
-from apps.core.models import Store, OrgMember, Organization, Camera
+from apps.core.models import Store, OrgMember, Organization, Camera, Employee
 from apps.edge.models import EdgeToken
 from apps.cameras.limits import enforce_trial_camera_limit
 from apps.billing.utils import (
@@ -20,10 +20,29 @@ from apps.billing.utils import (
 import hashlib
 import secrets
 import uuid
-from .serializers import StoreSerializer
+from .serializers import StoreSerializer, EmployeeSerializer
 from apps.stores.services.user_uuid import ensure_user_uuid
 
 logger = logging.getLogger(__name__)
+
+def _expire_trial_stores(qs):
+    try:
+        now = timezone.now()
+        expired_ids = list(
+            qs.filter(
+                status="trial",
+                trial_ends_at__isnull=False,
+                trial_ends_at__lt=now,
+            ).values_list("id", flat=True)
+        )
+        if expired_ids:
+            Store.objects.filter(id__in=expired_ids).update(
+                status="blocked",
+                blocked_reason="trial_expired",
+                updated_at=now,
+            )
+    except Exception:
+        logger.exception("[STORE] failed to expire trial stores")
 
 def get_user_org_ids(user):
     user_uuid = ensure_user_uuid(user)
@@ -81,6 +100,7 @@ class StoreViewSet(viewsets.ModelViewSet):
         org_id = self.request.query_params.get("org_id")
         if org_id:
             qs = qs.filter(org_id=org_id)
+        _expire_trial_stores(qs)
         return qs
     
     def list(self, request):
@@ -253,6 +273,15 @@ class StoreViewSet(viewsets.ModelViewSet):
         now = timezone.now()
         user_uuid = None
 
+        def _trial_defaults():
+            if payload.get("status") or payload.get("trial_started_at") or payload.get("trial_ends_at"):
+                return {}
+            return {
+                "status": "trial",
+                "trial_started_at": now,
+                "trial_ends_at": now + timedelta(hours=72),
+            }
+
         if requested_org_id:
             if not (getattr(user, "is_superuser", False) or getattr(user, "is_staff", False)):
                 user_uuid = ensure_user_uuid(user)
@@ -269,7 +298,12 @@ class StoreViewSet(viewsets.ModelViewSet):
                 except Exception:
                     user_uuid = None
             enforce_trial_store_limit(org_id=requested_org_id, actor_user_id=user_uuid)
-            store = serializer.save(org_id=requested_org_id, created_at=now, updated_at=now)
+            store = serializer.save(
+                org_id=requested_org_id,
+                created_at=now,
+                updated_at=now,
+                **_trial_defaults(),
+            )
             logger.info("[STORE] created store_id=%s org_id=%s user_id=%s", str(store.id), str(requested_org_id), getattr(user, "id", None))
             return
 
@@ -281,7 +315,12 @@ class StoreViewSet(viewsets.ModelViewSet):
                 except Exception:
                     user_uuid = None
             enforce_trial_store_limit(org_id=org_ids[0], actor_user_id=user_uuid)
-            store = serializer.save(org_id=org_ids[0], created_at=now, updated_at=now)
+            store = serializer.save(
+                org_id=org_ids[0],
+                created_at=now,
+                updated_at=now,
+                **_trial_defaults(),
+            )
             logger.info("[STORE] created store_id=%s org_id=%s user_id=%s", str(store.id), str(org_ids[0]), getattr(user, "id", None))
             return
         if len(org_ids) > 1:
@@ -305,7 +344,12 @@ class StoreViewSet(viewsets.ModelViewSet):
             )
             logger.info("[ORG] created org_id=%s user_uuid=%s", str(org.id), str(user_uuid))
             enforce_trial_store_limit(org_id=org.id, actor_user_id=user_uuid)
-            store = serializer.save(org=org, created_at=now, updated_at=now)
+            store = serializer.save(
+                org=org,
+                created_at=now,
+                updated_at=now,
+                **_trial_defaults(),
+            )
             logger.info("[STORE] created store_id=%s org_id=%s user_id=%s", str(store.id), str(org.id), getattr(user, "id", None))
         except (ProgrammingError, OperationalError) as exc:
             print(f"[RBAC] falha ao criar org padrão: {exc}")
@@ -509,3 +553,48 @@ class StoreViewSet(viewsets.ModelViewSet):
                 },
                 'stores': []
             })
+
+
+class EmployeeViewSet(viewsets.ModelViewSet):
+    queryset = Employee.objects.all()
+    serializer_class = EmployeeSerializer
+    permission_classes = [permissions.IsAuthenticated]
+
+    def get_queryset(self):
+        qs = Employee.objects.all()
+        user = self.request.user
+        if getattr(user, "is_superuser", False) or getattr(user, "is_staff", False):
+            return qs
+        org_ids = get_user_org_ids(user)
+        if not org_ids:
+            return qs.none()
+        store_ids = Store.objects.filter(org_id__in=org_ids).values_list("id", flat=True)
+        return qs.filter(store_id__in=list(store_ids))
+
+    def _require_store_access(self, user, store: Store):
+        if getattr(user, "is_superuser", False) or getattr(user, "is_staff", False):
+            return
+        org_ids = get_user_org_ids(user)
+        if not org_ids or str(store.org_id) not in {str(o) for o in org_ids}:
+            raise PermissionDenied("Você não tem acesso a esta loja.")
+
+    def create(self, request, *args, **kwargs):
+        is_many = isinstance(request.data, list)
+        serializer = self.get_serializer(data=request.data, many=is_many)
+        serializer.is_valid(raise_exception=True)
+        self.perform_create(serializer)
+        headers = self.get_success_headers(serializer.data)
+        return Response(serializer.data, status=status.HTTP_201_CREATED, headers=headers)
+
+    def perform_create(self, serializer):
+        user = self.request.user
+        if isinstance(serializer.validated_data, list):
+            for item in serializer.validated_data:
+                store = item.get("store")
+                if store:
+                    self._require_store_access(user, store)
+        else:
+            store = serializer.validated_data.get("store")
+            if store:
+                self._require_store_access(user, store)
+        serializer.save()

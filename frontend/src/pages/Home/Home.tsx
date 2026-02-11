@@ -6,7 +6,7 @@ import logo from "../../assets/logo.png"
 import { useRevealOnScroll } from "../../hooks/useRevealOnScroll"
 
 const WHATSAPP_DEMO =
-  "https://api.whatsapp.com/send/?phone=5511996918070&text=Quero%20meu%20teste%20de%2048h%20da%20DaleVision&type=phone_number&app_absent=0"
+  "https://api.whatsapp.com/send/?phone=5511996918070&text=Quero%20meu%20teste%20de%2072h%20da%20DaleVision&type=phone_number&app_absent=0"
 
 // === BRAND (use sempre a mesma assinatura) ===
 function GradientTitle({ children }: { children: React.ReactNode }) {
@@ -157,12 +157,12 @@ export default function HomePage() {
     applicationCategory: "BusinessApplication",
     operatingSystem: "Web",
     description:
-      "Reduza horas ociosas e não perca clientes por falta de atendimento. Teste 48h gratuito usando suas câmeras Intelbras/CFTV existentes.",
+      "Reduza horas ociosas e não perca clientes por falta de atendimento. Teste 72h gratuito usando suas câmeras Intelbras/CFTV existentes.",
     offers: {
       "@type": "Offer",
       price: "0",
       priceCurrency: "BRL",
-      description: "Teste 48h gratuito com relatório de ociosidade e filas",
+      description: "Teste 72h gratuito com relatório de ociosidade e filas",
     },
   }
 
@@ -236,7 +236,7 @@ export default function HomePage() {
       {
         icon: "⏱️",
         q: "Quanto tempo leva para ver resultados?",
-        a: "Em até 48h você recebe o diagnóstico inicial. Com 2–4 semanas, já dá para ver queda de ociosidade e melhoria de cobertura em horários críticos.",
+        a: "Em até 72h você recebe o diagnóstico inicial. Com 2–4 semanas, já dá para ver queda de ociosidade e melhoria de cobertura em horários críticos.",
       },
       {
         icon: "🔄",
@@ -260,13 +260,13 @@ export default function HomePage() {
         <title>DaleVision IA</title>
         <meta
           name="description"
-          content="Multilojistas reduzem custos e aumentam conversão com evidências: ociosidade, filas e fluxo em dashboards e alertas. Teste 48h grátis."
+          content="Multilojistas reduzem custos e aumentam conversão com evidências: ociosidade, filas e fluxo em dashboards e alertas. Teste 72h grátis."
         />
         <link rel="canonical" href="https://dalevision.com/" />
         <meta property="og:title" content="DaleVision | Evidência operacional com IA" />
         <meta
           property="og:description"
-          content="Transforme CFTV em provas e decisões: ociosidade, filas e fluxo. Teste 48h grátis com diagnóstico."
+          content="Transforme CFTV em provas e decisões: ociosidade, filas e fluxo. Teste 72h grátis com diagnóstico."
         />
         <meta property="og:type" content="website" />
         <meta property="og:locale" content="pt_BR" />
@@ -383,9 +383,9 @@ export default function HomePage() {
                 ))}
               </div>
 
-              <div id="teste48h" className="mt-8">
+              <div id="teste72h" className="mt-8">
                 <BrandButton  href="/agendar-demo" className="w-full">
-                  🚀 QUERO MEU DIAGNÓSTICO EM 48h
+                  🚀 QUERO MEU DIAGNÓSTICO EM 72h
                 </BrandButton>
 
                 <div className="mt-6 flex flex-wrap gap-2 justify-center">
@@ -560,7 +560,7 @@ export default function HomePage() {
             <div className="mt-10 text-center">
               <BrandButton  href="/agendar-demo">Parar de perder clientes →</BrandButton>
               <p className="mt-3 text-sm text-white/60">
-                Você vê o diagnóstico em 48h, com evidências e recomendações.
+                Você vê o diagnóstico em 72h, com evidências e recomendações.
               </p>
             </div>
           </div>
@@ -758,7 +758,7 @@ export default function HomePage() {
                 },
                 {
                   step: "2",
-                  title: "Capture 48h de operação real",
+                  title: "Capture 72h de operação real",
                   desc: "Métricas por turno: ociosidade, filas, fluxo e eventos.",
                   highlight: "Sem achismo",
                 },
@@ -787,7 +787,7 @@ export default function HomePage() {
 
             <div className="mt-8 text-center">
               <BrandButton  href="/agendar-demo">
-                👉 Começar meu teste 48h agora
+                👉 Começar meu teste 72h agora
               </BrandButton>
               <p className="mt-3 text-sm text-white/60">
                 Sem trocar câmeras • Sem cartão • Sem fidelidade
@@ -889,7 +889,7 @@ export default function HomePage() {
             </h2>
 
             <p className="mt-4 text-white/70 max-w-xl mx-auto relative z-10">
-              Conectamos suas câmeras e em 48h você recebe um diagnóstico com evidências e recomendações.
+              Conectamos suas câmeras e em 72h você recebe um diagnóstico com evidências e recomendações.
             </p>
 
             <div className="mt-6 max-w-md mx-auto relative z-10">
@@ -910,7 +910,7 @@ export default function HomePage() {
 
             <div className="mt-8 relative z-10">
               <BrandButton  href="/agendar-demo" className="px-12 py-5">
-                🎯 QUERO MEU RELATÓRIO GRÁTIS EM 48h
+                🎯 QUERO MEU RELATÓRIO GRÁTIS EM 72h
               </BrandButton>
               <p className="mt-4 text-sm text-white/60">
                 <strong>Vagas limitadas esta semana</strong> • Sem cartão • Sem compromisso
@@ -958,7 +958,7 @@ export default function HomePage() {
           rel="noopener noreferrer"
           className="dv-cta block w-full rounded-2xl bg-gradient-to-r from-blue-400 via-cyan-300 to-purple-500 px-5 py-4 text-center font-bold text-black shadow-lg"
         >
-          🚀 TESTE 48h GRÁTIS
+          🚀 TESTE 72h GRÁTIS
         </a>
       </div>
     </div>

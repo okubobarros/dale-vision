@@ -1,5 +1,5 @@
 // frontend/src/pages/Register/Register.tsx
-import { useMemo, useState } from "react"
+import { useCallback, useEffect, useMemo, useState } from "react"
 import { Link } from "react-router-dom"
 import logo from "../../assets/logo.png"
 import SetupProgress from "../Onboarding/components/SetupProgress"
@@ -14,6 +14,7 @@ export default function Register() {
   const [loading, setLoading] = useState(false)
   const [success, setSuccess] = useState(false)
   const [submitError, setSubmitError] = useState("")
+  const [cooldownUntil, setCooldownUntil] = useState<number | null>(null)
 
   const [fullName, setFullName] = useState("")
   const [email, setEmail] = useState("")
@@ -31,35 +32,75 @@ export default function Register() {
   }, [fullName, email, company, password])
 
   const canSubmit = Object.keys(errors).length === 0
+  const isCooldown = (cooldownUntil ?? 0) > Date.now()
+  const isLocked = loading || success || isCooldown
 
-  async function handleSubmit() {
-    if (!canSubmit) return
+  useEffect(() => {
+    if (!cooldownUntil) return
+    const remaining = cooldownUntil - Date.now()
+    if (remaining <= 0) {
+      setCooldownUntil(null)
+      return
+    }
+    const timeoutId = window.setTimeout(() => setCooldownUntil(null), remaining)
+    return () => window.clearTimeout(timeoutId)
+  }, [cooldownUntil])
+
+  const handleSubmit = useCallback(async (): Promise<void> => {
+    if (!canSubmit || isLocked) return
+
     setLoading(true)
     setSubmitError("")
+    setCooldownUntil(Date.now() + 5000)
 
     const redirectTo = getAuthCallbackUrl()
 
-    const { error } = await supabase.auth.signUp({
-      email: email.trim(),
-      password,
-      options: {
-        emailRedirectTo: redirectTo,
-        data: {
-          full_name: fullName.trim(),
-          company: company.trim(),
+    try {
+      const { error } = await supabase.auth.signUp({
+        email: email.trim(),
+        password,
+        options: {
+          emailRedirectTo: redirectTo,
+          data: {
+            full_name: fullName.trim(),
+            company: company.trim(),
+          },
         },
-      },
-    })
+      })
 
-    if (error) {
-      setSubmitError(error.message || "Não foi possível criar sua conta.")
+      if (error) {
+        const status = (error as { status?: number }).status
+        if (status === 429) {
+          setSubmitError(
+            "Muitos envios recentes. Aguarde alguns minutos antes de tentar novamente."
+          )
+          return
+        }
+        setSubmitError(error.message || "Não foi possível criar sua conta.")
+        return
+      }
+
+      setSuccess(true)
+    } catch (err) {
+      const status = (err as { status?: number }).status
+      if (status === 429) {
+        setSubmitError(
+          "Muitos envios recentes. Aguarde alguns minutos antes de tentar novamente."
+        )
+      } else {
+        setSubmitError("Não foi possível criar sua conta.")
+      }
+    } finally {
       setLoading(false)
-      return
     }
-
-    setSuccess(true)
-    setLoading(false)
-  }
+  }, [
+    canSubmit,
+    isLocked,
+    email,
+    password,
+    fullName,
+    company,
+  ])
 
   return (
     <div className="relative min-h-screen w-full bg-gradient-to-b from-white to-slate-50 text-slate-900 flex items-center justify-center px-4 py-10 overflow-hidden">
@@ -81,7 +122,7 @@ export default function Register() {
             </div>
             <div>
               <div className="font-semibold text-lg">Dale Vision</div>
-              <div className="text-xs text-slate-500">Setup rápido • Trial 48h</div>
+              <div className="text-xs text-slate-500">Setup rápido • Trial 72h</div>
             </div>
           </div>
 
@@ -98,7 +139,7 @@ export default function Register() {
           <div className="mt-8 space-y-5">
             {success && (
               <div className="rounded-2xl border border-emerald-200 bg-emerald-50 p-4 text-emerald-800">
-                <div className="font-semibold">Verifique seu e-mail para ativar sua conta</div>
+                <div className="font-semibold">E-mail enviado! Verifique sua caixa de entrada.</div>
                 <p className="mt-1 text-sm text-emerald-700">
                   Enviamos um link de confirmação para <b>{email}</b>.
                   Após confirmar, você será redirecionado para continuar o onboarding.
@@ -119,7 +160,7 @@ export default function Register() {
                   placeholder="Ex: João Silva"
                   value={fullName}
                   onChange={(e) => setFullName(e.target.value)}
-                  disabled={loading || success}
+                  disabled={isLocked}
                 />
               </div>
               {errors.fullName && <p className="mt-2 text-xs text-red-600">{errors.fullName}</p>}
@@ -134,7 +175,7 @@ export default function Register() {
                   placeholder="nome@empresa.com.br"
                   value={email}
                   onChange={(e) => setEmail(e.target.value)}
-                  disabled={loading || success}
+                  disabled={isLocked}
                 />
               </div>
               {errors.email && <p className="mt-2 text-xs text-red-600">{errors.email}</p>}
@@ -149,7 +190,7 @@ export default function Register() {
                   placeholder="Sua rede de lojas"
                   value={company}
                   onChange={(e) => setCompany(e.target.value)}
-                  disabled={loading || success}
+                  disabled={isLocked}
                 />
               </div>
               {errors.company && <p className="mt-2 text-xs text-red-600">{errors.company}</p>}
@@ -168,14 +209,14 @@ export default function Register() {
                   autoComplete="new-password"
                   autoCapitalize="none"
                   autoCorrect="off"
-                  disabled={loading || success}
+                  disabled={isLocked}
                 />
                 <button
                   type="button"
                   onClick={() => setShowPass((s) => !s)}
                   className="text-slate-500 hover:text-slate-900"
                   aria-label={showPass ? "Ocultar senha" : "Mostrar senha"}
-                  disabled={loading || success}
+                  disabled={isLocked}
                 >
                   {showPass ? (
                     <svg
@@ -214,12 +255,17 @@ export default function Register() {
             {/* CTA (brand gradient) */}
             <button
               onClick={handleSubmit}
-              disabled={!canSubmit || loading || success}
+              disabled={!canSubmit || isLocked}
               className="relative mt-4 w-full rounded-2xl bg-gradient-to-r from-blue-400 via-cyan-300 to-purple-500 py-4 font-semibold text-black
                          shadow-[0_18px_40px_rgba(59,130,246,0.18)] hover:opacity-95 transition disabled:opacity-60"
             >
               <span className="pointer-events-none absolute inset-0 rounded-2xl opacity-0 hover:opacity-100 transition blur-xl bg-gradient-to-r from-blue-400 via-cyan-300 to-purple-500" />
-              <span className="relative">{loading ? "Criando..." : "Criar Conta →"}</span>
+              <span className="relative flex items-center justify-center gap-2">
+                {loading && (
+                  <span className="h-4 w-4 animate-spin rounded-full border-2 border-black/40 border-t-black" />
+                )}
+                {loading ? "Enviando..." : "Criar Conta →"}
+              </span>
             </button>
 
             <p className="text-center text-sm text-slate-600">

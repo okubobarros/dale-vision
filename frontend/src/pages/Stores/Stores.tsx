@@ -22,6 +22,8 @@ const STATUS_OPTIONS: Array<{ value: StoreStatus; label: string }> = [
   { value: 'active', label: 'Ativa' },
   { value: 'inactive', label: 'Inativa' },
   { value: 'maintenance', label: 'Manutencao' },
+  { value: 'trial', label: 'Trial' },
+  { value: 'blocked', label: 'Bloqueada' },
 ];
 
 const DEMO_URL = 'https://app.dalevision.com/agendar-demo';
@@ -840,4 +842,3 @@ const Stores = () => {
 };
 
 export default Stores;
-

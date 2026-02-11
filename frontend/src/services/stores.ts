@@ -3,7 +3,7 @@ import api from './api';
 import type { StoreDashboard } from '../types/dashboard';
 import { USE_MOCK_DATA } from '../lib/mock';
 
-export type StoreStatus = 'active' | 'inactive' | 'maintenance';
+export type StoreStatus = 'active' | 'inactive' | 'maintenance' | 'trial' | 'blocked';
 export type StorePlan = 'trial' | 'basic' | 'pro' | 'enterprise';
 
 export interface Store {
@@ -17,6 +17,9 @@ export interface Store {
   email?: string;
   plan: StorePlan;
   status: StoreStatus;
+  trial_started_at?: string | null;
+  trial_ends_at?: string | null;
+  blocked_reason?: string | null;
   created_at: string;
   updated_at: string;
   owner_email: string;
@@ -280,7 +283,7 @@ export const storesService = {
       state,
       phone,
       email,
-      status: status ?? 'active',
+      status,
     });
     const response = await api.post('/v1/stores/', payload);
     return response.data;

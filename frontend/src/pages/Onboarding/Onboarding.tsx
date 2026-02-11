@@ -2,25 +2,36 @@
 import { useEffect, useState } from "react"
 import { useNavigate } from "react-router-dom"
 
+import { useAuth } from "../../contexts/AuthContext"
+import { storesService } from "../../services/stores"
+import { employeesService, type EmployeeRole } from "../../services/employees"
 import OnboardingProgress from "./components/OnboardingProgress"
 import StoresSetup, { type StoreDraft } from "./components/StoresSetup"
 import EmployeesSetup, { type EmployeeDraft } from "./components/EmployeesSetup"
 
 export default function Onboarding() {
   const navigate = useNavigate()
+  const { isAuthenticated, isLoading } = useAuth()
   const [step, setStep] = useState<1 | 2>(1)
 
   // estado local para demo (sem backend)
   const [store, setStore] = useState<StoreDraft | null>(null)
   const [employees, setEmployees] = useState<EmployeeDraft[]>([])
+  const [storeId, setStoreId] = useState<string | null>(null)
+  const [storeSaving, setStoreSaving] = useState(false)
+  const [storeError, setStoreError] = useState("")
+  const [employeesSaving, setEmployeesSaving] = useState(false)
+  const [employeesError, setEmployeesError] = useState("")
 
   useEffect(() => {
     window.scrollTo({ top: 0, behavior: "smooth" })
   }, [step])
 
-  function handleNext() {
-    if (step === 1) setStep(2)
-  }
+  useEffect(() => {
+    if (!isLoading && !isAuthenticated) {
+      navigate("/login", { replace: true })
+    }
+  }, [isAuthenticated, isLoading, navigate])
 
   function handlePrev() {
     if (step > 1) {
@@ -28,9 +39,77 @@ export default function Onboarding() {
     }
   }
 
-  function handleComplete() {
-    localStorage.setItem("demo_onboarding", JSON.stringify({ store, employees }))
-    navigate("/app/dashboard?openEdgeSetup=1")
+  async function handleCreateStore(draft: StoreDraft) {
+    if (storeSaving || storeId) {
+      setStep(2)
+      return
+    }
+
+    setStoreSaving(true)
+    setStoreError("")
+    try {
+      const created = await storesService.createStore({
+        name: draft.name,
+        city: draft.city,
+        state: draft.state,
+      })
+      if (!created?.id) {
+        throw new Error("Falha ao criar a loja.")
+      }
+      setStoreId(created.id)
+      setStore(draft)
+      setStep(2)
+    } catch (error) {
+      console.error("[Onboarding] create store failed", error)
+      setStoreError("Não foi possível salvar sua loja. Tente novamente.")
+    } finally {
+      setStoreSaving(false)
+    }
+  }
+
+  async function handleComplete(list: EmployeeDraft[]) {
+    if (!isAuthenticated) {
+      navigate("/login", { replace: true })
+      return
+    }
+    if (!storeId) {
+      setEmployeesError("Crie a loja primeiro.")
+      return
+    }
+
+    setEmployeesSaving(true)
+    setEmployeesError("")
+
+    try {
+      if (list.length > 0) {
+        const roleMap: Record<string, EmployeeRole> = {
+          Gerente: "manager",
+          Caixa: "cashier",
+          Vendedor: "seller",
+          Segurança: "security",
+          Estoque: "stock",
+          Outro: "other",
+        }
+
+        const payload = list.map((e) => ({
+          store_id: storeId,
+          full_name: e.name.trim(),
+          email: e.email?.trim() || undefined,
+          role: roleMap[e.role] ?? "other",
+          role_other: e.role === "Outro" ? e.roleOther.trim() : undefined,
+        }))
+
+        await employeesService.createEmployees(payload)
+      }
+
+      localStorage.setItem("demo_onboarding", JSON.stringify({ store, storeId, employees: list }))
+      navigate("/app/dashboard?openEdgeSetup=1", { replace: true })
+    } catch (error) {
+      console.error("[Onboarding] create employees failed", error)
+      setEmployeesError("Não foi possível salvar a equipe. Tente novamente.")
+    } finally {
+      setEmployeesSaving(false)
+    }
   }
 
   return (
@@ -48,7 +127,13 @@ export default function Onboarding() {
 
           <div className="mt-10">
             {step === 1 && (
-              <StoresSetup value={store} onChange={setStore} onNext={handleNext} />
+              <StoresSetup
+                value={store}
+                onChange={setStore}
+                onNext={handleCreateStore}
+                isSubmitting={storeSaving}
+                submitError={storeError}
+              />
             )}
 
             {step === 2 && (
@@ -57,6 +142,8 @@ export default function Onboarding() {
                 onChange={setEmployees}
                 onPrev={handlePrev}
                 onNext={handleComplete}
+                isSubmitting={employeesSaving}
+                submitError={employeesError}
               />
             )}
           </div>

@@ -43,7 +43,7 @@ export default function Setup() {
       },
       {
         key: "trial",
-        title: "4) Iniciar Trial (48h)",
+        title: "4) Iniciar Trial (72h)",
         desc: "O trial só começa quando Agent + 1 câmera estão OK.",
       },
     ],
@@ -409,7 +409,7 @@ export default function Setup() {
         {step === "trial" && (
           <div className="space-y-4">
             <div>
-              <div className="text-lg font-bold text-gray-900">Iniciar Trial (48h)</div>
+              <div className="text-lg font-bold text-gray-900">Iniciar Trial (72h)</div>
               <div className="text-sm text-gray-600 mt-1">
                 Trial só começa quando: Agent online + Câmera OK + ROI definido.
               </div>

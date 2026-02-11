@@ -20,11 +20,15 @@ export default function EmployeesSetup({
   onChange,
   onPrev,
   onNext,
+  isSubmitting = false,
+  submitError = "",
 }: {
   employees: EmployeeDraft[]
   onChange: (v: EmployeeDraft[]) => void
   onPrev: () => void
-  onNext: () => void
+  onNext: (employees: EmployeeDraft[]) => Promise<void>
+  isSubmitting?: boolean
+  submitError?: string
 }) {
   const [name, setName] = useState("")
   const [role, setRole] = useState("")
@@ -70,6 +74,11 @@ export default function EmployeesSetup({
 
   function removeEmployee(id: string) {
     onChange(employees.filter((e) => e.id !== id))
+  }
+
+  async function handleNext() {
+    if (isSubmitting) return
+    await onNext(employees)
   }
 
   return (
@@ -192,13 +201,19 @@ export default function EmployeesSetup({
         </button>
 
         <button
-          onClick={onNext}
+          onClick={handleNext}
+          disabled={isSubmitting}
           className="w-full sm:w-1/2 rounded-2xl bg-gradient-to-r from-blue-400 via-cyan-300 to-purple-500 py-3.5 font-semibold text-black
-                     shadow-[0_18px_40px_rgba(59,130,246,0.16)] hover:opacity-95 transition"
+                     shadow-[0_18px_40px_rgba(59,130,246,0.16)] hover:opacity-95 transition disabled:opacity-60"
         >
-          Continuar para ativação →
+          {isSubmitting ? "Salvando..." : "Continuar para ativação →"}
         </button>
       </div>
+      {submitError && (
+        <div className="rounded-2xl border border-red-200 bg-red-50 p-4 text-sm text-red-700">
+          {submitError}
+        </div>
+      )}
     </div>
   )
 }

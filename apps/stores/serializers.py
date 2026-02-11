@@ -1,6 +1,7 @@
 # apps/stores/serializers.py
+from django.utils import timezone
 from rest_framework import serializers
-from apps.core.models import Store
+from apps.core.models import Store, Employee
 
 class StoreSerializer(serializers.ModelSerializer):
     org_id = serializers.UUIDField(write_only=True, required=False)
@@ -43,3 +44,37 @@ class StoreSerializer(serializers.ModelSerializer):
         extra_kwargs = {
             "org": {"required": False, "allow_null": True},
         }
+
+
+class EmployeeSerializer(serializers.ModelSerializer):
+    store_id = serializers.UUIDField(write_only=True, required=True)
+
+    def validate(self, attrs):
+        store_id = attrs.pop("store_id", None)
+        if store_id is not None and "store" not in attrs:
+            try:
+                attrs["store"] = Store.objects.get(id=store_id)
+            except Store.DoesNotExist:
+                raise serializers.ValidationError({"store_id": "Loja inválida."})
+        return attrs
+
+    def create(self, validated_data):
+        validated_data.setdefault("created_at", timezone.now())
+        validated_data.setdefault("active", True)
+        return super().create(validated_data)
+
+    class Meta:
+        model = Employee
+        fields = [
+            "id",
+            "store",
+            "store_id",
+            "full_name",
+            "email",
+            "role",
+            "role_other",
+            "external_id",
+            "active",
+            "created_at",
+        ]
+        read_only_fields = ["id", "created_at"]
