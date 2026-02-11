@@ -316,7 +316,7 @@ export default function AgendarDemo() {
             </div>
             <div>
               <h1 className="text-xl sm:text-2xl font-extrabold text-slate-900 tracking-tight">
-                📅 Sua demo do Dale Vision está quase pronta!
+                📅 Sua demonstração da Dale Vision está quase pronta!
               </h1>
             </div>
           </div>
