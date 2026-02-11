@@ -157,7 +157,7 @@ class SupabaseJWTAuthentication:
 
         token = auth[1].decode("utf-8", errors="ignore")
         token_short = _mask_token(token)
-        request_id = request.headers.get("X-Request-ID") or uuid4().hex
+        request_id = (request.headers.get("X-Request-ID") or uuid4().hex)[:12]
 
         try:
             url, key = _get_supabase_config()

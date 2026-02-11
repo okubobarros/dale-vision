@@ -8,7 +8,14 @@ Build:
 `pip install -U pip setuptools wheel && pip install -r requirements.prod.txt`
 
 Start:
-`bash -lc "python manage.py migrate --noinput && gunicorn backend.wsgi:application --bind 0.0.0.0:$PORT --timeout 120"`
+Build Command:
+`bash bin/render_build.sh`
+
+Start Command:
+`bash bin/render_start.sh`
+
+Nota:
+- O start não deve executar migrate/collectstatic para não atrasar o bind do `PORT`.
 
 Variaveis recomendadas:
 - PYTHON_VERSION=3.12.3

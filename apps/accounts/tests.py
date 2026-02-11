@@ -124,3 +124,12 @@ class SupabaseAuthFailureTests(APITestCase):
         with override_settings(SUPABASE_URL=None, SUPABASE_KEY=None):
             with self.assertRaises(AuthenticationFailed):
                 auth.authenticate(request)
+
+
+class SetupStateUnauthenticatedTests(APITestCase):
+    def test_setup_state_returns_401_json_when_missing_auth(self):
+        response = self.client.get("/api/me/setup-state/")
+        self.assertEqual(response.status_code, 401)
+        self.assertFalse(response.data.get("ok"))
+        self.assertEqual(response.data.get("error"), "not_authenticated")
+        self.assertIn("request_id", response.data)

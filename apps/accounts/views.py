@@ -1,10 +1,13 @@
 # apps/accounts/views.py
 import logging
+from uuid import uuid4
 from rest_framework import status
 from rest_framework.response import Response
 from rest_framework.views import APIView
 from rest_framework.permissions import AllowAny, IsAuthenticated
+from rest_framework.exceptions import AuthenticationFailed
 from knox.models import AuthToken
+from knox.auth import TokenAuthentication
 from django.contrib.auth import authenticate
 from django.db import connection
 
@@ -12,7 +15,7 @@ from drf_yasg.utils import swagger_auto_schema  # ✅
 from drf_yasg import openapi  # (opcional)
 
 from .serializers import RegisterSerializer, LoginSerializer
-from .auth_supabase import get_user_from_supabase_token
+from .auth_supabase import get_user_from_supabase_token, SupabaseJWTAuthentication
 from apps.core.models import OrgMember, Store, Camera
 from apps.stores.services.user_uuid import upsert_user_id_map
 
@@ -173,16 +176,54 @@ class MeView(APIView):
 
 
 class SetupStateView(APIView):
-    permission_classes = [IsAuthenticated]
+    permission_classes = [AllowAny]
+    authentication_classes = []
 
     def get(self, request):
-        user = request.user
+        request_id = (request.headers.get("X-Request-ID") or uuid4().hex)[:12]
+
+        def respond(payload: dict, status_code: int):
+            payload["request_id"] = request_id
+            return Response(payload, status=status_code)
+
+        def not_authenticated(reason: str):
+            logger.info("[SETUP_STATE] request_id=%s not_authenticated reason=%s", request_id, reason)
+            return respond({"ok": False, "error": "not_authenticated"}, status.HTTP_401_UNAUTHORIZED)
+
+        user = None
+        try:
+            supa_auth = SupabaseJWTAuthentication()
+            supa_result = supa_auth.authenticate(request)
+            if supa_result:
+                user = supa_result[0]
+        except AuthenticationFailed as exc:
+            logger.warning(
+                "[SETUP_STATE] request_id=%s supabase_auth_failed error=%s",
+                request_id,
+                str(exc) or "auth_failed",
+            )
+            return not_authenticated("supabase_auth_failed")
+        except Exception:
+            logger.exception("[SETUP_STATE] request_id=%s supabase_auth_exception", request_id)
+            return not_authenticated("supabase_auth_exception")
+
+        if not user:
+            try:
+                knox_auth = TokenAuthentication()
+                knox_result = knox_auth.authenticate(request)
+                if knox_result:
+                    user = knox_result[0]
+            except Exception:
+                logger.exception("[SETUP_STATE] request_id=%s knox_auth_exception", request_id)
+                return not_authenticated("knox_auth_exception")
+
         if not user or not getattr(user, "is_authenticated", False):
-            return Response({"detail": "Usuário não autenticado."}, status=status.HTTP_401_UNAUTHORIZED)
+            return not_authenticated("missing_user")
 
         def _no_store_response(*, org_count: int = 0):
-            return Response(
+            return respond(
                 {
+                    "ok": True,
                     "state": "no_store",
                     "has_store": False,
                     "has_edge": False,
@@ -190,7 +231,7 @@ class SetupStateView(APIView):
                     "org_count": org_count,
                     "primary_store_id": None,
                 },
-                status=status.HTTP_200_OK,
+                status.HTTP_200_OK,
             )
 
         try:
@@ -201,7 +242,11 @@ class SetupStateView(APIView):
                 try:
                     user_uuid = upsert_user_id_map(user, email=getattr(user, "email", None))
                 except Exception:
-                    logger.warning("[SETUP_STATE] user_id_map failed user_id=%s", user.id)
+                    logger.warning(
+                        "[SETUP_STATE] request_id=%s user_id_map failed user_id=%s",
+                        request_id,
+                        user.id,
+                    )
                     return _no_store_response()
 
                 org_ids = list(
@@ -226,15 +271,17 @@ class SetupStateView(APIView):
                 ).exists()
 
             logger.info(
-                "[SETUP_STATE] user_id=%s has_store=%s has_edge=%s store_count=%s",
+                "[SETUP_STATE] request_id=%s user_id=%s has_store=%s has_edge=%s store_count=%s",
+                request_id,
                 user.id,
                 has_store,
                 has_edge,
                 store_count,
             )
 
-            return Response(
+            return respond(
                 {
+                    "ok": True,
                     "state": "ready",
                     "has_store": has_store,
                     "has_edge": has_edge,
@@ -242,8 +289,20 @@ class SetupStateView(APIView):
                     "org_count": org_count,
                     "primary_store_id": str(store_ids[0]) if store_ids else None,
                 },
-                status=status.HTTP_200_OK,
+                status.HTTP_200_OK,
             )
         except Exception:
-            logger.exception("[SETUP_STATE] failed user_id=%s", getattr(user, "id", None))
-            return _no_store_response()
+            logger.exception("[SETUP_STATE] request_id=%s failed user_id=%s", request_id, getattr(user, "id", None))
+            return respond(
+                {
+                    "ok": False,
+                    "error": "internal_error",
+                    "state": "no_store",
+                    "has_store": False,
+                    "has_edge": False,
+                    "store_count": 0,
+                    "org_count": 0,
+                    "primary_store_id": None,
+                },
+                status.HTTP_200_OK,
+            )
