@@ -276,8 +276,15 @@ export default function Register() {
             </p>
 
             <p className="mt-4 text-center text-[11px] text-slate-500">
-              AO SE REGISTRAR, VOCÊ CONCORDA COM NOSSOS <span className="underline">TERMOS DE USO</span> E{" "}
-              <span className="underline">POLÍTICA DE PRIVACIDADE</span>.
+              AO SE REGISTRAR, VOCÊ CONCORDA COM NOSSOS{" "}
+              <Link to="/terms" className="underline underline-offset-2 hover:text-slate-700">
+                TERMOS DE USO
+              </Link>{" "}
+              E{" "}
+              <Link to="/privacy" className="underline underline-offset-2 hover:text-slate-700">
+                POLÍTICA DE PRIVACIDADE
+              </Link>
+              .
             </p>
           </div>
         </div>

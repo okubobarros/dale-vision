@@ -17,6 +17,8 @@ logger = logging.getLogger(__name__)
 def _get_supabase_config() -> Tuple[Optional[str], Optional[str]]:
     url = getattr(settings, "SUPABASE_URL", None) or os.getenv("SUPABASE_URL")
     key = getattr(settings, "SUPABASE_KEY", None) or os.getenv("SUPABASE_KEY")
+    if not key:
+        key = getattr(settings, "SUPABASE_ANON_KEY", None) or os.getenv("SUPABASE_ANON_KEY")
     return url, key
 
 

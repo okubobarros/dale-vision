@@ -1,6 +1,6 @@
 // src/pages/Login/Login.tsx
 import { useEffect, useState } from "react"
-import { useLocation, useNavigate } from "react-router-dom"
+import { Link, useLocation, useNavigate } from "react-router-dom"
 import logo from "../../assets/logo.png"
 import { useAuth } from "../../contexts/AuthContext"
 import { supabase } from "../../lib/supabase"
@@ -22,7 +22,6 @@ const Login = () => {
 
   const HOME_URL = "https://app.dalevision.com/"
   const DEMO_URL = "https://app.dalevision.com/agendar-demo"
-  const PRIVACY_URL = "https://app.dalevision.com/politica-de-privacidade"
 
   useEffect(() => {
     const params = new URLSearchParams(location.search)
@@ -266,15 +265,20 @@ const Login = () => {
 
               {/* Política */}
               <p className="text-xs text-slate-500 text-center leading-relaxed">
-                Ao continuar, você concorda com a{" "}
-                <a
-                  href={PRIVACY_URL}
+                Ao continuar, você concorda com os{" "}
+                <Link
+                  to="/terms"
                   className="underline underline-offset-4 hover:text-slate-900"
-                  target="_blank"
-                  rel="noreferrer"
+                >
+                  Termos de Uso
+                </Link>{" "}
+                e a{" "}
+                <Link
+                  to="/privacy"
+                  className="underline underline-offset-4 hover:text-slate-900"
                 >
                   Política de Privacidade
-                </a>{" "}
+                </Link>{" "}
                 da DaleVision.
               </p>
 

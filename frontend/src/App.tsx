@@ -6,6 +6,8 @@ import HomePage from "./pages/Home/Home"
 import Login from "./pages/Login/Login"
 import AgendarDemo from "./pages/AgendarDemo/AgendarDemo"
 import AuthCallback from "./pages/AuthCallback/AuthCallback"
+import Privacy from "./pages/Privacy/Privacy"
+import Terms from "./pages/Terms/Terms"
 
 import Dashboard from "./pages/Dashboard/Dashboard"
 import Stores from "./pages/Stores/Stores"
@@ -34,6 +36,8 @@ function App() {
       <Route path="/login" element={<Login />} />
       <Route path="/auth/callback" element={<AuthCallback />} />
       <Route path="/agendar-demo" element={<AgendarDemo />} />
+      <Route path="/privacy" element={<Privacy />} />
+      <Route path="/terms" element={<Terms />} />
 
       {/* Registro + onboarding (público por enquanto) */}
       <Route path="/register" element={<Register />} />
@@ -77,6 +81,8 @@ function App() {
       {/* ✅ Redirects Alerts */}
       <Route path="/alert-rules" element={<Navigate to="/app/alert-rules" replace />} />
       <Route path="/notification-logs" element={<Navigate to="/app/notification-logs" replace />} />
+      <Route path="/politica-de-privacidade" element={<Navigate to="/privacy" replace />} />
+      <Route path="/termos" element={<Navigate to="/terms" replace />} />
 
       {/* ✅ Redirects Onboarding */}
 

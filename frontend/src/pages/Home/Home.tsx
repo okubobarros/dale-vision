@@ -936,15 +936,21 @@ export default function HomePage() {
             </div>
 
             <div className="flex flex-col sm:items-end gap-3">
-              <div className="flex gap-4">
+              <div className="flex flex-wrap gap-4">
                 <a className="hover:text-white" href={WHATSAPP_DEMO}>
                   Contato
                 </a>
                 <a className="hover:text-white" href="#faq">
                   Perguntas Frequentes
                 </a>
+                <Link className="hover:text-white" to="/terms">
+                  Termos de Uso
+                </Link>
+                <Link className="hover:text-white" to="/privacy">
+                  Política de Privacidade
+                </Link>
               </div>
-              <div className="text-xs text-white/40">LGPD • Criptografia • </div>
+              <div className="text-xs text-white/40">LGPD • Criptografia • Governança</div>
             </div>
           </div>
         </footer>
