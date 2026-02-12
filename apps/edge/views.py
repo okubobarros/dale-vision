@@ -48,6 +48,41 @@ def _compute_receipt_id(payload: dict) -> str:
     raw = json.dumps(base, sort_keys=True, ensure_ascii=False).encode("utf-8")
     return hashlib.sha256(raw).hexdigest()
 
+
+def _parse_edge_ts(raw_ts):
+    if not raw_ts:
+        return None
+    try:
+        ts_str = str(raw_ts).replace("Z", "+00:00")
+        dt = timezone.datetime.fromisoformat(ts_str)
+        if timezone.is_naive(dt):
+            dt = timezone.make_aware(dt, timezone.utc)
+        return dt
+    except Exception:
+        return None
+
+
+def _resolve_edge_ts(data: dict, payload: dict):
+    ts = (data or {}).get("ts") or payload.get("ts")
+    return _parse_edge_ts(ts) or timezone.now()
+
+
+def _update_store_last_seen(store_id: str, ts_dt):
+    try:
+        with connection.cursor() as cursor:
+            cursor.execute(
+                """
+                UPDATE public.stores
+                SET last_seen_at = %s,
+                    last_error = NULL,
+                    updated_at = now()
+                WHERE id = %s
+                """,
+                [ts_dt, store_id],
+            )
+    except Exception:
+        logger.exception("[WARN] store last_seen_at update failed")
+
 logger = logging.getLogger(__name__)
 
 class EdgeEventsIngestView(APIView):
@@ -154,6 +189,12 @@ class EdgeEventsIngestView(APIView):
                     )
                 return Response({"detail": "Edge token inválido."}, status=status.HTTP_403_FORBIDDEN)
 
+        # --- update store last_seen_at for heartbeat events (idempotent) ---
+        if normalized in ("edge_heartbeat", "camera_heartbeat", "edge_camera_heartbeat"):
+            if Store.objects.filter(id=store_id).exists():
+                ts_dt = _resolve_edge_ts(data, payload)
+                _update_store_last_seen(store_id, ts_dt)
+
         # --- validar camera para eventos que dependem dela ---
         camera_id = data.get("camera_id") or payload.get("camera_id") or data.get("external_id")
         if camera_id and normalized not in ("edge_heartbeat", "camera_heartbeat", "edge_camera_heartbeat"):
@@ -252,21 +293,6 @@ class EdgeEventsIngestView(APIView):
                     )
                 except Exception:
                     pass
-
-                try:
-                    with connection.cursor() as cursor:
-                        cursor.execute(
-                            """
-                            UPDATE public.stores
-                            SET last_seen_at = %s,
-                                last_error = NULL,
-                                updated_at = now()
-                            WHERE id = %s
-                            """,
-                            [ts_dt, store_id],
-                        )
-                except Exception:
-                    logger.exception("[WARN] store last_seen_at update failed")
 
                 for cam in cameras_in:
                     if not isinstance(cam, dict):

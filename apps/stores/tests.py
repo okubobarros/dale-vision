@@ -5,6 +5,9 @@ from unittest.mock import MagicMock, patch
 
 from apps.billing.utils import PaywallError, TRIAL_STORE_LIMIT, enforce_trial_store_limit
 from apps.stores import views_edge_status
+from apps.edge import views as edge_views
+from apps.edge.views import EdgeEventsIngestView
+from rest_framework.test import APIRequestFactory
 
 
 class TrialStoreLimitTests(SimpleTestCase):
@@ -105,6 +108,29 @@ class EdgeStatusNoCamerasTests(SimpleTestCase):
         self.assertEqual(payload.get("store_status_reason"), "no_cameras")
         self.assertEqual(payload.get("store_status"), "offline")
 
+    @patch("apps.stores.views_edge_status._get_last_heartbeat", return_value=None)
+    @patch("apps.stores.views_edge_status.Camera")
+    @patch("apps.stores.views_edge_status.Store")
+    @patch("apps.stores.views_edge_status._get_last_edge_heartbeat_receipt")
+    def test_no_cameras_without_edge_heartbeat(
+        self,
+        last_edge_receipt_mock,
+        store_mock,
+        camera_mock,
+        _last_heartbeat,
+    ):
+        store_id = str(uuid.uuid4())
+        store_mock.objects.filter.return_value.first.return_value = self._mock_store(store_id)
+        camera_mock.objects.filter.return_value.order_by.return_value = []
+        last_edge_receipt_mock.return_value = None
+
+        payload, _reason = views_edge_status.compute_store_edge_status_snapshot(store_id)
+
+        self.assertFalse(payload.get("online"))
+        self.assertEqual(payload.get("store_status_reason"), "no_cameras")
+        self.assertEqual(payload.get("store_status"), "offline")
+        self.assertIsNone(payload.get("last_heartbeat_at"))
+
     @patch("apps.stores.views_edge_status._get_last_edge_heartbeat_receipt")
     @patch("apps.stores.views_edge_status._get_last_heartbeat")
     @patch("apps.stores.views_edge_status.Camera")
@@ -132,3 +158,40 @@ class EdgeStatusNoCamerasTests(SimpleTestCase):
         self.assertEqual(payload.get("store_status"), "online")
         self.assertEqual(payload.get("store_status_reason"), "all_cameras_online")
         last_edge_receipt_mock.assert_not_called()
+
+
+class EdgeHeartbeatIngestTests(SimpleTestCase):
+    @patch("apps.edge.views.EdgeEventReceipt.objects.get_or_create")
+    @patch("apps.edge.views.Store.objects.filter")
+    @patch("apps.edge.views.EdgeEventsIngestView._is_edge_request", return_value=(True, None))
+    @patch("apps.edge.views.TokenAuthentication.authenticate", return_value=None)
+    @patch("apps.edge.views._update_store_last_seen")
+    def test_ingest_updates_store_last_seen(
+        self,
+        update_store_last_seen,
+        _auth_mock,
+        _edge_auth_mock,
+        store_filter_mock,
+        receipt_get_or_create_mock,
+    ):
+        store_id = str(uuid.uuid4())
+        store_filter_mock.return_value.exists.return_value = True
+        receipt_get_or_create_mock.return_value = (MagicMock(), False)
+
+        ts = (timezone.now() - timezone.timedelta(seconds=10)).isoformat()
+        payload = {
+            "event_name": "edge_heartbeat",
+            "receipt_id": "test-receipt-123",
+            "data": {"store_id": store_id, "ts": ts},
+        }
+
+        factory = APIRequestFactory()
+        request = factory.post("/api/edge/events/", payload, format="json", HTTP_X_EDGE_TOKEN="token")
+        response = EdgeEventsIngestView.as_view()(request)
+
+        self.assertIn(response.status_code, (200, 201))
+        update_store_last_seen.assert_called_once()
+        called_store_id, called_ts = update_store_last_seen.call_args[0]
+        expected_ts = edge_views._parse_edge_ts(ts)
+        self.assertEqual(called_store_id, store_id)
+        self.assertEqual(called_ts, expected_ts)
