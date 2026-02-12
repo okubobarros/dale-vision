@@ -30,7 +30,19 @@ function LogBlock([string]$title, [string]$content) {
 }
 
 $RepoRoot = (Resolve-Path (Join-Path $PSScriptRoot "..")).Path
-$EdgeRoot = Join-Path $RepoRoot "edge-agent"
+$EdgeRoot = $env:DALE_EDGE_ROOT
+if ([string]::IsNullOrWhiteSpace($EdgeRoot)) {
+  $EdgeRoot = "C:\workspace\dalevision-edge-agent\edge-agent"
+}
+if (-not (Test-Path $EdgeRoot)) {
+  $legacyEdgeRoot = Join-Path $RepoRoot "edge-agent"
+  if (Test-Path $legacyEdgeRoot) {
+    $EdgeRoot = $legacyEdgeRoot
+  }
+}
+if (-not (Test-Path $EdgeRoot)) {
+  throw "Edge agent repo not found. Configure DALE_EDGE_ROOT or clone C:\workspace\dalevision-edge-agent."
+}
 $LogsDir = Join-Path $RepoRoot "logs"
 New-Item -ItemType Directory -Force -Path $LogsDir | Out-Null
 

@@ -34,3 +34,9 @@ Observações:
 
 - `.agent/skills-src/` contém um repositório git interno usado por ferramentas locais.
 - Mantenha em `.gitignore` para evitar o warning de "embedded git repository" e submodules acidentais.
+
+## Edge Agent
+
+- O código do Edge Agent foi movido para o repositório dedicado `dalevision-edge-agent`.
+- Nesta pasta (`dale-vision/edge-agent`) mantemos apenas ponteiro/documentação.
+- Novas implementações e correções do agent devem ser feitas somente no repo dedicado.
