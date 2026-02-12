@@ -7,17 +7,9 @@ import {
   type CreateStorePayload,
   type UpdateStorePayload,
   type StoreStatus,
-  type StorePlan,
   type StoreEdgeStatus,
 } from '../../services/stores';
 import toast from 'react-hot-toast';
-
-const PLAN_LABELS: Record<StorePlan, string> = {
-  trial: 'Trial',
-  basic: 'Basic',
-  pro: 'Pro',
-  enterprise: 'Enterprise',
-};
 
 const STATUS_OPTIONS: Array<{ value: StoreStatus; label: string }> = [
   { value: 'active', label: 'Ativa' },
