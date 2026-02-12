@@ -64,12 +64,22 @@ const formatRelativeTime = (iso?: string | null) => {
   return rtf.format(-diffDay, "day")
 }
 
-const isRecentTimestamp = (iso?: string | null, maxAgeSec = 180) => {
+const isRecentTimestamp = (iso?: string | null, maxAgeSec = 120) => {
   if (!iso) return false
   const date = new Date(iso)
   if (Number.isNaN(date.getTime())) return false
   const diffSec = (Date.now() - date.getTime()) / 1000
   return diffSec >= 0 && diffSec <= maxAgeSec
+}
+
+const getLastSeenAt = (payload?: EdgeStatusPayload | null) => {
+  if (!payload) return null
+  return (
+    payload.last_seen_at ||
+    payload.last_heartbeat_at ||
+    payload.last_heartbeat ||
+    null
+  )
 }
 
 const EdgeSetupModal = ({ open, onClose, defaultStoreId }: EdgeSetupModalProps) => {
@@ -90,7 +100,7 @@ const EdgeSetupModal = ({ open, onClose, defaultStoreId }: EdgeSetupModalProps) 
   const [polling, setPolling] = useState(false)
   const [pollMessage, setPollMessage] = useState<string | null>(null)
   const [pollError, setPollError] = useState<string | null>(null)
-  const [lastHeartbeat, setLastHeartbeat] = useState<string | null>(null)
+  const [lastSeenAt, setLastSeenAt] = useState<string | null>(null)
   const [showTroubleshoot, setShowTroubleshoot] = useState(false)
   const [showChecklist, setShowChecklist] = useState(false)
   const [rotateSupported, setRotateSupported] = useState(true)
@@ -134,7 +144,7 @@ const EdgeSetupModal = ({ open, onClose, defaultStoreId }: EdgeSetupModalProps) 
     setPolling(false)
     setPollMessage(null)
     setPollError(null)
-    setLastHeartbeat(null)
+    setLastSeenAt(null)
     setShowTroubleshoot(false)
     setShowChecklist(false)
     setRotateSupported(true)
@@ -152,7 +162,7 @@ const EdgeSetupModal = ({ open, onClose, defaultStoreId }: EdgeSetupModalProps) 
     setPolling(false)
     setPollMessage(null)
     setPollError(null)
-    setLastHeartbeat(null)
+    setLastSeenAt(null)
     setShowTroubleshoot(false)
     setShowChecklist(false)
     setRotateSupported(true)
@@ -222,12 +232,8 @@ const EdgeSetupModal = ({ open, onClose, defaultStoreId }: EdgeSetupModalProps) 
   }
 
   const isEdgeOnline = (payload: EdgeStatusPayload) => {
-    const heartbeatTs =
-      payload?.last_heartbeat_at || payload?.last_heartbeat || payload?.last_seen_at
-    if (typeof payload?.online === "boolean") {
-      return payload.online
-    }
-    return isRecentTimestamp(heartbeatTs, 180)
+    const lastSeenAt = getLastSeenAt(payload)
+    return isRecentTimestamp(lastSeenAt, 120)
   }
 
   const pollEdgeStatus = async (id: string) => {
@@ -235,9 +241,8 @@ const EdgeSetupModal = ({ open, onClose, defaultStoreId }: EdgeSetupModalProps) 
       const res = await api.get<EdgeStatusPayload>(`/v1/stores/${id}/edge-status/`)
       const data = res.data || {}
       const reason = String(data?.store_status_reason || "")
-      const heartbeatTs =
-        data?.last_heartbeat_at || data?.last_heartbeat || data?.last_seen_at
-      setLastHeartbeat(heartbeatTs || null)
+      const lastSeenAt = getLastSeenAt(data)
+      setLastSeenAt(lastSeenAt)
       setPollError(null)
 
       if (reason === "forbidden") {
@@ -411,7 +416,7 @@ const EdgeSetupModal = ({ open, onClose, defaultStoreId }: EdgeSetupModalProps) 
   }
 
   const isStoreSelected = Boolean(storeId)
-  const lastHeartbeatLabel = formatRelativeTime(lastHeartbeat)
+  const lastSeenLabel = formatRelativeTime(lastSeenAt)
   const canStartAgent = downloadConfirmed && envCopied
   const canCopyEnv = isStoreSelected
   const logCommand = [
@@ -473,7 +478,7 @@ const EdgeSetupModal = ({ open, onClose, defaultStoreId }: EdgeSetupModalProps) 
           <div className="rounded-xl border border-gray-200 bg-white px-4 py-3">
             <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3">
               <span className="text-xs text-gray-500">
-                Última comunicação: {lastHeartbeatLabel}
+                Última comunicação: {lastSeenLabel}
               </span>
               {heartbeatOk && (
                 <button

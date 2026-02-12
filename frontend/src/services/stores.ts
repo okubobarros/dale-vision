@@ -67,6 +67,8 @@ export interface StoreEdgeStatus {
   store_status_age_seconds?: number | null;
   store_status_reason?: string | null;
   last_heartbeat: string | null;
+  last_heartbeat_at?: string | null;
+  last_seen_at?: string | null;
   last_metric_bucket: string | null;
   last_error: string | null;
   cameras_total?: number;

@@ -9,7 +9,7 @@ import {
   type Store,
   type StoreEdgeStatus,
 } from "../../services/stores"
-import { formatAge, formatReason, formatTimestamp } from "../../utils/edgeReasons"
+import { formatReason, formatTimestamp } from "../../utils/edgeReasons"
 import EdgeSetupModal from "../../components/EdgeSetupModal"
 import { USE_MOCK_DATA } from "../../lib/mock"
 import {
@@ -115,6 +115,24 @@ const RecommendationCard = ({
       <p className="text-gray-500 text-xs">🎯 Impacto: {impact}</p>
     </div>
   )
+}
+
+const ONLINE_MAX_AGE_SEC = 120
+
+const isRecentTimestamp = (iso?: string | null, maxAgeSec = ONLINE_MAX_AGE_SEC) => {
+  if (!iso) return false
+  const date = new Date(iso)
+  if (Number.isNaN(date.getTime())) return false
+  const diffSec = (Date.now() - date.getTime()) / 1000
+  return diffSec >= 0 && diffSec <= maxAgeSec
+}
+
+const getLastSeenAt = (status?: StoreEdgeStatus | null) =>
+  status?.last_seen_at || status?.last_heartbeat_at || status?.last_heartbeat || null
+
+const formatLastSeenAt = (iso?: string | null) => {
+  if (!iso) return "Nunca"
+  return formatTimestamp(iso)
 }
 
 const ALL_STORES_VALUE = "all"
@@ -242,6 +260,9 @@ const Dashboard = () => {
     refetchInterval: 20000,
     refetchIntervalInBackground: true,
   })
+  const lastSeenAt = getLastSeenAt(edgeStatus)
+  const isEdgeOnlineByLastSeen =
+    !edgeStatusLoading && isRecentTimestamp(lastSeenAt, ONLINE_MAX_AGE_SEC)
 
   const {
     data: events,
@@ -294,14 +315,14 @@ const Dashboard = () => {
 
   useEffect(() => {
     if (!showActivationProgress) return
-    if (selectedStore !== ALL_STORES_VALUE && edgeStatus?.store_status === "online") {
+    if (selectedStore !== ALL_STORES_VALUE && isEdgeOnlineByLastSeen) {
       try {
         localStorage.removeItem("dv_from_onboarding")
       } catch {}
       setShowActivationProgress(false)
       setActivationBannerDismissed(true)
     }
-  }, [showActivationProgress, selectedStore, edgeStatus?.store_status])
+  }, [showActivationProgress, selectedStore, isEdgeOnlineByLastSeen])
 
   const dismissActivationProgress = () => {
     try {
@@ -342,7 +363,7 @@ const Dashboard = () => {
         Você só precisa de um computador na loja com acesso às câmeras. Nós guiamos o passo a passo.
       </p>
 
-      {selectedStore !== ALL_STORES_VALUE && edgeStatus?.store_status === "online" && (
+      {selectedStore !== ALL_STORES_VALUE && isEdgeOnlineByLastSeen && (
         <span className="mt-3 inline-flex items-center rounded-full bg-green-100 px-3 py-1 text-xs font-semibold text-green-700">
           Loja Online
         </span>
@@ -434,7 +455,7 @@ const Dashboard = () => {
           return
         }
 
-        if (USE_MOCK_DATA && edgeStatus?.store_status === "offline") {
+        if (USE_MOCK_DATA && !edgeStatusLoading && !isEdgeOnlineByLastSeen) {
           setDashboard(null)
           setDashboardError("Sem dados ainda. Aguardando conexão do Edge Agent.")
           return
@@ -452,7 +473,7 @@ const Dashboard = () => {
     }
 
     loadDashboard()
-  }, [selectedStore, stores, edgeStatus?.store_status])
+  }, [selectedStore, stores, edgeStatusLoading, isEdgeOnlineByLastSeen])
 
   const icons = {
     health: (
@@ -549,22 +570,14 @@ const Dashboard = () => {
 
   const edgeStatusLabel = edgeStatusLoading
     ? "Carregando"
-    : edgeStatus?.store_status === "online"
-    ? "Loja Online"
-    : edgeStatus?.store_status === "degraded"
-    ? "Loja Instável"
-    : edgeStatus?.store_status === "offline"
-    ? "Loja Offline"
-    : "Status desconhecido"
+    : isEdgeOnlineByLastSeen
+    ? "Online"
+    : "Offline"
 
   const edgeStatusClass = edgeStatusLoading
     ? "bg-blue-100 text-blue-800"
-    : edgeStatus?.store_status === "online"
+    : isEdgeOnlineByLastSeen
     ? "bg-green-100 text-green-800"
-    : edgeStatus?.store_status === "degraded"
-    ? "bg-yellow-100 text-yellow-800"
-    : edgeStatus?.store_status === "offline"
-    ? "bg-gray-100 text-gray-800"
     : "bg-gray-100 text-gray-800"
 
   const showStoreIndicators =
@@ -783,15 +796,13 @@ const Dashboard = () => {
                   <div>
                     <h2 className="text-lg sm:text-xl font-bold text-gray-800">
                       Store Health
-                    </h2>
-                    <p className="text-sm text-gray-500 mt-1">
-                      Último heartbeat há{" "}
-                      <span className="font-semibold text-gray-700">
-                        {edgeStatusLoading
-                          ? "Carregando..."
-                          : formatAge(edgeStatus?.store_status_age_seconds)}
-                      </span>
-                    </p>
+                  </h2>
+                  <p className="text-sm text-gray-500 mt-1">
+                    Última comunicação:{" "}
+                    <span className="font-semibold text-gray-700">
+                      {edgeStatusLoading ? "Carregando..." : formatLastSeenAt(lastSeenAt)}
+                    </span>
+                  </p>
                     {edgeStatus?.store_status_reason && (
                       <p className="text-xs text-gray-500 mt-1">
                         {formatReason(edgeStatus.store_status_reason)}
@@ -830,11 +841,11 @@ const Dashboard = () => {
                     </p>
                   </div>
                   <div className="rounded-lg border border-gray-100 px-3 py-2">
-                    <p className="text-xs text-gray-500">Último heartbeat</p>
+                    <p className="text-xs text-gray-500">Última comunicação</p>
                     <p className="text-sm font-semibold text-gray-800">
                       {edgeStatusLoading
                         ? "—"
-                        : formatTimestamp(edgeStatus?.last_heartbeat)}
+                        : formatLastSeenAt(lastSeenAt)}
                     </p>
                   </div>
                 </div>

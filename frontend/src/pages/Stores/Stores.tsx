@@ -8,6 +8,7 @@ import {
   type UpdateStorePayload,
   type StoreStatus,
   type StorePlan,
+  type StoreEdgeStatus,
 } from '../../services/stores';
 import toast from 'react-hot-toast';
 
@@ -25,6 +26,35 @@ const STATUS_OPTIONS: Array<{ value: StoreStatus; label: string }> = [
   { value: 'trial', label: 'Trial' },
   { value: 'blocked', label: 'Bloqueada' },
 ];
+
+const ONLINE_MAX_AGE_SEC = 120;
+
+const isRecentTimestamp = (iso?: string | null, maxAgeSec = ONLINE_MAX_AGE_SEC) => {
+  if (!iso) return false;
+  const date = new Date(iso);
+  if (Number.isNaN(date.getTime())) return false;
+  const diffSec = (Date.now() - date.getTime()) / 1000;
+  return diffSec >= 0 && diffSec <= maxAgeSec;
+};
+
+const formatRelativeTime = (iso?: string | null) => {
+  if (!iso) return 'Nunca';
+  const date = new Date(iso);
+  if (Number.isNaN(date.getTime())) return '—';
+  const diffSec = Math.floor((Date.now() - date.getTime()) / 1000);
+  if (diffSec < 10) return 'agora';
+  const rtf = new Intl.RelativeTimeFormat('pt-BR', { numeric: 'auto' });
+  if (diffSec < 60) return rtf.format(-diffSec, 'second');
+  const diffMin = Math.floor(diffSec / 60);
+  if (diffMin < 60) return rtf.format(-diffMin, 'minute');
+  const diffHour = Math.floor(diffMin / 60);
+  if (diffHour < 24) return rtf.format(-diffHour, 'hour');
+  const diffDay = Math.floor(diffHour / 24);
+  return rtf.format(-diffDay, 'day');
+};
+
+const getLastSeenAt = (status?: StoreEdgeStatus | null) =>
+  status?.last_seen_at || status?.last_heartbeat_at || status?.last_heartbeat || null;
 
 const DEMO_URL = 'https://app.dalevision.com/agendar-demo';
 const WHATSAPP_URL = `https://wa.me/?text=${encodeURIComponent(
@@ -563,6 +593,21 @@ const StoreCard = ({ store, onEdit }: StoreCardProps) => {
   const queryClient = useQueryClient();
   const [showActions, setShowActions] = useState(false);
   const planLabel = PLAN_LABELS[store.plan] ?? 'Trial';
+  const { data: edgeStatus, isLoading: edgeStatusLoading } = useQuery<StoreEdgeStatus>({
+    queryKey: ['store-edge-status', store.id],
+    queryFn: () => storesService.getStoreEdgeStatus(store.id),
+    refetchInterval: 20000,
+    refetchIntervalInBackground: true,
+  });
+  const lastSeenAt = getLastSeenAt(edgeStatus);
+  const lastSeenLabel = edgeStatusLoading ? 'Carregando...' : formatRelativeTime(lastSeenAt);
+  const isEdgeOnline = !edgeStatusLoading && isRecentTimestamp(lastSeenAt);
+  const edgeStatusLabel = edgeStatusLoading ? 'Carregando...' : isEdgeOnline ? 'Online' : 'Offline';
+  const edgeStatusClass = edgeStatusLoading
+    ? 'bg-gray-100 text-gray-600'
+    : isEdgeOnline
+    ? 'bg-green-100 text-green-800'
+    : 'bg-gray-100 text-gray-800';
 
   const deleteMutation = useMutation({
     mutationFn: () => storesService.deleteStore(store.id),
@@ -659,6 +704,12 @@ const StoreCard = ({ store, onEdit }: StoreCardProps) => {
           >
             {planLabel}
           </span>
+          <span
+            className={`inline-block px-3 py-1 rounded-full text-xs font-medium ${edgeStatusClass}`}
+            aria-label={`Status do edge: ${edgeStatusLabel}`}
+          >
+            {edgeStatusLabel}
+          </span>
         </div>
       </div>
 {store.description && (
@@ -685,6 +736,19 @@ const StoreCard = ({ store, onEdit }: StoreCardProps) => {
             <span aria-label={`Telefone: ${store.phone}`}>{store.phone}</span>
           </div>
         )}
+
+        <div className="flex items-center text-gray-500">
+          <svg className="w-4 h-4 mr-2 flex-shrink-0" fill="currentColor" viewBox="0 0 20 20">
+            <path
+              fillRule="evenodd"
+              d="M10 18a8 8 0 100-16 8 8 0 000 16zm1-11a1 1 0 10-2 0v3a1 1 0 00.293.707l2 2a1 1 0 001.414-1.414L11 9.586V7z"
+              clipRule="evenodd"
+            />
+          </svg>
+          <span aria-label={`Última comunicação: ${lastSeenLabel}`}>
+            Última comunicação: {lastSeenLabel}
+          </span>
+        </div>
         
         <div className="flex items-center text-gray-500">
           <svg className="w-4 h-4 mr-2 flex-shrink-0" fill="currentColor" viewBox="0 0 20 20">
