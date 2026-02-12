@@ -1,13 +1,13 @@
 import hashlib
 import uuid
+from types import SimpleNamespace
+from unittest.mock import patch
 from django.test import TestCase
 from django.test import override_settings
 from django.db import connection
 from django.contrib.auth import get_user_model
-from django.utils import timezone
 from rest_framework.test import APIClient
 from knox.models import AuthToken
-from apps.core.models import Organization, OrgMember, Store
 from apps.edge.models import EdgeToken
 
 
@@ -116,52 +116,23 @@ class EdgeEventsAuthTests(TestCase):
         User = get_user_model()
         user = User.objects.create_user(username="edgeuser", password="pass123", email="edge@x.com")
         token = AuthToken.objects.create(user)[1]
-
-        org = Organization.objects.create(
-            id=uuid.uuid4(),
-            name="Org",
-            segment=None,
-            country="BR",
-            timezone="America/Sao_Paulo",
-            created_at="2026-01-01T00:00:00Z",
-        )
-
-        with connection.cursor() as cursor:
-            cursor.execute(
-                "INSERT INTO public.user_id_map (user_uuid, django_user_id) "
-                "VALUES (gen_random_uuid(), %s) RETURNING user_uuid",
-                [user.id],
-            )
-            user_uuid = cursor.fetchone()[0]
-
-        OrgMember.objects.create(
-            id=uuid.uuid4(),
-            org=org,
-            user_id=user_uuid,
-            role="owner",
-            created_at="2026-01-01T00:00:00Z",
-        )
-
-        store = Store.objects.create(
-            id=uuid.uuid4(),
-            org=org,
-            name="Store",
-            status="active",
-            created_at="2026-01-01T00:00:00Z",
-            updated_at="2026-01-01T00:00:00Z",
-        )
+        store_id = uuid.uuid4()
 
         payload = {
             "event_name": "edge_heartbeat",
             "receipt_id": "test-receipt-2",
-            "data": {"store_id": str(store.id)},
+            "data": {"store_id": str(store_id)},
         }
-        resp = self.client.post(
-            "/api/edge/events/",
-            payload,
-            format="json",
-            HTTP_AUTHORIZATION=f"Token {token}",
-        )
+        with patch(
+            "apps.edge.views.EdgeEventsIngestView._user_has_store_access",
+            return_value=True,
+        ):
+            resp = self.client.post(
+                "/api/edge/events/",
+                payload,
+                format="json",
+                HTTP_AUTHORIZATION=f"Token {token}",
+            )
         self.assertIn(resp.status_code, (200, 201))
         self.assertTrue(resp.data.get("ok"))
 
@@ -244,70 +215,102 @@ class EdgeSetupTokenTests(TestCase):
         user.save(update_fields=["is_staff", "is_superuser"])
         return user
 
-    def _create_store(self):
-        return Store.objects.create(
-            id=uuid.uuid4(),
-            org_id=uuid.uuid4(),
-            name="Store",
-            status="active",
-            created_at=timezone.now(),
-            updated_at=timezone.now(),
-        )
-
-    def _hash_token(self, raw_token: str) -> str:
-        return hashlib.sha256(raw_token.encode("utf-8")).hexdigest()
+    def _store_stub(self):
+        return SimpleNamespace(id=uuid.uuid4(), org_id=uuid.uuid4())
 
     def test_edge_setup_get_idempotent(self):
         self._skip_if_not_pg()
         user = self._create_staff_user()
-        store = self._create_store()
+        store = self._store_stub()
         self.client.force_authenticate(user=user)
 
-        resp1 = self.client.get(f"/api/v1/stores/{store.id}/edge-setup/")
+        with patch("apps.stores.views.StoreViewSet.get_object", return_value=store):
+            resp1 = self.client.get(f"/api/v1/stores/{store.id}/edge-setup/")
         self.assertEqual(resp1.status_code, 200)
+        first_token = resp1.data.get("edge_token")
+        self.assertTrue(first_token)
         tokens = EdgeToken.objects.filter(store_id=store.id, active=True)
         self.assertEqual(tokens.count(), 1)
         token_hash = tokens.first().token_hash
 
-        resp2 = self.client.get(f"/api/v1/stores/{store.id}/edge-setup/")
+        with patch("apps.stores.views.StoreViewSet.get_object", return_value=store):
+            resp2 = self.client.get(f"/api/v1/stores/{store.id}/edge-setup/")
         self.assertEqual(resp2.status_code, 200)
+        self.assertEqual(resp2.data.get("edge_token"), first_token)
+        self.assertTrue(resp2.data.get("has_active_token"))
         tokens = EdgeToken.objects.filter(store_id=store.id, active=True)
         self.assertEqual(tokens.count(), 1)
         self.assertEqual(tokens.first().token_hash, token_hash)
 
-    def test_edge_token_rotate_creates_new_token(self):
+    def test_edge_token_rotate_invalidates_previous_token(self):
         self._skip_if_not_pg()
         user = self._create_staff_user()
-        store = self._create_store()
+        store = self._store_stub()
         self.client.force_authenticate(user=user)
 
-        raw_old = "old-edge-token"
-        old_hash = self._hash_token(raw_old)
-        EdgeToken.objects.create(store_id=store.id, token_hash=old_hash, active=True)
+        with patch("apps.stores.views.StoreViewSet.get_object", return_value=store):
+            first_setup = self.client.get(f"/api/v1/stores/{store.id}/edge-setup/")
+        self.assertEqual(first_setup.status_code, 200)
+        old_token = first_setup.data.get("edge_token")
+        self.assertTrue(old_token)
 
-        resp = self.client.post(f"/api/v1/stores/{store.id}/edge-token/rotate/")
+        with patch("apps.stores.views.StoreViewSet.get_object", return_value=store):
+            resp = self.client.post(f"/api/v1/stores/{store.id}/edge-token/rotate/")
         self.assertEqual(resp.status_code, 200)
-        self.assertTrue(resp.data.get("edge_token"))
+        new_token = resp.data.get("edge_token")
+        self.assertTrue(new_token)
+        self.assertNotEqual(old_token, new_token)
 
         active_tokens = EdgeToken.objects.filter(store_id=store.id, active=True)
         self.assertEqual(active_tokens.count(), 1)
-        self.assertNotEqual(active_tokens.first().token_hash, old_hash)
+        self.assertEqual(active_tokens.first().token_plaintext, new_token)
 
         inactive_tokens = EdgeToken.objects.filter(store_id=store.id, active=False)
         self.assertEqual(inactive_tokens.count(), 1)
+        self.assertEqual(inactive_tokens.first().token_plaintext, old_token)
+
+        old_payload = {
+            "event_name": "edge_heartbeat",
+            "receipt_id": "test-receipt-old-token",
+            "data": {"store_id": str(store.id)},
+        }
+        old_resp = self.client.post(
+            "/api/edge/events/",
+            old_payload,
+            format="json",
+            HTTP_X_EDGE_TOKEN=old_token,
+        )
+        self.assertEqual(old_resp.status_code, 403)
+        self.assertEqual(old_resp.data.get("detail"), "Edge token inválido para esta loja.")
+
+        active_token = EdgeToken.objects.get(store_id=store.id, active=True)
+        self.assertIsNone(active_token.last_used_at)
+        new_payload = {
+            "event_name": "edge_heartbeat",
+            "receipt_id": "test-receipt-new-token",
+            "data": {"store_id": str(store.id)},
+        }
+        new_resp = self.client.post(
+            "/api/edge/events/",
+            new_payload,
+            format="json",
+            HTTP_X_EDGE_TOKEN=new_token,
+        )
+        self.assertEqual(new_resp.status_code, 201)
+        active_token.refresh_from_db()
+        self.assertIsNotNone(active_token.last_used_at)
 
     def test_edge_setup_get_does_not_invalidate_ingest_token(self):
         self._skip_if_not_pg()
-        store = self._create_store()
-
-        raw_token = "edge-store-token"
-        token_hash = self._hash_token(raw_token)
-        EdgeToken.objects.create(store_id=store.id, token_hash=token_hash, active=True)
+        store = self._store_stub()
 
         user = self._create_staff_user()
         self.client.force_authenticate(user=user)
-        self.client.get(f"/api/v1/stores/{store.id}/edge-setup/")
-        self.client.get(f"/api/v1/stores/{store.id}/edge-setup/")
+        with patch("apps.stores.views.StoreViewSet.get_object", return_value=store):
+            setup_resp = self.client.get(f"/api/v1/stores/{store.id}/edge-setup/")
+            self.client.get(f"/api/v1/stores/{store.id}/edge-setup/")
+        raw_token = setup_resp.data.get("edge_token")
+        self.assertTrue(raw_token)
 
         payload = {
             "event_name": "edge_heartbeat",
@@ -322,3 +325,6 @@ class EdgeSetupTokenTests(TestCase):
         )
         self.assertIn(resp.status_code, (200, 201))
         self.assertTrue(resp.data.get("ok"))
+        token_obj = EdgeToken.objects.filter(store_id=store.id, active=True).first()
+        self.assertIsNotNone(token_obj)
+        self.assertIsNotNone(token_obj.last_used_at)

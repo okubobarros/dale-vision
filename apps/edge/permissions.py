@@ -48,7 +48,7 @@ class EdgeOrUserTokenPermission(BasePermission):
       - Authorization: Token ... for válido (Knox), OU
       - X-EDGE-TOKEN corresponder a um EdgeToken ativo da store
     """
-    message = "Edge token inválido para esta store."
+    message = "Edge token inválido para esta loja."
 
     def has_permission(self, request, view):
         user_auth = TokenAuthentication().authenticate(request)
@@ -82,7 +82,7 @@ class EdgeTokenPermission(BasePermission):
     """
     Permite acesso apenas com X-EDGE-TOKEN válido para a store do payload.
     """
-    message = "Edge token inválido para esta store."
+    message = "Edge token inválido para esta loja."
 
     def has_permission(self, request, view):
         provided = request.headers.get("X-EDGE-TOKEN") or ""

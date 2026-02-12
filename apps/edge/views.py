@@ -199,7 +199,7 @@ class EdgeEventsIngestView(APIView):
                         status=status.HTTP_400_BAD_REQUEST,
                     )
                 return Response(
-                    {"detail": "Edge token inválido para esta store."},
+                    {"detail": "Edge token inválido para esta loja."},
                     status=status.HTTP_403_FORBIDDEN,
                 )
 
