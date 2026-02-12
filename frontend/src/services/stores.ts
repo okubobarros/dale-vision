@@ -20,6 +20,7 @@ export interface Store {
   last_seen_at?: string | null;
   edge_online?: boolean | null;
   online?: boolean | null;
+  last_error?: string | null;
   trial_started_at?: string | null;
   trial_ends_at?: string | null;
   blocked_reason?: string | null;

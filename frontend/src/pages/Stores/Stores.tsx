@@ -29,7 +29,7 @@ const STATUS_OPTIONS: Array<{ value: StoreStatus; label: string }> = [
 
 const ONLINE_MAX_AGE_SEC = 120;
 
-const isRecentTimestamp = (iso?: string | null, maxAgeSec = ONLINE_MAX_AGE_SEC) => {
+const isRecent = (iso?: string | null, maxAgeSec = ONLINE_MAX_AGE_SEC) => {
   if (!iso) return false;
   const date = new Date(iso);
   if (Number.isNaN(date.getTime())) return false;
@@ -625,10 +625,8 @@ const StoreCard = ({ store, onEdit }: StoreCardProps) => {
     refetchIntervalInBackground: true,
   });
   const lastSeenAt = storeLastSeenAt ?? getLastSeenAt(edgeStatus);
-  const isEdgeOnline =
-    typeof storeEdgeOnline === 'boolean'
-      ? storeEdgeOnline
-      : isRecentTimestamp(lastSeenAt);
+  const lastError = store.last_error ?? edgeStatus?.last_error ?? null;
+  const isEdgeOnline = storeEdgeOnline === true || isRecent(lastSeenAt);
   const edgeStatusLabel = isEdgeOnline ? 'Online' : 'Offline';
   const edgeStatusClass = isEdgeOnline
     ? 'bg-green-100 text-green-800'
@@ -774,6 +772,19 @@ const StoreCard = ({ store, onEdit }: StoreCardProps) => {
             Última comunicação: {formatLastSeenDisplay(lastSeenAt)}
           </span>
         </div>
+
+        {lastError && (
+          <div className="flex items-center text-red-600">
+            <svg className="w-4 h-4 mr-2 flex-shrink-0" fill="currentColor" viewBox="0 0 20 20">
+              <path
+                fillRule="evenodd"
+                d="M8.257 3.099c.765-1.36 2.721-1.36 3.486 0l6.518 11.59c.75 1.335-.214 3.011-1.743 3.011H3.482c-1.53 0-2.493-1.676-1.743-3.011l6.518-11.59zM11 14a1 1 0 10-2 0 1 1 0 002 0zm-1-2a1 1 0 01-1-1V7a1 1 0 112 0v4a1 1 0 01-1 1z"
+                clipRule="evenodd"
+              />
+            </svg>
+            <span aria-label={`Erro: ${lastError}`}>Erro: {lastError}</span>
+          </div>
+        )}
         
         <div className="flex items-center text-gray-500">
           <svg className="w-4 h-4 mr-2 flex-shrink-0" fill="currentColor" viewBox="0 0 20 20">

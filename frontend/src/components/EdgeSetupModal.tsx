@@ -503,7 +503,7 @@ const EdgeSetupModal = ({ open, onClose, defaultStoreId }: EdgeSetupModalProps) 
             <div className={step2Enabled ? "rounded-xl border border-gray-200 bg-gray-50 px-4 py-3" : "rounded-xl border border-gray-200 bg-gray-50 px-4 py-3 opacity-60 pointer-events-none"}>
               <div className="text-sm text-gray-700 font-semibold">2. Download do Edge Agent</div>
               <p className="mt-1 text-xs text-gray-500">
-                Baixe o Edge Agent no computador da loja e extraia o ZIP.
+                Baixe o Edge Agent no computador da loja e extraia arquivo ZIP completo.
               </p>
               <div className="mt-3 flex flex-col sm:flex-row sm:items-center gap-3">
                 {canDownload ? (
@@ -570,9 +570,9 @@ const EdgeSetupModal = ({ open, onClose, defaultStoreId }: EdgeSetupModalProps) 
             <div className={step3Enabled ? "rounded-xl border border-gray-200 bg-gray-50 p-4" : "rounded-xl border border-gray-200 bg-gray-50 p-4 opacity-60 pointer-events-none"}>
               <div className="text-sm font-semibold text-gray-700 mb-2">3. Copiar .env</div>
               <div className="text-xs text-gray-500 mb-3 space-y-1">
-                <div>1) Extraia o ZIP</div>
-                <div>2) Na pasta extraída, encontre o arquivo <span className="font-mono">.env.example</span></div>
-                <div>3) Renomeie para <span className="font-mono">.env</span></div>
+                <div>1) Clique com botão direito no arquivo ZIP, selecione Extrair Tudo </div>
+                <div>2) Escolha o local onde a pasta será extraída</div>
+                <div>3) Encontre o arquivo <span className="font-mono">.env</span></div>
                 <div>
                   4) Abra o <span className="font-mono">.env</span> e cole o conteúdo abaixo (Copiar .env)
                 </div>
@@ -591,6 +591,9 @@ const EdgeSetupModal = ({ open, onClose, defaultStoreId }: EdgeSetupModalProps) 
               >
                 Copiar .env
               </button>
+                <div>
+                  5) Salve o arquivo .env com as informações copiadas              
+                </div>
               {!downloadConfirmed && (
                 <div className="mt-2 text-xs text-amber-700">
                   Se você baixou manualmente, clique em “Já baixei e extraí” no passo 2 para
@@ -612,8 +615,9 @@ const EdgeSetupModal = ({ open, onClose, defaultStoreId }: EdgeSetupModalProps) 
                   Após atualizar o <span className="font-mono">.env</span>, dê duplo clique em{" "}
                   <span className="font-mono">run.bat</span>.
                 </div>
+                <div>Uma janela irá abrir, clique no botão Executar</div>
                 <div>
-                  Uma janela do terminal vai abrir e o agent começará a enviar heartbeat.
+                  Uma janela do terminal vai abrir e o agent começará a enviar os sinais para a nuvem. Deixe essa janela aberta.
                 </div>
                 <div>Volte aqui e clique em “Já iniciei o agent”.</div>
               </div>
@@ -693,10 +697,10 @@ const EdgeSetupModal = ({ open, onClose, defaultStoreId }: EdgeSetupModalProps) 
                     <button
                       type="button"
                       disabled
-                      title="Em breve"
+                      title="Regerar token (em breve)"
                       className="rounded-lg border border-yellow-200 bg-white px-3 py-2 text-xs font-semibold text-yellow-800 opacity-60 cursor-not-allowed"
                     >
-                      Regerar token (em breve)
+                      Em breve
                     </button>
                   )}
                   <button
