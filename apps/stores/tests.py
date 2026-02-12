@@ -150,6 +150,7 @@ class EdgeStatusNoCamerasTests(SimpleTestCase):
         cam.external_id = "cam-1"
         cam.name = "Camera 1"
         cam.last_seen_at = timezone.now()
+        cam.last_snapshot_url = None
         camera_mock.objects.filter.return_value.order_by.return_value = [cam]
         last_heartbeat_mock.return_value = cam.last_seen_at
 
@@ -157,6 +158,37 @@ class EdgeStatusNoCamerasTests(SimpleTestCase):
 
         self.assertEqual(payload.get("store_status"), "online")
         self.assertEqual(payload.get("store_status_reason"), "all_cameras_online")
+        last_edge_receipt_mock.assert_not_called()
+
+    @patch("apps.stores.views_edge_status._get_last_edge_heartbeat_receipt")
+    @patch("apps.stores.views_edge_status._get_last_heartbeat")
+    @patch("apps.stores.views_edge_status.Camera")
+    @patch("apps.stores.views_edge_status.Store")
+    def test_with_cameras_stale_heartbeat_is_offline(
+        self,
+        store_mock,
+        camera_mock,
+        last_heartbeat_mock,
+        last_edge_receipt_mock,
+    ):
+        store_id = str(uuid.uuid4())
+        store_mock.objects.filter.return_value.first.return_value = self._mock_store(store_id)
+
+        old_ts = timezone.now() - timezone.timedelta(seconds=views_edge_status.DEGRADED_SEC + 10)
+        cam = MagicMock()
+        cam.id = uuid.uuid4()
+        cam.external_id = "cam-offline"
+        cam.name = "Camera Offline"
+        cam.last_seen_at = old_ts
+        cam.last_snapshot_url = None
+        camera_mock.objects.filter.return_value.order_by.return_value = [cam]
+        last_heartbeat_mock.return_value = old_ts
+
+        payload, _reason = views_edge_status.compute_store_edge_status_snapshot(store_id)
+
+        self.assertEqual(payload.get("store_status"), "offline")
+        self.assertEqual(payload.get("store_status_reason"), "heartbeat_expired")
+        self.assertFalse(payload.get("online"))
         last_edge_receipt_mock.assert_not_called()
 
 

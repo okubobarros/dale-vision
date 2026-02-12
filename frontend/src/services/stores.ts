@@ -86,6 +86,7 @@ export interface StoreEdgeStatus {
     camera_id: string;
     external_id?: string | null;
     name: string;
+    last_snapshot_url?: string | null;
     status: string;
     age_seconds?: number | null;
     reason?: string | null;

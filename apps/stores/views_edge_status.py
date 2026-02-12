@@ -84,7 +84,7 @@ def _with_stable_contract(payload: dict) -> dict:
     status = str(payload.get("store_status") or "").lower()
     payload["ok"] = payload.get("ok", True)
     if "online" not in payload:
-        payload["online"] = status in ("online", "degraded") or bool(heartbeat)
+        payload["online"] = status in ("online", "degraded", "online_no_cameras")
     payload["last_heartbeat_at"] = payload.get("last_heartbeat_at") or heartbeat
     payload.setdefault("agent_id", None)
     payload.setdefault("version", None)
@@ -169,6 +169,7 @@ def compute_store_edge_status_snapshot(store_id):
                     "camera_id": str(cam.id),
                     "external_id": cam.external_id,
                     "name": cam.name,
+                    "last_snapshot_url": cam.last_snapshot_url,
                     "camera_last_heartbeat_ts": last_ts.isoformat() if last_ts else None,
                     "status": cam_status,
                     "age_seconds": cam_age_seconds,

@@ -295,6 +295,7 @@ class EdgeEventsIngestView(APIView):
                                 "external_id": payload.get("external_id"),
                                 "name": payload.get("name"),
                                 "rtsp_url": payload.get("rtsp_url"),
+                                "snapshot_url": payload.get("snapshot_url"),
                             }
                         ]
 
@@ -314,6 +315,18 @@ class EdgeEventsIngestView(APIView):
                     external_id = cam.get("external_id") or cam.get("camera_id")
                     name = cam.get("name") or external_id or "camera"
                     rtsp_url = cam.get("rtsp_url")
+                    snapshot_url = cam.get("snapshot_url") or cam.get("snapshot_data_url")
+                    if isinstance(snapshot_url, str):
+                        snapshot_url = snapshot_url.strip() or None
+                        if snapshot_url and len(snapshot_url) > 500000:
+                            snapshot_url = None
+                            logger.warning(
+                                "[EDGE] snapshot_url too large; dropped store=%s camera=%s",
+                                store_id,
+                                external_id or name,
+                            )
+                    else:
+                        snapshot_url = None
 
                     camera_obj = None
                     if external_id:
@@ -336,6 +349,7 @@ class EdgeEventsIngestView(APIView):
                             external_id=external_id,
                             name=name,
                             rtsp_url=rtsp_url,
+                            last_snapshot_url=snapshot_url,
                             status="online",
                             last_seen_at=ts_dt,
                             last_error=None,
@@ -347,6 +361,7 @@ class EdgeEventsIngestView(APIView):
                             external_id=external_id or camera_obj.external_id,
                             name=name or camera_obj.name,
                             rtsp_url=rtsp_url or camera_obj.rtsp_url,
+                            last_snapshot_url=snapshot_url or camera_obj.last_snapshot_url,
                             status="online",
                             last_seen_at=ts_dt,
                             last_error=None,
@@ -355,6 +370,7 @@ class EdgeEventsIngestView(APIView):
 
                     camera_obj.external_id = external_id or camera_obj.external_id
                     camera_obj.name = name or camera_obj.name
+                    camera_obj.last_snapshot_url = snapshot_url or camera_obj.last_snapshot_url
                     camera_obj.status = "online"
                     camera_obj.last_seen_at = ts_dt
 

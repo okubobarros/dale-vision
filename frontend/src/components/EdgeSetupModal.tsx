@@ -709,7 +709,7 @@ const EdgeSetupModal = ({ open, onClose, defaultStoreId }: EdgeSetupModalProps) 
               <div className="mt-1 text-xs text-gray-500 space-y-1">
                 <div>
                   Após atualizar o <span className="font-mono">.env</span>, dê duplo clique em{" "}
-                  <span className="font-mono">run.bat</span>.
+                  <span className="font-mono">02_run.bat</span>.
                 </div>
                 <div>Na janela Abrir Arquivo - Aviso de segurança, clique no botão Executar</div>
                 <div>
@@ -830,7 +830,7 @@ const EdgeSetupModal = ({ open, onClose, defaultStoreId }: EdgeSetupModalProps) 
                   <div className="mt-3 text-xs text-yellow-800 space-y-1">
                     <div>1. Confirme que o arquivo .env está na mesma pasta do agent.</div>
                     <div>2. Verifique se STORE_ID e EDGE_TOKEN estão corretos.</div>
-                    <div>3. Abra a pasta e dê duplo clique em run.bat.</div>
+                    <div>3. Abra a pasta e dê duplo clique em 02_run.bat.</div>
                     <div>4. Verifique rede/firewall/antivírus que possam bloquear o acesso.</div>
                     <div>5. Execute o agent como administrador (Windows) se necessário.</div>
                   </div>
