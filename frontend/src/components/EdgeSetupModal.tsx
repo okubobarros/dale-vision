@@ -32,8 +32,6 @@ type ApiErrorLike = {
 const DEFAULT_CLOUD_BASE_URL = "https://api.dalevision.com"
 const DEFAULT_AGENT_ID = "edge-001"
 const HEARTBEAT_INTERVAL_SECONDS = 30
-const ONLINE_GRACE_SECONDS = 15
-const ONLINE_MAX_AGE_SECONDS = HEARTBEAT_INTERVAL_SECONDS * 2 + ONLINE_GRACE_SECONDS
 const POLL_INTERVAL_MS = 4000
 const POLL_MAX_DURATION_MS = 120000
 
@@ -60,14 +58,6 @@ const formatRelativeTime = (iso?: string | null) => {
   return rtf.format(-diffDay, "day")
 }
 
-const isRecentTimestamp = (iso?: string | null, maxAgeSec = ONLINE_MAX_AGE_SECONDS) => {
-  if (!iso) return false
-  const date = new Date(iso)
-  if (Number.isNaN(date.getTime())) return false
-  const diffSec = (Date.now() - date.getTime()) / 1000
-  return diffSec >= 0 && diffSec <= maxAgeSec
-}
-
 const getLastSeenAt = (payload?: EdgeStatusPayload | null) => {
   if (!payload) return null
   return (
@@ -82,7 +72,10 @@ const EdgeSetupModal = ({ open, onClose, defaultStoreId }: EdgeSetupModalProps) 
   const [storeId, setStoreId] = useState(defaultStoreId || "")
   const [edgeToken, setEdgeToken] = useState("")
   const [agentId, setAgentId] = useState(DEFAULT_AGENT_ID)
+  const [cloudBaseUrl, setCloudBaseUrl] = useState(DEFAULT_CLOUD_BASE_URL)
   const [loadingCreds, setLoadingCreds] = useState(false)
+  const [setupError, setSetupError] = useState<string | null>(null)
+  const [rotatingToken, setRotatingToken] = useState(false)
 
   const [downloadConfirmed, setDownloadConfirmed] = useState(false)
   const [envCopied, setEnvCopied] = useState(false)
@@ -100,7 +93,6 @@ const EdgeSetupModal = ({ open, onClose, defaultStoreId }: EdgeSetupModalProps) 
   const [lastHeartbeatAt, setLastHeartbeatAt] = useState<string | null>(null)
   const [showTroubleshoot, setShowTroubleshoot] = useState(false)
   const [showChecklist, setShowChecklist] = useState(false)
-  const [rotateSupported] = useState(false)
 
   const pollTimer = useRef<ReturnType<typeof setTimeout> | null>(null)
   const pollStartedAt = useRef<number | null>(null)
@@ -131,7 +123,10 @@ const EdgeSetupModal = ({ open, onClose, defaultStoreId }: EdgeSetupModalProps) 
     setStoreId(defaultStoreId || "")
     setEdgeToken("")
     setAgentId(DEFAULT_AGENT_ID)
+    setCloudBaseUrl(DEFAULT_CLOUD_BASE_URL)
     setLoadingCreds(false)
+    setSetupError(null)
+    setRotatingToken(false)
     setDownloadConfirmed(false)
     setEnvCopied(false)
     setAgentRunningConfirmed(false)
@@ -163,6 +158,8 @@ const EdgeSetupModal = ({ open, onClose, defaultStoreId }: EdgeSetupModalProps) 
     setLastHeartbeatAt(null)
     setShowTroubleshoot(false)
     setShowChecklist(false)
+    setSetupError(null)
+    setRotatingToken(false)
     stopPolling()
   }, [open, storeId])
 
@@ -184,15 +181,21 @@ const EdgeSetupModal = ({ open, onClose, defaultStoreId }: EdgeSetupModalProps) 
       setLoadingCreds(true)
       setValidationError(null)
       setValidationMsg(null)
+      setSetupError(null)
       try {
-        const data = await storesService.getStoreEdgeSetup(storeId)
+        const data = await storesService.getEdgeSetup(storeId)
         setEdgeToken(data.edge_token || "")
         setAgentId(data.agent_id_suggested || data.agent_id_default || DEFAULT_AGENT_ID)
+        setCloudBaseUrl(data.cloud_base_url || DEFAULT_CLOUD_BASE_URL)
+        if (!data.edge_token) {
+          setSetupError("EDGE_TOKEN não foi retornado. Gere um novo token para continuar.")
+        }
       } catch (err) {
         const apiErr = getApiError(err)
         setEdgeToken("")
         setAgentId(DEFAULT_AGENT_ID)
-        setValidationError(
+        setCloudBaseUrl(DEFAULT_CLOUD_BASE_URL)
+        setSetupError(
           apiErr.response?.data?.detail ||
             apiErr.message ||
             "Falha ao obter credenciais do edge."
@@ -205,8 +208,7 @@ const EdgeSetupModal = ({ open, onClose, defaultStoreId }: EdgeSetupModalProps) 
     loadCreds()
   }, [open, storeId])
 
-  const envReady = Boolean(storeId && edgeToken && !loadingCreds)
-  const resolvedCloudBaseUrl = DEFAULT_CLOUD_BASE_URL
+  const resolvedCloudBaseUrl = cloudBaseUrl || DEFAULT_CLOUD_BASE_URL
 
   const envContent = useMemo(() => {
     const lines = [`CLOUD_BASE_URL=${resolvedCloudBaseUrl}`]
@@ -312,23 +314,90 @@ const EdgeSetupModal = ({ open, onClose, defaultStoreId }: EdgeSetupModalProps) 
     toast.success("Download confirmado")
   }
 
+  const buildEnvContent = (token: string) => {
+    const lines = [`CLOUD_BASE_URL=${resolvedCloudBaseUrl}`]
+    if (storeId) {
+      lines.push(`STORE_ID=${storeId}`)
+    }
+    if (token) {
+      lines.push(`EDGE_TOKEN=${token}`)
+    }
+    lines.push(
+      `AGENT_ID=${agentId || DEFAULT_AGENT_ID}`,
+      `HEARTBEAT_INTERVAL_SECONDS=${HEARTBEAT_INTERVAL_SECONDS}`,
+      `CAMERA_HEARTBEAT_INTERVAL_SECONDS=${HEARTBEAT_INTERVAL_SECONDS}`
+    )
+    return lines.join("\n")
+  }
+
+  const rotateTokenForSetup = async (): Promise<string | null> => {
+    if (!storeId) return null
+    setRotatingToken(true)
+    setSetupError(null)
+    try {
+      const rotated = await storesService.rotateEdgeToken(storeId)
+      if (!rotated.supported) {
+        setSetupError("Geração de novo token não disponível nesta API.")
+        return null
+      }
+      const nextToken = rotated.edge_token || ""
+      setEdgeToken(nextToken)
+      setAgentId(rotated.agent_id_suggested || rotated.agent_id_default || DEFAULT_AGENT_ID)
+      setCloudBaseUrl(rotated.cloud_base_url || DEFAULT_CLOUD_BASE_URL)
+      if (!nextToken) {
+        setSetupError("Não foi possível gerar EDGE_TOKEN para esta loja.")
+        return null
+      }
+      setEnvCopied(false)
+      toast.success("Novo token gerado")
+      return nextToken
+    } catch (err) {
+      const apiErr = getApiError(err)
+      setSetupError(
+        apiErr.response?.data?.detail ||
+          apiErr.message ||
+          "Falha ao gerar novo token."
+      )
+      return null
+    } finally {
+      setRotatingToken(false)
+    }
+  }
+
   const handleCopyEnv = async () => {
     if (!storeId) {
       toast.error("Selecione uma loja antes de copiar.")
       return
     }
-    if (!envReady) {
+    if (loadingCreds) {
       toast.error("Aguarde as credenciais do Edge carregarem.")
       return
     }
+    let tokenToCopy = edgeToken
+    if (!tokenToCopy) {
+      tokenToCopy = (await rotateTokenForSetup()) || ""
+    }
+    if (!tokenToCopy) {
+      toast.error("Não foi possível obter EDGE_TOKEN.")
+      return
+    }
     try {
-      await navigator.clipboard.writeText(envContent)
+      await navigator.clipboard.writeText(buildEnvContent(tokenToCopy))
       setEnvCopied(true)
+      setSetupError(null)
       toast.success("Copiado")
     } catch {
       setEnvCopied(false)
       toast.error("Falha ao copiar. Copie manualmente.")
     }
+  }
+
+  const handleRotateToken = async () => {
+    if (!storeId) {
+      toast.error("Selecione uma loja antes de gerar token.")
+      return
+    }
+    await rotateTokenForSetup()
   }
 
   const handleConfirmRunning = () => {
@@ -393,12 +462,12 @@ const EdgeSetupModal = ({ open, onClose, defaultStoreId }: EdgeSetupModalProps) 
   const isStoreSelected = Boolean(storeId)
   const lastSeenLabel = formatRelativeTime(lastSeenAt)
   const lastHeartbeatLabel = lastHeartbeatAt ? formatRelativeTime(lastHeartbeatAt) : null
-  const canStartAgent = downloadConfirmed && envCopied
-  const canCopyEnv = isStoreSelected
+  const canStartAgent = downloadConfirmed && envCopied && Boolean(edgeToken)
+  const canCopyEnv = isStoreSelected && downloadConfirmed && !loadingCreds && !rotatingToken
   const logCommand = "Get-Content .\\logs\\agent.log -Tail 80"
   const step2Enabled = isStoreSelected
   const step3Enabled = downloadConfirmed
-  const step4Enabled = envCopied
+  const step4Enabled = envCopied && Boolean(edgeToken)
   const step5Enabled = downloadConfirmed && agentRunningConfirmed
   const canStartVerification = downloadConfirmed && agentRunningConfirmed
   const verificationBlockMsg = !downloadConfirmed
@@ -598,7 +667,7 @@ const EdgeSetupModal = ({ open, onClose, defaultStoreId }: EdgeSetupModalProps) 
                 disabled={!canCopyEnv}
                 className="mt-3 inline-flex w-full sm:w-auto items-center justify-center rounded-lg border border-gray-200 px-4 py-2.5 text-xs font-semibold text-gray-700 hover:bg-gray-50 disabled:opacity-60"
               >
-                Copiar .env
+                {rotatingToken ? "Gerando token..." : "Copiar .env"}
               </button>
                 <div>
                   5) Salve o arquivo .env com as informações copiadas              
@@ -610,7 +679,25 @@ const EdgeSetupModal = ({ open, onClose, defaultStoreId }: EdgeSetupModalProps) 
                 </div>
               )}
               {loadingCreds && (
-                <div className="mt-2 text-xs text-gray-500">Carregando credenciais...</div>
+                <div className="mt-2 text-xs text-gray-500">Aguarde as credenciais do Edge...</div>
+              )}
+              {!loadingCreds && !edgeToken && (
+                <div className="mt-2 flex flex-col sm:flex-row sm:items-center gap-2">
+                  <div className="text-xs text-amber-700">
+                    EDGE_TOKEN ausente. Gere um novo token para continuar.
+                  </div>
+                  <button
+                    type="button"
+                    onClick={handleRotateToken}
+                    disabled={rotatingToken || !storeId}
+                    className="inline-flex w-full sm:w-auto items-center justify-center rounded-lg border border-amber-300 bg-white px-3 py-2 text-xs font-semibold text-amber-800 hover:bg-amber-50 disabled:opacity-60"
+                  >
+                    {rotatingToken ? "Gerando..." : "Gerar novo token"}
+                  </button>
+                </div>
+              )}
+              {!loadingCreds && setupError && (
+                <div className="mt-2 text-xs text-red-600">{setupError}</div>
               )}
               {envCopied && (
                 <div className="mt-2 text-xs text-green-600 font-semibold">.env copiado</div>
@@ -702,16 +789,14 @@ const EdgeSetupModal = ({ open, onClose, defaultStoreId }: EdgeSetupModalProps) 
                   fora da pasta correta ou bloqueio de rede/firewall.
                 </p>
                 <div className="mt-3 flex flex-col sm:flex-row gap-2">
-                  {!rotateSupported && (
-                    <button
-                      type="button"
-                      disabled
-                      title="Regerar token (em breve)"
-                      className="rounded-lg border border-yellow-200 bg-white px-3 py-2 text-xs font-semibold text-yellow-800 opacity-60 cursor-not-allowed"
-                    >
-                      Em breve
-                    </button>
-                  )}
+                  <button
+                    type="button"
+                    onClick={handleRotateToken}
+                    disabled={rotatingToken || !storeId}
+                    className="rounded-lg border border-yellow-200 bg-white px-3 py-2 text-xs font-semibold text-yellow-800 hover:bg-yellow-100 disabled:opacity-60"
+                  >
+                    {rotatingToken ? "Gerando..." : "Gerar novo token"}
+                  </button>
                   <button
                     type="button"
                     onClick={() => setShowChecklist((prev) => !prev)}

@@ -95,10 +95,13 @@ export interface StoreEdgeStatus {
 
 export interface StoreEdgeSetupPayload {
   store_id: string;
-  edge_token: string;
-  agent_id_suggested?: string;
-  agent_id_default?: string;
-  cloud_base_url?: string;
+  edge_token?: string | null;
+  agent_id_suggested?: string | null;
+  agent_id_default?: string | null;
+  cloud_base_url?: string | null;
+  has_active_token?: boolean;
+  token_created_at?: string | null;
+  token_last_used_at?: string | null;
 }
 
 export type RotateEdgeTokenResult =
@@ -219,10 +222,13 @@ const normalizeEdgeSetup = (
   storeId: string
 ): StoreEdgeSetupPayload => ({
   store_id: data?.store_id ?? storeId,
-  edge_token: data?.edge_token ?? "",
+  edge_token: data?.edge_token ?? null,
   agent_id_suggested: data?.agent_id_suggested,
   agent_id_default: data?.agent_id_default,
   cloud_base_url: data?.cloud_base_url,
+  has_active_token: Boolean(data?.has_active_token),
+  token_created_at: data?.token_created_at ?? null,
+  token_last_used_at: data?.token_last_used_at ?? null,
 });
 
 const normalizeEdgeStatus = (
@@ -337,7 +343,7 @@ export const storesService = {
     }
   },
 
-  async getStoreEdgeSetup(storeId: string): Promise<StoreEdgeSetupPayload> {
+  async getEdgeSetup(storeId: string): Promise<StoreEdgeSetupPayload> {
     try {
       const response = await api.get(`/v1/stores/${storeId}/edge-setup/`);
       return normalizeEdgeSetup(response.data, storeId);
@@ -347,9 +353,22 @@ export const storesService = {
     }
   },
 
+  async getStoreEdgeSetup(storeId: string): Promise<StoreEdgeSetupPayload> {
+    return this.getEdgeSetup(storeId);
+  },
+
   async rotateEdgeToken(storeId: string): Promise<RotateEdgeTokenResult> {
-    void storeId;
-    return { supported: false };
+    try {
+      const response = await api.post(`/v1/stores/${storeId}/edge-token/rotate/`);
+      return { supported: true, ...normalizeEdgeSetup(response.data, storeId) };
+    } catch (error) {
+      const apiError = error as ApiErrorLike;
+      if (apiError.response?.status === 404) {
+        return { supported: false };
+      }
+      console.error('❌ Erro ao rotacionar token do edge:', error);
+      throw normalizeApiError(error, 'Falha ao gerar novo token do edge.');
+    }
   },
 
   async getStoreEdgeStatus(storeId: string): Promise<StoreEdgeStatus> {
