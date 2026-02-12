@@ -16,6 +16,7 @@ class EdgeEventReceipt(models.Model):
 class EdgeToken(models.Model):
     store_id = models.UUIDField(db_index=True)
     token_hash = models.CharField(max_length=128, unique=True)
+    token_plaintext = models.CharField(max_length=255, null=True, blank=True)
     active = models.BooleanField(default=True)
     created_at = models.DateTimeField(default=timezone.now)
     last_used_at = models.DateTimeField(null=True, blank=True)

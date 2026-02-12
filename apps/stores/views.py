@@ -105,6 +105,7 @@ def _issue_edge_token(store_id):
     token = EdgeToken.objects.create(
         store_id=store_id,
         token_hash=token_hash,
+        token_plaintext=raw_token,
         active=True,
         created_at=timezone.now(),
     )
@@ -159,7 +160,7 @@ class StoreViewSet(viewsets.ModelViewSet):
         """
         store = self.get_object()
         edge_token = _get_active_edge_token(store.id)
-        raw_token = None
+        raw_token = edge_token.token_plaintext if edge_token else None
         if not edge_token:
             edge_token, raw_token = _issue_edge_token(store.id)
         return Response({
@@ -178,7 +179,7 @@ class StoreViewSet(viewsets.ModelViewSet):
         _require_store_owner_or_admin(request.user, store)
 
         edge_token = _get_active_edge_token(store.id)
-        raw_token = None
+        raw_token = edge_token.token_plaintext if edge_token else None
         if not edge_token:
             edge_token, raw_token = _issue_edge_token(store.id)
 
@@ -202,7 +203,7 @@ class StoreViewSet(viewsets.ModelViewSet):
         _require_store_owner_or_admin(request.user, store)
 
         edge_token = _get_active_edge_token(store.id)
-        raw_token = None
+        raw_token = edge_token.token_plaintext if edge_token else None
         if not edge_token:
             edge_token, raw_token = _issue_edge_token(store.id)
 
