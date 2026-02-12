@@ -22,7 +22,6 @@ const PLAN_LABELS: Record<StorePlan, string> = {
 const STATUS_OPTIONS: Array<{ value: StoreStatus; label: string }> = [
   { value: 'active', label: 'Ativa' },
   { value: 'inactive', label: 'Inativa' },
-  { value: 'maintenance', label: 'Manutencao' },
   { value: 'trial', label: 'Trial' },
   { value: 'blocked', label: 'Bloqueada' },
 ];
@@ -56,20 +55,16 @@ const formatRelativeTime = (iso?: string | null) => {
 const getLastSeenAt = (status?: StoreEdgeStatus | null) =>
   status?.last_seen_at || status?.last_heartbeat_at || status?.last_heartbeat || null;
 
-const formatTimestampShort = (iso?: string | null) => {
+const formatTimestampFull = (iso?: string | null) => {
   if (!iso) return '';
   const date = new Date(iso);
   if (Number.isNaN(date.getTime())) return '';
-  const datePart = date.toLocaleDateString('pt-BR', { day: '2-digit', month: '2-digit' });
-  const timePart = date.toLocaleTimeString('pt-BR', { hour: '2-digit', minute: '2-digit' });
-  return `${datePart} ${timePart}`;
+  return date.toLocaleString('pt-BR');
 };
 
 const formatLastSeenDisplay = (iso?: string | null) => {
   if (!iso) return 'Nunca';
-  const relative = formatRelativeTime(iso);
-  const absolute = formatTimestampShort(iso);
-  return absolute ? `${relative} · ${absolute}` : relative;
+  return formatRelativeTime(iso);
 };
 
 const DEMO_URL = 'https://app.dalevision.com/agendar-demo';
@@ -556,7 +551,6 @@ const EditStoreModal = ({
                 >
                   <option value="active">Ativa</option>
                   <option value="inactive">Inativa</option>
-                  <option value="maintenance">Manutenção</option>
                 </select>
               </div>
             </div>
@@ -626,11 +620,35 @@ const StoreCard = ({ store, onEdit }: StoreCardProps) => {
   });
   const lastSeenAt = storeLastSeenAt ?? getLastSeenAt(edgeStatus);
   const lastError = store.last_error ?? edgeStatus?.last_error ?? null;
-  const isEdgeOnline = storeEdgeOnline === true || isRecent(lastSeenAt);
+  const edgeOnlineFromStatus =
+    typeof edgeStatus?.online === 'boolean' ? edgeStatus.online : undefined;
+  const isEdgeOnline =
+    edgeOnlineFromStatus !== undefined
+      ? edgeOnlineFromStatus
+      : storeEdgeOnline === true || isRecent(lastSeenAt);
   const edgeStatusLabel = isEdgeOnline ? 'Online' : 'Offline';
   const edgeStatusClass = isEdgeOnline
     ? 'bg-green-100 text-green-800'
     : 'bg-gray-100 text-gray-800';
+  const lastSeenTitle = formatTimestampFull(lastSeenAt);
+  const storeStatusLabel =
+    store.status === 'active'
+      ? 'Ativa'
+      : store.status === 'inactive'
+      ? 'Inativa'
+      : store.status === 'trial'
+      ? 'Trial'
+      : store.status === 'blocked'
+      ? 'Bloqueada'
+      : 'Inativa';
+  const storeStatusClass =
+    store.status === 'active'
+      ? 'bg-green-100 text-green-800'
+      : store.status === 'blocked'
+      ? 'bg-red-100 text-red-800'
+      : store.status === 'trial'
+      ? 'bg-yellow-100 text-yellow-800'
+      : 'bg-gray-100 text-gray-800';
 
   const deleteMutation = useMutation({
     mutationFn: () => storesService.deleteStore(store.id),
@@ -708,18 +726,11 @@ const StoreCard = ({ store, onEdit }: StoreCardProps) => {
       <div className="mb-4">
         <h3 className="text-lg font-semibold text-gray-800 pr-8">{store.name}</h3>
         <div className="mt-2 flex flex-wrap items-center gap-2">
-          <span 
-            className={`inline-block px-3 py-1 rounded-full text-xs font-medium ${
-              store.status === 'active' 
-                ? 'bg-green-100 text-green-800'
-                : store.status === 'inactive'
-                ? 'bg-gray-100 text-gray-800'
-                : 'bg-yellow-100 text-yellow-800'
-            }`}
-            aria-label={`Status: ${store.status === 'active' ? 'Ativa' : store.status === 'inactive' ? 'Inativa' : 'Manutencao'}`}
+          <span
+            className={`inline-block px-3 py-1 rounded-full text-xs font-medium ${storeStatusClass}`}
+            aria-label={`Status: ${storeStatusLabel}`}
           >
-            {store.status === 'active' ? 'Ativa' : 
-             store.status === 'inactive' ? 'Inativa' : 'Manutencao'}
+            {storeStatusLabel}
           </span>
           <span
             className="inline-block px-3 py-1 rounded-full text-xs font-medium bg-blue-50 text-blue-700"
@@ -768,7 +779,10 @@ const StoreCard = ({ store, onEdit }: StoreCardProps) => {
               clipRule="evenodd"
             />
           </svg>
-          <span aria-label={`Última comunicação: ${formatLastSeenDisplay(lastSeenAt)}`}>
+          <span
+            aria-label={`Última comunicação: ${formatLastSeenDisplay(lastSeenAt)}`}
+            title={lastSeenTitle || undefined}
+          >
             Última comunicação: {formatLastSeenDisplay(lastSeenAt)}
           </span>
         </div>
