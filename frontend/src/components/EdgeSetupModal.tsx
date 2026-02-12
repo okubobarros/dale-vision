@@ -34,6 +34,7 @@ const DEFAULT_AGENT_ID = "edge-001"
 const HEARTBEAT_INTERVAL_SECONDS = 30
 const POLL_INTERVAL_MS = 4000
 const POLL_MAX_DURATION_MS = 120000
+const HEARTBEAT_FRESHNESS_SECONDS = 120
 
 const getApiError = (err: unknown): ApiErrorLike => {
   if (err && typeof err === "object") {
@@ -66,6 +67,18 @@ const getLastSeenAt = (payload?: EdgeStatusPayload | null) => {
     payload.last_heartbeat ||
     null
   )
+}
+
+const getHeartbeatTimestamp = (payload?: EdgeStatusPayload | null) => {
+  if (!payload) return null
+  return payload.last_heartbeat_at || payload.last_heartbeat || payload.last_seen_at || null
+}
+
+const getAgeSeconds = (iso?: string | null) => {
+  if (!iso) return null
+  const date = new Date(iso)
+  if (Number.isNaN(date.getTime())) return null
+  return Math.max(0, Math.floor((Date.now() - date.getTime()) / 1000))
 }
 
 const EdgeSetupModal = ({ open, onClose, defaultStoreId }: EdgeSetupModalProps) => {
@@ -234,6 +247,15 @@ const EdgeSetupModal = ({ open, onClose, defaultStoreId }: EdgeSetupModalProps) 
   }
 
   const isEdgeOnline = (payload: EdgeStatusPayload) => payload?.online === true
+  const hasRecentHeartbeat = (payload: EdgeStatusPayload) => {
+    const ageSeconds = getAgeSeconds(getHeartbeatTimestamp(payload))
+    return ageSeconds !== null && ageSeconds <= HEARTBEAT_FRESHNESS_SECONDS
+  }
+  const isSetupHeartbeatReady = (payload: EdgeStatusPayload) => {
+    if (isEdgeOnline(payload)) return true
+    const reason = String(payload?.store_status_reason || "")
+    return reason === "no_cameras" && hasRecentHeartbeat(payload)
+  }
 
   const pollEdgeStatus = async (id: string) => {
     try {
@@ -257,11 +279,16 @@ const EdgeSetupModal = ({ open, onClose, defaultStoreId }: EdgeSetupModalProps) 
         return
       }
 
-      if (isEdgeOnline(data)) {
+      if (isSetupHeartbeatReady(data)) {
         setHeartbeatOk(true)
         stopPolling()
-        setPollMessage("Loja Online")
-        toast.success("Loja Online")
+        if (reason === "no_cameras") {
+          setPollMessage("Heartbeat recebido (loja sem câmeras cadastradas).")
+          toast.success("Heartbeat recebido")
+        } else {
+          setPollMessage("Loja Online")
+          toast.success("Loja Online")
+        }
         return
       }
     } catch (err) {
@@ -289,6 +316,11 @@ const EdgeSetupModal = ({ open, onClose, defaultStoreId }: EdgeSetupModalProps) 
     const elapsed = Date.now() - startedAt
     if (elapsed >= POLL_MAX_DURATION_MS) {
       stopPolling()
+      const lastAgeSeconds = getAgeSeconds(lastHeartbeatAt)
+      if (lastAgeSeconds !== null) {
+        const ageMinutes = Math.floor(lastAgeSeconds / 60)
+        setPollError(`Último heartbeat recebido há ${ageMinutes} min. Verifique token, .env, run.bat e logs.`)
+      }
       setShowTroubleshoot(true)
       setPollMessage(null)
       return
@@ -602,6 +634,9 @@ const EdgeSetupModal = ({ open, onClose, defaultStoreId }: EdgeSetupModalProps) 
                     Baixar Edge Agent
                   </button>
                 )}
+                <div>1) Clique com botão direito no arquivo ZIP, selecione Extrair Tudo, e depois Extrair. </div>
+                <div>2) Abra a pasta extraída, normalmente em Downloads.</div>
+                <div>3) Feito o processo clique no botão abaixo para seguir</div>
                 <button
                   type="button"
                   onClick={handleConfirmDownload}
@@ -648,15 +683,8 @@ const EdgeSetupModal = ({ open, onClose, defaultStoreId }: EdgeSetupModalProps) 
             <div className={step3Enabled ? "rounded-xl border border-gray-200 bg-gray-50 p-4" : "rounded-xl border border-gray-200 bg-gray-50 p-4 opacity-60 pointer-events-none"}>
               <div className="text-sm font-semibold text-gray-700 mb-2">3. Copiar .env</div>
               <div className="text-xs text-gray-500 mb-3 space-y-1">
-                <div>1) Clique com botão direito no arquivo ZIP, selecione Extrair Tudo, e depois Extrair. </div>
-                <div>2) Abra a pasta extraída, normalmente em Downloads.</div>
-                <div>
-                  3) Edite somente o arquivo <span className="font-mono">.env</span> (tipo "Arquivo
-                  ENV"). Ignore <span className="font-mono">.env.example</span> se ele aparecer.
-                </div>
-                <div>
-                  4) Abra o <span className="font-mono">.env</span>, cole o conteúdo abaixo (Copiar .env) e salve o arquivo antes de fechar.
-                </div>
+                <div>1) Clique no botão Copiar.env ou selecione o conteúdo abaixo</div>
+
               </div>
               <textarea
                 value={envContent}
@@ -672,6 +700,15 @@ const EdgeSetupModal = ({ open, onClose, defaultStoreId }: EdgeSetupModalProps) 
               >
                 {rotatingToken ? "Gerando token..." : "Copiar .env"}
               </button>
+              <div className="text-xs text-gray-500 mb-3 space-y-1">
+                <div>2) Procure o arquivo .env na pasta extraída, abra ele, e substitua o conteúdo atual por toda a informação copiada</div>
+                <div> 3) Edite somente o arquivo <span className="font-mono">.env</span> (tipo "Arquivo
+                  ENV"). Ignore <span className="font-mono">.env.example</span> se ele aparecer.
+                </div>
+                <div>
+                  4) Salve o arquivo antes de fechar.
+                </div>
+              </div>
                
               {!downloadConfirmed && (
                 <div className="mt-2 text-xs text-amber-700">
@@ -742,6 +779,9 @@ const EdgeSetupModal = ({ open, onClose, defaultStoreId }: EdgeSetupModalProps) 
               <p className="text-xs text-gray-500 mt-1">
                 Clique em “Começar verificação”. Vamos monitorar por até 2 minutos.
               </p>
+              <p className="text-xs text-gray-500 mt-1">
+                Se a loja ainda não tiver câmera cadastrada, a validação conclui ao receber heartbeat recente do agent.
+              </p>
               <div className="mt-2 flex flex-col sm:flex-row sm:items-center gap-3">
                 <button
                   type="button"
@@ -761,7 +801,7 @@ const EdgeSetupModal = ({ open, onClose, defaultStoreId }: EdgeSetupModalProps) 
                 <div className="mt-2 text-xs text-red-600">{validationError}</div>
               )}
               {heartbeatOk && (
-                <div className="mt-2 text-xs font-semibold text-green-700">🟢 Loja Online</div>
+                <div className="mt-2 text-xs font-semibold text-green-700">🟢 Heartbeat recebido</div>
               )}
 
               {polling && (
