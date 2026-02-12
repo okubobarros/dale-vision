@@ -648,11 +648,14 @@ const EdgeSetupModal = ({ open, onClose, defaultStoreId }: EdgeSetupModalProps) 
             <div className={step3Enabled ? "rounded-xl border border-gray-200 bg-gray-50 p-4" : "rounded-xl border border-gray-200 bg-gray-50 p-4 opacity-60 pointer-events-none"}>
               <div className="text-sm font-semibold text-gray-700 mb-2">3. Copiar .env</div>
               <div className="text-xs text-gray-500 mb-3 space-y-1">
-                <div>1) Clique com botão direito no arquivo ZIP, selecione Extrair Tudo </div>
-                <div>2) Escolha o local onde a pasta será extraída</div>
-                <div>3) Encontre o arquivo <span className="font-mono">.env</span></div>
+                <div>1) Clique com botão direito no arquivo ZIP, selecione Extrair Tudo, e depois Extrair. </div>
+                <div>2) Abra a pasta extraída, normalmente em Downloads.</div>
                 <div>
-                  4) Abra o <span className="font-mono">.env</span> e cole o conteúdo abaixo (Copiar .env)
+                  3) Edite somente o arquivo <span className="font-mono">.env</span> (tipo "Arquivo
+                  ENV"). Ignore <span className="font-mono">.env.example</span> se ele aparecer.
+                </div>
+                <div>
+                  4) Abra o <span className="font-mono">.env</span>, cole o conteúdo abaixo (Copiar .env) e salve o arquivo antes de fechar.
                 </div>
               </div>
               <textarea
@@ -669,9 +672,7 @@ const EdgeSetupModal = ({ open, onClose, defaultStoreId }: EdgeSetupModalProps) 
               >
                 {rotatingToken ? "Gerando token..." : "Copiar .env"}
               </button>
-                <div>
-                  5) Salve o arquivo .env com as informações copiadas              
-                </div>
+               
               {!downloadConfirmed && (
                 <div className="mt-2 text-xs text-amber-700">
                   Se você baixou manualmente, clique em “Já baixei e extraí” no passo 2 para
@@ -709,18 +710,19 @@ const EdgeSetupModal = ({ open, onClose, defaultStoreId }: EdgeSetupModalProps) 
               <div className="mt-1 text-xs text-gray-500 space-y-1">
                 <div>
                   Após atualizar o <span className="font-mono">.env</span>, dê duplo clique em{" "}
-                  <span className="font-mono">02_run.bat</span>.
+                  <span className="font-mono">run.bat</span>.
                 </div>
                 <div>Na janela Abrir Arquivo - Aviso de segurança, clique no botão Executar</div>
                 <div>
-                  Abrirá uma janela do terminal. Deixe essa janela aberta.
+                  Caso abra uma janela de terminal, mantenha ela aberta.
                 </div>
-                <div>Volte aqui e clique em “Já iniciei o agent”.</div>
+                
               </div>
               <div className="mt-2 rounded-lg border border-gray-200 bg-white px-3 py-2 text-xs text-gray-600">
                 Se o Windows bloquear: “Mais informações” → “Executar assim mesmo”
               </div>
               <div className="mt-2 flex flex-col sm:flex-row sm:items-center gap-3">
+                <div>Feito o processo anterior, clique em “Já iniciei o agent”.</div>
                 <button
                   type="button"
                   onClick={handleConfirmRunning}
@@ -730,7 +732,7 @@ const EdgeSetupModal = ({ open, onClose, defaultStoreId }: EdgeSetupModalProps) 
                   Já iniciei o agent
                 </button>
                 {agentRunningConfirmed && (
-                  <div className="text-xs text-green-600 font-semibold">Agent em execução</div>
+                  <div className="text-xs text-green-600 font-semibold">Teste de conexão iniciada</div>
                 )}
               </div>
             </div>
@@ -786,7 +788,8 @@ const EdgeSetupModal = ({ open, onClose, defaultStoreId }: EdgeSetupModalProps) 
                 </div>
                 <p className="mt-1 text-xs text-yellow-700">
                   Possíveis causas: ZIP não extraído, token desatualizado, agent rodando
-                  fora da pasta correta ou bloqueio de rede/firewall.
+                  fora da pasta correta, edição no arquivo errado (.env.example) ou bloqueio
+                  de rede/firewall.
                 </p>
                 <div className="mt-3 flex flex-col sm:flex-row gap-2">
                   <button
@@ -828,9 +831,9 @@ const EdgeSetupModal = ({ open, onClose, defaultStoreId }: EdgeSetupModalProps) 
                 </div>
                 {showChecklist && (
                   <div className="mt-3 text-xs text-yellow-800 space-y-1">
-                    <div>1. Confirme que o arquivo .env está na mesma pasta do agent.</div>
+                    <div>1. Confirme que você editou o arquivo .env (não .env.example).</div>
                     <div>2. Verifique se STORE_ID e EDGE_TOKEN estão corretos.</div>
-                    <div>3. Abra a pasta e dê duplo clique em 02_run.bat.</div>
+                    <div>3. Abra a pasta e dê duplo clique em run.bat.</div>
                     <div>4. Verifique rede/firewall/antivírus que possam bloquear o acesso.</div>
                     <div>5. Execute o agent como administrador (Windows) se necessário.</div>
                   </div>
