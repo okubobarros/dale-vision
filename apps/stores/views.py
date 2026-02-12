@@ -89,6 +89,44 @@ def _is_uuid(value: str) -> bool:
     except Exception:
         return False
 
+def _hash_edge_token(raw_token: str) -> str:
+    return hashlib.sha256(raw_token.encode("utf-8")).hexdigest()
+
+def _get_active_edge_token(store_id):
+    return (
+        EdgeToken.objects.filter(store_id=store_id, active=True)
+        .order_by("-created_at")
+        .first()
+    )
+
+def _issue_edge_token(store_id):
+    raw_token = secrets.token_urlsafe(32)
+    token_hash = _hash_edge_token(raw_token)
+    token = EdgeToken.objects.create(
+        store_id=store_id,
+        token_hash=token_hash,
+        active=True,
+        created_at=timezone.now(),
+    )
+    return token, raw_token
+
+def _rotate_edge_token(store_id):
+    EdgeToken.objects.filter(store_id=store_id, active=True).update(active=False)
+    return _issue_edge_token(store_id)
+
+def _edge_token_meta(token_obj):
+    if not token_obj:
+        return {
+            "has_active_token": False,
+            "token_created_at": None,
+            "token_last_used_at": None,
+        }
+    return {
+        "has_active_token": True,
+        "token_created_at": token_obj.created_at.isoformat() if token_obj.created_at else None,
+        "token_last_used_at": token_obj.last_used_at.isoformat() if token_obj.last_used_at else None,
+    }
+
 class StoreViewSet(viewsets.ModelViewSet):
     queryset = Store.objects.all()
     serializer_class = StoreSerializer
@@ -117,44 +155,32 @@ class StoreViewSet(viewsets.ModelViewSet):
     @action(detail=True, methods=['get'])
     def edge_token(self, request, pk=None):
         """
-        Retorna um token do edge para a store (gera e sobrescreve o hash).
+        Retorna um token do edge para a store (não rotaciona se já existir).
         """
         store = self.get_object()
-        raw_token = secrets.token_urlsafe(32)
-        token_hash = hashlib.sha256(raw_token.encode("utf-8")).hexdigest()
-        EdgeToken.objects.update_or_create(
-            store_id=store.id,
-            defaults={
-                "token_hash": token_hash,
-                "active": True,
-                "created_at": timezone.now(),
-            },
-        )
+        edge_token = _get_active_edge_token(store.id)
+        raw_token = None
+        if not edge_token:
+            edge_token, raw_token = _issue_edge_token(store.id)
         return Response({
             "store_id": str(store.id),
             "token": raw_token,
+            **_edge_token_meta(edge_token),
         })
 
     @action(detail=True, methods=["get"], url_path="edge-credentials")
     def edge_credentials(self, request, pk=None):
         """
-        Retorna credenciais do edge (gera token se necessário).
+        Retorna credenciais do edge (não rotaciona se já existir).
         Apenas owner/admin da store pode acessar.
         """
         store = self.get_object()
         _require_store_owner_or_admin(request.user, store)
 
-        # Sempre retorna um token novo (hash é persistido)
-        raw_token = secrets.token_urlsafe(32)
-        token_hash = hashlib.sha256(raw_token.encode("utf-8")).hexdigest()
-        EdgeToken.objects.update_or_create(
-            store_id=store.id,
-            defaults={
-                "token_hash": token_hash,
-                "active": True,
-                "created_at": timezone.now(),
-            },
-        )
+        edge_token = _get_active_edge_token(store.id)
+        raw_token = None
+        if not edge_token:
+            edge_token, raw_token = _issue_edge_token(store.id)
 
         return Response(
             {
@@ -162,28 +188,23 @@ class StoreViewSet(viewsets.ModelViewSet):
                 "edge_token": raw_token,
                 "agent_id_default": "edge-001",
                 "cloud_base_url": "https://api.dalevision.com",
+                **_edge_token_meta(edge_token),
             }
         )
 
     @action(detail=True, methods=["get"], url_path="edge-setup")
     def edge_setup(self, request, pk=None):
         """
-        Retorna credenciais do edge para setup (gera token se necessário).
+        Retorna credenciais do edge para setup (idempotente; não rotaciona se já existir).
         Apenas owner/admin da store pode acessar.
         """
         store = self.get_object()
         _require_store_owner_or_admin(request.user, store)
 
-        raw_token = secrets.token_urlsafe(32)
-        token_hash = hashlib.sha256(raw_token.encode("utf-8")).hexdigest()
-        EdgeToken.objects.update_or_create(
-            store_id=store.id,
-            defaults={
-                "token_hash": token_hash,
-                "active": True,
-                "created_at": timezone.now(),
-            },
-        )
+        edge_token = _get_active_edge_token(store.id)
+        raw_token = None
+        if not edge_token:
+            edge_token, raw_token = _issue_edge_token(store.id)
 
         return Response(
             {
@@ -191,6 +212,25 @@ class StoreViewSet(viewsets.ModelViewSet):
                 "edge_token": raw_token,
                 "agent_id_suggested": "edge-001",
                 "cloud_base_url": "https://api.dalevision.com",
+                **_edge_token_meta(edge_token),
+            }
+        )
+
+    @action(detail=True, methods=["post"], url_path="edge-token/rotate")
+    def edge_token_rotate(self, request, pk=None):
+        """
+        Rotaciona o token do edge explicitamente (desativa tokens ativos anteriores).
+        """
+        store = self.get_object()
+        _require_store_owner_or_admin(request.user, store)
+
+        edge_token, raw_token = _rotate_edge_token(store.id)
+        return Response(
+            {
+                "store_id": str(store.id),
+                "edge_token": raw_token,
+                "rotated": True,
+                **_edge_token_meta(edge_token),
             }
         )
 

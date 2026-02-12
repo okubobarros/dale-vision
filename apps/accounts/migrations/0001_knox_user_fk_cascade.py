@@ -35,7 +35,9 @@ END $$;
 
 
 class Migration(migrations.Migration):
-    dependencies = []
+    dependencies = [
+        ("knox", "0001_initial"),
+    ]
 
     operations = [
         migrations.RunSQL(FORWARD_SQL, REVERSE_SQL),

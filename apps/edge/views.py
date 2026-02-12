@@ -37,6 +37,16 @@ def _is_uuid(x: str) -> bool:
     except Exception:
         return False
 
+def _extract_store_id(payload: dict):
+    if not isinstance(payload, dict):
+        return None
+    data = payload.get("data") or {}
+    return (
+        data.get("store_id")
+        or payload.get("store_id")
+        or (payload.get("agent") or {}).get("store_id")
+    )
+
 def _compute_receipt_id(payload: dict) -> str:
     base = {
         "event_name": payload.get("event_name"),
@@ -110,13 +120,14 @@ class EdgeEventsIngestView(APIView):
         u = User.objects.filter(username=username).first()
         return u
 
-    def _is_edge_request(self, request):
+    def _is_edge_request(self, request, validated_data=None):
         provided = request.headers.get("X-EDGE-TOKEN") or ""
         if not provided:
             print("[EDGE] missing X-EDGE-TOKEN")
             return (False, "missing X-EDGE-TOKEN")
 
-        store_id = (request.data.get("data") or {}).get("store_id")
+        payload = validated_data if isinstance(validated_data, dict) else request.data
+        store_id = _extract_store_id(payload)
         if not store_id:
             print("[EDGE] missing store_id for edge auth")
             return (False, "missing store_id")
@@ -180,14 +191,17 @@ class EdgeEventsIngestView(APIView):
             except Exception:
                 return Response({"detail": "Usuário não autenticado."}, status=status.HTTP_403_FORBIDDEN)
         else:
-            ok, err = self._is_edge_request(request)
+            ok, err = self._is_edge_request(request, validated)
             if not ok:
                 if err == "missing store_id":
                     return Response(
                         {"detail": "store_id ausente para autenticação do edge."},
                         status=status.HTTP_400_BAD_REQUEST,
                     )
-                return Response({"detail": "Edge token inválido."}, status=status.HTTP_403_FORBIDDEN)
+                return Response(
+                    {"detail": "Edge token inválido para esta store."},
+                    status=status.HTTP_403_FORBIDDEN,
+                )
 
         # --- update store last_seen_at for heartbeat events (idempotent) ---
         if normalized in ("edge_heartbeat", "camera_heartbeat", "edge_camera_heartbeat"):
