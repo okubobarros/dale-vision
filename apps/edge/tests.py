@@ -1,7 +1,7 @@
 import hashlib
 import uuid
 from types import SimpleNamespace
-from unittest.mock import patch
+from unittest.mock import MagicMock, patch
 from django.test import TestCase
 from django.test import override_settings
 from django.db import connection
@@ -66,6 +66,13 @@ class EdgeEventsAuthTests(TestCase):
 
     def setUp(self):
         self.client = APIClient()
+        self._store_filter_patcher = patch("apps.edge.views.Store.objects.filter")
+        self._store_filter_mock = self._store_filter_patcher.start()
+        self.addCleanup(self._store_filter_patcher.stop)
+        qs = MagicMock()
+        qs.exists.return_value = False
+        qs.first.return_value = None
+        self._store_filter_mock.return_value = qs
 
     def _skip_if_not_pg(self):
         if connection.vendor != "postgresql":
@@ -202,6 +209,13 @@ class EdgeSetupTokenTests(TestCase):
 
     def setUp(self):
         self.client = APIClient()
+        self._store_filter_patcher = patch("apps.edge.views.Store.objects.filter")
+        self._store_filter_mock = self._store_filter_patcher.start()
+        self.addCleanup(self._store_filter_patcher.stop)
+        qs = MagicMock()
+        qs.exists.return_value = False
+        qs.first.return_value = None
+        self._store_filter_mock.return_value = qs
 
     def _skip_if_not_pg(self):
         if connection.vendor != "postgresql":
