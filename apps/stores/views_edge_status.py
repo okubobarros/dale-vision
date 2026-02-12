@@ -8,9 +8,11 @@ from rest_framework.response import Response
 from rest_framework.views import APIView
 
 from apps.core.models import Camera, CameraHealthLog, Store, OrgMember
+from apps.edge.models import EdgeEventReceipt
 
 ONLINE_SEC = 120
 DEGRADED_SEC = 300
+EDGE_ONLINE_THRESHOLD_SECONDS = 90
 _CAMERA_ACTIVE_COLUMN_EXISTS = None
 
 
@@ -81,11 +83,46 @@ def _with_stable_contract(payload: dict) -> dict:
     heartbeat = payload.get("last_heartbeat")
     status = str(payload.get("store_status") or "").lower()
     payload["ok"] = payload.get("ok", True)
-    payload["online"] = status in ("online", "degraded") or bool(heartbeat)
+    if "online" not in payload:
+        payload["online"] = status in ("online", "degraded") or bool(heartbeat)
     payload["last_heartbeat_at"] = payload.get("last_heartbeat_at") or heartbeat
     payload.setdefault("agent_id", None)
     payload.setdefault("version", None)
     return payload
+
+
+def _parse_edge_ts(raw_ts):
+    if not raw_ts:
+        return None
+    try:
+        ts_str = str(raw_ts).replace("Z", "+00:00")
+        dt = timezone.datetime.fromisoformat(ts_str)
+        if timezone.is_naive(dt):
+            dt = timezone.make_aware(dt, timezone.utc)
+        return dt
+    except Exception:
+        return None
+
+
+def _get_last_edge_heartbeat_receipt(store_id):
+    return (
+        EdgeEventReceipt.objects
+        .filter(event_name="edge_heartbeat", store_id=str(store_id))
+        .order_by("-created_at")
+        .first()
+    )
+
+
+def _get_edge_heartbeat_fallback(store_id):
+    receipt = _get_last_edge_heartbeat_receipt(store_id)
+    if not receipt:
+        return (None, None, None)
+    payload = receipt.payload or {}
+    data = payload.get("data") or {}
+    ts = _parse_edge_ts(data.get("ts") or payload.get("ts"))
+    agent_id = data.get("agent_id") or payload.get("agent_id")
+    version = data.get("version") or payload.get("version")
+    return (ts, agent_id, version)
 
 
 def compute_store_edge_status_snapshot(store_id):
@@ -141,9 +178,23 @@ def compute_store_edge_status_snapshot(store_id):
 
         last_heartbeat = _get_last_heartbeat(store_id)
         hb_status, hb_age_seconds, hb_reason = classify_age(last_heartbeat)
+
+        edge_heartbeat_at = None
+        edge_agent_id = None
+        edge_version = None
+        edge_online = None
+
         if cameras_total == 0:
-            store_status = "offline"
+            edge_heartbeat_at, edge_agent_id, edge_version = _get_edge_heartbeat_fallback(store_id)
+            edge_online = False
+            edge_age_seconds = None
+            last_heartbeat = edge_heartbeat_at
+            if edge_heartbeat_at:
+                edge_age_seconds = int((timezone.now() - edge_heartbeat_at).total_seconds())
+                edge_online = edge_age_seconds <= EDGE_ONLINE_THRESHOLD_SECONDS
+            store_status = "online_no_cameras" if edge_online else "offline"
             store_status_reason = "no_cameras"
+            store_status_age_seconds = edge_age_seconds
         elif cameras_online >= 1:
             if cameras_online < cameras_total:
                 store_status = "degraded"
@@ -155,10 +206,11 @@ def compute_store_edge_status_snapshot(store_id):
             store_status = hb_status
             store_status_reason = hb_reason
 
-        if last_heartbeat:
-            store_status_age_seconds = hb_age_seconds
-        else:
-            store_status_age_seconds = min(camera_age_seconds) if camera_age_seconds else None
+        if cameras_total != 0:
+            if last_heartbeat:
+                store_status_age_seconds = hb_age_seconds
+            else:
+                store_status_age_seconds = min(camera_age_seconds) if camera_age_seconds else None
         last_error = _get_latest_error(store_id)
         if not last_error:
             last_error = store.last_error
@@ -167,23 +219,30 @@ def compute_store_edge_status_snapshot(store_id):
     except Exception:
         return (_empty_payload(store.id, "unexpected_error", "unexpected_error"), "unexpected_error")
 
+    payload = {
+        "ok": True,
+        "store_id": str(store.id),
+        "store_status": store_status,
+        "store_status_age_seconds": store_status_age_seconds,
+        "store_status_reason": store_status_reason,
+        "last_heartbeat": last_heartbeat.isoformat() if last_heartbeat else None,
+        "cameras_total": cameras_total,
+        "cameras_online": cameras_online,
+        "cameras_degraded": cameras_degraded,
+        "cameras_offline": cameras_offline,
+        "cameras_unknown": cameras_unknown,
+        "cameras": cameras_out,
+        "last_metric_bucket": None,
+        "last_error": last_error,
+    }
+    if cameras_total == 0:
+        payload["online"] = edge_online
+        payload["last_heartbeat_at"] = edge_heartbeat_at.isoformat() if edge_heartbeat_at else None
+        payload["agent_id"] = edge_agent_id
+        payload["version"] = edge_version
+
     return (
-        _with_stable_contract({
-            "ok": True,
-            "store_id": str(store.id),
-            "store_status": store_status,
-            "store_status_age_seconds": store_status_age_seconds,
-            "store_status_reason": store_status_reason,
-            "last_heartbeat": last_heartbeat.isoformat() if last_heartbeat else None,
-            "cameras_total": cameras_total,
-            "cameras_online": cameras_online,
-            "cameras_degraded": cameras_degraded,
-            "cameras_offline": cameras_offline,
-            "cameras_unknown": cameras_unknown,
-            "cameras": cameras_out,
-            "last_metric_bucket": None,
-            "last_error": last_error,
-        }),
+        _with_stable_contract(payload),
         None,
     )
 

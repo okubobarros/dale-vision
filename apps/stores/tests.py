@@ -1,7 +1,10 @@
+import uuid
 from django.test import SimpleTestCase
+from django.utils import timezone
 from unittest.mock import MagicMock, patch
 
 from apps.billing.utils import PaywallError, TRIAL_STORE_LIMIT, enforce_trial_store_limit
+from apps.stores import views_edge_status
 
 
 class TrialStoreLimitTests(SimpleTestCase):
@@ -35,3 +38,97 @@ class TrialStoreLimitTests(SimpleTestCase):
         store_mock.objects.filter.return_value = qs
 
         enforce_trial_store_limit(org_id="org-id")
+
+
+class EdgeStatusNoCamerasTests(SimpleTestCase):
+    def _mock_store(self, store_id):
+        store = MagicMock()
+        store.id = store_id
+        store.last_error = None
+        return store
+
+    @patch("apps.stores.views_edge_status._get_last_heartbeat", return_value=None)
+    @patch("apps.stores.views_edge_status.Camera")
+    @patch("apps.stores.views_edge_status.Store")
+    @patch("apps.stores.views_edge_status._get_last_edge_heartbeat_receipt")
+    def test_no_cameras_recent_edge_heartbeat(
+        self,
+        last_edge_receipt_mock,
+        store_mock,
+        camera_mock,
+        _last_heartbeat,
+    ):
+        store_id = str(uuid.uuid4())
+        store_mock.objects.filter.return_value.first.return_value = self._mock_store(store_id)
+        camera_mock.objects.filter.return_value.order_by.return_value = []
+
+        ts = (timezone.now() - timezone.timedelta(seconds=30)).isoformat()
+        receipt = MagicMock()
+        receipt.payload = {"data": {"ts": ts, "agent_id": "agent-1", "version": "1.2.3"}}
+        last_edge_receipt_mock.return_value = receipt
+
+        payload, _reason = views_edge_status.compute_store_edge_status_snapshot(store_id)
+
+        self.assertTrue(payload.get("online"))
+        self.assertEqual(payload.get("store_status_reason"), "no_cameras")
+        self.assertEqual(payload.get("store_status"), "online_no_cameras")
+        self.assertIsNotNone(payload.get("last_heartbeat_at"))
+        self.assertEqual(payload.get("agent_id"), "agent-1")
+        self.assertEqual(payload.get("version"), "1.2.3")
+
+    @patch("apps.stores.views_edge_status._get_last_heartbeat", return_value=None)
+    @patch("apps.stores.views_edge_status.Camera")
+    @patch("apps.stores.views_edge_status.Store")
+    @patch("apps.stores.views_edge_status._get_last_edge_heartbeat_receipt")
+    def test_no_cameras_old_edge_heartbeat_offline(
+        self,
+        last_edge_receipt_mock,
+        store_mock,
+        camera_mock,
+        _last_heartbeat,
+    ):
+        store_id = str(uuid.uuid4())
+        store_mock.objects.filter.return_value.first.return_value = self._mock_store(store_id)
+        camera_mock.objects.filter.return_value.order_by.return_value = []
+
+        ts = (
+            timezone.now()
+            - timezone.timedelta(seconds=views_edge_status.EDGE_ONLINE_THRESHOLD_SECONDS + 10)
+        ).isoformat()
+        receipt = MagicMock()
+        receipt.payload = {"data": {"ts": ts, "agent_id": "agent-2", "version": "2.0.0"}}
+        last_edge_receipt_mock.return_value = receipt
+
+        payload, _reason = views_edge_status.compute_store_edge_status_snapshot(store_id)
+
+        self.assertFalse(payload.get("online"))
+        self.assertEqual(payload.get("store_status_reason"), "no_cameras")
+        self.assertEqual(payload.get("store_status"), "offline")
+
+    @patch("apps.stores.views_edge_status._get_last_edge_heartbeat_receipt")
+    @patch("apps.stores.views_edge_status._get_last_heartbeat")
+    @patch("apps.stores.views_edge_status.Camera")
+    @patch("apps.stores.views_edge_status.Store")
+    def test_with_cameras_keeps_current_behavior(
+        self,
+        store_mock,
+        camera_mock,
+        last_heartbeat_mock,
+        last_edge_receipt_mock,
+    ):
+        store_id = str(uuid.uuid4())
+        store_mock.objects.filter.return_value.first.return_value = self._mock_store(store_id)
+
+        cam = MagicMock()
+        cam.id = uuid.uuid4()
+        cam.external_id = "cam-1"
+        cam.name = "Camera 1"
+        cam.last_seen_at = timezone.now()
+        camera_mock.objects.filter.return_value.order_by.return_value = [cam]
+        last_heartbeat_mock.return_value = cam.last_seen_at
+
+        payload, _reason = views_edge_status.compute_store_edge_status_snapshot(store_id)
+
+        self.assertEqual(payload.get("store_status"), "online")
+        self.assertEqual(payload.get("store_status_reason"), "all_cameras_online")
+        last_edge_receipt_mock.assert_not_called()
