@@ -17,6 +17,9 @@ export interface Store {
   email?: string;
   plan: StorePlan;
   status: StoreStatus;
+  last_seen_at?: string | null;
+  edge_online?: boolean | null;
+  online?: boolean | null;
   trial_started_at?: string | null;
   trial_ends_at?: string | null;
   blocked_reason?: string | null;
@@ -63,6 +66,8 @@ export interface NetworkDashboard {
 
 export interface StoreEdgeStatus {
   store_id: string;
+  ok?: boolean;
+  online?: boolean;
   store_status?: string;
   store_status_age_seconds?: number | null;
   store_status_reason?: string | null;
@@ -86,6 +91,18 @@ export interface StoreEdgeStatus {
     camera_last_heartbeat_ts?: string | null;
   }>;
 }
+
+export interface StoreEdgeSetupPayload {
+  store_id: string;
+  edge_token: string;
+  agent_id_suggested?: string;
+  agent_id_default?: string;
+  cloud_base_url?: string;
+}
+
+export type RotateEdgeTokenResult =
+  | ({ supported: true } & StoreEdgeSetupPayload)
+  | { supported: false };
 
 // Funções auxiliares (não exportadas)
 const getMockDashboard = (storeId: string): StoreDashboard => {
@@ -175,6 +192,65 @@ const omitEmpty = <T extends Record<string, unknown>>(payload: T): Partial<T> =>
   return result;
 };
 
+type ApiErrorLike = {
+  response?: { status?: number; data?: { detail?: string } };
+  message?: string;
+  code?: string;
+};
+
+const normalizeApiError = (error: unknown, fallbackMessage: string) => {
+  const err = (error || {}) as ApiErrorLike;
+  const detail =
+    err.response?.data?.detail ||
+    err.message ||
+    fallbackMessage;
+  const normalized = new Error(detail);
+  (normalized as ApiErrorLike).response = {
+    status: err.response?.status,
+    data: { detail },
+  };
+  (normalized as ApiErrorLike).code = err.code;
+  return normalized;
+};
+
+const normalizeEdgeSetup = (
+  data: Partial<StoreEdgeSetupPayload> | null | undefined,
+  storeId: string
+): StoreEdgeSetupPayload => ({
+  store_id: data?.store_id ?? storeId,
+  edge_token: data?.edge_token ?? "",
+  agent_id_suggested: data?.agent_id_suggested,
+  agent_id_default: data?.agent_id_default,
+  cloud_base_url: data?.cloud_base_url,
+});
+
+const normalizeEdgeStatus = (
+  data: Partial<StoreEdgeStatus> | null | undefined,
+  storeId: string
+): StoreEdgeStatus => ({
+  store_id: data?.store_id ?? storeId,
+  ok: data?.ok,
+  online: typeof data?.online === "boolean" ? data.online : undefined,
+  store_status: data?.store_status,
+  store_status_age_seconds: data?.store_status_age_seconds ?? null,
+  store_status_reason: data?.store_status_reason ?? null,
+  last_heartbeat: data?.last_heartbeat ?? null,
+  last_heartbeat_at: data?.last_heartbeat_at ?? null,
+  last_seen_at:
+    data?.last_seen_at ??
+    data?.last_heartbeat_at ??
+    data?.last_heartbeat ??
+    null,
+  last_metric_bucket: data?.last_metric_bucket ?? null,
+  last_error: data?.last_error ?? null,
+  cameras_total: data?.cameras_total ?? 0,
+  cameras_online: data?.cameras_online ?? 0,
+  cameras_degraded: data?.cameras_degraded ?? 0,
+  cameras_offline: data?.cameras_offline ?? 0,
+  cameras_unknown: data?.cameras_unknown ?? 0,
+  cameras: Array.isArray(data?.cameras) ? data?.cameras ?? [] : [],
+});
+
 export const storesService = {
   // Listar todas as lojas do usuário
   async getStores(): Promise<Store[]> {
@@ -196,7 +272,7 @@ export const storesService = {
       return stores;
     } catch (error) {
       console.error('❌ Erro ao buscar lojas:', error);
-      throw error;
+      throw normalizeApiError(error, 'Falha ao carregar lojas.');
     }
   },
 
@@ -260,9 +336,29 @@ export const storesService = {
     }
   },
 
+  async getStoreEdgeSetup(storeId: string): Promise<StoreEdgeSetupPayload> {
+    try {
+      const response = await api.get(`/v1/stores/${storeId}/edge-setup/`);
+      return normalizeEdgeSetup(response.data, storeId);
+    } catch (error) {
+      console.error('❌ Erro ao obter credenciais do edge:', error);
+      throw normalizeApiError(error, 'Falha ao obter credenciais do edge.');
+    }
+  },
+
+  async rotateEdgeToken(storeId: string): Promise<RotateEdgeTokenResult> {
+    void storeId;
+    return { supported: false };
+  },
+
   async getStoreEdgeStatus(storeId: string): Promise<StoreEdgeStatus> {
-    const response = await api.get(`/v1/stores/${storeId}/edge-status/`);
-    return response.data;
+    try {
+      const response = await api.get(`/v1/stores/${storeId}/edge-status/`);
+      return normalizeEdgeStatus(response.data, storeId);
+    } catch (error) {
+      console.error('❌ Erro ao consultar status do edge:', error);
+      throw normalizeApiError(error, 'Falha ao consultar status do edge.');
+    }
   },
 
   // Criar nova loja

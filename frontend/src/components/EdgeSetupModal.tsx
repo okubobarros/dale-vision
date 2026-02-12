@@ -23,13 +23,6 @@ type EdgeStatusPayload = {
   version?: string | null
 }
 
-type EdgeSetupPayload = {
-  edge_token?: string
-  agent_id_suggested?: string
-  agent_id_default?: string
-  cloud_base_url?: string
-}
-
 type ApiErrorLike = {
   response?: { status?: number; data?: { detail?: string } }
   message?: string
@@ -38,6 +31,9 @@ type ApiErrorLike = {
 
 const DEFAULT_CLOUD_BASE_URL = "https://api.dalevision.com"
 const DEFAULT_AGENT_ID = "edge-001"
+const HEARTBEAT_INTERVAL_SECONDS = 30
+const ONLINE_GRACE_SECONDS = 15
+const ONLINE_MAX_AGE_SECONDS = HEARTBEAT_INTERVAL_SECONDS * 2 + ONLINE_GRACE_SECONDS
 const POLL_INTERVAL_MS = 4000
 const POLL_MAX_DURATION_MS = 120000
 
@@ -64,7 +60,7 @@ const formatRelativeTime = (iso?: string | null) => {
   return rtf.format(-diffDay, "day")
 }
 
-const isRecentTimestamp = (iso?: string | null, maxAgeSec = 120) => {
+const isRecentTimestamp = (iso?: string | null, maxAgeSec = ONLINE_MAX_AGE_SECONDS) => {
   if (!iso) return false
   const date = new Date(iso)
   if (Number.isNaN(date.getTime())) return false
@@ -103,7 +99,7 @@ const EdgeSetupModal = ({ open, onClose, defaultStoreId }: EdgeSetupModalProps) 
   const [lastSeenAt, setLastSeenAt] = useState<string | null>(null)
   const [showTroubleshoot, setShowTroubleshoot] = useState(false)
   const [showChecklist, setShowChecklist] = useState(false)
-  const [rotateSupported, setRotateSupported] = useState(true)
+  const [rotateSupported] = useState(false)
 
   const pollTimer = useRef<ReturnType<typeof setTimeout> | null>(null)
   const pollStartedAt = useRef<number | null>(null)
@@ -147,7 +143,6 @@ const EdgeSetupModal = ({ open, onClose, defaultStoreId }: EdgeSetupModalProps) 
     setLastSeenAt(null)
     setShowTroubleshoot(false)
     setShowChecklist(false)
-    setRotateSupported(true)
     stopPolling()
   }, [open, defaultStoreId])
 
@@ -165,7 +160,6 @@ const EdgeSetupModal = ({ open, onClose, defaultStoreId }: EdgeSetupModalProps) 
     setLastSeenAt(null)
     setShowTroubleshoot(false)
     setShowChecklist(false)
-    setRotateSupported(true)
     stopPolling()
   }, [open, storeId])
 
@@ -188,8 +182,7 @@ const EdgeSetupModal = ({ open, onClose, defaultStoreId }: EdgeSetupModalProps) 
       setValidationError(null)
       setValidationMsg(null)
       try {
-        const res = await api.get<EdgeSetupPayload>(`/v1/stores/${storeId}/edge-setup/`)
-        const data = res.data || {}
+        const data = await storesService.getStoreEdgeSetup(storeId)
         setEdgeToken(data.edge_token || "")
         setAgentId(data.agent_id_suggested || data.agent_id_default || DEFAULT_AGENT_ID)
       } catch (err) {
@@ -213,14 +206,18 @@ const EdgeSetupModal = ({ open, onClose, defaultStoreId }: EdgeSetupModalProps) 
   const resolvedCloudBaseUrl = DEFAULT_CLOUD_BASE_URL
 
   const envContent = useMemo(() => {
-    const lines = [
-      `CLOUD_BASE_URL=${resolvedCloudBaseUrl}`,
-      `STORE_ID=${storeId || ""}`,
-      `EDGE_TOKEN=${edgeToken || ""}`,
+    const lines = [`CLOUD_BASE_URL=${resolvedCloudBaseUrl}`]
+    if (storeId) {
+      lines.push(`STORE_ID=${storeId}`)
+    }
+    if (edgeToken) {
+      lines.push(`EDGE_TOKEN=${edgeToken}`)
+    }
+    lines.push(
       `AGENT_ID=${agentId || DEFAULT_AGENT_ID}`,
-      "HEARTBEAT_INTERVAL_SECONDS=30",
-      "CAMERA_HEARTBEAT_INTERVAL_SECONDS=30",
-    ]
+      `HEARTBEAT_INTERVAL_SECONDS=${HEARTBEAT_INTERVAL_SECONDS}`,
+      `CAMERA_HEARTBEAT_INTERVAL_SECONDS=${HEARTBEAT_INTERVAL_SECONDS}`
+    )
     return lines.join("\n")
   }, [resolvedCloudBaseUrl, storeId, edgeToken, agentId])
 
@@ -232,8 +229,9 @@ const EdgeSetupModal = ({ open, onClose, defaultStoreId }: EdgeSetupModalProps) 
   }
 
   const isEdgeOnline = (payload: EdgeStatusPayload) => {
+    if (payload?.online === true) return true
     const lastSeenAt = getLastSeenAt(payload)
-    return isRecentTimestamp(lastSeenAt, 120)
+    return isRecentTimestamp(lastSeenAt, ONLINE_MAX_AGE_SECONDS)
   }
 
   const pollEdgeStatus = async (id: string) => {
@@ -341,8 +339,12 @@ const EdgeSetupModal = ({ open, onClose, defaultStoreId }: EdgeSetupModalProps) 
       setValidationError("Selecione uma loja para validar.")
       return
     }
+    if (!downloadConfirmed) {
+      setValidationError("Confirme o download antes de iniciar a verificação.")
+      return
+    }
     if (!agentRunningConfirmed) {
-      setValidationError("Confirme que o agent está rodando antes de validar.")
+      setValidationError("Inicie o agent antes de começar a verificação.")
       return
     }
     setValidating(true)
@@ -378,38 +380,6 @@ const EdgeSetupModal = ({ open, onClose, defaultStoreId }: EdgeSetupModalProps) 
     }
   }
 
-  const handleRegenerateToken = async () => {
-    if (!storeId) return
-    setLoadingCreds(true)
-    setValidationError(null)
-    try {
-      const res = await api.post<EdgeSetupPayload>(
-        `/v1/stores/${storeId}/edge-setup/`,
-        { rotate: true }
-      )
-      const data = res.data || {}
-      if (data.edge_token) {
-        setEdgeToken(data.edge_token)
-        setDownloadConfirmed(false)
-        setEnvCopied(false)
-        setAgentRunningConfirmed(false)
-        setHeartbeatOk(false)
-        setPollError(null)
-        setValidationMsg("Token regenerado. Atualize o .env do agent.")
-      }
-    } catch (err) {
-      const apiErr = getApiError(err)
-      if (apiErr.response?.status === 405 || apiErr.response?.status === 404) {
-        setValidationError("Rotação de token ainda não habilitada no backend.")
-        setRotateSupported(false)
-      } else {
-        setValidationError("Não foi possível regenerar o token.")
-      }
-    } finally {
-      setLoadingCreds(false)
-    }
-  }
-
   const handleClose = () => {
     stopPolling()
     onClose()
@@ -419,10 +389,17 @@ const EdgeSetupModal = ({ open, onClose, defaultStoreId }: EdgeSetupModalProps) 
   const lastSeenLabel = formatRelativeTime(lastSeenAt)
   const canStartAgent = downloadConfirmed && envCopied
   const canCopyEnv = isStoreSelected
-  const logCommand = [
-    "Windows (PowerShell): Get-Content .\\logs\\agent.log -Tail 80",
-    "Linux: tail -n 80 ./logs/agent.log",
-  ].join("\n")
+  const logCommand = "Get-Content .\\logs\\agent.log -Tail 80"
+  const step2Enabled = isStoreSelected
+  const step3Enabled = downloadConfirmed
+  const step4Enabled = envCopied
+  const step5Enabled = downloadConfirmed && agentRunningConfirmed
+  const canStartVerification = downloadConfirmed && agentRunningConfirmed
+  const verificationBlockMsg = !downloadConfirmed
+    ? "Confirme o download e extração para liberar a verificação."
+    : !agentRunningConfirmed
+    ? "Inicie o agent para liberar a verificação."
+    : null
 
   const statusSteps = [
     { label: "Loja", done: isStoreSelected },
@@ -473,6 +450,11 @@ const EdgeSetupModal = ({ open, onClose, defaultStoreId }: EdgeSetupModalProps) 
                 Selecione a loja para liberar o passo a passo.
               </p>
             )}
+            {storeId && (
+              <p className="mt-2 text-xs text-green-600 font-semibold">
+                Loja confirmada
+              </p>
+            )}
           </div>
 
           <div className="rounded-xl border border-gray-200 bg-white px-4 py-3">
@@ -518,11 +500,10 @@ const EdgeSetupModal = ({ open, onClose, defaultStoreId }: EdgeSetupModalProps) 
           </div>
 
           <div className={!isStoreSelected ? "opacity-50 pointer-events-none space-y-4" : "space-y-4"}>
-            <div className="rounded-xl border border-gray-200 bg-gray-50 px-4 py-3">
+            <div className={step2Enabled ? "rounded-xl border border-gray-200 bg-gray-50 px-4 py-3" : "rounded-xl border border-gray-200 bg-gray-50 px-4 py-3 opacity-60 pointer-events-none"}>
               <div className="text-sm text-gray-700 font-semibold">2. Download do Edge Agent</div>
               <p className="mt-1 text-xs text-gray-500">
-                Baixe o Edge Agent no computador da loja. Se preferir, você pode baixar
-                manualmente e seguir o passo a passo.
+                Baixe o Edge Agent no computador da loja e extraia o ZIP.
               </p>
               <div className="mt-3 flex flex-col sm:flex-row sm:items-center gap-3">
                 {canDownload ? (
@@ -586,13 +567,16 @@ const EdgeSetupModal = ({ open, onClose, defaultStoreId }: EdgeSetupModalProps) 
               )}
             </div>
 
-            <div className="rounded-xl border border-gray-200 bg-gray-50 p-4">
+            <div className={step3Enabled ? "rounded-xl border border-gray-200 bg-gray-50 p-4" : "rounded-xl border border-gray-200 bg-gray-50 p-4 opacity-60 pointer-events-none"}>
               <div className="text-sm font-semibold text-gray-700 mb-2">3. Copiar .env</div>
-              <p className="text-xs text-gray-500 mb-3">
-                Crie um arquivo chamado <span className="font-mono">.env</span> dentro da
-                pasta do Edge Agent e cole o conteúdo abaixo. Você pode seguir mesmo se
-                baixou manualmente.
-              </p>
+              <div className="text-xs text-gray-500 mb-3 space-y-1">
+                <div>1) Extraia o ZIP</div>
+                <div>2) Na pasta extraída, encontre o arquivo <span className="font-mono">.env.example</span></div>
+                <div>3) Renomeie para <span className="font-mono">.env</span></div>
+                <div>
+                  4) Abra o <span className="font-mono">.env</span> e cole o conteúdo abaixo (Copiar .env)
+                </div>
+              </div>
               <textarea
                 value={envContent}
                 readOnly
@@ -609,8 +593,8 @@ const EdgeSetupModal = ({ open, onClose, defaultStoreId }: EdgeSetupModalProps) 
               </button>
               {!downloadConfirmed && (
                 <div className="mt-2 text-xs text-amber-700">
-                  Se você já baixou manualmente, clique em “Já baixei e extraí” no passo 2
-                  para liberar o restante.
+                  Se você baixou manualmente, clique em “Já baixei e extraí” no passo 2 para
+                  liberar o restante.
                 </div>
               )}
               {loadingCreds && (
@@ -621,30 +605,21 @@ const EdgeSetupModal = ({ open, onClose, defaultStoreId }: EdgeSetupModalProps) 
               )}
             </div>
 
-            <div className="rounded-xl border border-gray-200 bg-gray-50 px-4 py-3">
+            <div className={step4Enabled ? "rounded-xl border border-gray-200 bg-gray-50 px-4 py-3" : "rounded-xl border border-gray-200 bg-gray-50 px-4 py-3 opacity-60 pointer-events-none"}>
               <div className="text-sm text-gray-700 font-semibold">4. Rodar o agent</div>
-              <p className="text-xs text-gray-500 mt-1">
-                Antes de rodar, extraia o ZIP. Depois copie o{" "}
-                <span className="font-mono">.env</span> na pasta correta e execute o agent
-                no computador da loja.
-              </p>
-              <div className="mt-2 grid grid-cols-1 sm:grid-cols-2 gap-2 text-xs text-gray-600">
-                <div className="rounded-lg border border-gray-200 bg-white px-3 py-2">
-                  <div className="font-semibold text-gray-700 mb-1">Windows</div>
-                  <div className="text-[11px] text-gray-600">Extraia o ZIP e abra a pasta</div>
-                  <div className="font-mono text-[11px] text-gray-700">.\02_run.bat</div>
+              <div className="mt-1 text-xs text-gray-500 space-y-1">
+                <div>
+                  Após atualizar o <span className="font-mono">.env</span>, dê duplo clique em{" "}
+                  <span className="font-mono">run.bat</span>.
                 </div>
-                <div className="rounded-lg border border-gray-200 bg-white px-3 py-2">
-                  <div className="font-semibold text-gray-700 mb-1">Linux</div>
-                  <div className="text-[11px] text-gray-600">Extraia o ZIP antes de rodar</div>
-                  <div className="font-mono text-[11px] text-gray-700">
-                    python -m src.agent.main --config ./config/agent.yaml
-                  </div>
+                <div>
+                  Uma janela do terminal vai abrir e o agent começará a enviar heartbeat.
                 </div>
+                <div>Volte aqui e clique em “Já iniciei o agent”.</div>
               </div>
-              <p className="mt-2 text-xs text-gray-500">
-                Execute a partir da pasta do Edge Agent.
-              </p>
+              <div className="mt-2 rounded-lg border border-gray-200 bg-white px-3 py-2 text-xs text-gray-600">
+                Se o Windows bloquear: “Mais informações” → “Executar assim mesmo”
+              </div>
               <div className="mt-2 flex flex-col sm:flex-row sm:items-center gap-3">
                 <button
                   type="button"
@@ -660,23 +635,25 @@ const EdgeSetupModal = ({ open, onClose, defaultStoreId }: EdgeSetupModalProps) 
               </div>
             </div>
 
-            <div className="rounded-xl border border-gray-200 bg-gray-50 px-4 py-3">
-              <div className="text-sm text-gray-700 font-semibold">5. Online</div>
+            <div className={step5Enabled ? "rounded-xl border border-gray-200 bg-gray-50 px-4 py-3" : "rounded-xl border border-gray-200 bg-gray-50 px-4 py-3 opacity-60 pointer-events-none"}>
+              <div className="text-sm text-gray-700 font-semibold">5. Verificação online</div>
               <p className="text-xs text-gray-500 mt-1">
-                Clique em “Começar verificação” para monitorar a conexão por até 2 minutos.
-                Se não conectar, mostramos dicas de solução.
+                Clique em “Começar verificação”. Vamos monitorar por até 2 minutos.
               </p>
               <div className="mt-2 flex flex-col sm:flex-row sm:items-center gap-3">
                 <button
                   type="button"
                   onClick={handleValidate}
-                  disabled={validating || polling || !agentRunningConfirmed}
+                  disabled={validating || polling || !canStartVerification}
                   className="w-full sm:w-auto rounded-lg bg-blue-600 px-4 py-2.5 text-sm font-semibold text-white hover:bg-blue-700 disabled:opacity-60"
                 >
                   {validating ? "Verificando..." : polling ? "Aguardando heartbeat..." : "Começar verificação"}
                 </button>
                 {validationMsg && <div className="text-sm text-gray-700">{validationMsg}</div>}
               </div>
+              {verificationBlockMsg && (
+                <div className="mt-2 text-xs text-amber-700">{verificationBlockMsg}</div>
+              )}
 
               {validationError && (
                 <div className="mt-2 text-xs text-red-600">{validationError}</div>
@@ -712,13 +689,14 @@ const EdgeSetupModal = ({ open, onClose, defaultStoreId }: EdgeSetupModalProps) 
                   fora da pasta correta ou bloqueio de rede/firewall.
                 </p>
                 <div className="mt-3 flex flex-col sm:flex-row gap-2">
-                  {rotateSupported && (
+                  {!rotateSupported && (
                     <button
                       type="button"
-                      onClick={handleRegenerateToken}
-                      className="rounded-lg border border-yellow-200 bg-white px-3 py-2 text-xs font-semibold text-yellow-800 hover:bg-yellow-100"
+                      disabled
+                      title="Em breve"
+                      className="rounded-lg border border-yellow-200 bg-white px-3 py-2 text-xs font-semibold text-yellow-800 opacity-60 cursor-not-allowed"
                     >
-                      Regerar token
+                      Regerar token (em breve)
                     </button>
                   )}
                   <button
@@ -754,9 +732,9 @@ const EdgeSetupModal = ({ open, onClose, defaultStoreId }: EdgeSetupModalProps) 
                   <div className="mt-3 text-xs text-yellow-800 space-y-1">
                     <div>1. Confirme que o arquivo .env está na mesma pasta do agent.</div>
                     <div>2. Verifique se STORE_ID e EDGE_TOKEN estão corretos.</div>
-                    <div>3. Verifique rede/firewall/antivírus que possam bloquear o acesso.</div>
-                    <div>4. Execute o agent como administrador (Windows) se necessário.</div>
-                    <div>5. Confira os logs no terminal onde o agent está rodando.</div>
+                    <div>3. Abra a pasta e dê duplo clique em run.bat.</div>
+                    <div>4. Verifique rede/firewall/antivírus que possam bloquear o acesso.</div>
+                    <div>5. Execute o agent como administrador (Windows) se necessário.</div>
                   </div>
                 )}
               </div>

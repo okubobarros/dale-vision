@@ -56,6 +56,22 @@ const formatRelativeTime = (iso?: string | null) => {
 const getLastSeenAt = (status?: StoreEdgeStatus | null) =>
   status?.last_seen_at || status?.last_heartbeat_at || status?.last_heartbeat || null;
 
+const formatTimestampShort = (iso?: string | null) => {
+  if (!iso) return '';
+  const date = new Date(iso);
+  if (Number.isNaN(date.getTime())) return '';
+  const datePart = date.toLocaleDateString('pt-BR', { day: '2-digit', month: '2-digit' });
+  const timePart = date.toLocaleTimeString('pt-BR', { hour: '2-digit', minute: '2-digit' });
+  return `${datePart} ${timePart}`;
+};
+
+const formatLastSeenDisplay = (iso?: string | null) => {
+  if (!iso) return 'Nunca';
+  const relative = formatRelativeTime(iso);
+  const absolute = formatTimestampShort(iso);
+  return absolute ? `${relative} · ${absolute}` : relative;
+};
+
 const DEMO_URL = 'https://app.dalevision.com/agendar-demo';
 const WHATSAPP_URL = `https://wa.me/?text=${encodeURIComponent(
   'Olá! Quero fazer upgrade do meu trial do Dale Vision.'
@@ -593,19 +609,28 @@ const StoreCard = ({ store, onEdit }: StoreCardProps) => {
   const queryClient = useQueryClient();
   const [showActions, setShowActions] = useState(false);
   const planLabel = PLAN_LABELS[store.plan] ?? 'Trial';
-  const { data: edgeStatus, isLoading: edgeStatusLoading } = useQuery<StoreEdgeStatus>({
+  const storeLastSeenAt = store.last_seen_at ?? null;
+  const storeEdgeOnline =
+    typeof store.edge_online === 'boolean'
+      ? store.edge_online
+      : typeof store.online === 'boolean'
+      ? store.online
+      : undefined;
+  const shouldFetchEdgeStatus = !storeLastSeenAt;
+  const { data: edgeStatus } = useQuery<StoreEdgeStatus>({
     queryKey: ['store-edge-status', store.id],
     queryFn: () => storesService.getStoreEdgeStatus(store.id),
+    enabled: shouldFetchEdgeStatus,
     refetchInterval: 20000,
     refetchIntervalInBackground: true,
   });
-  const lastSeenAt = getLastSeenAt(edgeStatus);
-  const lastSeenLabel = edgeStatusLoading ? 'Carregando...' : formatRelativeTime(lastSeenAt);
-  const isEdgeOnline = !edgeStatusLoading && isRecentTimestamp(lastSeenAt);
-  const edgeStatusLabel = edgeStatusLoading ? 'Carregando...' : isEdgeOnline ? 'Online' : 'Offline';
-  const edgeStatusClass = edgeStatusLoading
-    ? 'bg-gray-100 text-gray-600'
-    : isEdgeOnline
+  const lastSeenAt = storeLastSeenAt ?? getLastSeenAt(edgeStatus);
+  const isEdgeOnline =
+    typeof storeEdgeOnline === 'boolean'
+      ? storeEdgeOnline
+      : isRecentTimestamp(lastSeenAt);
+  const edgeStatusLabel = isEdgeOnline ? 'Online' : 'Offline';
+  const edgeStatusClass = isEdgeOnline
     ? 'bg-green-100 text-green-800'
     : 'bg-gray-100 text-gray-800';
 
@@ -745,8 +770,8 @@ const StoreCard = ({ store, onEdit }: StoreCardProps) => {
               clipRule="evenodd"
             />
           </svg>
-          <span aria-label={`Última comunicação: ${lastSeenLabel}`}>
-            Última comunicação: {lastSeenLabel}
+          <span aria-label={`Última comunicação: ${formatLastSeenDisplay(lastSeenAt)}`}>
+            Última comunicação: {formatLastSeenDisplay(lastSeenAt)}
           </span>
         </div>
         

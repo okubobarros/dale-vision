@@ -130,9 +130,36 @@ const isRecentTimestamp = (iso?: string | null, maxAgeSec = ONLINE_MAX_AGE_SEC) 
 const getLastSeenAt = (status?: StoreEdgeStatus | null) =>
   status?.last_seen_at || status?.last_heartbeat_at || status?.last_heartbeat || null
 
-const formatLastSeenAt = (iso?: string | null) => {
+const formatRelativeTime = (iso?: string | null) => {
   if (!iso) return "Nunca"
-  return formatTimestamp(iso)
+  const date = new Date(iso)
+  if (Number.isNaN(date.getTime())) return "—"
+  const diffSec = Math.floor((Date.now() - date.getTime()) / 1000)
+  if (diffSec < 10) return "agora"
+  const rtf = new Intl.RelativeTimeFormat("pt-BR", { numeric: "auto" })
+  if (diffSec < 60) return rtf.format(-diffSec, "second")
+  const diffMin = Math.floor(diffSec / 60)
+  if (diffMin < 60) return rtf.format(-diffMin, "minute")
+  const diffHour = Math.floor(diffMin / 60)
+  if (diffHour < 24) return rtf.format(-diffHour, "hour")
+  const diffDay = Math.floor(diffHour / 24)
+  return rtf.format(-diffDay, "day")
+}
+
+const formatTimestampShort = (iso?: string | null) => {
+  if (!iso) return ""
+  const date = new Date(iso)
+  if (Number.isNaN(date.getTime())) return ""
+  const datePart = date.toLocaleDateString("pt-BR", { day: "2-digit", month: "2-digit" })
+  const timePart = date.toLocaleTimeString("pt-BR", { hour: "2-digit", minute: "2-digit" })
+  return `${datePart} ${timePart}`
+}
+
+const formatLastSeenDisplay = (iso?: string | null) => {
+  if (!iso) return "Nunca"
+  const relative = formatRelativeTime(iso)
+  const absolute = formatTimestampShort(iso)
+  return absolute ? `${relative} · ${absolute}` : relative
 }
 
 const ALL_STORES_VALUE = "all"
@@ -257,12 +284,16 @@ const Dashboard = () => {
     queryKey: ["store-edge-status", selectedStore],
     queryFn: () => storesService.getStoreEdgeStatus(selectedStore),
     enabled: selectedStore !== ALL_STORES_VALUE,
-    refetchInterval: 20000,
+    refetchInterval: edgeSetupOpen ? 15000 : 20000,
     refetchIntervalInBackground: true,
   })
-  const lastSeenAt = getLastSeenAt(edgeStatus)
-  const isEdgeOnlineByLastSeen =
-    !edgeStatusLoading && isRecentTimestamp(lastSeenAt, ONLINE_MAX_AGE_SEC)
+  const selectedStoreItem = useMemo(
+    () => (stores ?? []).find((s) => s.id === selectedStore) ?? null,
+    [stores, selectedStore]
+  )
+  const storeLastSeenAt = selectedStoreItem?.last_seen_at ?? null
+  const lastSeenAt = storeLastSeenAt ?? getLastSeenAt(edgeStatus)
+  const isEdgeOnlineByLastSeen = isRecentTimestamp(lastSeenAt, ONLINE_MAX_AGE_SEC)
 
   const {
     data: events,
@@ -568,15 +599,9 @@ const Dashboard = () => {
     ),
   }
 
-  const edgeStatusLabel = edgeStatusLoading
-    ? "Carregando"
-    : isEdgeOnlineByLastSeen
-    ? "Online"
-    : "Offline"
+  const edgeStatusLabel = isEdgeOnlineByLastSeen ? "Online" : "Offline"
 
-  const edgeStatusClass = edgeStatusLoading
-    ? "bg-blue-100 text-blue-800"
-    : isEdgeOnlineByLastSeen
+  const edgeStatusClass = isEdgeOnlineByLastSeen
     ? "bg-green-100 text-green-800"
     : "bg-gray-100 text-gray-800"
 
@@ -800,7 +825,7 @@ const Dashboard = () => {
                   <p className="text-sm text-gray-500 mt-1">
                     Última comunicação:{" "}
                     <span className="font-semibold text-gray-700">
-                      {edgeStatusLoading ? "Carregando..." : formatLastSeenAt(lastSeenAt)}
+                      {formatLastSeenDisplay(lastSeenAt)}
                     </span>
                   </p>
                     {edgeStatus?.store_status_reason && (
@@ -843,9 +868,7 @@ const Dashboard = () => {
                   <div className="rounded-lg border border-gray-100 px-3 py-2">
                     <p className="text-xs text-gray-500">Última comunicação</p>
                     <p className="text-sm font-semibold text-gray-800">
-                      {edgeStatusLoading
-                        ? "—"
-                        : formatLastSeenAt(lastSeenAt)}
+                      {formatLastSeenDisplay(lastSeenAt)}
                     </p>
                   </div>
                 </div>
