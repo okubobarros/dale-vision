@@ -97,6 +97,7 @@ const EdgeSetupModal = ({ open, onClose, defaultStoreId }: EdgeSetupModalProps) 
   const [pollMessage, setPollMessage] = useState<string | null>(null)
   const [pollError, setPollError] = useState<string | null>(null)
   const [lastSeenAt, setLastSeenAt] = useState<string | null>(null)
+  const [lastHeartbeatAt, setLastHeartbeatAt] = useState<string | null>(null)
   const [showTroubleshoot, setShowTroubleshoot] = useState(false)
   const [showChecklist, setShowChecklist] = useState(false)
   const [rotateSupported] = useState(false)
@@ -141,6 +142,7 @@ const EdgeSetupModal = ({ open, onClose, defaultStoreId }: EdgeSetupModalProps) 
     setPollMessage(null)
     setPollError(null)
     setLastSeenAt(null)
+    setLastHeartbeatAt(null)
     setShowTroubleshoot(false)
     setShowChecklist(false)
     stopPolling()
@@ -158,6 +160,7 @@ const EdgeSetupModal = ({ open, onClose, defaultStoreId }: EdgeSetupModalProps) 
     setPollMessage(null)
     setPollError(null)
     setLastSeenAt(null)
+    setLastHeartbeatAt(null)
     setShowTroubleshoot(false)
     setShowChecklist(false)
     stopPolling()
@@ -228,11 +231,7 @@ const EdgeSetupModal = ({ open, onClose, defaultStoreId }: EdgeSetupModalProps) 
     return Math.max(0, Math.ceil((POLL_MAX_DURATION_MS - elapsed) / 1000))
   }
 
-  const isEdgeOnline = (payload: EdgeStatusPayload) => {
-    if (payload?.online === true) return true
-    const lastSeenAt = getLastSeenAt(payload)
-    return isRecentTimestamp(lastSeenAt, ONLINE_MAX_AGE_SECONDS)
-  }
+  const isEdgeOnline = (payload: EdgeStatusPayload) => payload?.online === true
 
   const pollEdgeStatus = async (id: string) => {
     try {
@@ -240,7 +239,9 @@ const EdgeSetupModal = ({ open, onClose, defaultStoreId }: EdgeSetupModalProps) 
       const data = res.data || {}
       const reason = String(data?.store_status_reason || "")
       const lastSeenAt = getLastSeenAt(data)
+      const heartbeatAt = data?.last_heartbeat_at || data?.last_heartbeat || null
       setLastSeenAt(lastSeenAt)
+      setLastHeartbeatAt(heartbeatAt)
       setPollError(null)
 
       if (reason === "forbidden") {
@@ -257,8 +258,8 @@ const EdgeSetupModal = ({ open, onClose, defaultStoreId }: EdgeSetupModalProps) 
       if (isEdgeOnline(data)) {
         setHeartbeatOk(true)
         stopPolling()
-        setPollMessage("Heartbeat confirmado ✅")
-        toast.success("Edge conectado ✅")
+        setPollMessage("Loja Online")
+        toast.success("Loja Online")
         return
       }
     } catch (err) {
@@ -347,11 +348,15 @@ const EdgeSetupModal = ({ open, onClose, defaultStoreId }: EdgeSetupModalProps) 
       setValidationError("Inicie o agent antes de começar a verificação.")
       return
     }
+    stopPolling()
+    setHeartbeatOk(false)
+    setPollMessage(null)
+    setPollError(null)
+    setLastHeartbeatAt(null)
+    setShowTroubleshoot(false)
     setValidating(true)
     setValidationMsg(null)
     setValidationError(null)
-    setPollError(null)
-    setShowTroubleshoot(false)
     try {
       await api.get(`/v1/stores/${storeId}/edge-setup/`)
       setValidationMsg("Conexão com a API ok. Monitorando heartbeat...")
@@ -387,6 +392,7 @@ const EdgeSetupModal = ({ open, onClose, defaultStoreId }: EdgeSetupModalProps) 
 
   const isStoreSelected = Boolean(storeId)
   const lastSeenLabel = formatRelativeTime(lastSeenAt)
+  const lastHeartbeatLabel = lastHeartbeatAt ? formatRelativeTime(lastHeartbeatAt) : null
   const canStartAgent = downloadConfirmed && envCopied
   const canCopyEnv = isStoreSelected
   const logCommand = "Get-Content .\\logs\\agent.log -Tail 80"
@@ -459,9 +465,12 @@ const EdgeSetupModal = ({ open, onClose, defaultStoreId }: EdgeSetupModalProps) 
 
           <div className="rounded-xl border border-gray-200 bg-white px-4 py-3">
             <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3">
-              <span className="text-xs text-gray-500">
-                Última comunicação: {lastSeenLabel}
-              </span>
+              <div className="text-xs text-gray-500 space-y-1">
+                <div>Última comunicação: {lastSeenLabel}</div>
+                {lastHeartbeatLabel && (
+                  <div>Último heartbeat: {lastHeartbeatLabel}</div>
+                )}
+              </div>
               {heartbeatOk && (
                 <button
                   type="button"
@@ -615,9 +624,9 @@ const EdgeSetupModal = ({ open, onClose, defaultStoreId }: EdgeSetupModalProps) 
                   Após atualizar o <span className="font-mono">.env</span>, dê duplo clique em{" "}
                   <span className="font-mono">run.bat</span>.
                 </div>
-                <div>Uma janela irá abrir, clique no botão Executar</div>
+                <div>Na janela Abrir Arquivo - Aviso de segurança, clique no botão Executar</div>
                 <div>
-                  Uma janela do terminal vai abrir e o agent começará a enviar os sinais para a nuvem. Deixe essa janela aberta.
+                  Abrirá uma janela do terminal. Deixe essa janela aberta.
                 </div>
                 <div>Volte aqui e clique em “Já iniciei o agent”.</div>
               </div>

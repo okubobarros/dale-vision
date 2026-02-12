@@ -602,14 +602,7 @@ interface StoreCardProps {
 const StoreCard = ({ store, onEdit }: StoreCardProps) => {
   const queryClient = useQueryClient();
   const [showActions, setShowActions] = useState(false);
-  const planLabel = PLAN_LABELS[store.plan] ?? 'Trial';
   const storeLastSeenAt = store.last_seen_at ?? null;
-  const storeEdgeOnline =
-    typeof store.edge_online === 'boolean'
-      ? store.edge_online
-      : typeof store.online === 'boolean'
-      ? store.online
-      : undefined;
   const shouldFetchEdgeStatus = !storeLastSeenAt;
   const { data: edgeStatus } = useQuery<StoreEdgeStatus>({
     queryKey: ['store-edge-status', store.id],
@@ -625,7 +618,7 @@ const StoreCard = ({ store, onEdit }: StoreCardProps) => {
   const isEdgeOnline =
     edgeOnlineFromStatus !== undefined
       ? edgeOnlineFromStatus
-      : storeEdgeOnline === true || isRecent(lastSeenAt);
+      : isRecent(lastSeenAt);
   const edgeStatusLabel = isEdgeOnline ? 'Online' : 'Offline';
   const edgeStatusClass = isEdgeOnline
     ? 'bg-green-100 text-green-800'
@@ -731,12 +724,6 @@ const StoreCard = ({ store, onEdit }: StoreCardProps) => {
             aria-label={`Status: ${storeStatusLabel}`}
           >
             {storeStatusLabel}
-          </span>
-          <span
-            className="inline-block px-3 py-1 rounded-full text-xs font-medium bg-blue-50 text-blue-700"
-            aria-label={`Plano: ${planLabel}`}
-          >
-            {planLabel}
           </span>
           <span
             className={`inline-block px-3 py-1 rounded-full text-xs font-medium ${edgeStatusClass}`}
