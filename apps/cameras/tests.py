@@ -1,8 +1,11 @@
 from django.test import SimpleTestCase
+from django.core.exceptions import PermissionDenied
 from apps.billing.utils import PaywallError
 from unittest.mock import MagicMock, patch
 
 from apps.cameras.limits import enforce_trial_camera_limit, TRIAL_CAMERA_LIMIT_MESSAGE
+from apps.cameras.roi import create_roi_config
+from apps.cameras.permissions import require_store_role
 
 
 class TrialCameraLimitTests(SimpleTestCase):
@@ -57,3 +60,56 @@ class TrialCameraLimitTests(SimpleTestCase):
         camera_mock.objects.filter.return_value = self._mock_camera_qs(3)
 
         enforce_trial_camera_limit("store-id", requested_active=False)
+
+
+class RoiConfigVersionTests(SimpleTestCase):
+    @patch("apps.cameras.roi.CameraROIConfig")
+    def test_roi_version_starts_at_one(self, roi_model_mock):
+        roi_model_mock.objects.filter.return_value.order_by.return_value.first.return_value = None
+        roi_model_mock.objects.create.return_value = MagicMock()
+
+        create_roi_config(camera_id="cam-1", config_json={"zones": []}, updated_by="user-1")
+
+        roi_model_mock.objects.create.assert_called_once()
+        _, kwargs = roi_model_mock.objects.create.call_args
+        self.assertEqual(kwargs["version"], 1)
+
+    @patch("apps.cameras.roi.CameraROIConfig")
+    def test_roi_version_increments(self, roi_model_mock):
+        latest = MagicMock()
+        latest.version = 7
+        roi_model_mock.objects.filter.return_value.order_by.return_value.first.return_value = latest
+        roi_model_mock.objects.create.return_value = MagicMock()
+
+        create_roi_config(camera_id="cam-1", config_json={"zones": []}, updated_by="user-1")
+
+        roi_model_mock.objects.create.assert_called_once()
+        _, kwargs = roi_model_mock.objects.create.call_args
+        self.assertEqual(kwargs["version"], 8)
+
+
+class CameraPermissionsTests(SimpleTestCase):
+    @patch("apps.cameras.permissions.ensure_user_uuid", return_value="user-1")
+    @patch("apps.cameras.permissions.Store")
+    @patch("apps.cameras.permissions.OrgMember")
+    def test_require_store_role_denied(self, org_member_mock, store_mock, _uuid_mock):
+        store_mock.objects.filter.return_value.values.return_value.first.return_value = {
+            "org_id": "org-1"
+        }
+        org_member_mock.objects.filter.return_value.first.return_value = None
+
+        with self.assertRaises(PermissionDenied):
+            require_store_role(MagicMock(is_staff=False, is_superuser=False), "store-1", ("owner",))
+
+    @patch("apps.cameras.permissions.ensure_user_uuid", return_value="user-1")
+    @patch("apps.cameras.permissions.Store")
+    @patch("apps.cameras.permissions.OrgMember")
+    def test_require_store_role_allowed(self, org_member_mock, store_mock, _uuid_mock):
+        store_mock.objects.filter.return_value.values.return_value.first.return_value = {
+            "org_id": "org-1"
+        }
+        member = MagicMock()
+        member.role = "manager"
+        org_member_mock.objects.filter.return_value.first.return_value = member
+
+        require_store_role(MagicMock(is_staff=False, is_superuser=False), "store-1", ("owner", "manager"))
