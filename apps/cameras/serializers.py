@@ -1,14 +1,76 @@
 from rest_framework import serializers
 from apps.core.models import Camera, CameraHealthLog
+from .models import CameraROIConfig, CameraHealth
 
 class CameraSerializer(serializers.ModelSerializer):
+    rtsp_url_masked = serializers.SerializerMethodField()
+
     class Meta:
         model = Camera
-        fields = "__all__"
-        read_only_fields = ("id","created_at","updated_at","last_seen_at","last_snapshot_url","last_error")
+        fields = (
+            "id",
+            "store",
+            "name",
+            "external_id",
+            "rtsp_url",
+            "rtsp_url_masked",
+            "active",
+            "status",
+            "last_seen_at",
+            "last_error",
+            "created_at",
+            "updated_at",
+        )
+        read_only_fields = (
+            "id",
+            "created_at",
+            "updated_at",
+            "last_seen_at",
+            "last_error",
+            "status",
+            "rtsp_url_masked",
+        )
+        extra_kwargs = {
+            "rtsp_url": {"write_only": True, "required": False, "allow_null": True, "allow_blank": True},
+            "external_id": {"required": False, "allow_null": True, "allow_blank": True},
+            "active": {"required": False},
+        }
+
+    def get_rtsp_url_masked(self, obj):
+        value = getattr(obj, "rtsp_url", None) or ""
+        if not value:
+            return None
+        if "://" in value:
+            scheme, rest = value.split("://", 1)
+            return f"{scheme}://***"
+        if len(value) <= 8:
+            return "***"
+        return f"{value[:4]}***{value[-3:]}"
 
 class CameraHealthLogSerializer(serializers.ModelSerializer):
     class Meta:
         model = CameraHealthLog
         fields = "__all__"
         read_only_fields = ("id","checked_at")
+
+
+class CameraROIConfigSerializer(serializers.ModelSerializer):
+    class Meta:
+        model = CameraROIConfig
+        fields = ("camera", "version", "config_json", "updated_at", "updated_by")
+        read_only_fields = ("version", "updated_at", "updated_by")
+
+
+class CameraHealthSerializer(serializers.ModelSerializer):
+    class Meta:
+        model = CameraHealth
+        fields = (
+            "camera",
+            "last_seen_at",
+            "fps",
+            "lag_ms",
+            "reconnects",
+            "error",
+            "updated_at",
+        )
+        read_only_fields = ("updated_at",)

@@ -13,10 +13,17 @@ from django.conf import settings
 from datetime import timedelta
 from apps.core.models import Store, OrgMember, Organization, Camera, Employee
 from apps.edge.models import EdgeToken
-from apps.cameras.limits import enforce_trial_camera_limit
+from apps.cameras.limits import enforce_trial_camera_limit, count_active_cameras
+from apps.cameras.permissions import (
+    require_store_role,
+    ALLOWED_MANAGE_ROLES,
+    ALLOWED_READ_ROLES,
+)
+from apps.cameras.serializers import CameraSerializer
 from apps.billing.utils import (
     PaywallError,
     enforce_trial_store_limit,
+    is_trial,
 )
 import hashlib
 import secrets
@@ -300,7 +307,15 @@ class StoreViewSet(viewsets.ModelViewSet):
                     actor_user_id=actor_user_id,
                 )
             except PaywallError as exc:
-                return Response(exc.detail, status=exc.status_code)
+                return Response(
+                    {
+                        "ok": False,
+                        "code": "LIMIT_CAMERAS_REACHED",
+                        "message": "Limite de câmeras do trial atingido.",
+                        "meta": exc.detail.get("meta", {}) if isinstance(exc.detail, dict) else {},
+                    },
+                    status=status.HTTP_409_CONFLICT,
+                )
 
         try:
             camera.active = active
@@ -322,6 +337,45 @@ class StoreViewSet(viewsets.ModelViewSet):
                 "last_seen_at": camera.last_seen_at.isoformat() if camera.last_seen_at else None,
             }
         )
+
+    @action(detail=True, methods=["get", "post"], url_path="cameras")
+    def cameras(self, request, pk=None):
+        store = self.get_object()
+        if request.method == "GET":
+            require_store_role(request.user, str(store.id), ALLOWED_READ_ROLES)
+            cameras_qs = Camera.objects.filter(store_id=store.id).order_by("-updated_at")
+            serializer = CameraSerializer(cameras_qs, many=True)
+            return Response(serializer.data)
+
+        require_store_role(request.user, str(store.id), ALLOWED_MANAGE_ROLES)
+        serializer = CameraSerializer(data=request.data)
+        serializer.is_valid(raise_exception=True)
+        requested_active = serializer.validated_data.get("active", True)
+        try:
+            actor_user_id = None
+            try:
+                actor_user_id = ensure_user_uuid(request.user)
+            except Exception:
+                actor_user_id = None
+            enforce_trial_camera_limit(
+                str(store.id),
+                requested_active=requested_active,
+                actor_user_id=actor_user_id,
+            )
+        except PaywallError as exc:
+            return Response(
+                {
+                    "ok": False,
+                    "code": "LIMIT_CAMERAS_REACHED",
+                    "message": "Limite de câmeras do trial atingido.",
+                    "meta": exc.detail.get("meta", {}) if isinstance(exc.detail, dict) else {},
+                },
+                status=status.HTTP_409_CONFLICT,
+            )
+
+        now = timezone.now()
+        camera = serializer.save(store_id=store.id, created_at=now, updated_at=now)
+        return Response(CameraSerializer(camera).data, status=status.HTTP_201_CREATED)
     
     def perform_create(self, serializer):
         """Auto-popula owner_email com email do usuário - ADICIONE ESTE!"""
@@ -560,6 +614,33 @@ class StoreViewSet(viewsets.ModelViewSet):
         }
         
         return Response(monitor_data)
+
+    @action(detail=True, methods=["get"], url_path="limits")
+    def limits(self, request, pk=None):
+        store = self.get_object()
+        require_store_role(request.user, str(store.id), ALLOWED_READ_ROLES)
+
+        org_id = getattr(store, "org_id", None)
+        is_trial_plan = is_trial(org_id)
+        cameras_limit = 3 if is_trial_plan else None
+        cameras_used = count_active_cameras(str(store.id))
+        stores_used = Store.objects.filter(org_id=org_id).count() if org_id else 0
+        stores_limit = 1 if is_trial_plan else None
+
+        return Response(
+            {
+                "store_id": str(store.id),
+                "plan": "trial" if is_trial_plan else "paid",
+                "limits": {
+                    "cameras": cameras_limit,
+                    "stores": stores_limit,
+                },
+                "usage": {
+                    "cameras": cameras_used,
+                    "stores": stores_used,
+                },
+            }
+        )
     
     @action(detail=False, methods=['get'])
     def network_dashboard(self, request):

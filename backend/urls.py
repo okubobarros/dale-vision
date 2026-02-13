@@ -59,6 +59,7 @@ urlpatterns = [
     path("api/alerts/", include("apps.alerts.urls")),
     path("api/v1/alerts/", include("apps.alerts.urls")),
     path("api/cameras/", include("apps.cameras.urls")),
+    path("api/v1/", include("apps.cameras.urls")),
     path("api/v1/demo-leads/", DemoLeadCreateView.as_view()),
 
     path("health/", health),
