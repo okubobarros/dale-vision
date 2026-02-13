@@ -165,31 +165,52 @@ class CameraViewSet(viewsets.ModelViewSet):
                     {
                         "camera_id": str(cam.id),
                         "version": 0,
-                        "config_json": None,
+                        "status": "draft",
+                        "image_w": None,
+                        "image_h": None,
+                        "payload": None,
+                        "created_at": None,
                         "updated_at": None,
-                        "updated_by": None,
                     }
                 )
             return Response(CameraROIConfigSerializer(latest).data)
 
         require_store_role(request.user, str(cam.store_id), ALLOWED_MANAGE_ROLES)
-        config_json = request.data.get("config_json")
-        if not isinstance(config_json, (dict, list)):
+        payload = request.data.get("payload")
+        if not isinstance(payload, (dict, list)):
             return Response(
-                {"detail": "config_json inválido."},
+                {"detail": "payload inválido."},
                 status=status.HTTP_400_BAD_REQUEST,
             )
-
-        updated_by = None
-        try:
-            updated_by = ensure_user_uuid(request.user)
-        except Exception:
-            updated_by = None
-
+        status_value = str(request.data.get("status") or "draft")
+        if status_value not in ("draft", "published"):
+            return Response(
+                {"detail": "status inválido."},
+                status=status.HTTP_400_BAD_REQUEST,
+            )
+        image_w = request.data.get("image_w")
+        image_h = request.data.get("image_h")
+        if image_w is not None and not isinstance(image_w, int):
+            return Response({"detail": "image_w inválido."}, status=status.HTTP_400_BAD_REQUEST)
+        if image_h is not None and not isinstance(image_h, int):
+            return Response({"detail": "image_h inválido."}, status=status.HTTP_400_BAD_REQUEST)
+        if status_value == "published":
+            zones = None
+            if isinstance(payload, dict):
+                zones = payload.get("zones")
+            elif isinstance(payload, list):
+                zones = payload
+            if not zones:
+                return Response(
+                    {"detail": "Para publicar, inclua ao menos uma zona."},
+                    status=status.HTTP_400_BAD_REQUEST,
+                )
         created = create_roi_config(
             camera_id=str(cam.id),
-            config_json=config_json,
-            updated_by=updated_by,
+            payload=payload,
+            status=status_value,
+            image_w=image_w,
+            image_h=image_h,
         )
         return Response(CameraROIConfigSerializer(created).data)
 
@@ -206,18 +227,23 @@ class CameraViewSet(viewsets.ModelViewSet):
                     status=status.HTTP_403_FORBIDDEN,
                 )
 
-        latest = get_latest_roi_config(str(cam.id))
+        latest = get_latest_roi_config(str(cam.id), status="published")
         if not latest:
             return Response(
                 {
                     "camera_id": str(cam.id),
                     "version": 0,
-                    "config_json": None,
+                    "status": "draft",
+                    "image_w": None,
+                    "image_h": None,
+                    "payload": None,
+                    "created_at": None,
                     "updated_at": None,
-                    "updated_by": None,
                 }
             )
-        return Response(CameraROIConfigSerializer(latest).data)
+        data = CameraROIConfigSerializer(latest).data
+        data["roi_version"] = data.get("version")
+        return Response(data)
 
     @action(detail=True, methods=["post"], url_path="health", permission_classes=[EdgeOrUserTokenPermission])
     def health(self, request, pk=None):

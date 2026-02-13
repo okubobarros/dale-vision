@@ -4,7 +4,7 @@ from apps.billing.utils import PaywallError
 from unittest.mock import MagicMock, patch
 
 from apps.cameras.limits import enforce_trial_camera_limit, TRIAL_CAMERA_LIMIT_MESSAGE
-from apps.cameras.roi import create_roi_config
+from apps.cameras.roi import create_roi_config, get_latest_roi_config
 from apps.cameras.permissions import require_store_role
 
 
@@ -68,7 +68,7 @@ class RoiConfigVersionTests(SimpleTestCase):
         roi_model_mock.objects.filter.return_value.order_by.return_value.first.return_value = None
         roi_model_mock.objects.create.return_value = MagicMock()
 
-        create_roi_config(camera_id="cam-1", config_json={"zones": []}, updated_by="user-1")
+        create_roi_config(camera_id="cam-1", payload={"zones": []}, status="draft")
 
         roi_model_mock.objects.create.assert_called_once()
         _, kwargs = roi_model_mock.objects.create.call_args
@@ -81,11 +81,22 @@ class RoiConfigVersionTests(SimpleTestCase):
         roi_model_mock.objects.filter.return_value.order_by.return_value.first.return_value = latest
         roi_model_mock.objects.create.return_value = MagicMock()
 
-        create_roi_config(camera_id="cam-1", config_json={"zones": []}, updated_by="user-1")
+        create_roi_config(camera_id="cam-1", payload={"zones": []}, status="published")
 
         roi_model_mock.objects.create.assert_called_once()
         _, kwargs = roi_model_mock.objects.create.call_args
         self.assertEqual(kwargs["version"], 8)
+
+    @patch("apps.cameras.roi.CameraROIConfig")
+    def test_latest_roi_can_filter_published(self, roi_model_mock):
+        qs = MagicMock()
+        roi_model_mock.objects.filter.return_value = qs
+        qs.filter.return_value = qs
+        qs.order_by.return_value.first.return_value = MagicMock()
+
+        get_latest_roi_config("cam-1", status="published")
+
+        qs.filter.assert_called_once_with(status="published")
 
 
 class CameraPermissionsTests(SimpleTestCase):
@@ -113,3 +124,4 @@ class CameraPermissionsTests(SimpleTestCase):
         org_member_mock.objects.filter.return_value.first.return_value = member
 
         require_store_role(MagicMock(is_staff=False, is_superuser=False), "store-1", ("owner", "manager"))
+

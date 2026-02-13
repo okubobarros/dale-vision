@@ -1,6 +1,6 @@
 import api from "./api"
 
-export type CameraStatus = "online" | "offline" | "unknown" | "error"
+export type CameraStatus = "online" | "degraded" | "offline" | "unknown" | "error"
 
 export interface Camera {
   id: string
@@ -10,6 +10,7 @@ export interface Camera {
   rtsp_url_masked?: string | null
   active?: boolean
   status?: CameraStatus
+  latency_ms?: number | null
   last_seen_at?: string | null
   last_error?: string | null
   created_at?: string
@@ -28,9 +29,12 @@ export type UpdateCameraPayload = Partial<CreateCameraPayload>
 export interface CameraROIConfig {
   camera: string
   version: number
-  config_json: unknown
+  status: "draft" | "published"
+  image_w?: number | null
+  image_h?: number | null
+  payload: unknown
+  created_at?: string | null
   updated_at?: string | null
-  updated_by?: string | null
 }
 
 export interface StoreLimits {
@@ -113,10 +117,16 @@ export const camerasService = {
     }
   },
 
-  async updateRoi(cameraId: string, configJson: unknown): Promise<CameraROIConfig> {
+  async updateRoi(
+    cameraId: string,
+    payload: { payload: unknown; status: "draft" | "published"; image_w: number; image_h: number }
+  ): Promise<CameraROIConfig> {
     try {
       const response = await api.put(`/v1/cameras/${cameraId}/roi/`, {
-        config_json: configJson,
+        payload: payload.payload,
+        status: payload.status,
+        image_w: payload.image_w,
+        image_h: payload.image_h,
       })
       return response.data
     } catch (error) {
@@ -133,4 +143,3 @@ export const camerasService = {
     }
   },
 }
-

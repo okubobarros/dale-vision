@@ -43,8 +43,12 @@ const CameraRoiEditor = ({ open, camera, onClose }: CameraRoiEditorProps) => {
   })
 
   const updateRoiMutation = useMutation({
-    mutationFn: (configJson: unknown) =>
-      camerasService.updateRoi(cameraId || "", configJson),
+    mutationFn: (payload: {
+      payload: unknown
+      status: "draft" | "published"
+      image_w: number
+      image_h: number
+    }) => camerasService.updateRoi(cameraId || "", payload),
     onSuccess: (data) => {
       queryClient.invalidateQueries({ queryKey: ["camera-roi", cameraId] })
       toast.success(`ROI salvo (v${data.version})`)
@@ -57,12 +61,12 @@ const CameraRoiEditor = ({ open, camera, onClose }: CameraRoiEditorProps) => {
 
   useEffect(() => {
     if (!open) return
-    if (!roiConfig?.config_json) {
+    if (!roiConfig?.payload) {
       setShapes([])
       setDraftPoints([])
       return
     }
-    const config = roiConfig.config_json as { zones?: RoiShape[] } | RoiShape[]
+    const config = roiConfig.payload as { zones?: RoiShape[] } | RoiShape[]
     if (Array.isArray(config)) {
       setShapes(config)
     } else if (Array.isArray(config?.zones)) {
@@ -184,9 +188,28 @@ const CameraRoiEditor = ({ open, camera, onClose }: CameraRoiEditorProps) => {
   const handleSave = useCallback(() => {
     if (!cameraId) return
     updateRoiMutation.mutate({
-      version: latestVersion,
-      zones: shapes,
-      canvas: { width: CANVAS_WIDTH, height: CANVAS_HEIGHT },
+      payload: {
+        version: latestVersion,
+        zones: shapes,
+        canvas: { width: CANVAS_WIDTH, height: CANVAS_HEIGHT },
+      },
+      status: "draft",
+      image_w: CANVAS_WIDTH,
+      image_h: CANVAS_HEIGHT,
+    })
+  }, [cameraId, latestVersion, shapes, updateRoiMutation])
+
+  const handlePublish = useCallback(() => {
+    if (!cameraId) return
+    updateRoiMutation.mutate({
+      payload: {
+        version: latestVersion,
+        zones: shapes,
+        canvas: { width: CANVAS_WIDTH, height: CANVAS_HEIGHT },
+      },
+      status: "published",
+      image_w: CANVAS_WIDTH,
+      image_h: CANVAS_HEIGHT,
     })
   }, [cameraId, latestVersion, shapes, updateRoiMutation])
 
@@ -211,7 +234,8 @@ const CameraRoiEditor = ({ open, camera, onClose }: CameraRoiEditorProps) => {
               ROI Editor · {camera.name}
             </h3>
             <p className="text-xs text-gray-500 mt-1">
-              Versão do ROI: v{latestVersion} · Publicado em {displayUpdatedAt}
+              Versão do ROI: v{latestVersion} · Status: {roiConfig?.status ?? "draft"} ·
+              Atualizado em {displayUpdatedAt}
             </p>
           </div>
           <div className="flex flex-wrap gap-2">
@@ -225,7 +249,19 @@ const CameraRoiEditor = ({ open, camera, onClose }: CameraRoiEditorProps) => {
                   : "bg-blue-600 hover:bg-blue-700"
               }`}
             >
-              {updateRoiMutation.isPending ? "Salvando..." : "Salvar ROI"}
+              {updateRoiMutation.isPending ? "Salvando..." : "Salvar rascunho"}
+            </button>
+            <button
+              type="button"
+              onClick={handlePublish}
+              disabled={updateRoiMutation.isPending || shapes.length === 0}
+              className={`rounded-lg px-4 py-2 text-sm font-semibold text-white ${
+                updateRoiMutation.isPending || shapes.length === 0
+                  ? "bg-gray-300 cursor-not-allowed"
+                  : "bg-emerald-600 hover:bg-emerald-700"
+              }`}
+            >
+              Publicar versão
             </button>
             <button
               type="button"

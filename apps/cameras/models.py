@@ -13,9 +13,12 @@ class CameraROIConfig(models.Model):
         related_name="roi_configs",
     )
     version = models.IntegerField(default=1)
-    config_json = models.JSONField(default=dict)
+    status = models.CharField(max_length=20, default="draft")
+    image_w = models.IntegerField(null=True, blank=True)
+    image_h = models.IntegerField(null=True, blank=True)
+    payload = models.JSONField(default=dict)
+    created_at = models.DateTimeField(default=timezone.now)
     updated_at = models.DateTimeField(default=timezone.now)
-    updated_by = models.UUIDField(null=True, blank=True)
 
     class Meta:
         db_table = "camera_roi_configs"
