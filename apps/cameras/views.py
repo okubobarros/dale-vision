@@ -1,18 +1,16 @@
 import hashlib
 from django.utils import timezone
+from django.utils.dateparse import parse_datetime
 from rest_framework import viewsets, permissions, status
 from rest_framework.decorators import action
 from rest_framework.response import Response
 
 from apps.core.models import Camera, CameraHealthLog, OrgMember
 from apps.edge.models import EdgeToken
-from apps.edge.permissions import EdgeOrUserTokenPermission
-from .models import CameraHealth
 from .serializers import (
     CameraSerializer,
     CameraHealthLogSerializer,
     CameraROIConfigSerializer,
-    CameraHealthSerializer,
 )
 from .services import rtsp_snapshot
 from .limits import enforce_trial_camera_limit
@@ -245,36 +243,64 @@ class CameraViewSet(viewsets.ModelViewSet):
         data["roi_version"] = data.get("version")
         return Response(data)
 
-    @action(detail=True, methods=["post"], url_path="health", permission_classes=[EdgeOrUserTokenPermission])
+    @action(detail=True, methods=["post"], url_path="health", permission_classes=[permissions.AllowAny])
     def health(self, request, pk=None):
         cam = self.get_object()
         if request.user and request.user.is_authenticated:
             require_store_role(request.user, str(cam.store_id), ALLOWED_MANAGE_ROLES)
+        else:
+            provided = request.headers.get("X-EDGE-TOKEN") or ""
+            if not _validate_edge_token_for_store(str(cam.store_id), provided):
+                return Response(
+                    {"detail": "Edge token inválido para esta loja."},
+                    status=status.HTTP_403_FORBIDDEN,
+                )
 
         payload = request.data or {}
-        last_seen_at = payload.get("last_seen_at")
+        status_value = payload.get("status")
+        if status_value not in ("online", "degraded", "offline", "unknown", "error"):
+            return Response(
+                {"detail": "status inválido."},
+                status=status.HTTP_400_BAD_REQUEST,
+            )
+        latency_ms = payload.get("latency_ms")
         error = payload.get("error")
-        defaults = {
-            "last_seen_at": last_seen_at or timezone.now(),
-            "fps": payload.get("fps"),
-            "lag_ms": payload.get("lag_ms"),
-            "reconnects": payload.get("reconnects"),
-            "error": error,
-            "updated_at": timezone.now(),
-        }
-        health, _created = CameraHealth.objects.update_or_create(
+        ts_value = payload.get("ts")
+        checked_at = None
+        if ts_value:
+            if isinstance(ts_value, str):
+                checked_at = parse_datetime(ts_value)
+            else:
+                checked_at = None
+        if checked_at is None:
+            checked_at = timezone.now()
+        elif timezone.is_naive(checked_at):
+            checked_at = timezone.make_aware(checked_at)
+
+        CameraHealthLog.objects.create(
             camera_id=cam.id,
-            defaults=defaults,
+            checked_at=checked_at,
+            status=status_value,
+            latency_ms=latency_ms,
+            snapshot_url=None,
+            error=error,
         )
 
-        if last_seen_at or error is not None:
-            cam.last_seen_at = defaults["last_seen_at"]
-            cam.last_error = error
-            cam.status = "error" if error else "online"
-            cam.updated_at = timezone.now()
-            cam.save(update_fields=["last_seen_at", "last_error", "status", "updated_at"])
+        cam.last_seen_at = checked_at
+        cam.last_error = error
+        cam.status = status_value
+        cam.updated_at = timezone.now()
+        cam.save(update_fields=["last_seen_at", "last_error", "status", "updated_at"])
 
-        return Response(CameraHealthSerializer(health).data)
+        return Response(
+            {
+                "camera_id": str(cam.id),
+                "status": status_value,
+                "latency_ms": latency_ms,
+                "last_seen_at": cam.last_seen_at.isoformat() if cam.last_seen_at else None,
+                "last_error": cam.last_error,
+            }
+        )
 
 class CameraHealthLogViewSet(viewsets.ReadOnlyModelViewSet):
     serializer_class = CameraHealthLogSerializer

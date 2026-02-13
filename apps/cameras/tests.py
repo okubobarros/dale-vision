@@ -1,4 +1,5 @@
 from django.test import SimpleTestCase
+from rest_framework.test import APIRequestFactory
 from django.core.exceptions import PermissionDenied
 from apps.billing.utils import PaywallError
 from unittest.mock import MagicMock, patch
@@ -6,6 +7,7 @@ from unittest.mock import MagicMock, patch
 from apps.cameras.limits import enforce_trial_camera_limit, TRIAL_CAMERA_LIMIT_MESSAGE
 from apps.cameras.roi import create_roi_config, get_latest_roi_config
 from apps.cameras.permissions import require_store_role
+from apps.cameras.views import CameraViewSet
 
 
 class TrialCameraLimitTests(SimpleTestCase):
@@ -125,3 +127,35 @@ class CameraPermissionsTests(SimpleTestCase):
 
         require_store_role(MagicMock(is_staff=False, is_superuser=False), "store-1", ("owner", "manager"))
 
+
+class CameraHealthEndpointTests(SimpleTestCase):
+    def setUp(self):
+        self.factory = APIRequestFactory()
+
+    @patch("apps.cameras.views._validate_edge_token_for_store", return_value=True)
+    @patch("apps.cameras.views.CameraHealthLog")
+    def test_health_updates_camera_and_creates_log(self, health_log_mock, _token_mock):
+        cam = MagicMock()
+        cam.id = "cam-1"
+        cam.store_id = "store-1"
+
+        view = CameraViewSet.as_view({"post": "health"})
+        request = self.factory.post(
+            "/api/v1/cameras/cam-1/health/",
+            {
+                "status": "online",
+                "latency_ms": 120,
+                "error": None,
+                "ts": "2026-02-13T10:00:00Z",
+            },
+            format="json",
+            HTTP_X_EDGE_TOKEN="edge-token",
+        )
+        request.user = MagicMock(is_authenticated=False)
+
+        with patch.object(CameraViewSet, "get_object", return_value=cam):
+            response = view(request, pk="cam-1")
+
+        self.assertEqual(response.status_code, 200)
+        health_log_mock.objects.create.assert_called_once()
+        cam.save.assert_called_once()

@@ -32,6 +32,7 @@ STORE_STATUS = (
 
 CAMERA_STATUS = (
     ("online", "online"),
+    ("degraded", "degraded"),
     ("offline", "offline"),
     ("unknown", "unknown"),
     ("error", "error"),
