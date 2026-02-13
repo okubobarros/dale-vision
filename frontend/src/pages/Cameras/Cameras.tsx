@@ -1,22 +1,32 @@
-import { useEffect, useMemo, useState } from "react"
+import { useCallback, useEffect, useMemo, useState } from "react"
 import { useLocation } from "react-router-dom"
-import { useQuery } from "@tanstack/react-query"
+import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query"
 import toast from "react-hot-toast"
 import {
   storesService,
   type Store,
   type StoreEdgeStatus,
 } from "../../services/stores"
+import {
+  camerasService,
+  type Camera,
+  type CreateCameraPayload,
+} from "../../services/cameras"
 import { formatAge, formatReason, formatTimestamp } from "../../utils/edgeReasons"
 import EdgeSetupModal from "../../components/EdgeSetupModal"
+import CameraRoiEditor from "../../components/CameraRoiEditor"
 import { useIsMobile } from "../../hooks/useIsMobile"
 
 const Cameras = () => {
   const [selectedStore, setSelectedStore] = useState("")
   const [edgeSetupOpen, setEdgeSetupOpen] = useState(false)
+  const [cameraModalOpen, setCameraModalOpen] = useState(false)
+  const [editingCamera, setEditingCamera] = useState<Camera | null>(null)
+  const [roiCamera, setRoiCamera] = useState<Camera | null>(null)
   const isMobile = useIsMobile(768)
   const [origin, setOrigin] = useState("")
   const location = useLocation()
+  const queryClient = useQueryClient()
 
   useEffect(() => {
     if (typeof window !== "undefined") {
@@ -78,6 +88,100 @@ const Cameras = () => {
     refetchIntervalInBackground: true,
   })
 
+  const {
+    data: cameras,
+    isLoading: camerasLoading,
+    error: camerasError,
+  } = useQuery<Camera[]>({
+    queryKey: ["store-cameras", selectedStore],
+    queryFn: () => camerasService.getStoreCameras(selectedStore),
+    enabled: Boolean(selectedStore && selectedStore !== "all"),
+  })
+
+  const { data: limits } = useQuery({
+    queryKey: ["store-limits", selectedStore],
+    queryFn: () => camerasService.getStoreLimits(selectedStore),
+    enabled: Boolean(selectedStore && selectedStore !== "all"),
+  })
+
+  const createCameraMutation = useMutation({
+    mutationFn: (payload: CreateCameraPayload) =>
+      camerasService.createStoreCamera(selectedStore, payload),
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ["store-cameras", selectedStore] })
+      queryClient.invalidateQueries({ queryKey: ["store-limits", selectedStore] })
+      toast.success("Câmera criada")
+      setCameraModalOpen(false)
+      setEditingCamera(null)
+    },
+    onError: (err: unknown) => {
+      const code = (err as { code?: string })?.code
+      if (code === "LIMIT_CAMERAS_REACHED") {
+        toast.error("Limite de câmeras do trial atingido.")
+        return
+      }
+      toast.error("Falha ao criar câmera.")
+    },
+  })
+
+  const updateCameraMutation = useMutation({
+    mutationFn: (payload: { id: string; data: CreateCameraPayload }) =>
+      camerasService.updateCamera(payload.id, payload.data),
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ["store-cameras", selectedStore] })
+      toast.success("Câmera atualizada")
+      setCameraModalOpen(false)
+      setEditingCamera(null)
+    },
+    onError: () => toast.error("Falha ao atualizar câmera."),
+  })
+
+  const deleteCameraMutation = useMutation({
+    mutationFn: (cameraId: string) => camerasService.deleteCamera(cameraId),
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ["store-cameras", selectedStore] })
+      queryClient.invalidateQueries({ queryKey: ["store-limits", selectedStore] })
+      toast.success("Câmera removida")
+    },
+    onError: () => toast.error("Falha ao remover câmera."),
+  })
+
+  const camerasUsed = limits?.usage?.cameras ?? cameras?.length ?? 0
+  const camerasLimit = limits?.limits?.cameras ?? null
+  const isTrial = limits?.plan === "trial"
+  const limitReached =
+    camerasLimit !== null && typeof camerasLimit === "number"
+      ? camerasUsed >= camerasLimit
+      : false
+
+  const openCreateModal = useCallback(() => {
+    setEditingCamera(null)
+    setCameraModalOpen(true)
+  }, [])
+
+  const openEditModal = useCallback((camera: Camera) => {
+    setEditingCamera(camera)
+    setCameraModalOpen(true)
+  }, [])
+
+  const handleDelete = useCallback(
+    (cameraId: string) => {
+      if (!window.confirm("Tem certeza que deseja remover esta câmera?")) return
+      deleteCameraMutation.mutate(cameraId)
+    },
+    [deleteCameraMutation]
+  )
+
+  const handleSaveCamera = useCallback(
+    (payload: CreateCameraPayload) => {
+      if (editingCamera) {
+        updateCameraMutation.mutate({ id: editingCamera.id, data: payload })
+      } else {
+        createCameraMutation.mutate(payload)
+      }
+    },
+    [createCameraMutation, editingCamera, updateCameraMutation]
+  )
 
   return (
     <div className="p-6 space-y-6">
@@ -85,7 +189,7 @@ const Cameras = () => {
         <div className="min-w-0">
           <h1 className="text-3xl font-bold text-gray-800">Câmeras</h1>
           <p className="text-gray-600 mt-1">
-            Status e saúde das câmeras por loja
+            Cadastre câmeras, desenhe ROIs e monitore status.
           </p>
         </div>
 
@@ -123,6 +227,117 @@ const Cameras = () => {
           </div>
         )}
       </div>
+
+      {!selectedStore || selectedStore === "all" ? (
+        <div className="bg-white rounded-xl shadow-sm p-6 text-center border border-gray-100 text-gray-500">
+          Selecione uma loja para gerenciar câmeras.
+        </div>
+      ) : (
+        <div className="bg-white rounded-xl shadow-sm border border-gray-100 p-5 space-y-4">
+          <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3">
+            <div>
+              <h2 className="text-lg font-semibold text-gray-800">
+                Gerenciar câmeras
+              </h2>
+              <p className="text-xs text-gray-500 mt-1">
+                {camerasLimit !== null
+                  ? `${camerasUsed}/${camerasLimit} câmeras ${
+                      isTrial ? "(Trial)" : ""
+                    }`
+                  : `${camerasUsed} câmeras cadastradas`}
+              </p>
+            </div>
+            <button
+              type="button"
+              onClick={openCreateModal}
+              disabled={limitReached}
+              title={
+                limitReached
+                  ? "Limite de câmeras do trial atingido."
+                  : "Adicionar câmera"
+              }
+              className={`inline-flex w-full sm:w-auto items-center justify-center rounded-lg px-4 py-2 text-sm font-semibold text-white ${
+                limitReached
+                  ? "bg-gray-300 cursor-not-allowed"
+                  : "bg-blue-600 hover:bg-blue-700"
+              }`}
+            >
+              Adicionar câmera
+            </button>
+          </div>
+
+          {camerasLoading ? (
+            <div className="text-sm text-gray-500">Carregando câmeras...</div>
+          ) : camerasError ? (
+            <div className="text-sm text-red-600">Falha ao carregar câmeras</div>
+          ) : cameras && cameras.length > 0 ? (
+            <div className="space-y-3">
+              {cameras.map((camera) => (
+                <div
+                  key={camera.id}
+                  className="border border-gray-100 rounded-xl p-4 flex flex-col md:flex-row md:items-center md:justify-between gap-3"
+                >
+                  <div className="min-w-0">
+                    <div className="flex items-center gap-2">
+                      <p className="text-sm font-semibold text-gray-800 truncate">
+                        {camera.name}
+                      </p>
+                      <span
+                        className={`px-2 py-0.5 text-xs rounded-full ${
+                          camera.status === "online"
+                            ? "bg-green-100 text-green-800"
+                            : camera.status === "error"
+                            ? "bg-red-100 text-red-800"
+                            : camera.status === "offline"
+                            ? "bg-gray-100 text-gray-700"
+                            : "bg-yellow-100 text-yellow-800"
+                        }`}
+                      >
+                        {camera.status ?? "unknown"}
+                      </span>
+                    </div>
+                    <p className="text-xs text-gray-500 mt-1">
+                      RTSP: {camera.rtsp_url_masked ?? "não informado"}
+                    </p>
+                    {camera.last_seen_at && (
+                      <p className="text-xs text-gray-500 mt-1">
+                        Último sinal: {formatTimestamp(camera.last_seen_at)}
+                      </p>
+                    )}
+                  </div>
+                  <div className="flex flex-wrap gap-2">
+                    <button
+                      type="button"
+                      onClick={() => openEditModal(camera)}
+                      className="rounded-lg border border-gray-200 px-3 py-1.5 text-xs font-semibold text-gray-700 hover:bg-gray-50"
+                    >
+                      Editar
+                    </button>
+                    <button
+                      type="button"
+                      onClick={() => setRoiCamera(camera)}
+                      className="rounded-lg border border-blue-200 px-3 py-1.5 text-xs font-semibold text-blue-700 hover:bg-blue-50"
+                    >
+                      ROI
+                    </button>
+                    <button
+                      type="button"
+                      onClick={() => handleDelete(camera.id)}
+                      className="rounded-lg border border-red-200 px-3 py-1.5 text-xs font-semibold text-red-700 hover:bg-red-50"
+                    >
+                      Remover
+                    </button>
+                  </div>
+                </div>
+              ))}
+            </div>
+          ) : (
+            <div className="text-sm text-gray-500">
+              Nenhuma câmera cadastrada nesta loja.
+            </div>
+          )}
+        </div>
+      )}
 
       <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3">
         <div>
@@ -322,6 +537,148 @@ const Cameras = () => {
         onClose={() => setEdgeSetupOpen(false)}
         defaultStoreId={selectedStore && selectedStore !== "all" ? selectedStore : ""}
       />
+
+      <CameraModal
+        open={cameraModalOpen}
+        camera={editingCamera}
+        onClose={() => {
+          setCameraModalOpen(false)
+          setEditingCamera(null)
+        }}
+        onSave={handleSaveCamera}
+        saving={createCameraMutation.isPending || updateCameraMutation.isPending}
+      />
+
+      <CameraRoiEditor
+        open={Boolean(roiCamera)}
+        camera={roiCamera}
+        onClose={() => setRoiCamera(null)}
+      />
+    </div>
+  )
+}
+
+type CameraModalProps = {
+  open: boolean
+  camera: Camera | null
+  saving: boolean
+  onClose: () => void
+  onSave: (payload: CreateCameraPayload) => void
+}
+
+const CameraModal = ({
+  open,
+  camera,
+  saving,
+  onClose,
+  onSave,
+}: CameraModalProps) => {
+  const [name, setName] = useState("")
+  const [rtspUrl, setRtspUrl] = useState("")
+  const [externalId, setExternalId] = useState("")
+  const [active, setActive] = useState(true)
+
+  useEffect(() => {
+    setName(camera?.name ?? "")
+    setRtspUrl("")
+    setExternalId(camera?.external_id ?? "")
+    setActive(camera?.active ?? true)
+  }, [camera, open])
+
+  if (!open) return null
+
+  return (
+    <div className="fixed inset-0 z-50 flex items-center justify-center px-4">
+      <div className="absolute inset-0 bg-black/40" onClick={onClose} />
+      <div className="relative w-full max-w-lg rounded-2xl bg-white p-6 shadow-xl">
+        <div className="flex items-center justify-between gap-3">
+          <h3 className="text-lg font-semibold text-gray-800">
+            {camera ? "Editar câmera" : "Nova câmera"}
+          </h3>
+          <button
+            type="button"
+            onClick={onClose}
+            className="text-sm text-gray-500 hover:text-gray-700"
+          >
+            Fechar
+          </button>
+        </div>
+
+        <div className="mt-5 space-y-4">
+          <div>
+            <label className="text-sm font-medium text-gray-700">Nome</label>
+            <input
+              value={name}
+              onChange={(e) => setName(e.target.value)}
+              placeholder="Ex: Entrada"
+              className="mt-1 w-full rounded-lg border border-gray-200 px-3 py-2 text-sm"
+            />
+          </div>
+          <div>
+            <label className="text-sm font-medium text-gray-700">RTSP URL</label>
+            <input
+              value={rtspUrl}
+              onChange={(e) => setRtspUrl(e.target.value)}
+              placeholder="rtsp://usuario:senha@host/stream"
+              className="mt-1 w-full rounded-lg border border-gray-200 px-3 py-2 text-sm"
+            />
+            {camera?.rtsp_url_masked && (
+              <p className="text-xs text-gray-400 mt-1">
+                Atual: {camera.rtsp_url_masked}
+              </p>
+            )}
+          </div>
+          <div>
+            <label className="text-sm font-medium text-gray-700">
+              ID externo (opcional)
+            </label>
+            <input
+              value={externalId}
+              onChange={(e) => setExternalId(e.target.value)}
+              placeholder="cam-001"
+              className="mt-1 w-full rounded-lg border border-gray-200 px-3 py-2 text-sm"
+            />
+          </div>
+          <label className="flex items-center gap-2 text-sm text-gray-700">
+            <input
+              type="checkbox"
+              checked={active}
+              onChange={(e) => setActive(e.target.checked)}
+              className="h-4 w-4 rounded border-gray-300"
+            />
+            Câmera ativa
+          </label>
+        </div>
+
+        <div className="mt-6 flex justify-end gap-2">
+          <button
+            type="button"
+            onClick={onClose}
+            className="rounded-lg border border-gray-200 px-4 py-2 text-sm font-semibold text-gray-700 hover:bg-gray-50"
+          >
+            Cancelar
+          </button>
+          <button
+            type="button"
+            disabled={saving || !name.trim()}
+            onClick={() =>
+              onSave({
+                name: name.trim(),
+                rtsp_url: rtspUrl.trim() || undefined,
+                external_id: externalId.trim() || undefined,
+                active,
+              })
+            }
+            className={`rounded-lg px-4 py-2 text-sm font-semibold text-white ${
+              saving || !name.trim()
+                ? "bg-gray-300 cursor-not-allowed"
+                : "bg-blue-600 hover:bg-blue-700"
+            }`}
+          >
+            {saving ? "Salvando..." : "Salvar"}
+          </button>
+        </div>
+      </div>
     </div>
   )
 }
