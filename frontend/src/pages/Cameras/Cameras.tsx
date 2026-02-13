@@ -38,7 +38,7 @@ const Cameras = () => {
     const params = new URLSearchParams(location.search)
     const openEdgeSetup =
       params.get("openEdgeSetup") === "1" || params.get("edgeSetup") === "1"
-    const storeFromQuery = params.get("store") || ""
+    const storeFromQuery = params.get("store_id") || params.get("store") || ""
     if (storeFromQuery) {
       setSelectedStore(storeFromQuery)
     }
@@ -286,6 +286,8 @@ const Cameras = () => {
                         className={`px-2 py-0.5 text-xs rounded-full ${
                           camera.status === "online"
                             ? "bg-green-100 text-green-800"
+                            : camera.status === "degraded"
+                            ? "bg-yellow-100 text-yellow-800"
                             : camera.status === "error"
                             ? "bg-red-100 text-red-800"
                             : camera.status === "offline"
@@ -301,7 +303,17 @@ const Cameras = () => {
                     </p>
                     {camera.last_seen_at && (
                       <p className="text-xs text-gray-500 mt-1">
-                        Último sinal: {formatTimestamp(camera.last_seen_at)}
+                        Última verificação: {formatTimestamp(camera.last_seen_at)}
+                      </p>
+                    )}
+                    {camera.latency_ms !== null && camera.latency_ms !== undefined && (
+                      <p className="text-xs text-gray-500 mt-1">
+                        Latência: {camera.latency_ms} ms
+                      </p>
+                    )}
+                    {camera.last_error && (
+                      <p className="text-xs text-red-600 mt-1">
+                        Erro: {camera.last_error}
                       </p>
                     )}
                   </div>
