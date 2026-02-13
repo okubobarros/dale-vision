@@ -574,16 +574,32 @@ const EdgeSetupModal = ({ open, onClose, defaultStoreId }: EdgeSetupModalProps) 
                 )}
               </div>
               {heartbeatOk && (
-                <button
-                  type="button"
-                  onClick={() => {
-                    handleClose()
-                    navigate("/app/cameras")
-                  }}
-                  className="inline-flex w-full sm:w-auto items-center justify-center rounded-lg bg-green-600 px-4 py-2 text-xs font-semibold text-white hover:bg-green-700"
-                >
-                  Ir para Câmeras
-                </button>
+                <div className="flex flex-col sm:flex-row gap-2 w-full sm:w-auto">
+                  <button
+                    type="button"
+                    onClick={() => {
+                      handleClose()
+                      navigate("/app/cameras")
+                    }}
+                    className="inline-flex w-full sm:w-auto items-center justify-center rounded-lg bg-green-600 px-4 py-2 text-xs font-semibold text-white hover:bg-green-700"
+                  >
+                    Ir para Câmeras
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => {
+                      handleClose()
+                      if (storeId) {
+                        navigate(`/app/cameras?store_id=${storeId}`)
+                      } else {
+                        navigate("/app/cameras")
+                      }
+                    }}
+                    className="inline-flex w-full sm:w-auto items-center justify-center rounded-lg bg-blue-600 px-4 py-2 text-xs font-semibold text-white hover:bg-blue-700"
+                  >
+                    Adicionar câmeras
+                  </button>
+                </div>
               )}
             </div>
 
