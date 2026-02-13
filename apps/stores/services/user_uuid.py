@@ -4,20 +4,28 @@ from django.core.exceptions import PermissionDenied
 from django.db import connection
 
 logger = logging.getLogger(__name__)
+_USER_ID_MAP_UUID_COLUMN = None
 
 
 def _get_user_id_map_uuid_column() -> str:
+    global _USER_ID_MAP_UUID_COLUMN
+    if _USER_ID_MAP_UUID_COLUMN:
+        return _USER_ID_MAP_UUID_COLUMN
+
+    resolved = "user_id"
     try:
         with connection.cursor() as cursor:
             columns = connection.introspection.get_table_description(cursor, "user_id_map")
         names = {col.name for col in columns}
         if "user_uuid" in names:
-            return "user_uuid"
-        if "user_id" in names:
-            return "user_id"
+            resolved = "user_uuid"
+        elif "user_id" in names:
+            resolved = "user_id"
     except Exception:
         logger.exception("[USER_ID_MAP] failed to inspect columns")
-    return "user_id"
+
+    _USER_ID_MAP_UUID_COLUMN = resolved
+    return resolved
 
 
 def upsert_user_id_map(

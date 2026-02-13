@@ -1,5 +1,6 @@
 # apps/stores/views.py 
 import logging
+import os
 from rest_framework import viewsets, status, permissions
 from rest_framework.decorators import action
 from rest_framework.exceptions import PermissionDenied, ValidationError
@@ -128,6 +129,22 @@ def _edge_token_meta(token_obj):
         "token_last_used_at": token_obj.last_used_at.isoformat() if token_obj.last_used_at else None,
     }
 
+
+def _resolve_cloud_base_url(request=None) -> str:
+    configured = (
+        (getattr(settings, "CLOUD_BASE_URL", None) or os.getenv("CLOUD_BASE_URL") or "")
+        .strip()
+        .rstrip("/")
+    )
+    if configured:
+        return configured
+    if request is not None:
+        try:
+            return request.build_absolute_uri("/").rstrip("/")
+        except Exception:
+            pass
+    return ""
+
 class StoreViewSet(viewsets.ModelViewSet):
     queryset = Store.objects.all()
     serializer_class = StoreSerializer
@@ -188,7 +205,7 @@ class StoreViewSet(viewsets.ModelViewSet):
                 "store_id": str(store.id),
                 "edge_token": raw_token,
                 "agent_id_default": "edge-001",
-                "cloud_base_url": "https://api.dalevision.com",
+                "cloud_base_url": _resolve_cloud_base_url(request),
                 **_edge_token_meta(edge_token),
             }
         )
@@ -212,7 +229,7 @@ class StoreViewSet(viewsets.ModelViewSet):
                 "store_id": str(store.id),
                 "edge_token": raw_token,
                 "agent_id_suggested": "edge-001",
-                "cloud_base_url": "https://api.dalevision.com",
+                "cloud_base_url": _resolve_cloud_base_url(request),
                 **_edge_token_meta(edge_token),
             }
         )

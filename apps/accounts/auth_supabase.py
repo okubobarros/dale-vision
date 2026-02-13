@@ -43,6 +43,19 @@ def _get_supabase_config() -> Tuple[Optional[str], Optional[str]]:
     return url, anon_key
 
 
+def _get_supabase_auth_timeout_seconds() -> float:
+    raw = (
+        getattr(settings, "SUPABASE_AUTH_TIMEOUT_SECONDS", None)
+        or os.getenv("SUPABASE_AUTH_TIMEOUT_SECONDS")
+        or "4"
+    )
+    try:
+        timeout = float(raw)
+    except (TypeError, ValueError):
+        timeout = 4.0
+    return max(1.0, min(timeout, 15.0))
+
+
 def _mask_token(token: str) -> str:
     token = token or ""
     if len(token) <= 12:
@@ -60,10 +73,16 @@ def _fetch_supabase_user(token: str) -> dict:
     if key:
         headers["apikey"] = key
 
+    timeout_seconds = _get_supabase_auth_timeout_seconds()
+    timeout_tuple = (min(2.0, timeout_seconds), timeout_seconds)
     try:
-        resp = requests.get(f"{url.rstrip('/')}/auth/v1/user", headers=headers, timeout=6)
+        resp = requests.get(
+            f"{url.rstrip('/')}/auth/v1/user",
+            headers=headers,
+            timeout=timeout_tuple,
+        )
     except requests.RequestException:
-        logger.exception("[SUPABASE] auth user request failed")
+        logger.exception("[SUPABASE] auth user request failed timeout=%s", timeout_seconds)
         raise ValueError("Token inválido.")
 
     if resp.status_code != 200:

@@ -63,11 +63,14 @@ export const authService = {
 
     const saved = saveSupabaseSession(data.session, data.user, email)
 
-    try {
-      await api.post("/accounts/supabase/")
-    } catch {
-      // bootstrap é melhor esforço
-    }
+    // Bootstrap é melhor esforço; não deve bloquear o login em caso de timeout.
+    void api
+      .post("/accounts/supabase/", {}, { timeout: 5000 })
+      .catch((error) => {
+        if (import.meta.env.DEV) {
+          console.warn("[auth] supabase bootstrap failed", error)
+        }
+      })
 
     return saved
   },

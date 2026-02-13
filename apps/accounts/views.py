@@ -82,6 +82,7 @@ class SupabaseBootstrapView(APIView):
     permission_classes = [AllowAny]
 
     def post(self, request):
+        request_id = (request.headers.get("X-Request-ID") or uuid4().hex)[:12]
         auth = request.headers.get("Authorization") or ""
         token = ""
         if auth.lower().startswith("bearer "):
@@ -89,9 +90,57 @@ class SupabaseBootstrapView(APIView):
         if not token:
             token = (request.data or {}).get("access_token") or ""
         if not token:
-            return Response({"detail": "Token ausente."}, status=status.HTTP_400_BAD_REQUEST)
+            return Response(
+                {"detail": "Token ausente.", "request_id": request_id},
+                status=status.HTTP_400_BAD_REQUEST,
+            )
 
-        user = get_user_from_supabase_token(token, ensure_org=True)
+        try:
+            user = get_user_from_supabase_token(token, ensure_org=True)
+        except SupabaseConfigError:
+            logger.error("[SUPABASE_BOOTSTRAP] request_id=%s missing_config", request_id)
+            return Response(
+                {
+                    "detail": "Auth provider not configured",
+                    "code": "SUPABASE_MISSING_CONFIG",
+                    "request_id": request_id,
+                },
+                status=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            )
+        except SupabaseProvisioningError:
+            logger.exception("[SUPABASE_BOOTSTRAP] request_id=%s provisioning_error", request_id)
+            return Response(
+                {
+                    "detail": "Erro ao provisionar usuário",
+                    "code": "SUPABASE_PROVISIONING_ERROR",
+                    "request_id": request_id,
+                },
+                status=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            )
+        except ValueError as exc:
+            logger.warning(
+                "[SUPABASE_BOOTSTRAP] request_id=%s invalid_token reason=%s",
+                request_id,
+                str(exc) or "invalid_token",
+            )
+            return Response(
+                {
+                    "detail": str(exc) or "Token inválido.",
+                    "code": "SUPABASE_TOKEN_INVALID",
+                    "request_id": request_id,
+                },
+                status=status.HTTP_401_UNAUTHORIZED,
+            )
+        except Exception:
+            logger.exception("[SUPABASE_BOOTSTRAP] request_id=%s unexpected_error", request_id)
+            return Response(
+                {
+                    "detail": "Falha ao validar token",
+                    "code": "SUPABASE_BOOTSTRAP_FAILED",
+                    "request_id": request_id,
+                },
+                status=status.HTTP_503_SERVICE_UNAVAILABLE,
+            )
 
         # retornar orgs atuais
         with connection.cursor() as cursor:
@@ -124,6 +173,7 @@ class SupabaseBootstrapView(APIView):
                     "last_name": user.last_name,
                 },
                 "orgs": orgs,
+                "request_id": request_id,
             },
             status=status.HTTP_200_OK,
         )

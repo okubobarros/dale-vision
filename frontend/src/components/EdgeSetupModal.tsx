@@ -4,6 +4,7 @@ import { useNavigate } from "react-router-dom"
 import toast from "react-hot-toast"
 import api from "../services/api"
 import { storesService, type Store } from "../services/stores"
+import { API_BASE_URL } from "../lib/api"
 
 type EdgeSetupModalProps = {
   open: boolean
@@ -29,7 +30,7 @@ type ApiErrorLike = {
   code?: string
 }
 
-const DEFAULT_CLOUD_BASE_URL = "https://api.dalevision.com"
+const DEFAULT_CLOUD_BASE_URL = API_BASE_URL
 const DEFAULT_AGENT_ID = "edge-001"
 const HEARTBEAT_INTERVAL_SECONDS = 30
 const POLL_INTERVAL_MS = 4000
