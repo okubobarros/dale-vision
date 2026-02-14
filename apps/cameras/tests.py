@@ -5,7 +5,7 @@ from apps.billing.utils import PaywallError
 from unittest.mock import MagicMock, patch
 
 from apps.cameras.limits import enforce_trial_camera_limit, TRIAL_CAMERA_LIMIT_MESSAGE
-from apps.cameras.roi import create_roi_config, get_latest_roi_config
+from apps.cameras.roi import create_roi_config, get_latest_published_roi_config
 from apps.cameras.permissions import require_store_role
 from apps.cameras.views import CameraViewSet
 
@@ -70,7 +70,7 @@ class RoiConfigVersionTests(SimpleTestCase):
         roi_model_mock.objects.filter.return_value.order_by.return_value.first.return_value = None
         roi_model_mock.objects.create.return_value = MagicMock()
 
-        create_roi_config(camera_id="cam-1", payload={"zones": []}, status="draft")
+        create_roi_config(camera_id="cam-1", config_json={"zones": []}, updated_by="user-1")
 
         roi_model_mock.objects.create.assert_called_once()
         _, kwargs = roi_model_mock.objects.create.call_args
@@ -83,7 +83,7 @@ class RoiConfigVersionTests(SimpleTestCase):
         roi_model_mock.objects.filter.return_value.order_by.return_value.first.return_value = latest
         roi_model_mock.objects.create.return_value = MagicMock()
 
-        create_roi_config(camera_id="cam-1", payload={"zones": []}, status="published")
+        create_roi_config(camera_id="cam-1", config_json={"zones": []}, updated_by="user-1")
 
         roi_model_mock.objects.create.assert_called_once()
         _, kwargs = roi_model_mock.objects.create.call_args
@@ -93,12 +93,14 @@ class RoiConfigVersionTests(SimpleTestCase):
     def test_latest_roi_can_filter_published(self, roi_model_mock):
         qs = MagicMock()
         roi_model_mock.objects.filter.return_value = qs
-        qs.filter.return_value = qs
         qs.order_by.return_value.first.return_value = MagicMock()
 
-        get_latest_roi_config("cam-1", status="published")
+        get_latest_published_roi_config("cam-1")
 
-        qs.filter.assert_called_once_with(status="published")
+        roi_model_mock.objects.filter.assert_called_once_with(
+            camera_id="cam-1",
+            config_json__status="published",
+        )
 
 
 class CameraPermissionsTests(SimpleTestCase):
@@ -159,3 +161,29 @@ class CameraHealthEndpointTests(SimpleTestCase):
         self.assertEqual(response.status_code, 200)
         health_log_mock.objects.create.assert_called_once()
         cam.save.assert_called_once()
+
+
+class CameraRoiLatestEndpointTests(SimpleTestCase):
+    def setUp(self):
+        self.factory = APIRequestFactory()
+
+    @patch("apps.cameras.views._validate_edge_token_for_store", return_value=True)
+    @patch("apps.cameras.views.get_latest_published_roi_config")
+    def test_roi_latest_returns_published(self, roi_latest_mock, _token_mock):
+        cam = MagicMock()
+        cam.id = "cam-1"
+        cam.store_id = "store-1"
+        roi_latest_mock.return_value = None
+
+        view = CameraViewSet.as_view({"get": "roi_latest"})
+        request = self.factory.get(
+            "/api/v1/cameras/cam-1/roi/latest",
+            HTTP_X_EDGE_TOKEN="edge-token",
+        )
+        request.user = MagicMock(is_authenticated=False)
+
+        with patch.object(CameraViewSet, "get_object", return_value=cam):
+            response = view(request, pk="cam-1")
+
+        self.assertEqual(response.status_code, 200)
+        roi_latest_mock.assert_called_once_with("cam-1")

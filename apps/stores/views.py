@@ -13,7 +13,11 @@ from django.conf import settings
 from datetime import timedelta
 from apps.core.models import Store, OrgMember, Organization, Camera, Employee
 from apps.edge.models import EdgeToken
-from apps.cameras.limits import enforce_trial_camera_limit, count_active_cameras
+from apps.cameras.limits import (
+    enforce_trial_camera_limit,
+    count_active_cameras,
+    get_camera_limit_for_store,
+)
 from apps.cameras.permissions import (
     require_store_role,
     ALLOWED_MANAGE_ROLES,
@@ -622,7 +626,7 @@ class StoreViewSet(viewsets.ModelViewSet):
 
         org_id = getattr(store, "org_id", None)
         is_trial_plan = is_trial(org_id)
-        cameras_limit = 3 if is_trial_plan else None
+        cameras_limit = get_camera_limit_for_store(str(store.id))
         cameras_used = count_active_cameras(str(store.id))
         stores_used = Store.objects.filter(org_id=org_id).count() if org_id else 0
         stores_limit = 1 if is_trial_plan else None

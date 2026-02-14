@@ -15,6 +15,10 @@ from apps.billing.utils import (
 TRIAL_CAMERA_LIMIT = 3
 TRIAL_CAMERA_LIMIT_MESSAGE = PAYWALL_TRIAL_MESSAGE
 
+PLAN_LIMITS = {
+    "trial": {"cameras": TRIAL_CAMERA_LIMIT, "stores": 1},
+}
+
 
 def camera_active_column_exists() -> bool:
     try:
@@ -28,6 +32,21 @@ def camera_active_column_exists() -> bool:
 def get_store_meta(store_id: str) -> dict:
     row = Store.objects.filter(id=store_id).values("status", "org_id").first()
     return row or {}
+
+
+def get_plan_limits(org_id: Optional[str]) -> dict:
+    if not org_id:
+        return {}
+    if is_trial(org_id):
+        return PLAN_LIMITS.get("trial", {})
+    return {}
+
+
+def get_camera_limit_for_store(store_id: str) -> Optional[int]:
+    meta = get_store_meta(store_id)
+    org_id = meta.get("org_id")
+    limits = get_plan_limits(org_id)
+    return limits.get("cameras")
 
 
 def count_active_cameras(store_id: str, *, exclude_camera_id: Optional[str] = None) -> int:
@@ -61,13 +80,14 @@ def enforce_trial_camera_limit(
     if status != "trial" and not is_trial(org_id):
         return
 
+    limit = get_camera_limit_for_store(store_id) or TRIAL_CAMERA_LIMIT
     active_count = count_active_cameras(store_id, exclude_camera_id=exclude_camera_id)
-    if active_count >= TRIAL_CAMERA_LIMIT:
+    if active_count >= limit:
         log_paywall_block(
             org_id=org_id,
             store_id=store_id,
             actor_user_id=actor_user_id,
             entity="camera",
-            limit=TRIAL_CAMERA_LIMIT,
+            limit=limit,
         )
-        raise PaywallError(meta={"limit": TRIAL_CAMERA_LIMIT, "entity": "camera"})
+        raise PaywallError(meta={"limit": limit, "entity": "camera"})

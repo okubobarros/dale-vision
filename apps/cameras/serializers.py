@@ -71,17 +71,8 @@ class CameraHealthLogSerializer(serializers.ModelSerializer):
 class CameraROIConfigSerializer(serializers.ModelSerializer):
     class Meta:
         model = CameraROIConfig
-        fields = (
-            "camera",
-            "version",
-            "status",
-            "image_w",
-            "image_h",
-            "payload",
-            "created_at",
-            "updated_at",
-        )
-        read_only_fields = ("version", "created_at", "updated_at")
+        fields = ("camera", "version", "config_json", "updated_at", "updated_by")
+        read_only_fields = ("version", "updated_at", "updated_by")
 
 
 class CameraHealthSerializer(serializers.ModelSerializer):
