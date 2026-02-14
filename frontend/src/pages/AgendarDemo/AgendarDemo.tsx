@@ -20,17 +20,6 @@ type SetupWhereValue = "store_pc" | "nvr_server" | "not_sure"
 type AccessWhoValue = "owner" | "store_manager" | "staff" | "not_sure"
 type HowHeardValue = "referral" | "instagram" | "google" | "youtube" | "other"
 
-// 🔥 Nova pergunta: dor do multilojista
-type MultiPainValue =
-  | "no_standard"
-  | "no_visibility"
-  | "distributed_losses"
-  | "execution_team"
-  | "queues_variance"
-  | "security_incidents"
-  | "no_compare"
-  | "other"
-
 const HOW_HEARD: { label: string; value: HowHeardValue }[] = [
   { label: "Instagram", value: "instagram" },
   { label: "YouTube", value: "youtube" },
@@ -56,17 +45,6 @@ const GOALS: { label: string; value: GoalValue; hint: string }[] = [
   { label: "Segurança e incidentes", value: "security", hint: "ocorrências e resposta rápida" },
   { label: "Entender fluxo / heatmap / conversão", value: "heatmap", hint: "mapas de calor e comportamento" },
   { label: "Outro", value: "other", hint: "um objetivo específico seu" },
-]
-
-const MULTI_PAINS: { label: string; value: MultiPainValue }[] = [
-  { label: "Falta de padrão: cada loja faz de um jeito (auditoria difícil)", value: "no_standard" },
-  { label: "Sem visibilidade do que acontece no chão de loja (só descobre depois)", value: "no_visibility" },
-  { label: "Perdas/furtos espalhados e sem evidência rápida", value: "distributed_losses" },
-  { label: "Equipe / execução fraca (processo não roda igual em todas)", value: "execution_team" },
-  { label: "Filas e atendimento variam muito entre unidades", value: "queues_variance" },
-  { label: "Segurança e incidentes (ocorrências sem histórico confiável)", value: "security_incidents" },
-  { label: "Comparar lojas é impossível (sem métrica igual pra todas)", value: "no_compare" },
-  { label: "Outro", value: "other" },
 ]
 
 function onlyDigits(v: string) {
@@ -159,17 +137,10 @@ export default function AgendarDemo() {
   const [goals, setGoals] = useState<GoalValue[]>([])
   const [goalOther, setGoalOther] = useState("")
 
-  // 🔥 Dor do multilojista
-  const [multiPain, setMultiPain] = useState<MultiPainValue | "">("")
-  const [multiPainOther, setMultiPainOther] = useState("")
-
   const [consent, setConsent] = useState(false)
 
   const hasOther = goals.includes("other") || primaryGoalPick === "other"
   const needsSourceDetail = howHeard === "other" || howHeard === "referral"
-
-  const isMultiStore = storesRange !== "" && storesRange !== "1"
-  const needsMultiPainOther = multiPain === "other"
 
   // Ensure primary goal is always included in goals array
   const normalizedGoals = useMemo(() => {
@@ -196,7 +167,7 @@ export default function AgendarDemo() {
   }, [storesRange, camerasRange, cameraBrands.length, normalizedGoals, hasOther])
 
   const progress = useMemo(() => {
-    // progress for essentials completion
+    // simple progress for "essentials" completion (helps conversion)
     let done = 0
     const total = 6
     if (name.trim()) done++
@@ -233,7 +204,7 @@ export default function AgendarDemo() {
     const emailClean = email.trim()
     const whatsappClean = normalizeWhatsappToBR11(whatsapp)
 
-    // Essentials first
+    // Essentials first (to maximize completion)
     if (!nameClean) return toast.error("Informe seu nome.")
     if (!isValidWhatsappBR11Mobile(whatsapp)) {
       return toast.error("WhatsApp inválido. Use DDD + número de celular (11 dígitos, começando com 9).")
@@ -241,16 +212,12 @@ export default function AgendarDemo() {
     if (!operationType.trim()) return toast.error("Informe o segmento da operação.")
     if (!storesRange) return toast.error("Selecione a faixa de quantidade de lojas.")
     if (!camerasRange) return toast.error("Selecione a faixa de quantidade de câmeras.")
-    if (isMultiStore && !multiPain) {
-      return toast.error("Multilojista: selecione onde dói mais hoje na gestão entre lojas.")
-    }
-    if (isMultiStore && multiPain === "other" && !multiPainOther.trim()) {
-      return toast.error('Preencha "Outro" (gestão entre lojas).')
-    }
     if (!primaryGoalPick) return toast.error("Escolha 1 objetivo principal para a demo.")
+
+    // Email is still valuable for Calendly + follow-ups. Keep required, but copy will remove “corporativo”.
     if (!emailClean || !isValidEmail(emailClean)) return toast.error("Informe um e-mail válido.")
 
-    // Remaining requirements (kept lower on page)
+    // Remaining requirements (kept, but moved lower on page for less friction)
     if (!howHeard) return toast.error("Selecione a origem do contato.")
     if (needsSourceDetail && !howHeardOther.trim()) return toast.error("Preencha o detalhe da origem.")
     if (hasOther && !goalOther.trim()) return toast.error('Preencha o campo "Outro" (objetivo).')
@@ -286,10 +253,6 @@ export default function AgendarDemo() {
           consent: true,
           goal_other: hasOther ? goalOther.trim() : null,
           goals_selected: normalizedGoals,
-
-          // Multilojista
-          multi_store_pain: isMultiStore ? multiPain : null,
-          multi_store_pain_other: isMultiStore && needsMultiPainOther ? multiPainOther.trim() : null,
 
           source_detail: needsSourceDetail ? howHeardOther.trim() : null,
           source_channel: "web",
@@ -396,11 +359,6 @@ export default function AgendarDemo() {
               </h1>
               <p className="mt-2 text-sm text-slate-600">
                 Agende uma demo estratégica de 30 minutos e saia com um plano claro para uma loja piloto (até 3 câmeras).
-                {isMultiStore ? (
-                  <span className="block mt-1 text-slate-700">
-                    <strong>Multilojistas:</strong> desenhamos também o caminho de escala e padronização entre unidades.
-                  </span>
-                ) : null}
               </p>
 
               {/* Progress */}
@@ -444,7 +402,7 @@ export default function AgendarDemo() {
             </ul>
           </div>
 
-          {/* Post-demo activation */}
+          {/* Post-demo activation (keep, but more “low friction” framing) */}
           <div className="rounded-2xl border border-amber-200 bg-amber-50/80 p-5 text-sm text-amber-950">
             <div className="font-semibold mb-1">Depois do agendamento, você recebe um checklist simples</div>
             <p className="text-amber-900/90">
@@ -458,7 +416,7 @@ export default function AgendarDemo() {
             </p>
           </div>
 
-          {/* Essentials */}
+          {/* ESSENTIALS FIRST */}
           <div className="space-y-4">
             <h2 className="font-semibold text-slate-900">1) Informações rápidas para personalizar a demo</h2>
 
@@ -565,66 +523,11 @@ export default function AgendarDemo() {
               </div>
             </div>
 
-            {/* 🔥 MULTILOJISTA PAIN */}
-            {isMultiStore && (
-              <div className="space-y-2">
-                <div className="flex items-center justify-between gap-2">
-                  <h2 className="font-semibold text-slate-900">
-                    Multilojista: onde dói mais hoje na gestão entre lojas? *
-                  </h2>
-                  <span className="text-xs text-slate-500">Escolha 1</span>
-                </div>
-
-                <div className="space-y-2">
-                  {MULTI_PAINS.map((p) => (
-                    <label
-                      key={p.value}
-                      className={[
-                        "flex items-start gap-3 rounded-2xl border p-3 cursor-pointer transition",
-                        multiPain === p.value ? "border-cyan-300 bg-cyan-50/60" : "border-slate-200 bg-white hover:bg-slate-50",
-                      ].join(" ")}
-                    >
-                      <input
-                        type="radio"
-                        name="multi-pain"
-                        value={p.value}
-                        checked={multiPain === p.value}
-                        onChange={() => setMultiPain(p.value)}
-                        className="mt-1 h-4 w-4 border-slate-300 text-cyan-600 focus:ring-cyan-200"
-                      />
-                      <div className="flex-1">
-                        <div className="text-sm font-medium text-slate-800">{p.label}</div>
-                      </div>
-                    </label>
-                  ))}
-                </div>
-
-                {needsMultiPainOther && (
-                  <div>
-                    <label className="text-sm font-medium text-slate-700" htmlFor="multi-pain-other">
-                      Descreva em 1 frase (ajuda muito) *
-                    </label>
-                    <input
-                      id="multi-pain-other"
-                      className={inputBase}
-                      placeholder="Ex: não consigo auditar execução sem estar presente em cada loja…"
-                      value={multiPainOther}
-                      onChange={(e) => setMultiPainOther(e.target.value)}
-                    />
-                  </div>
-                )}
-
-                <p className="text-xs text-slate-500">
-                  Isso deixa a demo cirúrgica: a gente monta o piloto pensando em padronização e escala.
-                </p>
-              </div>
-            )}
-
-            {/* PRIMARY GOAL */}
+            {/* PRIMARY GOAL (radio) */}
             <div className="space-y-2">
               <div className="flex items-center justify-between gap-2">
                 <h2 className="font-semibold text-slate-900">2) Qual o objetivo principal da sua demo? *</h2>
-                <span className="text-xs text-slate-500">Escolha 1</span>
+                <span className="text-xs text-slate-500">Escolha 1 prioridade</span>
               </div>
 
               <div className="space-y-2">
@@ -633,7 +536,9 @@ export default function AgendarDemo() {
                     key={g.value}
                     className={[
                       "flex items-start gap-3 rounded-2xl border p-3 cursor-pointer transition",
-                      primaryGoalPick === g.value ? "border-cyan-300 bg-cyan-50/60" : "border-slate-200 bg-white hover:bg-slate-50",
+                      primaryGoalPick === g.value
+                        ? "border-cyan-300 bg-cyan-50/60"
+                        : "border-slate-200 bg-white hover:bg-slate-50",
                     ].join(" ")}
                   >
                     <input
@@ -669,7 +574,7 @@ export default function AgendarDemo() {
             </div>
           </div>
 
-          {/* Light scarcity */}
+          {/* Proof + scarcity (light, not cringy) */}
           <div className="rounded-2xl border border-slate-200 bg-white/70 p-5 text-sm text-slate-700">
             <div className="font-semibold text-slate-900 mb-2">Para garantir qualidade na ativação piloto</div>
             <p className="text-slate-600">
@@ -678,7 +583,7 @@ export default function AgendarDemo() {
             </p>
           </div>
 
-          {/* Advanced (optional) */}
+          {/* ADVANCED (optional) */}
           <div className="space-y-3">
             <button
               type="button"
@@ -840,7 +745,7 @@ export default function AgendarDemo() {
                   </p>
                 </div>
 
-                {/* Secondary goals */}
+                {/* Secondary goals (optional) */}
                 <div className="space-y-2">
                   <h2 className="font-semibold text-slate-900">Opcional: objetivos secundários</h2>
                   <p className="text-xs text-slate-500">
@@ -895,7 +800,7 @@ export default function AgendarDemo() {
           </button>
 
           <p className="text-xs text-center text-slate-500">
-            Você será redirecionado para escolher o melhor horário. (Leva ~30s)
+            Você será redirecionado para escolher o melhor horário. (Leva ~15s)
           </p>
         </div>
 
