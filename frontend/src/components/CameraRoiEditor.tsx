@@ -52,7 +52,6 @@ const CameraRoiEditor = ({ open, camera, onClose }: CameraRoiEditorProps) => {
     onError: () => toast.error("Falha ao salvar ROI."),
   })
 
-  const latestVersion = roiConfig?.version ?? 0
   const latestUpdatedAt = roiConfig?.updated_at ?? null
   const latestConfig = roiConfig?.config_json as
     | {
