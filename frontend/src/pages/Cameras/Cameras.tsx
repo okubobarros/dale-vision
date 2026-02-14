@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useMemo, useState } from "react"
+import { useCallback, useEffect, useMemo, useRef, useState } from "react"
 import { useLocation } from "react-router-dom"
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query"
 import toast from "react-hot-toast"
@@ -23,6 +23,11 @@ const Cameras = () => {
   const [cameraModalOpen, setCameraModalOpen] = useState(false)
   const [editingCamera, setEditingCamera] = useState<Camera | null>(null)
   const [roiCamera, setRoiCamera] = useState<Camera | null>(null)
+  const [testingCameraId, setTestingCameraId] = useState<string | null>(null)
+  const [testMessage, setTestMessage] = useState<string | null>(null)
+  const [testError, setTestError] = useState<string | null>(null)
+  const testTimerRef = useRef<ReturnType<typeof setInterval> | null>(null)
+  const testStartedAtRef = useRef<number | null>(null)
   const isMobile = useIsMobile(768)
   const [origin, setOrigin] = useState("")
   const location = useLocation()
@@ -183,6 +188,78 @@ const Cameras = () => {
     [createCameraMutation, editingCamera, updateCameraMutation]
   )
 
+  const stopTestPolling = useCallback(() => {
+    if (testTimerRef.current) {
+      clearInterval(testTimerRef.current)
+      testTimerRef.current = null
+    }
+    testStartedAtRef.current = null
+  }, [])
+
+  const startTestPolling = useCallback(
+    (cameraId: string) => {
+      stopTestPolling()
+      setTestingCameraId(cameraId)
+      setTestMessage("Testando conexão com o Edge...")
+      setTestError(null)
+      testStartedAtRef.current = Date.now()
+
+      testTimerRef.current = setInterval(async () => {
+        const startedAt = testStartedAtRef.current || Date.now()
+        const elapsed = Date.now() - startedAt
+        if (elapsed > 120000) {
+          stopTestPolling()
+          setTestingCameraId(null)
+          setTestError("Sem resposta do Edge em 2 minutos. Verifique a câmera.")
+          return
+        }
+
+        try {
+          const latest = await camerasService.getCamera(cameraId)
+          const lastSeen = latest.last_seen_at ? new Date(latest.last_seen_at).getTime() : 0
+          const ageSeconds = lastSeen ? Math.floor((Date.now() - lastSeen) / 1000) : null
+          if (latest.status === "online" && (ageSeconds === null || ageSeconds <= 60)) {
+            stopTestPolling()
+            setTestingCameraId(null)
+            setTestMessage("Câmera online.")
+            queryClient.invalidateQueries({ queryKey: ["store-cameras", selectedStore] })
+            return
+          }
+          if (latest.status === "error" || latest.last_error) {
+            stopTestPolling()
+            setTestingCameraId(null)
+            setTestError(latest.last_error || "Falha ao conectar na câmera.")
+            return
+          }
+        } catch {
+          // ignore errors during polling
+        }
+      }, 5000)
+    },
+    [queryClient, selectedStore, stopTestPolling]
+  )
+
+  const handleTestConnection = useCallback(
+    async (cameraId: string) => {
+      setTestError(null)
+      setTestMessage(null)
+      try {
+        await camerasService.testConnection(cameraId)
+        startTestPolling(cameraId)
+      } catch (err) {
+        const detail = (err as { message?: string })?.message
+        setTestError(detail || "Falha ao solicitar teste.")
+      }
+    },
+    [startTestPolling]
+  )
+
+  useEffect(() => {
+    return () => {
+      stopTestPolling()
+    }
+  }, [stopTestPolling])
+
   return (
     <div className="p-6 space-y-6">
       <div className="flex flex-col gap-4">
@@ -316,6 +393,11 @@ const Cameras = () => {
                         Erro: {camera.last_error}
                       </p>
                     )}
+                    {camera.last_snapshot_url && (
+                      <p className="text-xs text-blue-600 mt-1 truncate">
+                        Snapshot: {camera.last_snapshot_url}
+                      </p>
+                    )}
                   </div>
                   <div className="flex flex-wrap gap-2">
                     <button
@@ -324,6 +406,13 @@ const Cameras = () => {
                       className="rounded-lg border border-gray-200 px-3 py-1.5 text-xs font-semibold text-gray-700 hover:bg-gray-50"
                     >
                       Editar
+                    </button>
+                    <button
+                      type="button"
+                      onClick={() => handleTestConnection(camera.id)}
+                      className="rounded-lg border border-emerald-200 px-3 py-1.5 text-xs font-semibold text-emerald-700 hover:bg-emerald-50"
+                    >
+                      Testar conexão
                     </button>
                     <button
                       type="button"
@@ -553,11 +642,17 @@ const Cameras = () => {
       <CameraModal
         open={cameraModalOpen}
         camera={editingCamera}
+        testing={testingCameraId === editingCamera?.id}
+        testMessage={testMessage}
+        testError={testError}
         onClose={() => {
           setCameraModalOpen(false)
           setEditingCamera(null)
+          setTestMessage(null)
+          setTestError(null)
         }}
         onSave={handleSaveCamera}
+        onTest={handleTestConnection}
         saving={createCameraMutation.isPending || updateCameraMutation.isPending}
       />
 
@@ -573,25 +668,47 @@ const Cameras = () => {
 type CameraModalProps = {
   open: boolean
   camera: Camera | null
+  testing: boolean
+  testMessage: string | null
+  testError: string | null
   saving: boolean
   onClose: () => void
   onSave: (payload: CreateCameraPayload) => void
+  onTest: (cameraId: string) => void
 }
 
 const CameraModal = ({
   open,
   camera,
+  testing,
+  testMessage,
+  testError,
   saving,
   onClose,
   onSave,
+  onTest,
 }: CameraModalProps) => {
   const [name, setName] = useState("")
+  const [connectionType, setConnectionType] = useState<"ip_camera" | "nvr">(
+    "ip_camera"
+  )
+  const [ip, setIp] = useState("")
+  const [username, setUsername] = useState("")
+  const [password, setPassword] = useState("")
+  const [channel, setChannel] = useState("")
+  const [brand, setBrand] = useState("")
   const [rtspUrl, setRtspUrl] = useState("")
   const [externalId, setExternalId] = useState("")
   const [active, setActive] = useState(true)
 
   useEffect(() => {
     setName(camera?.name ?? "")
+    setConnectionType("ip_camera")
+    setIp(camera?.ip ?? "")
+    setUsername("")
+    setPassword("")
+    setChannel("")
+    setBrand(camera?.brand ?? "")
     setRtspUrl("")
     setExternalId(camera?.external_id ?? "")
     setActive(camera?.active ?? true)
@@ -641,6 +758,71 @@ const CameraModal = ({
             )}
           </div>
           <div>
+            <label className="text-sm font-medium text-gray-700">Tipo de conexão</label>
+            <select
+              value={connectionType}
+              onChange={(e) =>
+                setConnectionType(e.target.value as "ip_camera" | "nvr")
+              }
+              className="mt-1 w-full rounded-lg border border-gray-200 px-3 py-2 text-sm"
+            >
+              <option value="ip_camera">Câmera IP</option>
+              <option value="nvr">NVR</option>
+            </select>
+          </div>
+          <div>
+            <label className="text-sm font-medium text-gray-700">IP</label>
+            <input
+              value={ip}
+              onChange={(e) => setIp(e.target.value)}
+              placeholder="192.168.0.10"
+              className="mt-1 w-full rounded-lg border border-gray-200 px-3 py-2 text-sm"
+            />
+          </div>
+          <div>
+            <label className="text-sm font-medium text-gray-700">Usuário</label>
+            <input
+              value={username}
+              onChange={(e) => setUsername(e.target.value)}
+              placeholder="admin"
+              className="mt-1 w-full rounded-lg border border-gray-200 px-3 py-2 text-sm"
+            />
+          </div>
+          <div>
+            <label className="text-sm font-medium text-gray-700">Senha</label>
+            <input
+              type="password"
+              value={password}
+              onChange={(e) => setPassword(e.target.value)}
+              placeholder="••••••••"
+              className="mt-1 w-full rounded-lg border border-gray-200 px-3 py-2 text-sm"
+            />
+          </div>
+          {connectionType === "nvr" && (
+            <div>
+              <label className="text-sm font-medium text-gray-700">
+                Canal (NVR)
+              </label>
+              <input
+                value={channel}
+                onChange={(e) => setChannel(e.target.value)}
+                placeholder="1"
+                className="mt-1 w-full rounded-lg border border-gray-200 px-3 py-2 text-sm"
+              />
+            </div>
+          )}
+          <div>
+            <label className="text-sm font-medium text-gray-700">
+              Marca (opcional)
+            </label>
+            <input
+              value={brand}
+              onChange={(e) => setBrand(e.target.value)}
+              placeholder="Hikvision"
+              className="mt-1 w-full rounded-lg border border-gray-200 px-3 py-2 text-sm"
+            />
+          </div>
+          <div>
             <label className="text-sm font-medium text-gray-700">
               ID externo (opcional)
             </label>
@@ -670,13 +852,38 @@ const CameraModal = ({
           >
             Cancelar
           </button>
+          {camera && (
+            <button
+              type="button"
+              onClick={() => onTest(camera.id)}
+              disabled={testing}
+              className={`rounded-lg px-4 py-2 text-sm font-semibold text-white ${
+                testing ? "bg-gray-300 cursor-not-allowed" : "bg-emerald-600 hover:bg-emerald-700"
+              }`}
+            >
+              {testing ? "Testando..." : "Testar conexão"}
+            </button>
+          )}
           <button
             type="button"
             disabled={saving || !name.trim()}
             onClick={() =>
               onSave({
                 name: name.trim(),
-                rtsp_url: rtspUrl.trim() || undefined,
+                brand: brand.trim() || undefined,
+                ip: ip.trim() || undefined,
+                username: username.trim() || undefined,
+                password: password || undefined,
+                rtsp_url:
+                  rtspUrl.trim() ||
+                  buildRtspUrl({
+                    connectionType,
+                    ip: ip.trim(),
+                    username: username.trim(),
+                    password,
+                    channel: channel.trim(),
+                  }) ||
+                  undefined,
                 external_id: externalId.trim() || undefined,
                 active,
               })
@@ -690,9 +897,34 @@ const CameraModal = ({
             {saving ? "Salvando..." : "Salvar"}
           </button>
         </div>
+        {testMessage && (
+          <p className="mt-3 text-xs text-emerald-700">{testMessage}</p>
+        )}
+        {testError && (
+          <p className="mt-3 text-xs text-red-600">{testError}</p>
+        )}
       </div>
     </div>
   )
+}
+
+const buildRtspUrl = (args: {
+  connectionType: "ip_camera" | "nvr"
+  ip: string
+  username: string
+  password: string
+  channel: string
+}) => {
+  if (!args.ip) return ""
+  const auth =
+    args.username || args.password
+      ? `${encodeURIComponent(args.username)}:${encodeURIComponent(args.password)}@`
+      : ""
+  if (args.connectionType === "nvr") {
+    const channel = args.channel || "1"
+    return `rtsp://${auth}${args.ip}:554/Streaming/Channels/${channel}`
+  }
+  return `rtsp://${auth}${args.ip}:554/stream`
 }
 
 export default Cameras

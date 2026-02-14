@@ -23,6 +23,7 @@ from .permissions import (
 )
 from apps.billing.utils import PaywallError
 from apps.stores.services.user_uuid import ensure_user_uuid
+from apps.alerts.services import send_event_to_n8n
 
 
 def _camera_limit_response(exc: PaywallError):
@@ -289,9 +290,14 @@ class CameraViewSet(viewsets.ModelViewSet):
 
         cam.last_seen_at = checked_at
         cam.last_error = error
+        if snapshot_url:
+            cam.last_snapshot_url = snapshot_url
         cam.status = status_value
         cam.updated_at = timezone.now()
-        cam.save(update_fields=["last_seen_at", "last_error", "status", "updated_at"])
+        update_fields = ["last_seen_at", "last_error", "status", "updated_at"]
+        if snapshot_url:
+            update_fields.append("last_snapshot_url")
+        cam.save(update_fields=update_fields)
 
         return Response(
             {
@@ -301,6 +307,32 @@ class CameraViewSet(viewsets.ModelViewSet):
                 "last_seen_at": cam.last_seen_at.isoformat() if cam.last_seen_at else None,
                 "last_error": cam.last_error,
             }
+        )
+
+    @action(detail=True, methods=["post"], url_path="test-connection")
+    def test_connection(self, request, pk=None):
+        cam = self.get_object()
+        require_store_role(request.user, str(cam.store_id), ALLOWED_MANAGE_ROLES)
+
+        payload = {
+            "event_name": "camera_test_requested",
+            "store_id": str(cam.store_id),
+            "camera_id": str(cam.id),
+        }
+        n8n_result = None
+        try:
+            n8n_result = send_event_to_n8n(event_name="camera_test_requested", data=payload)
+        except Exception:
+            n8n_result = {"ok": False, "error": "n8n_failed"}
+
+        return Response(
+            {
+                "ok": True,
+                "camera_id": str(cam.id),
+                "store_id": str(cam.store_id),
+                "queued": bool(n8n_result and n8n_result.get("ok")),
+            },
+            status=status.HTTP_202_ACCEPTED,
         )
 
 class CameraHealthLogViewSet(viewsets.ReadOnlyModelViewSet):

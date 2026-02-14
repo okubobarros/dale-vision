@@ -7,18 +7,26 @@ export interface Camera {
   store: string
   name: string
   external_id?: string | null
+  brand?: string | null
+  ip?: string | null
+  username?: string | null
   rtsp_url_masked?: string | null
   active?: boolean
   status?: CameraStatus
   latency_ms?: number | null
   last_seen_at?: string | null
   last_error?: string | null
+  last_snapshot_url?: string | null
   created_at?: string
   updated_at?: string
 }
 
 export type CreateCameraPayload = {
   name: string
+  brand?: string
+  ip?: string
+  username?: string
+  password?: string
   rtsp_url?: string
   external_id?: string
   active?: boolean
@@ -131,6 +139,24 @@ export const camerasService = {
       return response.data
     } catch (error) {
       throw normalizeApiError(error, "Falha ao carregar limites.")
+    }
+  },
+
+  async getCamera(cameraId: string): Promise<Camera> {
+    try {
+      const response = await api.get(`/v1/cameras/${cameraId}/`)
+      return response.data
+    } catch (error) {
+      throw normalizeApiError(error, "Falha ao carregar câmera.")
+    }
+  },
+
+  async testConnection(cameraId: string): Promise<{ ok: boolean; queued: boolean }> {
+    try {
+      const response = await api.post(`/v1/cameras/${cameraId}/test-connection/`)
+      return response.data
+    } catch (error) {
+      throw normalizeApiError(error, "Falha ao testar conexão.")
     }
   },
 }

@@ -13,6 +13,10 @@ class CameraSerializer(serializers.ModelSerializer):
             "store",
             "name",
             "external_id",
+            "brand",
+            "ip",
+            "username",
+            "password",
             "rtsp_url",
             "rtsp_url_masked",
             "active",
@@ -20,6 +24,7 @@ class CameraSerializer(serializers.ModelSerializer):
             "latency_ms",
             "last_seen_at",
             "last_error",
+            "last_snapshot_url",
             "created_at",
             "updated_at",
         )
@@ -32,9 +37,12 @@ class CameraSerializer(serializers.ModelSerializer):
             "status",
             "rtsp_url_masked",
             "latency_ms",
+            "last_snapshot_url",
         )
         extra_kwargs = {
             "rtsp_url": {"write_only": True, "required": False, "allow_null": True, "allow_blank": True},
+            "password": {"write_only": True, "required": False, "allow_null": True, "allow_blank": True},
+            "username": {"write_only": True, "required": False, "allow_null": True, "allow_blank": True},
             "external_id": {"required": False, "allow_null": True, "allow_blank": True},
             "active": {"required": False},
         }
