@@ -800,7 +800,7 @@ export default function AgendarDemo() {
           </button>
 
           <p className="text-xs text-center text-slate-500">
-            Você será redirecionado para escolher o melhor horário. (Leva ~30s)
+            Você será redirecionado para escolher o melhor horário. (Leva ~15s)
           </p>
         </div>
 
