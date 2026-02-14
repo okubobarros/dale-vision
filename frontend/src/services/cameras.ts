@@ -29,12 +29,9 @@ export type UpdateCameraPayload = Partial<CreateCameraPayload>
 export interface CameraROIConfig {
   camera: string
   version: number
-  status: "draft" | "published"
-  image_w?: number | null
-  image_h?: number | null
-  payload: unknown
-  created_at?: string | null
+  config_json: unknown
   updated_at?: string | null
+  updated_by?: string | null
 }
 
 export interface StoreLimits {
@@ -117,16 +114,10 @@ export const camerasService = {
     }
   },
 
-  async updateRoi(
-    cameraId: string,
-    payload: { payload: unknown; status: "draft" | "published"; image_w: number; image_h: number }
-  ): Promise<CameraROIConfig> {
+  async updateRoi(cameraId: string, configJson: unknown): Promise<CameraROIConfig> {
     try {
       const response = await api.put(`/v1/cameras/${cameraId}/roi/`, {
-        payload: payload.payload,
-        status: payload.status,
-        image_w: payload.image_w,
-        image_h: payload.image_h,
+        config_json: configJson,
       })
       return response.data
     } catch (error) {

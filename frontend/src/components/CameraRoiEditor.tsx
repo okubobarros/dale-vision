@@ -43,12 +43,8 @@ const CameraRoiEditor = ({ open, camera, onClose }: CameraRoiEditorProps) => {
   })
 
   const updateRoiMutation = useMutation({
-    mutationFn: (payload: {
-      payload: unknown
-      status: "draft" | "published"
-      image_w: number
-      image_h: number
-    }) => camerasService.updateRoi(cameraId || "", payload),
+    mutationFn: (configJson: unknown) =>
+      camerasService.updateRoi(cameraId || "", configJson),
     onSuccess: (data) => {
       queryClient.invalidateQueries({ queryKey: ["camera-roi", cameraId] })
       toast.success(`ROI salvo (v${data.version})`)
@@ -58,15 +54,26 @@ const CameraRoiEditor = ({ open, camera, onClose }: CameraRoiEditorProps) => {
 
   const latestVersion = roiConfig?.version ?? 0
   const latestUpdatedAt = roiConfig?.updated_at ?? null
+  const latestConfig = roiConfig?.config_json as
+    | {
+        roi_version?: number
+        status?: "draft" | "published"
+        image?: { width?: number; height?: number }
+        zones?: RoiShape[]
+        metrics_enabled?: boolean
+      }
+    | undefined
+  const roiVersionLabel = latestConfig?.roi_version ?? 0
+  const roiStatus = latestConfig?.status ?? "draft"
 
   useEffect(() => {
     if (!open) return
-    if (!roiConfig?.payload) {
+    if (!roiConfig?.config_json) {
       setShapes([])
       setDraftPoints([])
       return
     }
-    const config = roiConfig.payload as { zones?: RoiShape[] } | RoiShape[]
+    const config = roiConfig.config_json as { zones?: RoiShape[] } | RoiShape[]
     if (Array.isArray(config)) {
       setShapes(config)
     } else if (Array.isArray(config?.zones)) {
@@ -188,30 +195,24 @@ const CameraRoiEditor = ({ open, camera, onClose }: CameraRoiEditorProps) => {
   const handleSave = useCallback(() => {
     if (!cameraId) return
     updateRoiMutation.mutate({
-      payload: {
-        version: latestVersion,
-        zones: shapes,
-        canvas: { width: CANVAS_WIDTH, height: CANVAS_HEIGHT },
-      },
+      roi_version: roiVersionLabel,
       status: "draft",
-      image_w: CANVAS_WIDTH,
-      image_h: CANVAS_HEIGHT,
+      image: { width: CANVAS_WIDTH, height: CANVAS_HEIGHT },
+      zones: shapes,
+      metrics_enabled: Boolean(latestConfig?.metrics_enabled),
     })
-  }, [cameraId, latestVersion, shapes, updateRoiMutation])
+  }, [cameraId, latestConfig?.metrics_enabled, roiVersionLabel, shapes, updateRoiMutation])
 
   const handlePublish = useCallback(() => {
     if (!cameraId) return
     updateRoiMutation.mutate({
-      payload: {
-        version: latestVersion,
-        zones: shapes,
-        canvas: { width: CANVAS_WIDTH, height: CANVAS_HEIGHT },
-      },
+      roi_version: roiVersionLabel,
       status: "published",
-      image_w: CANVAS_WIDTH,
-      image_h: CANVAS_HEIGHT,
+      image: { width: CANVAS_WIDTH, height: CANVAS_HEIGHT },
+      zones: shapes,
+      metrics_enabled: Boolean(latestConfig?.metrics_enabled),
     })
-  }, [cameraId, latestVersion, shapes, updateRoiMutation])
+  }, [cameraId, latestConfig?.metrics_enabled, roiVersionLabel, shapes, updateRoiMutation])
 
   const displayUpdatedAt = useMemo(() => {
     if (!latestUpdatedAt) return "—"
@@ -234,8 +235,8 @@ const CameraRoiEditor = ({ open, camera, onClose }: CameraRoiEditorProps) => {
               ROI Editor · {camera.name}
             </h3>
             <p className="text-xs text-gray-500 mt-1">
-              Versão do ROI: v{latestVersion} · Status: {roiConfig?.status ?? "draft"} ·
-              Atualizado em {displayUpdatedAt}
+              <span title={`roi_version ${roiVersionLabel}`}>ROI v{roiVersionLabel}</span>{" "}
+              · Status: {roiStatus} · Atualizado em {displayUpdatedAt}
             </p>
           </div>
           <div className="flex flex-wrap gap-2">
