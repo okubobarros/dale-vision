@@ -20,6 +20,17 @@ type SetupWhereValue = "store_pc" | "nvr_server" | "not_sure"
 type AccessWhoValue = "owner" | "store_manager" | "staff" | "not_sure"
 type HowHeardValue = "referral" | "instagram" | "google" | "youtube" | "other"
 
+// Dor do multilojista
+type MultiPainValue =
+  | "no_standard"
+  | "no_visibility"
+  | "distributed_losses"
+  | "execution_team"
+  | "queues_variance"
+  | "security_incidents"
+  | "no_compare"
+  | "other"
+
 const HOW_HEARD: { label: string; value: HowHeardValue }[] = [
   { label: "Instagram", value: "instagram" },
   { label: "YouTube", value: "youtube" },
@@ -37,14 +48,25 @@ const CAMERA_BRANDS = [
   "Não sei informar",
 ] as const
 
-const GOALS: { label: string; value: GoalValue; hint: string }[] = [
-  { label: "Reduzir perdas / fraudes", value: "loss_prevention", hint: "alertas e evidências acionáveis" },
-  { label: "Reduzir filas e melhorar atendimento", value: "queues", hint: "picos, gargalos e tempo de espera" },
-  { label: "Aumentar produtividade da equipe", value: "productivity", hint: "rotina, padrão e eficiência" },
-  { label: "Padronizar operação entre lojas", value: "standardization", hint: "comparação e consistência" },
-  { label: "Segurança e incidentes", value: "security", hint: "ocorrências e resposta rápida" },
-  { label: "Entender fluxo / heatmap / conversão", value: "heatmap", hint: "mapas de calor e comportamento" },
-  { label: "Outro", value: "other", hint: "um objetivo específico seu" },
+const GOALS: { label: string; value: GoalValue }[] = [
+  { label: "Reduzir perdas / fraudes", value: "loss_prevention" },
+  { label: "Reduzir filas e melhorar atendimento", value: "queues" },
+  { label: "Aumentar produtividade da equipe", value: "productivity" },
+  { label: "Padronizar operação entre lojas", value: "standardization" },
+  { label: "Segurança e incidentes", value: "security" },
+  { label: "Entender fluxo / heatmap / conversão", value: "heatmap" },
+  { label: "Outro", value: "other" },
+]
+
+const MULTI_PAINS: { label: string; value: MultiPainValue }[] = [
+  { label: "Falta de padrão: cada loja faz de um jeito (auditoria difícil)", value: "no_standard" },
+  { label: "Sem visibilidade do que acontece no chão de loja (só descobre depois)", value: "no_visibility" },
+  { label: "Perdas/furtos espalhados e sem evidência rápida", value: "distributed_losses" },
+  { label: "Equipe / execução fraca (processo não roda igual em todas)", value: "execution_team" },
+  { label: "Filas e atendimento variam muito entre unidades", value: "queues_variance" },
+  { label: "Segurança e incidentes (ocorrências sem histórico confiável)", value: "security_incidents" },
+  { label: "Comparar lojas é impossível (sem métrica igual pra todas)", value: "no_compare" },
+  { label: "Outro", value: "other" },
 ]
 
 function onlyDigits(v: string) {
@@ -113,7 +135,7 @@ export default function AgendarDemo() {
   const [submitError, setSubmitError] = useState("")
   const [fieldErrors, setFieldErrors] = useState<Record<string, string>>({})
 
-  // Step UX (1 = essentials, 2 = optional)
+  // Optional details accordion
   const [advancedOpen, setAdvancedOpen] = useState(false)
 
   const [name, setName] = useState("")
@@ -132,29 +154,28 @@ export default function AgendarDemo() {
   const [setupWhere, setSetupWhere] = useState<SetupWhereValue | "">("")
   const [accessWho, setAccessWho] = useState<AccessWhoValue | "">("")
 
-  // Goals: We’ll keep multi-select for backend, BUT we’ll push the user to pick ONE priority first
-  const [primaryGoalPick, setPrimaryGoalPick] = useState<GoalValue | "">("")
+  // Objetivos (agora multi seleção, mais infos pro closer)
   const [goals, setGoals] = useState<GoalValue[]>([])
   const [goalOther, setGoalOther] = useState("")
+  const [contextNote, setContextNote] = useState("") // aberto opcional
+
+  // Dor multilojista
+  const [multiPain, setMultiPain] = useState<MultiPainValue | "">("")
+  const [multiPainOther, setMultiPainOther] = useState("")
 
   const [consent, setConsent] = useState(false)
 
-  const hasOther = goals.includes("other") || primaryGoalPick === "other"
+  const hasOtherGoal = goals.includes("other")
   const needsSourceDetail = howHeard === "other" || howHeard === "referral"
 
-  // Ensure primary goal is always included in goals array
-  const normalizedGoals = useMemo(() => {
-    const set = new Set<GoalValue>(goals)
-    if (primaryGoalPick) set.add(primaryGoalPick as GoalValue)
-    return Array.from(set)
-  }, [goals, primaryGoalPick])
+  const isMultiStore = storesRange !== "" && storesRange !== "1"
+  const needsMultiPainOther = multiPain === "other"
 
   const primaryGoal: GoalValue | "" = useMemo(() => {
-    if (primaryGoalPick) return primaryGoalPick as GoalValue
-    if (!normalizedGoals.length) return ""
-    const nonOther = normalizedGoals.find((g) => g !== "other")
+    if (!goals.length) return ""
+    const nonOther = goals.find((g) => g !== "other")
     return nonOther || "other"
-  }, [normalizedGoals, primaryGoalPick])
+  }, [goals])
 
   const qualifiedScore = useMemo(() => {
     if (!storesRange || !camerasRange) return 0
@@ -162,12 +183,12 @@ export default function AgendarDemo() {
       storesRange,
       camerasRange,
       cameraBrandsCount: cameraBrands.length,
-      goalsCount: normalizedGoals.filter((g) => g !== "other").length + (hasOther ? 1 : 0),
+      goalsCount: goals.filter((g) => g !== "other").length + (hasOtherGoal ? 1 : 0),
     })
-  }, [storesRange, camerasRange, cameraBrands.length, normalizedGoals, hasOther])
+  }, [storesRange, camerasRange, cameraBrands.length, goals, hasOtherGoal])
 
   const progress = useMemo(() => {
-    // simple progress for "essentials" completion (helps conversion)
+    // progress for essentials completion
     let done = 0
     const total = 6
     if (name.trim()) done++
@@ -175,9 +196,9 @@ export default function AgendarDemo() {
     if (operationType.trim()) done++
     if (storesRange) done++
     if (camerasRange) done++
-    if (primaryGoalPick) done++
+    if (goals.length > 0) done++
     return Math.round((done / total) * 100)
-  }, [name, whatsapp, operationType, storesRange, camerasRange, primaryGoalPick])
+  }, [name, whatsapp, operationType, storesRange, camerasRange, goals.length])
 
   function toggleBrand(brand: (typeof CAMERA_BRANDS)[number]) {
     setCameraBrands((prev) => {
@@ -204,7 +225,7 @@ export default function AgendarDemo() {
     const emailClean = email.trim()
     const whatsappClean = normalizeWhatsappToBR11(whatsapp)
 
-    // Essentials first (to maximize completion)
+    // Essentials first
     if (!nameClean) return toast.error("Informe seu nome.")
     if (!isValidWhatsappBR11Mobile(whatsapp)) {
       return toast.error("WhatsApp inválido. Use DDD + número de celular (11 dígitos, começando com 9).")
@@ -212,15 +233,22 @@ export default function AgendarDemo() {
     if (!operationType.trim()) return toast.error("Informe o segmento da operação.")
     if (!storesRange) return toast.error("Selecione a faixa de quantidade de lojas.")
     if (!camerasRange) return toast.error("Selecione a faixa de quantidade de câmeras.")
-    if (!primaryGoalPick) return toast.error("Escolha 1 objetivo principal para a demo.")
 
-    // Email is still valuable for Calendly + follow-ups. Keep required, but copy will remove “corporativo”.
+    if (isMultiStore && !multiPain) {
+      return toast.error("Multilojista: selecione onde dói mais hoje na gestão entre lojas.")
+    }
+    if (isMultiStore && multiPain === "other" && !multiPainOther.trim()) {
+      return toast.error('Preencha "Outro" (gestão entre lojas).')
+    }
+
+    if (!goals.length) return toast.error("Selecione pelo menos 1 objetivo.")
+    if (hasOtherGoal && !goalOther.trim()) return toast.error('Preencha o campo "Outro" (objetivos).')
+
     if (!emailClean || !isValidEmail(emailClean)) return toast.error("Informe um e-mail válido.")
 
-    // Remaining requirements (kept, but moved lower on page for less friction)
+    // Remaining requirements
     if (!howHeard) return toast.error("Selecione a origem do contato.")
     if (needsSourceDetail && !howHeardOther.trim()) return toast.error("Preencha o detalhe da origem.")
-    if (hasOther && !goalOther.trim()) return toast.error('Preencha o campo "Outro" (objetivo).')
     if (!consent) return toast.error("Para enviar confirmação e checklist, marque o consentimento.")
 
     try {
@@ -240,7 +268,7 @@ export default function AgendarDemo() {
         pilot_state: stateUF.trim() ? stateUF.trim().toUpperCase() : null,
 
         primary_goal: primaryGoal || null,
-        primary_goals: normalizedGoals,
+        primary_goals: goals,
 
         source: howHeard,
         utm: {
@@ -251,16 +279,26 @@ export default function AgendarDemo() {
 
         metadata: {
           consent: true,
-          goal_other: hasOther ? goalOther.trim() : null,
-          goals_selected: normalizedGoals,
 
+          // objetivos
+          goal_other: hasOtherGoal ? goalOther.trim() : null,
+          goals_selected: goals,
+          context_note: contextNote.trim() ? contextNote.trim() : null,
+
+          // multilojista
+          multi_store_pain: isMultiStore ? multiPain : null,
+          multi_store_pain_other: isMultiStore && needsMultiPainOther ? multiPainOther.trim() : null,
+
+          // origem
           source_detail: needsSourceDetail ? howHeardOther.trim() : null,
           source_channel: "web",
 
+          // ativação (opcional)
           activation_setup_where: setupWhere || null,
           activation_access_who: accessWho || null,
+
           next_step_hint:
-            "Após a demo, enviamos link do Edge Agent (.exe) por WhatsApp/e-mail para instalar no computador da loja ou no servidor/NVR e testar conexão com câmeras.",
+            "Após a demo, enviamos checklist + link do Edge Agent (.exe) por WhatsApp/e-mail para conectar às câmeras e testar a loja piloto.",
         },
 
         qualified_score: Number(qualifiedScore),
@@ -351,7 +389,6 @@ export default function AgendarDemo() {
               <div className="flex flex-wrap items-center gap-2 mb-2">
                 <span className={pill}>⏱️ leva ~90s</span>
                 <span className={pill}>📹 usa suas câmeras</span>
-                <span className={pill}>🧠 plano de ação na hora</span>
               </div>
 
               <h1 className="text-xl sm:text-2xl font-extrabold text-slate-900 tracking-tight">
@@ -359,6 +396,11 @@ export default function AgendarDemo() {
               </h1>
               <p className="mt-2 text-sm text-slate-600">
                 Agende uma demo estratégica de 30 minutos e saia com um plano claro para uma loja piloto (até 3 câmeras).
+                {isMultiStore ? (
+                  <span className="block mt-1 text-slate-700">
+                    <strong>Multilojistas:</strong> desenhamos também o caminho de escala e padronização entre unidades.
+                  </span>
+                ) : null}
               </p>
 
               {/* Progress */}
@@ -384,39 +426,25 @@ export default function AgendarDemo() {
               <li className="flex gap-2">
                 <span className="mt-0.5">✅</span>
                 <span>
-                  <strong>Oportunidades “invisíveis”</strong> no fluxo da loja (gargalos, desvios, padrões).
+                  Oportunidades no fluxo da loja (gargalos, desvios e padrões).
                 </span>
               </li>
               <li className="flex gap-2">
                 <span className="mt-0.5">✅</span>
                 <span>
-                  <strong>O que atacar primeiro</strong> para gerar impacto (perdas, filas, produtividade, segurança).
+                  Priorização do que atacar primeiro (perdas, filas, produtividade, segurança).
                 </span>
               </li>
               <li className="flex gap-2">
                 <span className="mt-0.5">✅</span>
                 <span>
-                  <strong>Plano de ativação</strong> para rodar uma loja piloto sem travar sua operação.
+                  Como rodar um piloto rápido usando até 3 câmeras.
                 </span>
               </li>
             </ul>
           </div>
 
-          {/* Post-demo activation (keep, but more “low friction” framing) */}
-          <div className="rounded-2xl border border-amber-200 bg-amber-50/80 p-5 text-sm text-amber-950">
-            <div className="font-semibold mb-1">Depois do agendamento, você recebe um checklist simples</div>
-            <p className="text-amber-900/90">
-              Para conectar as câmeras, instalamos o <strong>Agente Dale Vision (.exe)</strong> em um computador Windows
-              da loja (ou no servidor/NVR). Em algum momento, você só vai precisar de{" "}
-              <strong>acesso ao computador</strong> e às <strong>credenciais das câmeras/NVR</strong>.
-            </p>
-            <p className="text-amber-900/80 mt-2">✅ Enviamos o link do Agent por WhatsApp e e-mail após o agendamento.</p>
-            <p className="mt-2">
-              <strong>Sem compromisso:</strong> a demo serve para você decidir com clareza se faz sentido.
-            </p>
-          </div>
-
-          {/* ESSENTIALS FIRST */}
+          {/* Essentials */}
           <div className="space-y-4">
             <h2 className="font-semibold text-slate-900">1) Informações rápidas para personalizar a demo</h2>
 
@@ -448,7 +476,7 @@ export default function AgendarDemo() {
                 inputMode="tel"
                 autoComplete="tel"
               />
-              <p className="text-xs text-slate-500 mt-1">Vamos enviar confirmação, lembrete e o checklist por aqui.</p>
+              <p className="text-xs text-slate-500 mt-1">Enviamos confirmação, lembrete e o checklist por aqui.</p>
               {fieldErrors.whatsapp && <p className="mt-2 text-xs text-red-600">{fieldErrors.whatsapp}</p>}
             </div>
 
@@ -465,7 +493,7 @@ export default function AgendarDemo() {
                 autoComplete="email"
                 inputMode="email"
               />
-              <p className="text-xs text-slate-500 mt-1">Usamos para enviar o convite do calendário e materiais.</p>
+              <p className="text-xs text-slate-500 mt-1">Usamos para enviar o convite do calendário.</p>
               {fieldErrors.email && <p className="mt-2 text-xs text-red-600">{fieldErrors.email}</p>}
             </div>
 
@@ -523,41 +551,82 @@ export default function AgendarDemo() {
               </div>
             </div>
 
-            {/* PRIMARY GOAL (radio) */}
-            <div className="space-y-2">
+            {/* MULTILOJISTA PAIN */}
+            {isMultiStore && (
+              <div className="space-y-2">
+                <div className="flex items-center justify-between gap-2">
+                  <h2 className="font-semibold text-slate-900">
+                    Multilojista: onde dói mais hoje na gestão entre lojas? *
+                  </h2>
+                  <span className="text-xs text-slate-500">Escolha 1</span>
+                </div>
+
+                <div className="space-y-2">
+                  {MULTI_PAINS.map((p) => (
+                    <label
+                      key={p.value}
+                      className={[
+                        "flex items-start gap-3 rounded-2xl border p-3 cursor-pointer transition",
+                        multiPain === p.value
+                          ? "border-cyan-300 bg-cyan-50/60"
+                          : "border-slate-200 bg-white hover:bg-slate-50",
+                      ].join(" ")}
+                    >
+                      <input
+                        type="radio"
+                        name="multi-pain"
+                        value={p.value}
+                        checked={multiPain === p.value}
+                        onChange={() => setMultiPain(p.value)}
+                        className="mt-1 h-4 w-4 border-slate-300 text-cyan-600 focus:ring-cyan-200"
+                      />
+                      <div className="flex-1">
+                        <div className="text-sm font-medium text-slate-800">{p.label}</div>
+                      </div>
+                    </label>
+                  ))}
+                </div>
+
+                {needsMultiPainOther && (
+                  <div>
+                    <label className="text-sm font-medium text-slate-700" htmlFor="multi-pain-other">
+                      Descreva em 1 frase (ajuda muito) *
+                    </label>
+                    <input
+                      id="multi-pain-other"
+                      className={inputBase}
+                      placeholder="Ex: não consigo auditar execução sem estar presente em cada loja…"
+                      value={multiPainOther}
+                      onChange={(e) => setMultiPainOther(e.target.value)}
+                    />
+                  </div>
+                )}
+              </div>
+            )}
+
+            {/* GOALS (multi) */}
+            <div className="space-y-3">
               <div className="flex items-center justify-between gap-2">
-                <h2 className="font-semibold text-slate-900">2) Qual o objetivo principal da sua demo? *</h2>
-                <span className="text-xs text-slate-500">Escolha 1 prioridade</span>
+                <h2 className="font-semibold text-slate-900">2) Quais são os principais objetivos da sua demo? *</h2>
+                <span className="text-xs text-slate-500">Marque quantos quiser</span>
               </div>
 
               <div className="space-y-2">
                 {GOALS.map((g) => (
-                  <label
-                    key={g.value}
-                    className={[
-                      "flex items-start gap-3 rounded-2xl border p-3 cursor-pointer transition",
-                      primaryGoalPick === g.value
-                        ? "border-cyan-300 bg-cyan-50/60"
-                        : "border-slate-200 bg-white hover:bg-slate-50",
-                    ].join(" ")}
-                  >
+                  <label key={g.value} className="flex items-center gap-2 text-sm text-slate-700">
                     <input
-                      type="radio"
-                      name="primary-goal"
+                      type="checkbox"
                       value={g.value}
-                      checked={primaryGoalPick === g.value}
-                      onChange={() => setPrimaryGoalPick(g.value)}
-                      className="mt-1 h-4 w-4 border-slate-300 text-cyan-600 focus:ring-cyan-200"
+                      checked={goals.includes(g.value)}
+                      onChange={() => toggleGoal(g.value)}
+                      className="h-4 w-4 rounded border-slate-300 text-cyan-600 focus:ring-cyan-200"
                     />
-                    <div className="flex-1">
-                      <div className="text-sm font-medium text-slate-800">{g.label}</div>
-                      <div className="text-xs text-slate-500 mt-0.5">{g.hint}</div>
-                    </div>
+                    {g.label}
                   </label>
                 ))}
               </div>
 
-              {hasOther && (
+              {hasOtherGoal && (
                 <div>
                   <label className="text-sm font-medium text-slate-700" htmlFor="demo-goal-other">
                     Descreva brevemente (Outro) *
@@ -571,19 +640,23 @@ export default function AgendarDemo() {
                   />
                 </div>
               )}
+
+              <div>
+                <label className="text-sm font-medium text-slate-700" htmlFor="demo-context-note">
+                  Contexto rápido (opcional)
+                </label>
+                <textarea
+                  id="demo-context-note"
+                  className={inputBase + " min-h-[92px] resize-y"}
+                  placeholder="Ex: 12 lojas, muita variação de fila no horário de pico, queremos padronizar auditoria e reduzir perdas…"
+                  value={contextNote}
+                  onChange={(e) => setContextNote(e.target.value)}
+                />
+              </div>
             </div>
           </div>
 
-          {/* Proof + scarcity (light, not cringy) */}
-          <div className="rounded-2xl border border-slate-200 bg-white/70 p-5 text-sm text-slate-700">
-            <div className="font-semibold text-slate-900 mb-2">Para garantir qualidade na ativação piloto</div>
-            <p className="text-slate-600">
-              A gente limita novas ativações por semana para acompanhar de perto. Se você quer testar ainda esta semana,
-              escolha um horário agora.
-            </p>
-          </div>
-
-          {/* ADVANCED (optional) */}
+          {/* Advanced (optional) */}
           <div className="space-y-3">
             <button
               type="button"
@@ -591,7 +664,7 @@ export default function AgendarDemo() {
               className="w-full rounded-2xl border border-slate-200 bg-white/70 px-4 py-3 text-left text-sm text-slate-700 hover:bg-white transition"
             >
               <div className="flex items-center justify-between">
-                <span className="font-semibold text-slate-900">Opcional: detalhes para deixar a demo ainda mais certeira</span>
+                <span className="font-semibold text-slate-900">Opcional: detalhes técnicos para facilitar a ativação</span>
                 <span className="text-slate-500">{advancedOpen ? "−" : "+"}</span>
               </div>
               <div className="text-xs text-slate-500 mt-1">Se não souber, pode pular — não impede o agendamento.</div>
@@ -741,41 +814,29 @@ export default function AgendarDemo() {
                   </div>
 
                   <p className="text-xs text-slate-500">
-                    Isso não impede o agendamento — só ajuda a gente a preparar tudo para você sair da demo com a loja piloto pronta.
+                    Se você não souber agora, sem problema — a gente resolve depois da demo.
                   </p>
-                </div>
-
-                {/* Secondary goals (optional) */}
-                <div className="space-y-2">
-                  <h2 className="font-semibold text-slate-900">Opcional: objetivos secundários</h2>
-                  <p className="text-xs text-slate-500">
-                    Se quiser, marque mais 1–2 temas para a gente cobrir rapidamente na demo.
-                  </p>
-
-                  <div className="space-y-2">
-                    {GOALS.filter((g) => g.value !== primaryGoalPick).map((g) => (
-                      <label key={g.value} className="flex items-center gap-2 text-sm text-slate-700">
-                        <input
-                          type="checkbox"
-                          value={g.value}
-                          checked={goals.includes(g.value)}
-                          onChange={() => toggleGoal(g.value)}
-                          className="h-4 w-4 rounded border-slate-300 text-cyan-600 focus:ring-cyan-200"
-                        />
-                        {g.label}
-                      </label>
-                    ))}
-                  </div>
                 </div>
               </div>
             )}
           </div>
 
+          {/* ✅ MOVEU PRA PERTO DO FINAL (mais simples) */}
+          <div className="rounded-2xl border border-slate-200 bg-white/70 p-5 text-sm text-slate-700">
+            <div className="font-semibold text-slate-900 mb-1">Depois do agendamento</div>
+            <p className="text-slate-600">
+              Você recebe um checklist simples de como conectamos as câmeras e como funciona o piloto.
+            </p>
+            <p className="text-slate-600 mt-2">
+              <strong>Sem compromisso:</strong> a demonstração serve para você decidir com clareza se faz sentido.
+            </p>
+          </div>
+
           {/* Consent */}
           <div className="text-sm text-slate-700">
-            <p className="font-medium text-slate-900">📲 Confirmação + checklist</p>
+            <p className="font-medium text-slate-900">📲 Confirmação e lembretes</p>
             <p className="text-slate-600">
-              Vamos enviar confirmações e lembretes por WhatsApp e e-mail — e o link para download do Agent após o agendamento.
+              Enviaremos confirmações e lembretes por WhatsApp e e-mail.
             </p>
           </div>
 
