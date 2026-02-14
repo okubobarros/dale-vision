@@ -191,6 +191,19 @@ const Cameras = () => {
     [createCameraMutation, editingCamera, updateCameraMutation]
   )
 
+  const stepStates = useMemo(() => {
+    const hasCamera = (cameras?.length || 0) > 0
+    const healthOk = (cameras || []).some(
+      (cam) => cam.status === "online" || cam.status === "degraded"
+    )
+    const roiDone = false
+    return [
+      { label: "Adicionar câmera", done: hasCamera },
+      { label: "Verificar conexão", done: healthOk },
+      { label: "Desenhar ROI", done: roiDone },
+    ]
+  }, [cameras])
+
   const stopTestPolling = useCallback(() => {
     if (testTimerRef.current) {
       clearInterval(testTimerRef.current)
@@ -322,7 +335,67 @@ const Cameras = () => {
           Selecione uma loja para gerenciar câmeras.
         </div>
       ) : (
-        <div className="bg-white rounded-xl shadow-sm border border-gray-100 p-5 space-y-4">
+        <div className="space-y-4">
+          <div className="bg-white rounded-xl shadow-sm border border-gray-100 p-5 space-y-3">
+            <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3">
+              <div>
+                <h2 className="text-lg font-semibold text-gray-800">
+                  Status do Edge
+                </h2>
+                <p className="text-xs text-gray-500 mt-1">
+                  {edgeStatus?.online
+                    ? "Agente online"
+                    : "Agente offline — abra o Edge Agent para retomar o monitoramento."}
+                </p>
+              </div>
+              {!edgeStatus?.online && (
+                <button
+                  type="button"
+                  onClick={() => setEdgeSetupOpen(true)}
+                  className="inline-flex w-full sm:w-auto items-center justify-center rounded-lg bg-blue-600 px-4 py-2 text-sm font-semibold text-white hover:bg-blue-700"
+                >
+                  Abrir Edge Setup
+                </button>
+              )}
+            </div>
+
+            {edgeStatus?.online && (edgeStatus?.cameras_total ?? 0) === 0 && (
+              <div className="rounded-lg border border-blue-100 bg-blue-50 px-4 py-3 text-sm text-blue-900">
+                Você só precisa do IP + login da câmera/NVR.
+                <div className="mt-3">
+                  <button
+                    type="button"
+                    onClick={openCreateModal}
+                    disabled={limitReached}
+                    className={`inline-flex items-center justify-center rounded-lg px-4 py-2 text-sm font-semibold text-white ${
+                      limitReached
+                        ? "bg-gray-300 cursor-not-allowed"
+                        : "bg-blue-600 hover:bg-blue-700"
+                    }`}
+                  >
+                    Adicionar câmera
+                  </button>
+                </div>
+              </div>
+            )}
+
+            <div className="flex flex-wrap gap-2">
+              {stepStates.map((step) => (
+                <span
+                  key={step.label}
+                  className={`px-3 py-1 text-xs rounded-full font-semibold ${
+                    step.done
+                      ? "bg-green-100 text-green-700"
+                      : "bg-gray-100 text-gray-600"
+                  }`}
+                >
+                  {step.label}
+                </span>
+              ))}
+            </div>
+          </div>
+
+          <div className="bg-white rounded-xl shadow-sm border border-gray-100 p-5 space-y-4">
           <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3">
             <div>
               <h2 className="text-lg font-semibold text-gray-800">
@@ -457,199 +530,204 @@ const Cameras = () => {
             </div>
           )}
         </div>
+        </div>
       )}
 
-      <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3">
-        <div>
-          <h2 className="text-lg font-semibold text-gray-800">
-            Status das câmeras
-          </h2>
-          <p className="text-xs text-gray-500">
-            Gere o .env do agente e valide a conexão com a API.
-          </p>
-        </div>
-        <button
-          type="button"
-          onClick={() => setEdgeSetupOpen(true)}
-          className="inline-flex w-full sm:w-auto items-center justify-center rounded-lg bg-blue-600 px-4 py-2 text-sm font-semibold text-white hover:bg-blue-700"
-        >
-          Abrir Edge Setup
-        </button>
-      </div>
-
-      {isMobile && edgeSetupLink && (
-        <div className="bg-white rounded-xl shadow-sm border border-gray-100 p-4 space-y-3">
-          <div>
-            <h3 className="text-sm font-semibold text-gray-800">
-              Continuar no computador
-            </h3>
-            <p className="text-xs text-gray-600 mt-1">
-              Envie o link para abrir o Edge Setup no PC.
-            </p>
-          </div>
-          <div className="flex flex-col sm:flex-row gap-2">
+      {!onboardingMode && (
+        <>
+          <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3">
+            <div>
+              <h2 className="text-lg font-semibold text-gray-800">
+                Status das câmeras
+              </h2>
+              <p className="text-xs text-gray-500">
+                Gere o .env do agente e valide a conexão com a API.
+              </p>
+            </div>
             <button
               type="button"
-              onClick={async () => {
-                try {
-                  await navigator.clipboard.writeText(edgeSetupLink)
-                  toast.success("Link copiado")
-                } catch {
-                  toast.error("Falha ao copiar link")
-                }
-              }}
-              className="w-full rounded-lg border border-gray-200 px-4 py-2 text-sm font-semibold text-gray-700 hover:bg-gray-50"
+              onClick={() => setEdgeSetupOpen(true)}
+              className="inline-flex w-full sm:w-auto items-center justify-center rounded-lg bg-blue-600 px-4 py-2 text-sm font-semibold text-white hover:bg-blue-700"
             >
-              Copiar link
+              Abrir Edge Setup
             </button>
-            <a
-              href={`https://wa.me/?text=${encodeURIComponent(
-                `Abra este link no computador para configurar o Edge Agent:\n${edgeSetupLink}`
-              )}`}
-              target="_blank"
-              rel="noreferrer"
-              className="w-full rounded-lg bg-green-600 px-4 py-2 text-sm font-semibold text-white text-center hover:bg-green-700"
-            >
-              Enviar por WhatsApp
-            </a>
           </div>
-        </div>
-      )}
 
-      {!isMobile && edgeSetupLink && (
-        <div className="bg-white rounded-xl shadow-sm border border-gray-100 p-4 flex items-center gap-4">
-          <img
-            src={qrUrl}
-            alt="QR code do Edge Setup"
-            className="h-24 w-24 rounded-lg border border-gray-200"
-          />
-          <div>
-            <div className="text-sm font-semibold text-gray-800">
-              Continue no celular (opcional)
-            </div>
-            <div className="text-xs text-gray-600 mt-1">
-              Escaneie para abrir o Edge Setup no celular.
-            </div>
-            <div className="mt-2 text-xs text-blue-600 break-all">
-              {edgeSetupLink}
-            </div>
-          </div>
-        </div>
-      )}
-
-      {!selectedStore || selectedStore === "all" ? (
-        <div className="bg-white rounded-xl shadow-sm p-6 text-center border border-gray-100 text-gray-500">
-          Selecione uma loja para ver status das câmeras.
-        </div>
-      ) : edgeStatusLoading ? (
-        <div className="bg-white rounded-xl shadow-sm p-6 text-center border border-gray-100 text-gray-500">
-          Carregando status...
-        </div>
-      ) : edgeStatusError ? (
-        <div className="bg-white rounded-xl shadow-sm p-6 text-center border border-gray-100 text-red-600">
-          Falha ao carregar status das câmeras
-        </div>
-      ) : edgeStatus && edgeStatus.cameras.length > 0 ? (
-        <div className="space-y-4">
-          <div className="bg-white rounded-xl shadow-sm border border-gray-100 p-4">
-            <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3">
+          {isMobile && edgeSetupLink && (
+            <div className="bg-white rounded-xl shadow-sm border border-gray-100 p-4 space-y-3">
               <div>
-                <p className="text-sm text-gray-500">Status da loja</p>
-                <p className="text-lg font-semibold text-gray-800">
-                  {edgeStatus.store_status === "online"
-                    ? "Loja Online"
-                    : edgeStatus.store_status === "degraded"
-                    ? "Loja Instável"
-                    : edgeStatus.store_status === "offline"
-                    ? "Loja Offline"
-                    : "Status desconhecido"}
+                <h3 className="text-sm font-semibold text-gray-800">
+                  Ajuda rápida
+                </h3>
+                <p className="text-xs text-gray-600 mt-1">
+                  Envie o link para abrir o Edge Setup no PC.
                 </p>
-                <p className="text-xs text-gray-500 mt-1">
-                  Último heartbeat há{" "}
-                  <span className="font-semibold text-gray-700">
-                    {formatAge(edgeStatus.store_status_age_seconds)}
-                  </span>
-                </p>
-                {edgeStatus.store_status_reason && (
-                  <p className="text-xs text-gray-500 mt-1">
-                    {formatReason(edgeStatus.store_status_reason)}
-                  </p>
-                )}
               </div>
-              <span
-                className={`px-3 py-1 text-xs font-semibold rounded-full ${
-                  edgeStatus.store_status === "online"
-                    ? "bg-green-100 text-green-800"
-                    : edgeStatus.store_status === "degraded"
-                    ? "bg-yellow-100 text-yellow-800"
-                    : edgeStatus.store_status === "offline"
-                    ? "bg-gray-100 text-gray-800"
-                    : "bg-gray-100 text-gray-600"
-                }`}
-              >
-                {edgeStatus.store_status ?? "unknown"}
-              </span>
+              <div className="flex flex-col sm:flex-row gap-2">
+                <button
+                  type="button"
+                  onClick={async () => {
+                    try {
+                      await navigator.clipboard.writeText(edgeSetupLink)
+                      toast.success("Link copiado")
+                    } catch {
+                      toast.error("Falha ao copiar link")
+                    }
+                  }}
+                  className="w-full rounded-lg border border-gray-200 px-4 py-2 text-sm font-semibold text-gray-700 hover:bg-gray-50"
+                >
+                  Copiar link
+                </button>
+                <a
+                  href={`https://wa.me/?text=${encodeURIComponent(
+                    `Abra este link no computador para configurar o Edge Agent:\n${edgeSetupLink}`
+                  )}`}
+                  target="_blank"
+                  rel="noreferrer"
+                  className="w-full rounded-lg bg-green-600 px-4 py-2 text-sm font-semibold text-white text-center hover:bg-green-700"
+                >
+                  Enviar por WhatsApp
+                </a>
+              </div>
             </div>
-          </div>
+          )}
 
-          <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4">
-            {edgeStatus.cameras.map((cam) => (
-              <div
-                key={cam.camera_id}
-                className="bg-white rounded-xl shadow-sm border border-gray-100 p-4"
-              >
-                <div className="flex items-start justify-between gap-3">
-                  <div className="min-w-0">
-                    <p className="text-sm font-semibold text-gray-800 truncate">
-                      {cam.name}
+          {!isMobile && edgeSetupLink && (
+            <div className="bg-white rounded-xl shadow-sm border border-gray-100 p-4 flex items-center gap-4">
+              <img
+                src={qrUrl}
+                alt="QR code do Edge Setup"
+                className="h-24 w-24 rounded-lg border border-gray-200"
+              />
+              <div>
+                <div className="text-sm font-semibold text-gray-800">
+                  Ajuda (QR Code)
+                </div>
+                <div className="text-xs text-gray-600 mt-1">
+                  Escaneie para abrir o Edge Setup no celular.
+                </div>
+                <div className="mt-2 text-xs text-blue-600 break-all">
+                  {edgeSetupLink}
+                </div>
+              </div>
+            </div>
+          )}
+
+          {!selectedStore || selectedStore === "all" ? (
+            <div className="bg-white rounded-xl shadow-sm p-6 text-center border border-gray-100 text-gray-500">
+              Selecione uma loja para ver status das câmeras.
+            </div>
+          ) : edgeStatusLoading ? (
+            <div className="bg-white rounded-xl shadow-sm p-6 text-center border border-gray-100 text-gray-500">
+              Carregando status...
+            </div>
+          ) : edgeStatusError ? (
+            <div className="bg-white rounded-xl shadow-sm p-6 text-center border border-gray-100 text-red-600">
+              Falha ao carregar status das câmeras
+            </div>
+          ) : edgeStatus && edgeStatus.cameras.length > 0 ? (
+            <div className="space-y-4">
+              <div className="bg-white rounded-xl shadow-sm border border-gray-100 p-4">
+                <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3">
+                  <div>
+                    <p className="text-sm text-gray-500">Status da loja</p>
+                    <p className="text-lg font-semibold text-gray-800">
+                      {edgeStatus.store_status === "online"
+                        ? "Loja Online"
+                        : edgeStatus.store_status === "degraded"
+                        ? "Loja Instável"
+                        : edgeStatus.store_status === "offline"
+                        ? "Loja Offline"
+                        : "Status desconhecido"}
                     </p>
-                    <p className="text-xs text-gray-500">{cam.camera_id}</p>
+                    <p className="text-xs text-gray-500 mt-1">
+                      Último heartbeat há{" "}
+                      <span className="font-semibold text-gray-700">
+                        {formatAge(edgeStatus.store_status_age_seconds)}
+                      </span>
+                    </p>
+                    {edgeStatus.store_status_reason && (
+                      <p className="text-xs text-gray-500 mt-1">
+                        {formatReason(edgeStatus.store_status_reason)}
+                      </p>
+                    )}
                   </div>
                   <span
-                    className={`px-2 py-0.5 text-xs rounded-full ${
-                      cam.status === "online"
+                    className={`px-3 py-1 text-xs font-semibold rounded-full ${
+                      edgeStatus.store_status === "online"
                         ? "bg-green-100 text-green-800"
-                        : cam.status === "degraded"
+                        : edgeStatus.store_status === "degraded"
                         ? "bg-yellow-100 text-yellow-800"
-                        : cam.status === "offline"
-                        ? "bg-gray-100 text-gray-700"
+                        : edgeStatus.store_status === "offline"
+                        ? "bg-gray-100 text-gray-800"
                         : "bg-gray-100 text-gray-600"
                     }`}
                   >
-                    {cam.status}
+                    {edgeStatus.store_status ?? "unknown"}
                   </span>
                 </div>
-
-                <div className="mt-3 text-xs text-gray-600 flex items-center gap-2">
-                  <span className="font-semibold text-gray-700">Idade:</span>
-                  <span>{formatAge(cam.age_seconds)}</span>
-                </div>
-
-                <div className="mt-2 text-xs text-gray-600 flex items-center gap-2">
-                  <span className="font-semibold text-gray-700">Último:</span>
-                  <span>{formatTimestamp(cam.camera_last_heartbeat_ts)}</span>
-                </div>
-
-                {cam.reason && (
-                  <p className="text-xs text-gray-500 mt-2">
-                    {formatReason(cam.reason)}
-                  </p>
-                )}
               </div>
-            ))}
-          </div>
-        </div>
-      ) : (
-        <div className="bg-white rounded-xl shadow-sm p-6 text-center border border-gray-100 text-gray-500">
-          <p className="mb-3">Nenhuma câmera encontrada.</p>
-          <button
-            type="button"
-            onClick={() => setEdgeSetupOpen(true)}
-            className="text-sm font-semibold text-blue-600 hover:text-blue-700"
-          >
-            Abrir Edge Setup
-          </button>
-        </div>
+
+              <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4">
+                {edgeStatus.cameras.map((cam) => (
+                  <div
+                    key={cam.camera_id}
+                    className="bg-white rounded-xl shadow-sm border border-gray-100 p-4"
+                  >
+                    <div className="flex items-start justify-between gap-3">
+                      <div className="min-w-0">
+                        <p className="text-sm font-semibold text-gray-800 truncate">
+                          {cam.name}
+                        </p>
+                        <p className="text-xs text-gray-500">{cam.camera_id}</p>
+                      </div>
+                      <span
+                        className={`px-2 py-0.5 text-xs rounded-full ${
+                          cam.status === "online"
+                            ? "bg-green-100 text-green-800"
+                            : cam.status === "degraded"
+                            ? "bg-yellow-100 text-yellow-800"
+                            : cam.status === "offline"
+                            ? "bg-gray-100 text-gray-700"
+                            : "bg-gray-100 text-gray-600"
+                        }`}
+                      >
+                        {cam.status}
+                      </span>
+                    </div>
+
+                    <div className="mt-3 text-xs text-gray-600 flex items-center gap-2">
+                      <span className="font-semibold text-gray-700">Idade:</span>
+                      <span>{formatAge(cam.age_seconds)}</span>
+                    </div>
+
+                    <div className="mt-2 text-xs text-gray-600 flex items-center gap-2">
+                      <span className="font-semibold text-gray-700">Último:</span>
+                      <span>{formatTimestamp(cam.camera_last_heartbeat_ts)}</span>
+                    </div>
+
+                    {cam.reason && (
+                      <p className="text-xs text-gray-500 mt-2">
+                        {formatReason(cam.reason)}
+                      </p>
+                    )}
+                  </div>
+                ))}
+              </div>
+            </div>
+          ) : (
+            <div className="bg-white rounded-xl shadow-sm p-6 text-center border border-gray-100 text-gray-500">
+              <p className="mb-3">Nenhuma câmera encontrada.</p>
+              <button
+                type="button"
+                onClick={() => setEdgeSetupOpen(true)}
+                className="text-sm font-semibold text-blue-600 hover:text-blue-700"
+              >
+                Abrir Edge Setup
+              </button>
+            </div>
+          )}
+        </>
       )}
 
       <EdgeSetupModal

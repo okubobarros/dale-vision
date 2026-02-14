@@ -9,6 +9,7 @@ import {
   type Store,
   type StoreEdgeStatus,
 } from "../../services/stores"
+import { camerasService } from "../../services/cameras"
 import { formatReason, formatTimestamp } from "../../utils/edgeReasons"
 import EdgeSetupModal from "../../components/EdgeSetupModal"
 import { USE_MOCK_DATA } from "../../lib/mock"
@@ -296,6 +297,12 @@ const Dashboard = () => {
   const lastSeenAt = storeLastSeenAt ?? getLastSeenAt(edgeStatus)
   const isEdgeOnlineByLastSeen = isRecentTimestamp(lastSeenAt, ONLINE_MAX_AGE_SEC)
 
+  const { data: storeLimits } = useQuery({
+    queryKey: ["store-limits", selectedStore],
+    queryFn: () => camerasService.getStoreLimits(selectedStore),
+    enabled: Boolean(selectedStore && selectedStore !== ALL_STORES_VALUE),
+  })
+
   const {
     data: events,
     isLoading: eventsLoading,
@@ -346,6 +353,13 @@ const Dashboard = () => {
       }
     }
   }, [location.pathname, location.search])
+
+  useEffect(() => {
+    if (selectedStore !== ALL_STORES_VALUE) return
+    if ((stores ?? []).length === 1) {
+      setSelectedStore((stores ?? [])[0].id)
+    }
+  }, [stores, selectedStore])
 
   useEffect(() => {
     if (typeof window === "undefined") return
@@ -517,6 +531,38 @@ const Dashboard = () => {
       )}
     </div>
   ) : null
+
+  const camerasTotal = edgeStatus?.cameras_total ?? 0
+  const camerasLimit = storeLimits?.limits?.cameras ?? 3
+  const edgeOnlineLabel = isEdgeOnlineByLastSeen ? "Online" : "Offline"
+  const edgeLastSeenLabel = formatLastSeenDisplay(lastSeenAt)
+
+  const minimalStatusCards =
+    selectedStore !== ALL_STORES_VALUE ? (
+      <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+        <MetricCard
+          title="Status do Edge"
+          value={edgeOnlineLabel}
+          icon={<span>📡</span>}
+          color={isEdgeOnlineByLastSeen ? "bg-green-100 text-green-800" : "bg-gray-100 text-gray-700"}
+          subtitle={`Último sinal: ${edgeLastSeenLabel}`}
+        />
+        <MetricCard
+          title="Câmeras conectadas"
+          value={`${camerasTotal}/${camerasLimit}`}
+          icon={<span>🎥</span>}
+          color="bg-blue-100 text-blue-800"
+          subtitle="Trial até 3 câmeras"
+        />
+        <MetricCard
+          title="Próximo passo"
+          value={nextStepCta?.label || "—"}
+          icon={<span>✅</span>}
+          color="bg-amber-100 text-amber-800"
+          subtitle="Continue a configuração guiada"
+        />
+      </div>
+    ) : null
 
   const nextStepBanner = showNextStepBanner ? (
     <div className="bg-white rounded-xl shadow-sm border border-gray-100 p-4 sm:p-6">
@@ -805,6 +851,7 @@ const Dashboard = () => {
   if (!isLoadingDashboard && !dashboard) {
     return (
       <div className="space-y-6 sm:space-y-8">
+        {minimalStatusCards}
         {nextStepBanner}
         {activationBanner}
 
@@ -819,6 +866,7 @@ const Dashboard = () => {
 
   return (
     <div className="space-y-6 sm:space-y-8">
+      {minimalStatusCards}
       {nextStepBanner}
       {activationBanner}
       {/* Header (mobile-first) */}

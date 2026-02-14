@@ -105,8 +105,12 @@ const EdgeSetupModal = ({ open, onClose, defaultStoreId }: EdgeSetupModalProps) 
   const [pollError, setPollError] = useState<string | null>(null)
   const [lastSeenAt, setLastSeenAt] = useState<string | null>(null)
   const [lastHeartbeatAt, setLastHeartbeatAt] = useState<string | null>(null)
+  const [edgeOnline, setEdgeOnline] = useState(false)
+  const [edgeReason, setEdgeReason] = useState<string | null>(null)
   const [showTroubleshoot, setShowTroubleshoot] = useState(false)
   const [showChecklist, setShowChecklist] = useState(false)
+  const [remainingSec, setRemainingSec] = useState<number | null>(null)
+  const [autoRedirectAt, setAutoRedirectAt] = useState<number | null>(null)
 
   const pollTimer = useRef<ReturnType<typeof setTimeout> | null>(null)
   const pollStartedAt = useRef<number | null>(null)
@@ -130,6 +134,7 @@ const EdgeSetupModal = ({ open, onClose, defaultStoreId }: EdgeSetupModalProps) 
     }
     pollStartedAt.current = null
     setPolling(false)
+    setRemainingSec(null)
   }
 
   useEffect(() => {
@@ -263,6 +268,8 @@ const EdgeSetupModal = ({ open, onClose, defaultStoreId }: EdgeSetupModalProps) 
       const res = await api.get<EdgeStatusPayload>(`/v1/stores/${id}/edge-status/`)
       const data = res.data || {}
       const reason = String(data?.store_status_reason || "")
+      setEdgeOnline(Boolean(data?.online))
+      setEdgeReason(reason || null)
       const lastSeenAt = getLastSeenAt(data)
       const heartbeatAt = data?.last_heartbeat_at || data?.last_heartbeat || null
       setLastSeenAt(lastSeenAt)
@@ -290,6 +297,7 @@ const EdgeSetupModal = ({ open, onClose, defaultStoreId }: EdgeSetupModalProps) 
           setPollMessage("Loja Online")
           toast.success("Loja Online")
         }
+        setAutoRedirectAt(Date.now() + 3000)
         return
       }
     } catch (err) {
@@ -518,6 +526,40 @@ const EdgeSetupModal = ({ open, onClose, defaultStoreId }: EdgeSetupModalProps) 
   ]
   const firstIncomplete = statusSteps.findIndex((step) => !step.done)
   const activeStepIndex = firstIncomplete === -1 ? statusSteps.length - 1 : firstIncomplete
+  const isActiveStep = (label: string) => {
+    const idx = statusSteps.findIndex((s) => s.label === label)
+    return idx === activeStepIndex
+  }
+
+  useEffect(() => {
+    if (!polling || !pollStartedAt.current) return
+    setRemainingSec(pollRemainingSec())
+    const timer = setInterval(() => {
+      setRemainingSec(pollRemainingSec())
+    }, 1000)
+    return () => clearInterval(timer)
+  }, [polling])
+
+  useEffect(() => {
+    if (!autoRedirectAt || !heartbeatOk) return
+    const delay = autoRedirectAt - Date.now()
+    if (delay <= 0) {
+      if (storeId) {
+        navigate(`/app/cameras?store_id=${storeId}&onboarding=true`)
+      } else {
+        navigate("/app/cameras")
+      }
+      return
+    }
+    const timer = setTimeout(() => {
+      if (storeId) {
+        navigate(`/app/cameras?store_id=${storeId}&onboarding=true`)
+      } else {
+        navigate("/app/cameras")
+      }
+    }, delay)
+    return () => clearTimeout(timer)
+  }, [autoRedirectAt, heartbeatOk, navigate, storeId])
 
   if (!open) return null
 
@@ -571,6 +613,11 @@ const EdgeSetupModal = ({ open, onClose, defaultStoreId }: EdgeSetupModalProps) 
                 <div>Última comunicação: {lastSeenLabel}</div>
                 {lastHeartbeatLabel && (
                   <div>Último heartbeat: {lastHeartbeatLabel}</div>
+                )}
+                {edgeOnline && edgeReason === "no_cameras" && (
+                  <div className="text-green-700 font-semibold">
+                    Agente Online ✅ (nenhuma câmera ainda)
+                  </div>
                 )}
               </div>
               {heartbeatOk && (
@@ -683,14 +730,18 @@ const EdgeSetupModal = ({ open, onClose, defaultStoreId }: EdgeSetupModalProps) 
                   .
                 </div>
               )}
-              <button
+                <button
                   type="button"
                   onClick={handleConfirmDownload}
                   disabled={!isStoreSelected}
-                  className="inline-flex w-full sm:w-auto items-center justify-center rounded-lg border border-gray-200 px-4 py-2.5 text-sm font-semibold text-gray-700 hover:bg-gray-50 disabled:opacity-60"
+                  className={`inline-flex w-full sm:w-auto items-center justify-center rounded-lg px-4 py-2.5 text-sm font-semibold ${
+                    isActiveStep("Download")
+                      ? "bg-blue-600 text-white hover:bg-blue-700"
+                      : "border border-gray-200 text-gray-700 hover:bg-gray-50"
+                  } disabled:opacity-60`}
                 >
                   Já baixei e extraí
-              </button>
+                </button>
               {downloadConfirmed && (
                 <div className="mt-2 text-xs text-green-600 font-semibold">
                   Download confirmado
@@ -714,7 +765,11 @@ const EdgeSetupModal = ({ open, onClose, defaultStoreId }: EdgeSetupModalProps) 
                 type="button"
                 onClick={handleCopyEnv}
                 disabled={!canCopyEnv}
-                className="mt-3 inline-flex w-full sm:w-auto items-center justify-center rounded-lg border border-gray-200 px-4 py-2.5 text-xs font-semibold text-gray-700 hover:bg-gray-50 disabled:opacity-60"
+                className={`mt-3 inline-flex w-full sm:w-auto items-center justify-center rounded-lg px-4 py-2.5 text-xs font-semibold ${
+                  isActiveStep("Copiar .env")
+                    ? "bg-blue-600 text-white hover:bg-blue-700"
+                    : "border border-gray-200 text-gray-700 hover:bg-gray-50"
+                } disabled:opacity-60`}
               >
                 {rotatingToken ? "Gerando token..." : "Copiar .env"}
               </button>
@@ -782,7 +837,11 @@ const EdgeSetupModal = ({ open, onClose, defaultStoreId }: EdgeSetupModalProps) 
                   type="button"
                   onClick={handleConfirmRunning}
                   disabled={!canStartAgent}
-                  className="inline-flex w-full sm:w-auto items-center justify-center rounded-lg border border-gray-200 px-4 py-2.5 text-sm font-semibold text-gray-700 hover:bg-gray-50 disabled:opacity-60"
+                  className={`inline-flex w-full sm:w-auto items-center justify-center rounded-lg px-4 py-2.5 text-sm font-semibold ${
+                    isActiveStep("Rodar")
+                      ? "bg-blue-600 text-white hover:bg-blue-700"
+                      : "border border-gray-200 text-gray-700 hover:bg-gray-50"
+                  } disabled:opacity-60`}
                 >
                   Já iniciei o agent
                 </button>
@@ -805,9 +864,21 @@ const EdgeSetupModal = ({ open, onClose, defaultStoreId }: EdgeSetupModalProps) 
                   type="button"
                   onClick={handleValidate}
                   disabled={validating || polling || !canStartVerification}
-                  className="w-full sm:w-auto rounded-lg bg-blue-600 px-4 py-2.5 text-sm font-semibold text-white hover:bg-blue-700 disabled:opacity-60"
+                  className={`w-full sm:w-auto rounded-lg px-4 py-2.5 text-sm font-semibold ${
+                    heartbeatOk
+                      ? "bg-green-600 text-white"
+                      : isActiveStep("Online")
+                      ? "bg-blue-600 text-white hover:bg-blue-700"
+                      : "bg-blue-600 text-white hover:bg-blue-700"
+                  } disabled:opacity-60`}
                 >
-                  {validating ? "Verificando..." : polling ? "Aguardando heartbeat..." : "Começar verificação"}
+                  {heartbeatOk
+                    ? "Verificado ✅"
+                    : validating
+                    ? "Verificando..."
+                    : polling
+                    ? "Aguardando heartbeat..."
+                    : "Começar verificação"}
                 </button>
                 {validationMsg && <div className="text-sm text-gray-700">{validationMsg}</div>}
               </div>
@@ -822,10 +893,27 @@ const EdgeSetupModal = ({ open, onClose, defaultStoreId }: EdgeSetupModalProps) 
                 <div className="mt-3 rounded-lg border border-green-200 bg-green-50 px-3 py-2 text-sm text-green-800">
                   <div className="font-semibold">🎉 Agente conectado com sucesso!</div>
                   <div className="text-xs text-green-700 mt-1">
-                    Seu sistema está online e pronto para monitorar sua loja.
+                    Conectado. Próximo passo: configurar sua primeira câmera.
                   </div>
                   <div className="text-xs text-green-700 mt-1">
                     Mantenha a janela do Edge Agent aberta durante a configuração.
+                  </div>
+                  <div className="mt-2 flex flex-col sm:flex-row gap-2">
+                    <button
+                      type="button"
+                      onClick={() => {
+                        handleClose()
+                        if (storeId) {
+                          navigate(`/app/cameras?store_id=${storeId}&onboarding=true`)
+                        } else {
+                          navigate("/app/cameras")
+                        }
+                      }}
+                      className="inline-flex items-center justify-center rounded-lg bg-blue-600 px-3 py-2 text-xs font-semibold text-white hover:bg-blue-700"
+                    >
+                      Ir agora
+                    </button>
+                    <span className="text-xs text-green-700">Redirecionando em 3s…</span>
                   </div>
                 </div>
               )}
@@ -836,9 +924,10 @@ const EdgeSetupModal = ({ open, onClose, defaultStoreId }: EdgeSetupModalProps) 
                     <span className="h-2 w-2 rounded-full bg-blue-500 animate-pulse" />
                     {pollMessage || "Aguardando heartbeat do Edge Agent..."}
                   </span>
-                  {pollRemainingSec() !== null && (
+                  {remainingSec !== null && (
                     <span className="text-gray-500">
-                      Tempo restante: ~{pollRemainingSec()}s
+                      Tempo restante: {String(Math.floor(remainingSec / 60)).padStart(2, "0")}:
+                      {String(remainingSec % 60).padStart(2, "0")}
                     </span>
                   )}
                 </div>
