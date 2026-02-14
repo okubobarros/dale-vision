@@ -135,9 +135,6 @@ export default function AgendarDemo() {
   const [submitError, setSubmitError] = useState("")
   const [fieldErrors, setFieldErrors] = useState<Record<string, string>>({})
 
-  // Optional details accordion
-  const [advancedOpen, setAdvancedOpen] = useState(false)
-
   const [name, setName] = useState("")
   const [email, setEmail] = useState("")
   const [whatsapp, setWhatsapp] = useState("")
@@ -151,13 +148,14 @@ export default function AgendarDemo() {
   const [city, setCity] = useState("")
   const [stateUF, setStateUF] = useState("")
 
+  // ⚠️ Agora fica ABERTO no formulário e OBRIGATÓRIO (sem accordion)
   const [setupWhere, setSetupWhere] = useState<SetupWhereValue | "">("")
   const [accessWho, setAccessWho] = useState<AccessWhoValue | "">("")
 
-  // Objetivos (agora multi seleção, mais infos pro closer)
+  // Objetivos (multi seleção)
   const [goals, setGoals] = useState<GoalValue[]>([])
   const [goalOther, setGoalOther] = useState("")
-  const [contextNote, setContextNote] = useState("") // aberto opcional
+  const [contextNote, setContextNote] = useState("")
 
   // Dor multilojista
   const [multiPain, setMultiPain] = useState<MultiPainValue | "">("")
@@ -188,17 +186,18 @@ export default function AgendarDemo() {
   }, [storesRange, camerasRange, cameraBrands.length, goals, hasOtherGoal])
 
   const progress = useMemo(() => {
-    // progress for essentials completion
     let done = 0
-    const total = 6
+    const total = 8
     if (name.trim()) done++
     if (isValidWhatsappBR11Mobile(whatsapp)) done++
     if (operationType.trim()) done++
     if (storesRange) done++
     if (camerasRange) done++
     if (goals.length > 0) done++
+    if (setupWhere) done++
+    if (accessWho) done++
     return Math.round((done / total) * 100)
-  }, [name, whatsapp, operationType, storesRange, camerasRange, goals.length])
+  }, [name, whatsapp, operationType, storesRange, camerasRange, goals.length, setupWhere, accessWho])
 
   function toggleBrand(brand: (typeof CAMERA_BRANDS)[number]) {
     setCameraBrands((prev) => {
@@ -225,7 +224,6 @@ export default function AgendarDemo() {
     const emailClean = email.trim()
     const whatsappClean = normalizeWhatsappToBR11(whatsapp)
 
-    // Essentials first
     if (!nameClean) return toast.error("Informe seu nome.")
     if (!isValidWhatsappBR11Mobile(whatsapp)) {
       return toast.error("WhatsApp inválido. Use DDD + número de celular (11 dígitos, começando com 9).")
@@ -234,9 +232,7 @@ export default function AgendarDemo() {
     if (!storesRange) return toast.error("Selecione a faixa de quantidade de lojas.")
     if (!camerasRange) return toast.error("Selecione a faixa de quantidade de câmeras.")
 
-    if (isMultiStore && !multiPain) {
-      return toast.error("Multilojista: selecione onde dói mais hoje na gestão entre lojas.")
-    }
+    if (isMultiStore && !multiPain) return toast.error("Multilojista: selecione onde dói mais hoje na gestão entre lojas.")
     if (isMultiStore && multiPain === "other" && !multiPainOther.trim()) {
       return toast.error('Preencha "Outro" (gestão entre lojas).')
     }
@@ -244,9 +240,11 @@ export default function AgendarDemo() {
     if (!goals.length) return toast.error("Selecione pelo menos 1 objetivo.")
     if (hasOtherGoal && !goalOther.trim()) return toast.error('Preencha o campo "Outro" (objetivos).')
 
+    if (!setupWhere) return toast.error("Responda onde a DaleVision irá rodar em sua loja.")
+    if (!accessWho) return toast.error("Selecione quem terá acesso para ajudar na ativação.")
+
     if (!emailClean || !isValidEmail(emailClean)) return toast.error("Informe um e-mail válido.")
 
-    // Remaining requirements
     if (!howHeard) return toast.error("Selecione a origem do contato.")
     if (needsSourceDetail && !howHeardOther.trim()) return toast.error("Preencha o detalhe da origem.")
     if (!consent) return toast.error("Para enviar confirmação e checklist, marque o consentimento.")
@@ -280,25 +278,21 @@ export default function AgendarDemo() {
         metadata: {
           consent: true,
 
-          // objetivos
           goal_other: hasOtherGoal ? goalOther.trim() : null,
           goals_selected: goals,
           context_note: contextNote.trim() ? contextNote.trim() : null,
 
-          // multilojista
           multi_store_pain: isMultiStore ? multiPain : null,
           multi_store_pain_other: isMultiStore && needsMultiPainOther ? multiPainOther.trim() : null,
 
-          // origem
           source_detail: needsSourceDetail ? howHeardOther.trim() : null,
           source_channel: "web",
 
-          // ativação (opcional)
-          activation_setup_where: setupWhere || null,
-          activation_access_who: accessWho || null,
+          activation_setup_where: setupWhere,
+          activation_access_who: accessWho,
 
           next_step_hint:
-            "Após a demo, enviamos checklist + link do Edge Agent (.exe) por WhatsApp/e-mail para conectar às câmeras e testar a loja piloto.",
+            "Após a demo, enviamos um checklist simples com o passo a passo do piloto e como conectamos as câmeras.",
         },
 
         qualified_score: Number(qualifiedScore),
@@ -419,34 +413,28 @@ export default function AgendarDemo() {
             </div>
           </div>
 
-          {/* Value: What you get */}
+          {/* Value */}
           <div className="rounded-2xl border border-slate-200 bg-white/70 p-5 text-sm text-slate-700">
             <div className="font-semibold text-slate-900 mb-2">O que você vai ver na demo</div>
             <ul className="space-y-2 text-slate-600">
               <li className="flex gap-2">
                 <span className="mt-0.5">✅</span>
-                <span>
-                  Oportunidades no fluxo da loja (gargalos, desvios e padrões).
-                </span>
+                <span>Oportunidades no fluxo da loja (gargalos, desvios e padrões).</span>
               </li>
               <li className="flex gap-2">
                 <span className="mt-0.5">✅</span>
-                <span>
-                  Priorização do que atacar primeiro (perdas, filas, produtividade, segurança).
-                </span>
+                <span>Priorização do que atacar primeiro (perdas, filas, produtividade, segurança).</span>
               </li>
               <li className="flex gap-2">
                 <span className="mt-0.5">✅</span>
-                <span>
-                  Como rodar um piloto rápido usando até 3 câmeras.
-                </span>
+                <span>Como rodar um piloto rápido usando até 3 câmeras.</span>
               </li>
             </ul>
           </div>
 
-          {/* Essentials */}
+          {/* Form */}
           <div className="space-y-4">
-            <h2 className="font-semibold text-slate-900">1) Informações rápidas para personalizar a demo</h2>
+            <h2 className="font-semibold text-slate-900">Informações para personalizar sua demo</h2>
 
             <div>
               <label className="text-sm font-medium text-slate-700" htmlFor="demo-name">
@@ -555,9 +543,7 @@ export default function AgendarDemo() {
             {isMultiStore && (
               <div className="space-y-2">
                 <div className="flex items-center justify-between gap-2">
-                  <h2 className="font-semibold text-slate-900">
-                    Multilojista: onde dói mais hoje na gestão entre lojas? *
-                  </h2>
+                  <h3 className="font-semibold text-slate-900">Multilojista: onde dói mais hoje na gestão entre lojas? *</h3>
                   <span className="text-xs text-slate-500">Escolha 1</span>
                 </div>
 
@@ -604,10 +590,10 @@ export default function AgendarDemo() {
               </div>
             )}
 
-            {/* GOALS (multi) */}
+            {/* GOALS multi */}
             <div className="space-y-3">
               <div className="flex items-center justify-between gap-2">
-                <h2 className="font-semibold text-slate-900">2) Quais são os principais objetivos da sua demo? *</h2>
+                <h3 className="font-semibold text-slate-900">Quais são os principais objetivos da sua demo? *</h3>
                 <span className="text-xs text-slate-500">Marque quantos quiser</span>
               </div>
 
@@ -654,180 +640,161 @@ export default function AgendarDemo() {
                 />
               </div>
             </div>
-          </div>
 
-          {/* Advanced (optional) */}
-          <div className="space-y-3">
-            <button
-              type="button"
-              onClick={() => setAdvancedOpen((v) => !v)}
-              className="w-full rounded-2xl border border-slate-200 bg-white/70 px-4 py-3 text-left text-sm text-slate-700 hover:bg-white transition"
-            >
-              <div className="flex items-center justify-between">
-                <span className="font-semibold text-slate-900">Opcional: detalhes técnicos para facilitar a ativação</span>
-                <span className="text-slate-500">{advancedOpen ? "−" : "+"}</span>
+            {/* ✅ Agora ABERTO e OBRIGATÓRIO */}
+            <div className="space-y-3">
+              <h3 className="font-semibold text-slate-900">Preparação para ativação</h3>
+
+              <div className="grid gap-3 sm:grid-cols-2">
+                <div>
+                  <label className="text-sm font-medium text-slate-700" htmlFor="demo-setup-where">
+                    Onde a DaleVision irá rodar em sua loja? *
+                  </label>
+                  <select
+                    id="demo-setup-where"
+                    className={selectBase}
+                    value={setupWhere}
+                    onChange={(e) => setSetupWhere(e.target.value as SetupWhereValue)}
+                  >
+                    <option value="">Selecione</option>
+                    <option value="store_pc">Computador na loja (Windows)</option>
+                    <option value="nvr_server">Servidor/NVR onde ficam as câmeras</option>
+                    <option value="not_sure">Não sei ainda</option>
+                  </select>
+                </div>
+
+                <div>
+                  <label className="text-sm font-medium text-slate-700" htmlFor="demo-access-who">
+                    Quem terá acesso para ajudar na ativação? *
+                  </label>
+                  <select
+                    id="demo-access-who"
+                    className={selectBase}
+                    value={accessWho}
+                    onChange={(e) => setAccessWho(e.target.value as AccessWhoValue)}
+                  >
+                    <option value="">Selecione</option>
+                    <option value="owner">Eu mesmo</option>
+                    <option value="store_manager">Gerente / responsável</option>
+                    <option value="staff">Funcionário de confiança</option>
+                    <option value="not_sure">Ainda não sei</option>
+                  </select>
+                </div>
               </div>
-              <div className="text-xs text-slate-500 mt-1">Se não souber, pode pular — não impede o agendamento.</div>
-            </button>
 
-            {advancedOpen && (
-              <div className="space-y-5">
-                {/* Origem */}
-                <div className="space-y-2">
-                  <h2 className="font-semibold text-slate-900">Origem do contato *</h2>
-                  <div>
-                    <label className="text-sm font-medium text-slate-700" htmlFor="demo-how-heard">
-                      Onde você conheceu a Dale Vision? *
-                    </label>
-                    <select
-                      id="demo-how-heard"
-                      className={selectBase}
-                      value={howHeard}
-                      onChange={(e) => setHowHeard(e.target.value as HowHeardValue)}
+              <p className="text-xs text-slate-500">
+                Se você não souber agora, sem problema — marcando “Não sei ainda” a gente te orienta depois da demo.
+              </p>
+            </div>
+
+            {/* Brands optional */}
+            <div>
+              <p className="text-sm font-medium text-slate-700 mb-2">Marcas de câmeras (opcional)</p>
+              <div className="flex flex-wrap gap-2">
+                {CAMERA_BRANDS.map((b) => {
+                  const active = cameraBrands.includes(b)
+                  return (
+                    <button
+                      key={b}
+                      type="button"
+                      onClick={() => toggleBrand(b)}
+                      className={[
+                        "px-3 py-1.5 rounded-full border text-sm transition",
+                        active
+                          ? "border-transparent bg-gradient-to-r from-blue-400 via-cyan-300 to-purple-500 text-black shadow-sm"
+                          : "bg-white border-slate-200 text-slate-700 hover:bg-slate-50",
+                      ].join(" ")}
                     >
-                      <option value="">Selecione</option>
-                      {HOW_HEARD.map((o) => (
-                        <option key={o.value} value={o.value}>
-                          {o.label}
-                        </option>
-                      ))}
-                    </select>
-                  </div>
+                      {b}
+                    </button>
+                  )
+                })}
+              </div>
+            </div>
 
-                  {needsSourceDetail && (
-                    <div>
-                      <label className="text-sm font-medium text-slate-700" htmlFor="demo-how-heard-other">
-                        {howHeard === "referral" ? "Quem indicou?" : "Descreva (Outro)"} *
-                      </label>
-                      <input
-                        id="demo-how-heard-other"
-                        className={inputBase}
-                        placeholder={
-                          howHeard === "referral"
-                            ? "Ex: nome do parceiro/consultor/empresa…"
-                            : "Ex: grupo, evento, recomendação…"
-                        }
-                        value={howHeardOther}
-                        onChange={(e) => setHowHeardOther(e.target.value)}
-                      />
-                    </div>
-                  )}
+            {/* Origem */}
+            <div className="space-y-2">
+              <h3 className="font-semibold text-slate-900">Origem do contato *</h3>
+              <div>
+                <label className="text-sm font-medium text-slate-700" htmlFor="demo-how-heard">
+                  Onde você conheceu a Dale Vision? *
+                </label>
+                <select
+                  id="demo-how-heard"
+                  className={selectBase}
+                  value={howHeard}
+                  onChange={(e) => setHowHeard(e.target.value as HowHeardValue)}
+                >
+                  <option value="">Selecione</option>
+                  {HOW_HEARD.map((o) => (
+                    <option key={o.value} value={o.value}>
+                      {o.label}
+                    </option>
+                  ))}
+                </select>
+              </div>
+
+              {needsSourceDetail && (
+                <div>
+                  <label className="text-sm font-medium text-slate-700" htmlFor="demo-how-heard-other">
+                    {howHeard === "referral" ? "Quem indicou?" : "Descreva (Outro)"} *
+                  </label>
+                  <input
+                    id="demo-how-heard-other"
+                    className={inputBase}
+                    placeholder={
+                      howHeard === "referral"
+                        ? "Ex: nome do parceiro/consultor/empresa…"
+                        : "Ex: grupo, evento, recomendação…"
+                    }
+                    value={howHeardOther}
+                    onChange={(e) => setHowHeardOther(e.target.value)}
+                  />
+                </div>
+              )}
+            </div>
+
+            {/* Loja piloto opcional */}
+            <div className="space-y-2">
+              <h3 className="font-semibold text-slate-900">Loja piloto (opcional)</h3>
+              <div className="flex gap-3">
+                <div className="w-full">
+                  <label className="text-sm font-medium text-slate-700" htmlFor="demo-city">
+                    Cidade
+                  </label>
+                  <input
+                    id="demo-city"
+                    className={inputBase}
+                    placeholder="Cidade"
+                    value={city}
+                    onChange={(e) => setCity(e.target.value)}
+                  />
                 </div>
 
-                {/* Local */}
-                <div className="space-y-2">
-                  <h2 className="font-semibold text-slate-900">Loja piloto (opcional)</h2>
-                  <div className="flex gap-3">
-                    <div className="w-full">
-                      <label className="text-sm font-medium text-slate-700" htmlFor="demo-city">
-                        Cidade
-                      </label>
-                      <input
-                        id="demo-city"
-                        className={inputBase}
-                        placeholder="Cidade"
-                        value={city}
-                        onChange={(e) => setCity(e.target.value)}
-                      />
-                    </div>
-
-                    <div className="w-28">
-                      <label className="text-sm font-medium text-slate-700" htmlFor="demo-uf">
-                        UF
-                      </label>
-                      <input
-                        id="demo-uf"
-                        className={inputBase}
-                        placeholder="SP"
-                        value={stateUF}
-                        onChange={(e) => setStateUF(e.target.value)}
-                        maxLength={2}
-                      />
-                    </div>
-                  </div>
-                </div>
-
-                {/* Brands */}
-                <div className="space-y-2">
-                  <p className="text-sm font-medium text-slate-700">Marcas de câmeras (opcional)</p>
-                  <div className="flex flex-wrap gap-2">
-                    {CAMERA_BRANDS.map((b) => {
-                      const active = cameraBrands.includes(b)
-                      return (
-                        <button
-                          key={b}
-                          type="button"
-                          onClick={() => toggleBrand(b)}
-                          className={[
-                            "px-3 py-1.5 rounded-full border text-sm transition",
-                            active
-                              ? "border-transparent bg-gradient-to-r from-blue-400 via-cyan-300 to-purple-500 text-black shadow-sm"
-                              : "bg-white border-slate-200 text-slate-700 hover:bg-slate-50",
-                          ].join(" ")}
-                        >
-                          {b}
-                        </button>
-                      )
-                    })}
-                  </div>
-                </div>
-
-                {/* Setup */}
-                <div className="space-y-2">
-                  <h2 className="font-semibold text-slate-900">Preparação para ativação (opcional)</h2>
-
-                  <div className="grid gap-3 sm:grid-cols-2">
-                    <div>
-                      <label className="text-sm font-medium text-slate-700" htmlFor="demo-setup-where">
-                        Onde o Agent deve rodar?
-                      </label>
-                      <select
-                        id="demo-setup-where"
-                        className={selectBase}
-                        value={setupWhere}
-                        onChange={(e) => setSetupWhere(e.target.value as SetupWhereValue)}
-                      >
-                        <option value="">Selecione (opcional)</option>
-                        <option value="store_pc">Computador na loja (Windows)</option>
-                        <option value="nvr_server">Servidor/NVR onde ficam as câmeras</option>
-                        <option value="not_sure">Não sei ainda</option>
-                      </select>
-                    </div>
-
-                    <div>
-                      <label className="text-sm font-medium text-slate-700" htmlFor="demo-access-who">
-                        Quem terá acesso para ajudar na ativação?
-                      </label>
-                      <select
-                        id="demo-access-who"
-                        className={selectBase}
-                        value={accessWho}
-                        onChange={(e) => setAccessWho(e.target.value as AccessWhoValue)}
-                      >
-                        <option value="">Selecione (opcional)</option>
-                        <option value="owner">Eu mesmo</option>
-                        <option value="store_manager">Gerente / responsável</option>
-                        <option value="staff">Funcionário de confiança</option>
-                        <option value="not_sure">Ainda não sei</option>
-                      </select>
-                    </div>
-                  </div>
-
-                  <p className="text-xs text-slate-500">
-                    Se você não souber agora, sem problema — a gente resolve depois da demo.
-                  </p>
+                <div className="w-28">
+                  <label className="text-sm font-medium text-slate-700" htmlFor="demo-uf">
+                    UF
+                  </label>
+                  <input
+                    id="demo-uf"
+                    className={inputBase}
+                    placeholder="SP"
+                    value={stateUF}
+                    onChange={(e) => setStateUF(e.target.value)}
+                    maxLength={2}
+                  />
                 </div>
               </div>
-            )}
+            </div>
           </div>
 
-          {/* ✅ MOVEU PRA PERTO DO FINAL (mais simples) */}
-          <div className="rounded-2xl border border-slate-200 bg-white/70 p-5 text-sm text-slate-700">
-            <div className="font-semibold text-slate-900 mb-1">Depois do agendamento</div>
-            <p className="text-slate-600">
+          {/* ✅ bloco amarelo conforme pedido */}
+          <div className="rounded-2xl border border-amber-200 bg-amber-50/80 p-5 text-sm text-amber-950">
+            <div className="font-semibold mb-1">Depois do agendamento</div>
+            <p className="text-amber-900/90">
               Você recebe um checklist simples de como conectamos as câmeras e como funciona o piloto.
             </p>
-            <p className="text-slate-600 mt-2">
+            <p className="text-amber-900/90 mt-2">
               <strong>Sem compromisso:</strong> a demonstração serve para você decidir com clareza se faz sentido.
             </p>
           </div>
@@ -835,9 +802,7 @@ export default function AgendarDemo() {
           {/* Consent */}
           <div className="text-sm text-slate-700">
             <p className="font-medium text-slate-900">📲 Confirmação e lembretes</p>
-            <p className="text-slate-600">
-              Enviaremos confirmações e lembretes por WhatsApp e e-mail.
-            </p>
+            <p className="text-slate-600">Enviaremos confirmações e lembretes por WhatsApp e e-mail.</p>
           </div>
 
           <label className="flex items-start gap-2 text-sm text-slate-600">
