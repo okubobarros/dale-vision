@@ -2,6 +2,7 @@ import { useCallback, useEffect, useMemo, useRef, useState, type PointerEvent } 
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query"
 import toast from "react-hot-toast"
 import { camerasService, type Camera, type CameraROIConfig } from "../services/cameras"
+import { onboardingService } from "../services/onboarding"
 
 type RoiPoint = {
   x: number
@@ -213,6 +214,20 @@ const CameraRoiEditor = ({ open, camera, onClose }: CameraRoiEditorProps) => {
     })
   }, [cameraId, latestConfig?.metrics_enabled, roiVersionLabel, shapes, updateRoiMutation])
 
+  const handleStartMonitoring = useCallback(async () => {
+    if (!cameraId || !camera?.store) return
+    try {
+      await onboardingService.completeStep("monitoring_started", {
+        store_id: camera.store,
+        camera_id: cameraId,
+        roi_version: roiVersionLabel,
+      }, camera.store)
+      toast.success("Monitoramento iniciado")
+    } catch {
+      toast.error("Falha ao iniciar monitoramento.")
+    }
+  }, [camera?.store, cameraId, roiVersionLabel])
+
   const displayUpdatedAt = useMemo(() => {
     if (!latestUpdatedAt) return "—"
     try {
@@ -228,17 +243,23 @@ const CameraRoiEditor = ({ open, camera, onClose }: CameraRoiEditorProps) => {
     <div className="fixed inset-0 z-50 flex items-center justify-center px-4">
       <div className="absolute inset-0 bg-black/40" onClick={onClose} />
       <div className="relative w-full max-w-6xl rounded-2xl bg-white p-6 shadow-xl">
-        <div className="flex flex-col lg:flex-row lg:items-center lg:justify-between gap-3">
-          <div>
-            <h3 className="text-lg font-semibold text-gray-800">
-              ROI Editor · {camera.name}
-            </h3>
-            <p className="text-xs text-gray-500 mt-1">
-              <span title={`roi_version ${roiVersionLabel}`}>ROI v{roiVersionLabel}</span>{" "}
-              · Status: {roiStatus} · Atualizado em {displayUpdatedAt}
-            </p>
-          </div>
-          <div className="flex flex-wrap gap-2">
+          <div className="flex flex-col lg:flex-row lg:items-center lg:justify-between gap-3">
+            <div>
+              <h3 className="text-lg font-semibold text-gray-800">
+                ROI Editor · {camera.name}
+              </h3>
+              <p className="text-xs text-gray-500 mt-1">
+                <span title={`roi_version ${roiVersionLabel}`}>ROI v{roiVersionLabel}</span>{" "}
+                · Status: {roiStatus} · Atualizado em {displayUpdatedAt}
+              </p>
+              <div className="mt-2 rounded-lg border border-blue-100 bg-blue-50 px-3 py-2 text-xs text-blue-900">
+                <div className="font-semibold">Passo 3 de 4 — Defina as áreas de monitoramento</div>
+                <div className="text-blue-800 mt-1">
+                  Desenhe zonas como Caixa, Entrada ou Área de espera.
+                </div>
+              </div>
+            </div>
+            <div className="flex flex-wrap gap-2">
             <button
               type="button"
               onClick={handleSave}
@@ -263,6 +284,15 @@ const CameraRoiEditor = ({ open, camera, onClose }: CameraRoiEditorProps) => {
             >
               Publicar versão
             </button>
+            {roiStatus === "published" && (
+              <button
+                type="button"
+                onClick={handleStartMonitoring}
+                className="rounded-lg px-4 py-2 text-sm font-semibold text-white bg-indigo-600 hover:bg-indigo-700"
+              >
+                Iniciar monitoramento
+              </button>
+            )}
             <button
               type="button"
               onClick={onClose}

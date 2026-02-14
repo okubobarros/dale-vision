@@ -9,6 +9,7 @@ from rest_framework.views import APIView
 
 from apps.core.models import Camera, CameraHealthLog, Store, OrgMember
 from apps.edge.models import EdgeEventReceipt
+from apps.core.services.onboarding_progress import OnboardingProgressService
 
 ONLINE_SEC = 120
 DEGRADED_SEC = 300
@@ -420,4 +421,12 @@ class StoreEdgeStatusView(APIView):
             )
 
         payload, _reason = compute_store_edge_status_snapshot(store_id)
+        if payload.get("online") and store:
+            try:
+                OnboardingProgressService(str(store.org_id)).complete_step(
+                    "edge_connected",
+                    meta={"store_id": str(store.id), "last_seen_at": payload.get("last_heartbeat_at")},
+                )
+            except Exception:
+                pass
         return Response(payload, status=200)

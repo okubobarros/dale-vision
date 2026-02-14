@@ -579,25 +579,25 @@ const EdgeSetupModal = ({ open, onClose, defaultStoreId }: EdgeSetupModalProps) 
                     type="button"
                     onClick={() => {
                       handleClose()
-                      navigate("/app/cameras")
-                    }}
-                    className="inline-flex w-full sm:w-auto items-center justify-center rounded-lg bg-green-600 px-4 py-2 text-xs font-semibold text-white hover:bg-green-700"
-                  >
-                    Ir para Câmeras
-                  </button>
-                  <button
-                    type="button"
-                    onClick={() => {
-                      handleClose()
                       if (storeId) {
-                        navigate(`/app/cameras?store_id=${storeId}`)
+                        navigate(`/app/cameras?store_id=${storeId}&onboarding=true`)
                       } else {
                         navigate("/app/cameras")
                       }
                     }}
                     className="inline-flex w-full sm:w-auto items-center justify-center rounded-lg bg-blue-600 px-4 py-2 text-xs font-semibold text-white hover:bg-blue-700"
                   >
-                    Adicionar câmeras
+                    Configurar primeira câmera
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => {
+                      handleClose()
+                      navigate("/app/dashboard")
+                    }}
+                    className="inline-flex w-full sm:w-auto items-center justify-center rounded-lg border border-gray-200 bg-white px-4 py-2 text-xs font-semibold text-gray-700 hover:bg-gray-50"
+                  >
+                    Ir para dashboard
                   </button>
                 </div>
               )}
@@ -654,14 +654,7 @@ const EdgeSetupModal = ({ open, onClose, defaultStoreId }: EdgeSetupModalProps) 
                 <div>1) Clique com botão direito no arquivo ZIP, selecione Extrair Tudo, e depois Extrair. </div>
                 <div>2) Abra a pasta extraída, normalmente em Downloads.</div>
                 <div>3) Feito o processo clique no botão abaixo para seguir</div>
-                <button
-                  type="button"
-                  onClick={handleConfirmDownload}
-                  disabled={!isStoreSelected}
-                  className="inline-flex w-full sm:w-auto items-center justify-center rounded-lg border border-gray-200 px-4 py-2.5 text-sm font-semibold text-gray-700 hover:bg-gray-50 disabled:opacity-60"
-                >
-                  Já baixei e extraí
-                </button>
+                
               </div>
               {canDownload && (
                 <div className="mt-2 text-xs text-gray-500">
@@ -690,6 +683,14 @@ const EdgeSetupModal = ({ open, onClose, defaultStoreId }: EdgeSetupModalProps) 
                   .
                 </div>
               )}
+              <button
+                  type="button"
+                  onClick={handleConfirmDownload}
+                  disabled={!isStoreSelected}
+                  className="inline-flex w-full sm:w-auto items-center justify-center rounded-lg border border-gray-200 px-4 py-2.5 text-sm font-semibold text-gray-700 hover:bg-gray-50 disabled:opacity-60"
+                >
+                  Já baixei e extraí
+              </button>
               {downloadConfirmed && (
                 <div className="mt-2 text-xs text-green-600 font-semibold">
                   Download confirmado
@@ -818,7 +819,15 @@ const EdgeSetupModal = ({ open, onClose, defaultStoreId }: EdgeSetupModalProps) 
                 <div className="mt-2 text-xs text-red-600">{validationError}</div>
               )}
               {heartbeatOk && (
-                <div className="mt-2 text-xs font-semibold text-green-700">🟢 Heartbeat recebido</div>
+                <div className="mt-3 rounded-lg border border-green-200 bg-green-50 px-3 py-2 text-sm text-green-800">
+                  <div className="font-semibold">🎉 Agente conectado com sucesso!</div>
+                  <div className="text-xs text-green-700 mt-1">
+                    Seu sistema está online e pronto para monitorar sua loja.
+                  </div>
+                  <div className="text-xs text-green-700 mt-1">
+                    Mantenha a janela do Edge Agent aberta durante a configuração.
+                  </div>
+                </div>
               )}
 
               {polling && (

@@ -386,6 +386,10 @@ class OnboardingProgress(UnmanagedModel):
     completed = models.BooleanField(default=False)
     completed_at = models.DateTimeField(null=True, blank=True)
     created_at = models.DateTimeField()
+    status = models.TextField(null=True, blank=True)
+    progress_percent = models.IntegerField(null=True, blank=True)
+    meta = models.JSONField(default=dict)
+    updated_at = models.DateTimeField(null=True, blank=True)
 
     class Meta(UnmanagedModel.Meta):
         db_table = "onboarding_progress"

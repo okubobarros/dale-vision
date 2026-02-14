@@ -1,5 +1,6 @@
 from django.test import SimpleTestCase
-from rest_framework.test import APIRequestFactory
+from django.test import override_settings
+from rest_framework.test import APIRequestFactory, force_authenticate
 from django.core.exceptions import PermissionDenied
 from apps.billing.utils import PaywallError
 from unittest.mock import MagicMock, patch
@@ -24,10 +25,11 @@ class TrialCameraLimitTests(SimpleTestCase):
         qs.count.return_value = count
         return qs
 
+    @patch("apps.cameras.limits.log_paywall_block")
     @patch("apps.cameras.limits.camera_active_column_exists", return_value=True)
     @patch("apps.cameras.limits.Camera")
     @patch("apps.cameras.limits.Store")
-    def test_blocks_fourth_camera_on_trial(self, store_mock, camera_mock, _active_col):
+    def test_blocks_fourth_camera_on_trial(self, store_mock, camera_mock, _active_col, _log_mock):
         store_mock.objects.filter.return_value = self._mock_store_qs("trial")
         camera_mock.objects.filter.return_value = self._mock_camera_qs(3)
 
@@ -105,29 +107,45 @@ class RoiConfigVersionTests(SimpleTestCase):
 
 class CameraPermissionsTests(SimpleTestCase):
     @patch("apps.cameras.permissions.ensure_user_uuid", return_value="user-1")
+    @patch("apps.cameras.permissions.StoreManager")
     @patch("apps.cameras.permissions.Store")
     @patch("apps.cameras.permissions.OrgMember")
-    def test_require_store_role_denied(self, org_member_mock, store_mock, _uuid_mock):
+    def test_require_store_role_denied(
+        self, org_member_mock, store_mock, store_manager_mock, _uuid_mock
+    ):
         store_mock.objects.filter.return_value.values.return_value.first.return_value = {
             "org_id": "org-1"
         }
+        store_manager_mock.objects.filter.return_value.order_by.return_value.first.return_value = None
         org_member_mock.objects.filter.return_value.first.return_value = None
 
         with self.assertRaises(PermissionDenied):
-            require_store_role(MagicMock(is_staff=False, is_superuser=False), "store-1", ("owner",))
+            require_store_role(
+                MagicMock(is_staff=False, is_superuser=False, id=1),
+                "11111111-1111-1111-1111-111111111111",
+                ("owner",),
+            )
 
     @patch("apps.cameras.permissions.ensure_user_uuid", return_value="user-1")
+    @patch("apps.cameras.permissions.StoreManager")
     @patch("apps.cameras.permissions.Store")
     @patch("apps.cameras.permissions.OrgMember")
-    def test_require_store_role_allowed(self, org_member_mock, store_mock, _uuid_mock):
+    def test_require_store_role_allowed(
+        self, org_member_mock, store_mock, store_manager_mock, _uuid_mock
+    ):
         store_mock.objects.filter.return_value.values.return_value.first.return_value = {
             "org_id": "org-1"
         }
+        store_manager_mock.objects.filter.return_value.order_by.return_value.first.return_value = None
         member = MagicMock()
         member.role = "manager"
         org_member_mock.objects.filter.return_value.first.return_value = member
 
-        require_store_role(MagicMock(is_staff=False, is_superuser=False), "store-1", ("owner", "manager"))
+        require_store_role(
+            MagicMock(is_staff=False, is_superuser=False, id=1),
+            "11111111-1111-1111-1111-111111111111",
+            ("owner", "manager"),
+        )
 
 
 class CameraHealthEndpointTests(SimpleTestCase):
@@ -153,7 +171,7 @@ class CameraHealthEndpointTests(SimpleTestCase):
             format="json",
             HTTP_X_EDGE_TOKEN="edge-token",
         )
-        request.user = MagicMock(is_authenticated=False)
+        force_authenticate(request, user=MagicMock(is_authenticated=True))
 
         with patch.object(CameraViewSet, "get_object", return_value=cam):
             response = view(request, pk="cam-1")
@@ -180,7 +198,7 @@ class CameraRoiLatestEndpointTests(SimpleTestCase):
             "/api/v1/cameras/cam-1/roi/latest",
             HTTP_X_EDGE_TOKEN="edge-token",
         )
-        request.user = MagicMock(is_authenticated=False)
+        force_authenticate(request, user=MagicMock(is_authenticated=True))
 
         with patch.object(CameraViewSet, "get_object", return_value=cam):
             response = view(request, pk="cam-1")

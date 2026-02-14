@@ -22,6 +22,7 @@ import { LineChart } from "../../components/Charts/LineChart"
 import { PieChart } from "../../components/Charts/PieChart"
 import SetupProgress from "../Onboarding/components/SetupProgress"
 import { useIsMobile } from "../../hooks/useIsMobile"
+import { onboardingService, type OnboardingStep } from "../../services/onboarding"
 
 interface MetricCardProps {
   title: string
@@ -309,6 +310,17 @@ const Dashboard = () => {
   const resolveEvent = useResolveEvent()
   const ignoreEvent = useIgnoreEvent()
 
+  const { data: onboardingProgress } = useQuery({
+    queryKey: ["onboarding-progress", selectedStore],
+    queryFn: () =>
+      onboardingService.getProgress(
+        selectedStore !== ALL_STORES_VALUE ? selectedStore : undefined
+      ),
+    enabled: Boolean(selectedStore && selectedStore !== ALL_STORES_VALUE),
+    staleTime: 30000,
+    retry: 1,
+  })
+
   useEffect(() => {
     if (typeof window !== "undefined") {
       setOrigin(window.location.origin)
@@ -381,6 +393,50 @@ const Dashboard = () => {
   const shouldShowActivationBanner =
     !activationBannerDismissed &&
     (showActivationProgress || (!isLoadingDashboard && !dashboard))
+
+  const nextStep = (onboardingProgress?.next_step || null) as OnboardingStep | null
+  const nextStepCta = useMemo(() => {
+    if (!nextStep) return null
+    switch (nextStep) {
+      case "edge_connected":
+        return { label: "Conectar Edge", href: edgeSetupLink || "/app/dashboard" }
+      case "camera_added":
+        return {
+          label: "Adicionar câmera",
+          href:
+            selectedStore !== ALL_STORES_VALUE
+              ? `/app/cameras?store_id=${selectedStore}&onboarding=true`
+              : "/app/cameras",
+        }
+      case "camera_health_ok":
+        return {
+          label: "Testar câmera",
+          href:
+            selectedStore !== ALL_STORES_VALUE
+              ? `/app/cameras?store_id=${selectedStore}&onboarding=true`
+              : "/app/cameras",
+        }
+      case "roi_published":
+        return {
+          label: "Configurar ROI",
+          href:
+            selectedStore !== ALL_STORES_VALUE
+              ? `/app/cameras?store_id=${selectedStore}&onboarding=true`
+              : "/app/cameras",
+        }
+      case "monitoring_started":
+        return { label: "Iniciar monitoramento", href: "/app/dashboard" }
+      case "first_insight":
+        return { label: "Gerar primeiro insight", href: "/app/dashboard" }
+      default:
+        return null
+    }
+  }, [nextStep, selectedStore, edgeSetupLink])
+
+  const showNextStepBanner =
+    Boolean(nextStepCta) &&
+    selectedStore !== ALL_STORES_VALUE &&
+    nextStep !== "first_insight"
 
   const activationBanner = shouldShowActivationBanner ? (
     <div className="bg-white rounded-xl shadow-sm border border-gray-100 p-4 sm:p-6">
@@ -458,6 +514,25 @@ const Dashboard = () => {
 
       {!dashboard && dashboardError && (
         <p className="text-xs text-gray-500 mt-3">{dashboardError}</p>
+      )}
+    </div>
+  ) : null
+
+  const nextStepBanner = showNextStepBanner ? (
+    <div className="bg-white rounded-xl shadow-sm border border-gray-100 p-4 sm:p-6">
+      <h3 className="text-lg font-bold text-gray-800">Próximo passo</h3>
+      <p className="text-sm text-gray-600 mt-1">
+        Complete a próxima etapa para liberar o primeiro insight do trial.
+      </p>
+      {nextStepCta && (
+        <div className="mt-4">
+          <Link
+            to={nextStepCta.href}
+            className="inline-flex items-center justify-center rounded-lg bg-blue-600 px-4 py-2 text-sm font-semibold text-white hover:bg-blue-700"
+          >
+            {nextStepCta.label}
+          </Link>
+        </div>
       )}
     </div>
   ) : null
@@ -730,6 +805,7 @@ const Dashboard = () => {
   if (!isLoadingDashboard && !dashboard) {
     return (
       <div className="space-y-6 sm:space-y-8">
+        {nextStepBanner}
         {activationBanner}
 
         <EdgeSetupModal
@@ -743,6 +819,7 @@ const Dashboard = () => {
 
   return (
     <div className="space-y-6 sm:space-y-8">
+      {nextStepBanner}
       {activationBanner}
       {/* Header (mobile-first) */}
       <div className="flex flex-col gap-4">

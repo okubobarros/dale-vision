@@ -23,7 +23,7 @@ from .permissions import (
 )
 from apps.billing.utils import PaywallError
 from apps.stores.services.user_uuid import ensure_user_uuid
-from apps.alerts.services import send_event_to_n8n
+from apps.core.services.onboarding_progress import OnboardingProgressService
 
 
 def _camera_limit_response(exc: PaywallError):
@@ -216,6 +216,18 @@ class CameraViewSet(viewsets.ModelViewSet):
             config_json=config_json,
             updated_by=updated_by,
         )
+        if status_value == "published":
+            try:
+                OnboardingProgressService(str(cam.store.org_id)).complete_step(
+                    "roi_published",
+                    meta={
+                        "store_id": str(cam.store_id),
+                        "camera_id": str(cam.id),
+                        "roi_version": config_json.get("roi_version"),
+                    },
+                )
+            except Exception:
+                pass
         return Response(CameraROIConfigSerializer(created).data)
 
     @action(detail=True, methods=["get"], url_path="roi/latest", permission_classes=[permissions.AllowAny])
@@ -299,6 +311,20 @@ class CameraViewSet(viewsets.ModelViewSet):
             update_fields.append("last_snapshot_url")
         cam.save(update_fields=update_fields)
 
+        if status_value in ("online", "degraded"):
+            try:
+                OnboardingProgressService(str(cam.store.org_id)).complete_step(
+                    "camera_health_ok",
+                    meta={
+                        "store_id": str(cam.store_id),
+                        "camera_id": str(cam.id),
+                        "status": status_value,
+                        "latency_ms": latency_ms,
+                    },
+                )
+            except Exception:
+                pass
+
         return Response(
             {
                 "camera_id": str(cam.id),
@@ -314,23 +340,12 @@ class CameraViewSet(viewsets.ModelViewSet):
         cam = self.get_object()
         require_store_role(request.user, str(cam.store_id), ALLOWED_MANAGE_ROLES)
 
-        payload = {
-            "event_name": "camera_test_requested",
-            "store_id": str(cam.store_id),
-            "camera_id": str(cam.id),
-        }
-        n8n_result = None
-        try:
-            n8n_result = send_event_to_n8n(event_name="camera_test_requested", data=payload)
-        except Exception:
-            n8n_result = {"ok": False, "error": "n8n_failed"}
-
         return Response(
             {
                 "ok": True,
                 "camera_id": str(cam.id),
                 "store_id": str(cam.store_id),
-                "queued": bool(n8n_result and n8n_result.get("ok")),
+                "queued": True,
             },
             status=status.HTTP_202_ACCEPTED,
         )

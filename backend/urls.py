@@ -49,8 +49,8 @@ urlpatterns = [
     path("api/accounts/", include("apps.accounts.urls")),
     path("api/me/setup-state/", SetupStateView.as_view(), name="setup-state"),
 
-    # ✅ Core (demo lead etc) — se você for colocar aqui depois
-    # path("api/core/", include("apps.core.urls")),
+    # ✅ Core
+    path("api/v1/", include("apps.core.urls")),
 
     # ✅ Stores
     path("api/v1/", include("apps.stores.urls")),

@@ -18,6 +18,7 @@ from apps.cameras.limits import (
     count_active_cameras,
     get_camera_limit_for_store,
 )
+from apps.core.services.onboarding_progress import OnboardingProgressService
 from apps.cameras.permissions import (
     require_store_role,
     ALLOWED_MANAGE_ROLES,
@@ -379,6 +380,13 @@ class StoreViewSet(viewsets.ModelViewSet):
 
         now = timezone.now()
         camera = serializer.save(store_id=store.id, created_at=now, updated_at=now)
+        try:
+            OnboardingProgressService(str(store.org_id)).complete_step(
+                "camera_added",
+                meta={"store_id": str(store.id), "camera_id": str(camera.id)},
+            )
+        except Exception:
+            pass
         return Response(CameraSerializer(camera).data, status=status.HTTP_201_CREATED)
     
     def perform_create(self, serializer):

@@ -28,6 +28,7 @@ const Cameras = () => {
   const [testError, setTestError] = useState<string | null>(null)
   const testTimerRef = useRef<ReturnType<typeof setInterval> | null>(null)
   const testStartedAtRef = useRef<number | null>(null)
+  const [onboardingMode, setOnboardingMode] = useState(false)
   const isMobile = useIsMobile(768)
   const [origin, setOrigin] = useState("")
   const location = useLocation()
@@ -44,9 +45,11 @@ const Cameras = () => {
     const openEdgeSetup =
       params.get("openEdgeSetup") === "1" || params.get("edgeSetup") === "1"
     const storeFromQuery = params.get("store_id") || params.get("store") || ""
+    const onboardingFromQuery = params.get("onboarding") === "true"
     if (storeFromQuery) {
       setSelectedStore(storeFromQuery)
     }
+    setOnboardingMode(onboardingFromQuery)
     if (openEdgeSetup) {
       setEdgeSetupOpen(true)
       params.delete("openEdgeSetup")
@@ -305,6 +308,15 @@ const Cameras = () => {
         )}
       </div>
 
+      {onboardingMode && selectedStore && selectedStore !== "all" && (
+        <div className="bg-blue-50 border border-blue-200 rounded-xl p-4 text-blue-900">
+          <div className="text-sm font-semibold">Passo 2 de 4 — Conecte sua primeira câmera</div>
+          <p className="text-xs text-blue-800 mt-1">
+            Preencha o IP e as credenciais. O Edge Agent testa automaticamente e atualiza o status.
+          </p>
+        </div>
+      )}
+
       {!selectedStore || selectedStore === "all" ? (
         <div className="bg-white rounded-xl shadow-sm p-6 text-center border border-gray-100 text-gray-500">
           Selecione uma loja para gerenciar câmeras.
@@ -394,9 +406,16 @@ const Cameras = () => {
                       </p>
                     )}
                     {camera.last_snapshot_url && (
-                      <p className="text-xs text-blue-600 mt-1 truncate">
-                        Snapshot: {camera.last_snapshot_url}
-                      </p>
+                      <div className="mt-2">
+                        <p className="text-xs text-blue-600 truncate">
+                          Snapshot: {camera.last_snapshot_url}
+                        </p>
+                        <img
+                          src={camera.last_snapshot_url}
+                          alt={`Snapshot ${camera.name}`}
+                          className="mt-2 h-24 w-full max-w-xs rounded-lg border border-gray-200 object-cover"
+                        />
+                      </div>
                     )}
                   </div>
                   <div className="flex flex-wrap gap-2">
@@ -698,6 +717,7 @@ const CameraModal = ({
   const [channel, setChannel] = useState("")
   const [brand, setBrand] = useState("")
   const [rtspUrl, setRtspUrl] = useState("")
+  const [showRtsp, setShowRtsp] = useState(false)
   const [externalId, setExternalId] = useState("")
   const [active, setActive] = useState(true)
 
@@ -710,6 +730,7 @@ const CameraModal = ({
     setChannel("")
     setBrand(camera?.brand ?? "")
     setRtspUrl("")
+    setShowRtsp(false)
     setExternalId(camera?.external_id ?? "")
     setActive(camera?.active ?? true)
   }, [camera, open])
@@ -734,6 +755,9 @@ const CameraModal = ({
         </div>
 
         <div className="mt-5 space-y-4">
+          <div className="rounded-lg border border-blue-100 bg-blue-50 px-3 py-2 text-xs text-blue-900">
+            Não sabe RTSP? Sem problema — informe IP e credenciais da câmera/NVR.
+          </div>
           <div>
             <label className="text-sm font-medium text-gray-700">Nome</label>
             <input
@@ -742,20 +766,6 @@ const CameraModal = ({
               placeholder="Ex: Entrada"
               className="mt-1 w-full rounded-lg border border-gray-200 px-3 py-2 text-sm"
             />
-          </div>
-          <div>
-            <label className="text-sm font-medium text-gray-700">RTSP URL</label>
-            <input
-              value={rtspUrl}
-              onChange={(e) => setRtspUrl(e.target.value)}
-              placeholder="rtsp://usuario:senha@host/stream"
-              className="mt-1 w-full rounded-lg border border-gray-200 px-3 py-2 text-sm"
-            />
-            {camera?.rtsp_url_masked && (
-              <p className="text-xs text-gray-400 mt-1">
-                Atual: {camera.rtsp_url_masked}
-              </p>
-            )}
           </div>
           <div>
             <label className="text-sm font-medium text-gray-700">Tipo de conexão</label>
@@ -778,6 +788,9 @@ const CameraModal = ({
               placeholder="192.168.0.10"
               className="mt-1 w-full rounded-lg border border-gray-200 px-3 py-2 text-sm"
             />
+            <p className="text-xs text-gray-500 mt-1">
+              Não sabe o IP? Normalmente começa com 192.168… Confira no app da câmera ou no roteador.
+            </p>
           </div>
           <div>
             <label className="text-sm font-medium text-gray-700">Usuário</label>
@@ -822,6 +835,31 @@ const CameraModal = ({
               className="mt-1 w-full rounded-lg border border-gray-200 px-3 py-2 text-sm"
             />
           </div>
+          <div>
+            <button
+              type="button"
+              onClick={() => setShowRtsp((prev) => !prev)}
+              className="text-xs font-semibold text-blue-600 hover:text-blue-700"
+            >
+              {showRtsp ? "Ocultar RTSP manual" : "Inserir RTSP manualmente"}
+            </button>
+          </div>
+          {showRtsp && (
+            <div>
+              <label className="text-sm font-medium text-gray-700">RTSP URL</label>
+              <input
+                value={rtspUrl}
+                onChange={(e) => setRtspUrl(e.target.value)}
+                placeholder="rtsp://usuario:senha@host/stream"
+                className="mt-1 w-full rounded-lg border border-gray-200 px-3 py-2 text-sm"
+              />
+              {camera?.rtsp_url_masked && (
+                <p className="text-xs text-gray-400 mt-1">
+                  Atual: {camera.rtsp_url_masked}
+                </p>
+              )}
+            </div>
+          )}
           <div>
             <label className="text-sm font-medium text-gray-700">
               ID externo (opcional)
