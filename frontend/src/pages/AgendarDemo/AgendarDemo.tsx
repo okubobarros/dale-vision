@@ -6,6 +6,10 @@ import { demoService } from "../../services/demo"
 
 type StoresRange = "1" | "2-5" | "6-20" | "20+"
 type CamerasRange = "1-3" | "4-10" | "11-50" | "50+"
+type CamerasCountRangeLead = "1-3" | "4-10" | "11-50" | "50+" | "dontknow"
+type HasNvrLead = "yes" | "no" | "dontknow"
+type CameraBrandLead = "intelbras" | "hikvision" | "dahua" | "other" | "dontknow"
+type AppUsedLead = "isic_lite" | "mibo" | "other" | "dontknow"
 
 type GoalValue =
   | "loss_prevention"
@@ -145,6 +149,11 @@ export default function AgendarDemo() {
   const [storesRange, setStoresRange] = useState<StoresRange | "">("")
   const [camerasRange, setCamerasRange] = useState<CamerasRange | "">("")
   const [cameraBrands, setCameraBrands] = useState<string[]>([])
+  const [camerasCountRangeLead, setCamerasCountRangeLead] =
+    useState<CamerasCountRangeLead | "">("")
+  const [hasNvrLead, setHasNvrLead] = useState<HasNvrLead | "">("")
+  const [cameraBrandLead, setCameraBrandLead] = useState<CameraBrandLead | "">("")
+  const [appUsedLead, setAppUsedLead] = useState<AppUsedLead | "">("")
   const [city, setCity] = useState("")
   const [stateUF, setStateUF] = useState("")
 
@@ -290,6 +299,10 @@ export default function AgendarDemo() {
 
           activation_setup_where: setupWhere,
           activation_access_who: accessWho,
+          lead_cameras_count_range: camerasCountRangeLead || null,
+          lead_has_nvr: hasNvrLead || null,
+          lead_camera_brand: cameraBrandLead || null,
+          lead_app_used: appUsedLead || null,
 
           next_step_hint:
             "Após a demo, enviamos um checklist simples com o passo a passo do piloto e como conectamos as câmeras.",
@@ -536,6 +549,87 @@ export default function AgendarDemo() {
                   <option value="50+">50+</option>
                 </select>
                 {fieldErrors.cameras_range && <p className="mt-2 text-xs text-red-600">{fieldErrors.cameras_range}</p>}
+              </div>
+            </div>
+
+            <div className="rounded-2xl border border-slate-200 bg-white/70 p-4">
+              <div className="flex items-center justify-between gap-2">
+                <h3 className="font-semibold text-slate-900">Infraestrutura atual (opcional)</h3>
+                <span className="text-xs text-slate-500">Leva 10s</span>
+              </div>
+              <div className="mt-3 grid gap-3 sm:grid-cols-2">
+                <div>
+                  <label className="text-sm font-medium text-slate-700" htmlFor="lead-cameras-count-range">
+                    Faixa de câmeras (aprox.)
+                  </label>
+                  <select
+                    id="lead-cameras-count-range"
+                    className={selectBase}
+                    value={camerasCountRangeLead}
+                    onChange={(e) => setCamerasCountRangeLead(e.target.value as CamerasCountRangeLead)}
+                  >
+                    <option value="">Selecione</option>
+                    <option value="1-3">1–3</option>
+                    <option value="4-10">4–10</option>
+                    <option value="11-50">11–50</option>
+                    <option value="50+">50+</option>
+                    <option value="dontknow">Não sei</option>
+                  </select>
+                </div>
+
+                <div>
+                  <label className="text-sm font-medium text-slate-700" htmlFor="lead-has-nvr">
+                    Você tem NVR/DVR?
+                  </label>
+                  <select
+                    id="lead-has-nvr"
+                    className={selectBase}
+                    value={hasNvrLead}
+                    onChange={(e) => setHasNvrLead(e.target.value as HasNvrLead)}
+                  >
+                    <option value="">Selecione</option>
+                    <option value="yes">Sim</option>
+                    <option value="no">Não</option>
+                    <option value="dontknow">Não sei</option>
+                  </select>
+                </div>
+
+                <div>
+                  <label className="text-sm font-medium text-slate-700" htmlFor="lead-camera-brand">
+                    Marca principal
+                  </label>
+                  <select
+                    id="lead-camera-brand"
+                    className={selectBase}
+                    value={cameraBrandLead}
+                    onChange={(e) => setCameraBrandLead(e.target.value as CameraBrandLead)}
+                  >
+                    <option value="">Selecione</option>
+                    <option value="intelbras">Intelbras</option>
+                    <option value="hikvision">Hikvision</option>
+                    <option value="dahua">Dahua</option>
+                    <option value="other">Outra</option>
+                    <option value="dontknow">Não sei</option>
+                  </select>
+                </div>
+
+                <div>
+                  <label className="text-sm font-medium text-slate-700" htmlFor="lead-app-used">
+                    App atual
+                  </label>
+                  <select
+                    id="lead-app-used"
+                    className={selectBase}
+                    value={appUsedLead}
+                    onChange={(e) => setAppUsedLead(e.target.value as AppUsedLead)}
+                  >
+                    <option value="">Selecione</option>
+                    <option value="isic_lite">iSIC Lite</option>
+                    <option value="mibo">Mibo</option>
+                    <option value="other">Outro</option>
+                    <option value="dontknow">Não sei</option>
+                  </select>
+                </div>
               </div>
             </div>
 

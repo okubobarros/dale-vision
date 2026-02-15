@@ -33,7 +33,7 @@ type ApiErrorLike = {
 const DEFAULT_CLOUD_BASE_URL = API_BASE_URL
 const DEFAULT_AGENT_ID = "edge-001"
 const HEARTBEAT_INTERVAL_SECONDS = 30
-const POLL_INTERVAL_MS = 4000
+const POLL_INTERVAL_MS = 3000
 const POLL_MAX_DURATION_MS = 120000
 const HEARTBEAT_FRESHNESS_SECONDS = 120
 
@@ -111,10 +111,15 @@ const EdgeSetupModal = ({ open, onClose, defaultStoreId }: EdgeSetupModalProps) 
   const [showChecklist, setShowChecklist] = useState(false)
   const [remainingSec, setRemainingSec] = useState<number | null>(null)
   const [autoRedirectAt, setAutoRedirectAt] = useState<number | null>(null)
+  const [redirectRemainingSec, setRedirectRemainingSec] = useState<number | null>(null)
 
   const pollTimer = useRef<ReturnType<typeof setTimeout> | null>(null)
   const pollStartedAt = useRef<number | null>(null)
   const navigate = useNavigate()
+
+  const primaryCtaClass =
+    "inline-flex w-full sm:w-auto items-center justify-center rounded-lg px-4 py-2.5 text-sm font-semibold text-white " +
+    "bg-gradient-to-r from-blue-500 to-purple-600 shadow-sm hover:opacity-95 transition disabled:opacity-60"
 
   const downloadUrl = (import.meta.env.VITE_EDGE_AGENT_DOWNLOAD_URL || "").trim()
   const siteUrl = (import.meta.env.VITE_SITE_URL || "").trim()
@@ -160,6 +165,8 @@ const EdgeSetupModal = ({ open, onClose, defaultStoreId }: EdgeSetupModalProps) 
     setShowTroubleshoot(false)
     setShowChecklist(false)
     stopPolling()
+    setAutoRedirectAt(null)
+    setRedirectRemainingSec(null)
   }, [open, defaultStoreId])
 
   useEffect(() => {
@@ -180,6 +187,8 @@ const EdgeSetupModal = ({ open, onClose, defaultStoreId }: EdgeSetupModalProps) 
     setSetupError(null)
     setRotatingToken(false)
     stopPolling()
+    setAutoRedirectAt(null)
+    setRedirectRemainingSec(null)
   }, [open, storeId])
 
   useEffect(() => {
@@ -345,6 +354,7 @@ const EdgeSetupModal = ({ open, onClose, defaultStoreId }: EdgeSetupModalProps) 
     setPollError(null)
     setPollMessage("Aguardando heartbeat do Edge Agent...")
     pollStartedAt.current = Date.now()
+    setRemainingSec(Math.ceil(POLL_MAX_DURATION_MS / 1000))
     pollEdgeStatus(storeId)
   }
 
@@ -497,6 +507,8 @@ const EdgeSetupModal = ({ open, onClose, defaultStoreId }: EdgeSetupModalProps) 
 
   const handleClose = () => {
     stopPolling()
+    setAutoRedirectAt(null)
+    setRedirectRemainingSec(null)
     onClose()
   }
 
@@ -516,6 +528,10 @@ const EdgeSetupModal = ({ open, onClose, defaultStoreId }: EdgeSetupModalProps) 
     : !agentRunningConfirmed
     ? "Inicie o agent para liberar a verificação."
     : null
+  const pollStatusLabel =
+    pollMessage && remainingSec !== null
+      ? `${pollMessage} (restam ${remainingSec}s)`
+      : pollMessage || "Aguardando heartbeat do Edge Agent..."
 
   const statusSteps = [
     { label: "Loja", done: isStoreSelected },
@@ -542,6 +558,9 @@ const EdgeSetupModal = ({ open, onClose, defaultStoreId }: EdgeSetupModalProps) 
 
   useEffect(() => {
     if (!autoRedirectAt || !heartbeatOk) return
+    setRedirectRemainingSec(
+      Math.max(0, Math.ceil((autoRedirectAt - Date.now()) / 1000))
+    )
     const delay = autoRedirectAt - Date.now()
     if (delay <= 0) {
       if (storeId) {
@@ -558,7 +577,15 @@ const EdgeSetupModal = ({ open, onClose, defaultStoreId }: EdgeSetupModalProps) 
         navigate("/app/cameras")
       }
     }, delay)
-    return () => clearTimeout(timer)
+    const countdown = setInterval(() => {
+      setRedirectRemainingSec(
+        Math.max(0, Math.ceil((autoRedirectAt - Date.now()) / 1000))
+      )
+    }, 500)
+    return () => {
+      clearTimeout(timer)
+      clearInterval(countdown)
+    }
   }, [autoRedirectAt, heartbeatOk, navigate, storeId])
 
   if (!open) return null
@@ -734,11 +761,7 @@ const EdgeSetupModal = ({ open, onClose, defaultStoreId }: EdgeSetupModalProps) 
                   type="button"
                   onClick={handleConfirmDownload}
                   disabled={!isStoreSelected}
-                  className={`inline-flex w-full sm:w-auto items-center justify-center rounded-lg px-4 py-2.5 text-sm font-semibold ${
-                    isActiveStep("Download")
-                      ? "bg-blue-600 text-white hover:bg-blue-700"
-                      : "border border-gray-200 text-gray-700 hover:bg-gray-50"
-                  } disabled:opacity-60`}
+                  className={primaryCtaClass}
                 >
                   Já baixei e extraí
                 </button>
@@ -765,11 +788,7 @@ const EdgeSetupModal = ({ open, onClose, defaultStoreId }: EdgeSetupModalProps) 
                 type="button"
                 onClick={handleCopyEnv}
                 disabled={!canCopyEnv}
-                className={`mt-3 inline-flex w-full sm:w-auto items-center justify-center rounded-lg px-4 py-2.5 text-xs font-semibold ${
-                  isActiveStep("Copiar .env")
-                    ? "bg-blue-600 text-white hover:bg-blue-700"
-                    : "border border-gray-200 text-gray-700 hover:bg-gray-50"
-                } disabled:opacity-60`}
+                className={`mt-3 ${primaryCtaClass} text-xs`}
               >
                 {rotatingToken ? "Gerando token..." : "Copiar .env"}
               </button>
@@ -837,11 +856,7 @@ const EdgeSetupModal = ({ open, onClose, defaultStoreId }: EdgeSetupModalProps) 
                   type="button"
                   onClick={handleConfirmRunning}
                   disabled={!canStartAgent}
-                  className={`inline-flex w-full sm:w-auto items-center justify-center rounded-lg px-4 py-2.5 text-sm font-semibold ${
-                    isActiveStep("Rodar")
-                      ? "bg-blue-600 text-white hover:bg-blue-700"
-                      : "border border-gray-200 text-gray-700 hover:bg-gray-50"
-                  } disabled:opacity-60`}
+                  className={primaryCtaClass}
                 >
                   Já iniciei o agent
                 </button>
@@ -913,7 +928,23 @@ const EdgeSetupModal = ({ open, onClose, defaultStoreId }: EdgeSetupModalProps) 
                     >
                       Ir agora
                     </button>
-                    <span className="text-xs text-green-700">Redirecionando em 3s…</span>
+                    {autoRedirectAt && (
+                      <>
+                        <span className="text-xs text-green-700">
+                          Redirecionando em {redirectRemainingSec ?? 3}s…
+                        </span>
+                        <button
+                          type="button"
+                          onClick={() => {
+                            setAutoRedirectAt(null)
+                            setRedirectRemainingSec(null)
+                          }}
+                          className="inline-flex items-center justify-center rounded-lg border border-green-200 bg-white px-3 py-2 text-xs font-semibold text-green-700 hover:bg-green-100"
+                        >
+                          Ficar aqui
+                        </button>
+                      </>
+                    )}
                   </div>
                 </div>
               )}
@@ -922,7 +953,7 @@ const EdgeSetupModal = ({ open, onClose, defaultStoreId }: EdgeSetupModalProps) 
                 <div className="mt-3 text-xs text-gray-600 flex flex-wrap items-center gap-2">
                   <span className="inline-flex items-center gap-2">
                     <span className="h-2 w-2 rounded-full bg-blue-500 animate-pulse" />
-                    {pollMessage || "Aguardando heartbeat do Edge Agent..."}
+                    {pollStatusLabel}
                   </span>
                   {remainingSec !== null && (
                     <span className="text-gray-500">

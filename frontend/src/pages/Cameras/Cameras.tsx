@@ -29,6 +29,7 @@ const Cameras = () => {
   const testTimerRef = useRef<ReturnType<typeof setInterval> | null>(null)
   const testStartedAtRef = useRef<number | null>(null)
   const [onboardingMode, setOnboardingMode] = useState(false)
+  const [showAdvancedHelp, setShowAdvancedHelp] = useState(false)
   const isMobile = useIsMobile(768)
   const [origin, setOrigin] = useState("")
   const location = useLocation()
@@ -83,6 +84,13 @@ const Cameras = () => {
     queryKey: ["stores"],
     queryFn: storesService.getStores,
   })
+
+  useEffect(() => {
+    if (selectedStore) return
+    if ((stores ?? []).length === 1) {
+      setSelectedStore((stores ?? [])[0].id)
+    }
+  }, [stores, selectedStore])
 
   const {
     data: edgeStatus,
@@ -373,7 +381,7 @@ const Cameras = () => {
                         : "bg-blue-600 hover:bg-blue-700"
                     }`}
                   >
-                    Adicionar câmera
+                    Adicionar primeira câmera (guiado)
                   </button>
                 </div>
               </div>
@@ -544,16 +552,25 @@ const Cameras = () => {
                 Gere o .env do agente e valide a conexão com a API.
               </p>
             </div>
-            <button
-              type="button"
-              onClick={() => setEdgeSetupOpen(true)}
-              className="inline-flex w-full sm:w-auto items-center justify-center rounded-lg bg-blue-600 px-4 py-2 text-sm font-semibold text-white hover:bg-blue-700"
-            >
-              Abrir Edge Setup
-            </button>
+            <div className="flex flex-col sm:flex-row gap-2">
+              <button
+                type="button"
+                onClick={() => setEdgeSetupOpen(true)}
+                className="inline-flex w-full sm:w-auto items-center justify-center rounded-lg bg-blue-600 px-4 py-2 text-sm font-semibold text-white hover:bg-blue-700"
+              >
+                Abrir Edge Setup
+              </button>
+              <button
+                type="button"
+                onClick={() => setShowAdvancedHelp((prev) => !prev)}
+                className="inline-flex w-full sm:w-auto items-center justify-center rounded-lg border border-gray-200 bg-white px-4 py-2 text-sm font-semibold text-gray-700 hover:bg-gray-50"
+              >
+                {showAdvancedHelp ? "Ocultar avançado" : "Avançado"}
+              </button>
+            </div>
           </div>
 
-          {isMobile && edgeSetupLink && (
+          {showAdvancedHelp && isMobile && edgeSetupLink && (
             <div className="bg-white rounded-xl shadow-sm border border-gray-100 p-4 space-y-3">
               <div>
                 <h3 className="text-sm font-semibold text-gray-800">
@@ -592,7 +609,7 @@ const Cameras = () => {
             </div>
           )}
 
-          {!isMobile && edgeSetupLink && (
+          {showAdvancedHelp && !isMobile && edgeSetupLink && (
             <div className="bg-white rounded-xl shadow-sm border border-gray-100 p-4 flex items-center gap-4">
               <img
                 src={qrUrl}
