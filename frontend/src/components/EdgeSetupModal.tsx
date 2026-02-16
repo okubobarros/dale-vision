@@ -120,6 +120,9 @@ const EdgeSetupModal = ({ open, onClose, defaultStoreId }: EdgeSetupModalProps) 
   const primaryCtaClass =
     "inline-flex w-full sm:w-auto items-center justify-center rounded-lg px-4 py-2.5 text-sm font-semibold text-white " +
     "bg-gradient-to-r from-blue-500 to-purple-600 shadow-sm hover:opacity-95 transition disabled:opacity-60"
+  const secondaryCtaClass =
+    "inline-flex w-full sm:w-auto items-center justify-center rounded-lg px-4 py-2.5 text-sm font-semibold " +
+    "border border-gray-200 bg-white text-gray-700 hover:bg-gray-50 disabled:opacity-60"
 
   const downloadUrl = (import.meta.env.VITE_EDGE_AGENT_DOWNLOAD_URL || "").trim()
   const siteUrl = (import.meta.env.VITE_SITE_URL || "").trim()
@@ -130,6 +133,7 @@ const EdgeSetupModal = ({ open, onClose, defaultStoreId }: EdgeSetupModalProps) 
     queryKey: ["stores"],
     queryFn: storesService.getStores,
     enabled: open,
+    staleTime: 60000,
   })
 
   const stopPolling = () => {
@@ -300,8 +304,8 @@ const EdgeSetupModal = ({ open, onClose, defaultStoreId }: EdgeSetupModalProps) 
         setHeartbeatOk(true)
         stopPolling()
         if (reason === "no_cameras") {
-          setPollMessage("Heartbeat recebido (loja sem câmeras cadastradas).")
-          toast.success("Heartbeat recebido")
+          setPollMessage("Sinal recebido (loja sem câmeras cadastradas).")
+          toast.success("Sinal recebido")
         } else {
           setPollMessage("Loja Online")
           toast.success("Loja Online")
@@ -337,14 +341,14 @@ const EdgeSetupModal = ({ open, onClose, defaultStoreId }: EdgeSetupModalProps) 
       const lastAgeSeconds = getAgeSeconds(lastHeartbeatAt)
       if (lastAgeSeconds !== null) {
         const ageMinutes = Math.floor(lastAgeSeconds / 60)
-        setPollError(`Último heartbeat recebido há ${ageMinutes} min. Verifique token, .env, run.bat e logs.`)
+      setPollError(`Último sinal recebido há ${ageMinutes} min. Verifique token, .env, run.bat e logs.`)
       }
       setShowTroubleshoot(true)
       setPollMessage(null)
       return
     }
 
-    setPollMessage("Aguardando heartbeat do Edge Agent...")
+    setPollMessage("Aguardando sinal do Edge Agent...")
     pollTimer.current = setTimeout(() => pollEdgeStatus(id), POLL_INTERVAL_MS)
   }
 
@@ -352,7 +356,7 @@ const EdgeSetupModal = ({ open, onClose, defaultStoreId }: EdgeSetupModalProps) 
     if (polling) return
     setPolling(true)
     setPollError(null)
-    setPollMessage("Aguardando heartbeat do Edge Agent...")
+    setPollMessage("Aguardando sinal do Edge Agent...")
     pollStartedAt.current = Date.now()
     setRemainingSec(Math.ceil(POLL_MAX_DURATION_MS / 1000))
     pollEdgeStatus(storeId)
@@ -479,7 +483,7 @@ const EdgeSetupModal = ({ open, onClose, defaultStoreId }: EdgeSetupModalProps) 
     setValidationError(null)
     try {
       await api.get(`/v1/stores/${storeId}/edge-setup/`)
-      setValidationMsg("Conexão com a API ok. Monitorando heartbeat...")
+      setValidationMsg("Conexão com a API ok. Monitorando sinal...")
       startPolling()
     } catch (err) {
       const apiErr = getApiError(err)
@@ -531,7 +535,7 @@ const EdgeSetupModal = ({ open, onClose, defaultStoreId }: EdgeSetupModalProps) 
   const pollStatusLabel =
     pollMessage && remainingSec !== null
       ? `${pollMessage} (restam ${remainingSec}s)`
-      : pollMessage || "Aguardando heartbeat do Edge Agent..."
+      : pollMessage || "Aguardando sinal do Edge Agent..."
 
   const statusSteps = [
     { label: "Loja", done: isStoreSelected },
@@ -639,7 +643,7 @@ const EdgeSetupModal = ({ open, onClose, defaultStoreId }: EdgeSetupModalProps) 
               <div className="text-xs text-gray-500 space-y-1">
                 <div>Última comunicação: {lastSeenLabel}</div>
                 {lastHeartbeatLabel && (
-                  <div>Último heartbeat: {lastHeartbeatLabel}</div>
+                  <div>Último sinal: {lastHeartbeatLabel}</div>
                 )}
                 {edgeOnline && edgeReason === "no_cameras" && (
                   <div className="text-green-700 font-semibold">
@@ -701,18 +705,24 @@ const EdgeSetupModal = ({ open, onClose, defaultStoreId }: EdgeSetupModalProps) 
           </div>
 
           <div className={!isStoreSelected ? "opacity-50 pointer-events-none space-y-4" : "space-y-4"}>
-            <div className={step2Enabled ? "rounded-xl border border-gray-200 bg-gray-50 px-4 py-3" : "rounded-xl border border-gray-200 bg-gray-50 px-4 py-3 opacity-60 pointer-events-none"}>
+            <div
+              className={
+                step2Enabled
+                  ? "rounded-xl border border-gray-200 bg-gray-50 px-4 py-3"
+                  : "rounded-xl border border-gray-200 bg-gray-50 px-4 py-3 opacity-60 pointer-events-none"
+              }
+            >
               <div className="text-sm text-gray-700 font-semibold">2. Download do Edge Agent</div>
               <p className="mt-1 text-xs text-gray-500">
-                Baixe o Edge Agent no computador da loja e extraia arquivo ZIP completo.
+                Baixe o instalador no computador da loja.
               </p>
-              <div className="mt-3 flex flex-col sm:flex-row sm:items-center gap-3">
+              <div className="mt-3 flex flex-col gap-3">
                 {canDownload ? (
                   <a
                     href={downloadUrl}
                     target="_blank"
                     rel="noreferrer"
-                    className="inline-flex w-full sm:w-auto items-center justify-center rounded-lg bg-blue-600 px-4 py-2.5 text-sm font-semibold text-white hover:bg-blue-700"
+                    className={primaryCtaClass}
                   >
                     Baixar Edge Agent
                   </a>
@@ -720,51 +730,52 @@ const EdgeSetupModal = ({ open, onClose, defaultStoreId }: EdgeSetupModalProps) 
                   <button
                     type="button"
                     disabled
-                    className="inline-flex w-full sm:w-auto items-center justify-center rounded-lg bg-blue-600 px-4 py-2.5 text-sm font-semibold text-white opacity-60"
+                    className={`${primaryCtaClass} opacity-60`}
                   >
                     Baixar Edge Agent
                   </button>
                 )}
-                <div>1) Clique com botão direito no arquivo ZIP, selecione Extrair Tudo, e depois Extrair. </div>
-                <div>2) Abra a pasta extraída, normalmente em Downloads.</div>
-                <div>3) Feito o processo clique no botão abaixo para seguir</div>
-                
-              </div>
-              {canDownload && (
-                <div className="mt-2 text-xs text-gray-500">
-                  Link direto:{" "}
-                  <a
-                    href={downloadUrl}
-                    target="_blank"
-                    rel="noreferrer"
-                    className="text-blue-700 underline break-all"
-                  >
-                    {downloadUrl}
-                  </a>
+                <div className="text-xs text-gray-600 space-y-2">
+                  <div>1. Extraia o arquivo ZIP.</div>
+                  <div>2. Abra a pasta extraída.</div>
+                  <div>3. Volte aqui e clique em “Já baixei e extraí”.</div>
                 </div>
-              )}
-              {!canDownload && (
-                <div className="mt-2 text-xs text-amber-700">
-                  Download indisponível. Veja as instruções em{" "}
-                  <a
-                    href={docsUrl}
-                    target="_blank"
-                    rel="noreferrer"
-                    className="text-blue-700 underline"
-                  >
-                    docs do Edge Agent
-                  </a>
-                  .
-                </div>
-              )}
+                {canDownload && (
+                  <div className="text-[11px] text-gray-500">
+                    Link direto:{" "}
+                    <a
+                      href={downloadUrl}
+                      target="_blank"
+                      rel="noreferrer"
+                      className="text-blue-700 hover:underline break-all"
+                    >
+                      {downloadUrl}
+                    </a>
+                  </div>
+                )}
+                {!canDownload && (
+                  <div className="text-[11px] text-amber-700">
+                    Download indisponível. Veja as instruções em{" "}
+                    <a
+                      href={docsUrl}
+                      target="_blank"
+                      rel="noreferrer"
+                      className="text-blue-700 hover:underline"
+                    >
+                      docs do Edge Agent
+                    </a>
+                    .
+                  </div>
+                )}
                 <button
                   type="button"
                   onClick={handleConfirmDownload}
                   disabled={!isStoreSelected}
-                  className={primaryCtaClass}
+                  className={secondaryCtaClass}
                 >
                   Já baixei e extraí
                 </button>
+              </div>
               {downloadConfirmed && (
                 <div className="mt-2 text-xs text-green-600 font-semibold">
                   Download confirmado
@@ -872,7 +883,7 @@ const EdgeSetupModal = ({ open, onClose, defaultStoreId }: EdgeSetupModalProps) 
                 Clique em “Começar verificação”. Vamos monitorar por até 2 minutos.
               </p>
               <p className="text-xs text-gray-500 mt-1">
-                Se a loja ainda não tiver câmera cadastrada, a validação conclui ao receber heartbeat recente do agent.
+                Se a loja ainda não tiver câmera cadastrada, a validação conclui ao receber sinal recente do agent.
               </p>
               <div className="mt-2 flex flex-col sm:flex-row sm:items-center gap-3">
                 <button
@@ -892,7 +903,7 @@ const EdgeSetupModal = ({ open, onClose, defaultStoreId }: EdgeSetupModalProps) 
                     : validating
                     ? "Verificando..."
                     : polling
-                    ? "Aguardando heartbeat..."
+                    ? "Aguardando sinal..."
                     : "Começar verificação"}
                 </button>
                 {validationMsg && <div className="text-sm text-gray-700">{validationMsg}</div>}
@@ -970,7 +981,7 @@ const EdgeSetupModal = ({ open, onClose, defaultStoreId }: EdgeSetupModalProps) 
             {showTroubleshoot && (
               <div className="rounded-xl border border-yellow-200 bg-yellow-50 px-4 py-3">
                 <div className="text-sm font-semibold text-yellow-800">
-                  Sem heartbeat após 2 minutos
+                  Sem sinal após 2 minutos
                 </div>
                 <p className="mt-1 text-xs text-yellow-700">
                   Possíveis causas: ZIP não extraído, token desatualizado, agent rodando

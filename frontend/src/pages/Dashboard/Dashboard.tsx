@@ -3,24 +3,16 @@ import { useQuery } from "@tanstack/react-query"
 import { Link, useLocation } from "react-router-dom"
 import toast from "react-hot-toast"
 import { useAuth } from "../../contexts/AuthContext"
-import {
-  storesService,
-  type NetworkDashboard,
-  type Store,
-  type StoreEdgeStatus,
-} from "../../services/stores"
+import { storesService, type Store, type StoreEdgeStatus } from "../../services/stores"
 import { camerasService } from "../../services/cameras"
 import { formatReason, formatTimestamp } from "../../utils/edgeReasons"
 import EdgeSetupModal from "../../components/EdgeSetupModal"
-import { USE_MOCK_DATA } from "../../lib/mock"
 import {
   useAlertsEvents,
   useIgnoreEvent,
   useResolveEvent,
 } from "../../queries/alerts.queries"
 import type { StoreDashboard } from "../../types/dashboard"
-import { LineChart } from "../../components/Charts/LineChart"
-import { PieChart } from "../../components/Charts/PieChart"
 import SetupProgress from "../Onboarding/components/SetupProgress"
 import { useIsMobile } from "../../hooks/useIsMobile"
 import { onboardingService, type OnboardingStep } from "../../services/onboarding"
@@ -164,81 +156,15 @@ const formatLastSeenDisplay = (iso?: string | null) => {
   return absolute ? `${relative} · ${absolute}` : relative
 }
 
+const formatTimeSafe = (iso?: string | null) => {
+  if (!iso) return "—"
+  const date = new Date(iso)
+  if (Number.isNaN(date.getTime())) return "—"
+  return date.toLocaleTimeString("pt-BR", { hour: "2-digit", minute: "2-digit" })
+}
+
 const ALL_STORES_VALUE = "all"
 
-const buildNetworkDashboard = (
-  network: NetworkDashboard | null,
-  stores: Store[]
-): StoreDashboard | null => {
-  if (!USE_MOCK_DATA) {
-    return null
-  }
-
-  const storeCount = network?.total_stores ?? stores.length
-  const activeAlerts = network?.active_alerts ?? Math.max(0, storeCount - 1)
-
-  const healthScore = Math.min(95, 70 + storeCount * 2)
-  const productivity = Math.min(92, 65 + storeCount * 3)
-  const idleTime = Math.max(8, 20 - storeCount)
-  const visitorFlow = Math.max(0, storeCount * 500)
-  const conversionRate = Math.min(78, 45 + storeCount * 2)
-  const avgCartValue = 120 + storeCount * 4
-
-  return {
-    store: {
-      id: ALL_STORES_VALUE,
-      name: "Todas as lojas",
-      owner_email: "Visao agregada",
-      plan: "network",
-      status: "active",
-    },
-    metrics: {
-      health_score: healthScore,
-      productivity,
-      idle_time: idleTime,
-      visitor_flow: visitorFlow,
-      conversion_rate: conversionRate,
-      avg_cart_value: avgCartValue,
-    },
-    insights: {
-      peak_hour: "10:00-12:00",
-      best_selling_zone: "Mix de zonas",
-      employee_performance: {
-        best: "Equipe com melhor desempenho",
-        needs_attention: "Equipe com menor desempenho",
-      },
-    },
-    recommendations: [
-      {
-        id: "network_rec_1",
-        title: "Reforcar equipes nos horarios de pico",
-        description: "Distribuir equipes conforme a demanda agregada da rede.",
-        priority: "high",
-        action: "staffing",
-        estimated_impact: "Reducao de filas e melhor conversao.",
-      },
-      {
-        id: "network_rec_2",
-        title: "Padronizar boas praticas",
-        description: "Replicar processos das lojas com melhor desempenho.",
-        priority: "medium",
-        action: "process",
-        estimated_impact: "Aumento gradual de produtividade.",
-      },
-    ],
-    alerts:
-      activeAlerts > 0
-        ? [
-            {
-              type: "network_alerts",
-              message: `${activeAlerts} alertas ativos na rede`,
-              severity: activeAlerts > 5 ? "high" : "medium",
-              time: new Date().toISOString(),
-            },
-          ]
-        : [],
-  }
-}
 
 const Dashboard = () => {
   const { user } = useAuth()
@@ -258,6 +184,7 @@ const Dashboard = () => {
   const { data: stores, isLoading: storesLoading } = useQuery<Store[]>({
     queryKey: ["stores"],
     queryFn: storesService.getStores,
+    staleTime: 60000,
   })
 
   const checkoutUrl = import.meta.env.VITE_STRIPE_CHECKOUT_URL || "/agendar-demo"
@@ -286,8 +213,14 @@ const Dashboard = () => {
     queryKey: ["store-edge-status", selectedStore],
     queryFn: () => storesService.getStoreEdgeStatus(selectedStore),
     enabled: selectedStore !== ALL_STORES_VALUE,
-    refetchInterval: edgeSetupOpen ? 15000 : 20000,
-    refetchIntervalInBackground: true,
+    refetchInterval: (data) => {
+      if (typeof document !== "undefined" && document.visibilityState === "hidden") {
+        return false
+      }
+      if (!data?.online) return 30000
+      return edgeSetupOpen ? 15000 : 20000
+    },
+    refetchIntervalInBackground: false,
   })
   const selectedStoreItem = useMemo(
     () => (stores ?? []).find((s) => s.id === selectedStore) ?? null,
@@ -406,7 +339,7 @@ const Dashboard = () => {
 
   const shouldShowActivationBanner =
     !activationBannerDismissed &&
-    (showActivationProgress || (!isLoadingDashboard && !dashboard))
+    (showActivationProgress || (selectedStore !== ALL_STORES_VALUE && !isEdgeOnlineByLastSeen))
 
   const nextStep = (onboardingProgress?.next_step || null) as OnboardingStep | null
   const nextStepCta = useMemo(() => {
@@ -607,6 +540,7 @@ const Dashboard = () => {
   ) : null
 
   const statusCards = showFirstCameraCards ? firstCameraCards : minimalStatusCards
+  const emptySubtitle = "Conecte uma câmera para começar"
 
   const nextStepBanner = showNextStepBanner ? (
     <div className="bg-white rounded-xl shadow-sm border border-gray-100 p-4 sm:p-6">
@@ -634,42 +568,12 @@ const Dashboard = () => {
       return
     }
 
-    setIsLoadingDashboard(true)
+    // TODO: alimentar dashboard via Supabase:
+    // traffic_metrics, conversion_metrics, sales_metrics, detection_events, camera_health
+    setDashboard(null)
     setDashboardError(null)
-    const loadDashboard = async () => {
-      try {
-        if (selectedStore === ALL_STORES_VALUE) {
-          if (!USE_MOCK_DATA) {
-            setDashboard(null)
-            setDashboardError("Sem dados para dashboard agregado.")
-            return
-          }
-          const network = await storesService.getNetworkDashboard()
-          const built = buildNetworkDashboard(network, stores)
-          setDashboard(built)
-          if (!built) setDashboardError("Sem dados para dashboard agregado.")
-          return
-        }
-
-        if (USE_MOCK_DATA && !edgeStatusLoading && !isEdgeOnlineByLastSeen) {
-          setDashboard(null)
-          setDashboardError("Sem dados ainda. Aguardando conexão do Edge Agent.")
-          return
-        }
-
-        const storeDashboard = await storesService.getStoreDashboard(selectedStore)
-        setDashboard(storeDashboard)
-      } catch (error) {
-        console.error("? Erro ao buscar dashboard:", error)
-        setDashboard(null)
-        setDashboardError("Sem dados para dashboard.")
-      } finally {
-        setIsLoadingDashboard(false)
-      }
-    }
-
-    loadDashboard()
-  }, [selectedStore, stores, edgeStatusLoading, isEdgeOnlineByLastSeen])
+    setIsLoadingDashboard(false)
+  }, [selectedStore, stores])
 
   const icons = {
     health: (
@@ -888,22 +792,6 @@ const Dashboard = () => {
             </Link>
           </div>
         </div>
-      </div>
-    )
-  }
-
-  if (!isLoadingDashboard && !dashboard) {
-    return (
-      <div className="space-y-6 sm:space-y-8">
-        {statusCards}
-        {nextStepBanner}
-        {activationBanner}
-
-        <EdgeSetupModal
-          open={edgeSetupOpen}
-          onClose={() => setEdgeSetupOpen(false)}
-          defaultStoreId={selectedStore !== ALL_STORES_VALUE ? selectedStore : ""}
-        />
       </div>
     )
   }
@@ -1137,15 +1025,7 @@ const Dashboard = () => {
                           <div className="flex items-start justify-between gap-3">
                             <div className="min-w-0">
                               <p className="text-sm text-gray-500">
-                                {eventTime
-                                  ? new Date(eventTime).toLocaleTimeString(
-                                      "pt-BR",
-                                      {
-                                        hour: "2-digit",
-                                        minute: "2-digit",
-                                      }
-                                    )
-                                  : "—"}
+                                {formatTimeSafe(eventTime)}
                               </p>
                               <p className="text-sm sm:text-base font-semibold text-gray-800 mt-1">
                                 {event.title}
@@ -1228,33 +1108,30 @@ const Dashboard = () => {
               <div className="bg-white rounded-xl shadow-sm border border-gray-100 p-6 text-center text-gray-500">
                 Carregando indicadores...
               </div>
-            ) : dashboard?.metrics ? (
+            ) : (
               <>
                 {/* Métricas topo */}
                 <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4 sm:gap-6">
                   <MetricCard
                     title="Score de Saúde"
-                    value={`${dashboard.metrics.health_score}%`}
+                    value="Sem dados ainda"
                     icon={icons.health}
                     color="bg-green-50"
-                    trend={Math.round(Math.random() * 10) - 3}
-                    subtitle="Saúde geral da operação"
+                    subtitle={emptySubtitle}
                   />
                   <MetricCard
                     title="Produtividade"
-                    value={`${dashboard.metrics.productivity}%`}
+                    value="Sem dados ainda"
                     icon={icons.productivity}
                     color="bg-blue-50"
-                    trend={Math.round(Math.random() * 8) - 2}
-                    subtitle="Eficiência da equipe"
+                    subtitle={emptySubtitle}
                   />
                   <MetricCard
                     title="Fluxo de Visitantes"
-                    value={dashboard.metrics.visitor_flow.toLocaleString("pt-BR")}
+                    value="Sem dados ainda"
                     icon={icons.visitors}
                     color="bg-purple-50"
-                    trend={Math.round(Math.random() * 15)}
-                    subtitle="Pessoas na loja hoje"
+                    subtitle={emptySubtitle}
                   />
                 </div>
 
@@ -1262,31 +1139,27 @@ const Dashboard = () => {
                 <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4 sm:gap-6">
                   <MetricCard
                     title="Taxa de Conversão"
-                    value={`${dashboard.metrics.conversion_rate.toFixed(1)}%`}
+                    value="Sem dados ainda"
                     icon={icons.conversion}
                     color="bg-yellow-50"
-                    subtitle="Visitantes → Clientes"
+                    subtitle={emptySubtitle}
                   />
                   <MetricCard
                     title="Ticket Médio"
-                    value={`R$ ${dashboard.metrics.avg_cart_value.toFixed(2)}`}
+                    value="Sem dados ainda"
                     icon={icons.cart}
                     color="bg-indigo-50"
-                    subtitle="Valor médio por venda"
+                    subtitle={emptySubtitle}
                   />
                   <MetricCard
                     title="Tempo Ocioso"
-                    value={`${dashboard.metrics.idle_time}%`}
+                    value="Sem dados ainda"
                     icon={icons.idle}
                     color="bg-red-50"
-                    subtitle="Redução de produtividade"
+                    subtitle={emptySubtitle}
                   />
                 </div>
               </>
-            ) : (
-              <div className="bg-white rounded-xl shadow-sm border border-gray-100 p-6 text-center text-gray-500">
-                Indicadores indisponíveis no momento.
-              </div>
             )
           ) : (
             <div className="bg-white rounded-xl shadow-sm border border-gray-100 p-6 text-center text-gray-500">
@@ -1296,8 +1169,18 @@ const Dashboard = () => {
 
           {/* Charts */}
           <div className="grid grid-cols-1 lg:grid-cols-2 gap-4 sm:gap-6">
-            <LineChart />
-            <PieChart />
+            <div className="bg-white rounded-xl shadow-sm border border-gray-100 p-6">
+              <div className="text-sm font-semibold text-gray-800">Tendência</div>
+              <div className="mt-4 text-sm text-gray-600">
+                Sem dados ainda. Conecte uma câmera para começar.
+              </div>
+            </div>
+            <div className="bg-white rounded-xl shadow-sm border border-gray-100 p-6">
+              <div className="text-sm font-semibold text-gray-800">Distribuição</div>
+              <div className="mt-4 text-sm text-gray-600">
+                Sem dados ainda. Conecte uma câmera para começar.
+              </div>
+            </div>
           </div>
 
           {/* Insights + Recomendações */}
@@ -1307,58 +1190,8 @@ const Dashboard = () => {
                 📊 Insights da Loja
               </h2>
 
-              <div className="space-y-4 sm:space-y-6">
-                <div className="p-4 bg-blue-50 rounded-lg">
-                  <h3 className="font-semibold text-blue-800 mb-2">
-                    ⏰ Horário de Pico
-                  </h3>
-                  <p className="text-blue-700 text-sm sm:text-base">
-                    Maior movimento:{" "}
-                    <span className="font-bold">{dashboard.insights.peak_hour}</span>
-                  </p>
-                  <p className="text-blue-600 text-xs sm:text-sm mt-1">
-                    Recomenda-se alocar mais funcionários neste período
-                  </p>
-                </div>
-
-                <div className="p-4 bg-green-50 rounded-lg">
-                  <h3 className="font-semibold text-green-800 mb-2">
-                    🏆 Setor mais Vendendo
-                  </h3>
-                  <p className="text-green-700 text-sm sm:text-base">
-                    <span className="font-bold">
-                      {dashboard.insights.best_selling_zone}
-                    </span>{" "}
-                    lidera em vendas
-                  </p>
-                  <p className="text-green-600 text-xs sm:text-sm mt-1">
-                    Garantir estoque adequado neste setor
-                  </p>
-                </div>
-
-                <div className="p-4 bg-yellow-50 rounded-lg">
-                  <h3 className="font-semibold text-yellow-800 mb-2">
-                    👥 Desempenho da Equipe
-                  </h3>
-                  <div className="space-y-3 text-sm sm:text-base">
-                    <div>
-                      <p className="text-green-700 font-semibold">
-                        🌟 Melhor desempenho:
-                      </p>
-                      <p className="text-green-600">
-                        {dashboard.insights.employee_performance.best}
-                      </p>
-                    </div>
-                    <div>
-                      <p className="text-red-700 font-semibold">
-                        ⚠️ Precisa de atenção:
-                      </p>
-                      <p className="text-red-600">
-                        {dashboard.insights.employee_performance.needs_attention}
-                      </p>
-                    </div>
-                  </div>
-                </div>
+              <div className="rounded-lg border border-gray-100 bg-gray-50 p-4 text-sm text-gray-600">
+                Sem dados ainda. Conecte uma câmera para começar.
               </div>
             </div>
 
@@ -1367,63 +1200,14 @@ const Dashboard = () => {
                 <h2 className="text-lg sm:text-xl font-bold text-gray-800">
                   💡 Recomendações IA
                 </h2>
-                <span className="px-3 py-1 bg-blue-100 text-blue-800 text-xs sm:text-sm font-semibold rounded-full">
-                  {dashboard.recommendations.length} sugestões
+                <span className="px-3 py-1 bg-gray-100 text-gray-600 text-xs sm:text-sm font-semibold rounded-full">
+                  0 sugestões
                 </span>
               </div>
 
-              <div className="space-y-3 sm:space-y-4">
-                {dashboard.recommendations.map((rec, index) => (
-                  <RecommendationCard
-                    key={index}
-                    title={rec.title}
-                    description={rec.description}
-                    priority={rec.priority}
-                    impact={rec.estimated_impact}
-                  />
-                ))}
+              <div className="rounded-lg border border-gray-100 bg-gray-50 p-4 text-sm text-gray-600">
+                Sem recomendações ainda. Conecte uma câmera para começar.
               </div>
-
-              {dashboard.alerts.length > 0 && (
-                <div className="mt-6 sm:mt-8 pt-6 border-t border-gray-100">
-                  <h3 className="font-bold text-gray-800 mb-4">🚨 Alertas Recentes</h3>
-                  <div className="space-y-3">
-                    {dashboard.alerts.map((alert, index) => (
-                      <div
-                        key={index}
-                        className={`p-3 rounded-lg ${
-                          alert.severity === "high"
-                            ? "bg-red-50 border border-red-200"
-                            : alert.severity === "medium"
-                            ? "bg-yellow-50 border border-yellow-200"
-                            : "bg-blue-50 border border-blue-200"
-                        }`}
-                      >
-                        <div className="flex items-start gap-2">
-                          <span className="mt-0.5">
-                            {alert.severity === "high"
-                              ? "🔴"
-                              : alert.severity === "medium"
-                              ? "🟡"
-                              : "🔵"}
-                          </span>
-                          <div className="min-w-0">
-                            <p className="text-gray-800 text-sm sm:text-base">
-                              {alert.message}
-                            </p>
-                            <p className="text-gray-500 text-xs mt-1">
-                              {new Date(alert.time).toLocaleTimeString("pt-BR", {
-                                hour: "2-digit",
-                                minute: "2-digit",
-                              })}
-                            </p>
-                          </div>
-                        </div>
-                      </div>
-                    ))}
-                  </div>
-                </div>
-              )}
             </div>
           </div>
         </>

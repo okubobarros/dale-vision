@@ -17,11 +17,27 @@ import EdgeSetupModal from "../../components/EdgeSetupModal"
 import CameraRoiEditor from "../../components/CameraRoiEditor"
 import { useIsMobile } from "../../hooks/useIsMobile"
 
+const isPrivateIp = (ip: string) => {
+  const trimmed = ip.trim()
+  if (!trimmed) return false
+  const parts = trimmed.split(".").map((p) => Number.parseInt(p, 10))
+  if (parts.length !== 4 || parts.some((p) => Number.isNaN(p))) return false
+  const [a, b] = parts
+  if (a === 10) return true
+  if (a === 192 && b === 168) return true
+  if (a === 172 && b >= 16 && b <= 31) return true
+  return false
+}
+
+const isPrivateHost = (host: string) => isPrivateIp(host) || host === "localhost"
+
 const Cameras = () => {
   const [selectedStore, setSelectedStore] = useState("")
   const [edgeSetupOpen, setEdgeSetupOpen] = useState(false)
   const [cameraModalOpen, setCameraModalOpen] = useState(false)
   const [editingCamera, setEditingCamera] = useState<Camera | null>(null)
+  const [createErrorMessage, setCreateErrorMessage] = useState<string | null>(null)
+  const [connectionHelpOpen, setConnectionHelpOpen] = useState(false)
   const [roiCamera, setRoiCamera] = useState<Camera | null>(null)
   const [testingCameraId, setTestingCameraId] = useState<string | null>(null)
   const [testMessage, setTestMessage] = useState<string | null>(null)
@@ -34,6 +50,10 @@ const Cameras = () => {
   const [origin, setOrigin] = useState("")
   const location = useLocation()
   const queryClient = useQueryClient()
+  const siteUrl = (import.meta.env.VITE_SITE_URL || "").trim()
+  const diagnoseUrl = siteUrl
+    ? `${siteUrl.replace(/\/$/, "")}/docs/edge-agent#diagnose`
+    : "/docs/edge-agent#diagnose"
 
   useEffect(() => {
     if (typeof window !== "undefined") {
@@ -83,6 +103,7 @@ const Cameras = () => {
   const { data: stores, isLoading: storesLoading } = useQuery<Store[]>({
     queryKey: ["stores"],
     queryFn: storesService.getStores,
+    staleTime: 60000,
   })
 
   useEffect(() => {
@@ -100,8 +121,14 @@ const Cameras = () => {
     queryKey: ["store-edge-status", selectedStore],
     queryFn: () => storesService.getStoreEdgeStatus(selectedStore),
     enabled: Boolean(selectedStore && selectedStore !== "all"),
-    refetchInterval: 20000,
-    refetchIntervalInBackground: true,
+    refetchInterval: (data) => {
+      if (typeof document !== "undefined" && document.visibilityState === "hidden") {
+        return false
+      }
+      if (!data?.online) return 30000
+      return 20000
+    },
+    refetchIntervalInBackground: false,
   })
 
   const {
@@ -112,12 +139,14 @@ const Cameras = () => {
     queryKey: ["store-cameras", selectedStore],
     queryFn: () => camerasService.getStoreCameras(selectedStore),
     enabled: Boolean(selectedStore && selectedStore !== "all"),
+    staleTime: 15000,
   })
 
   const { data: limits } = useQuery({
     queryKey: ["store-limits", selectedStore],
     queryFn: () => camerasService.getStoreLimits(selectedStore),
     enabled: Boolean(selectedStore && selectedStore !== "all"),
+    staleTime: 30000,
   })
 
   const createCameraMutation = useMutation({
@@ -135,6 +164,20 @@ const Cameras = () => {
       if (code === "LIMIT_CAMERAS_REACHED") {
         toast.error("Limite de câmeras do trial atingido.")
         return
+      }
+      const status = (err as { response?: { status?: number } })?.response?.status
+      if (status === 400) {
+        setCreateErrorMessage(
+          "Você está fora da rede da loja ou faltam campos (ex.: canal)."
+        )
+        setConnectionHelpOpen(true)
+        if (import.meta.env.DEV) {
+          console.warn("[Cameras] create camera 400", err)
+        }
+        return
+      }
+      if (import.meta.env.DEV) {
+        console.warn("[Cameras] create camera failed", err)
       }
       toast.error("Falha ao criar câmera.")
     },
@@ -173,11 +216,15 @@ const Cameras = () => {
   const openCreateModal = useCallback(() => {
     setEditingCamera(null)
     setCameraModalOpen(true)
+    setCreateErrorMessage(null)
+    setConnectionHelpOpen(false)
   }, [])
 
   const openEditModal = useCallback((camera: Camera) => {
     setEditingCamera(camera)
     setCameraModalOpen(true)
+    setCreateErrorMessage(null)
+    setConnectionHelpOpen(false)
   }, [])
 
   const handleDelete = useCallback(
@@ -335,6 +382,18 @@ const Cameras = () => {
           <p className="text-xs text-blue-800 mt-1">
             Preencha o IP e as credenciais. O Edge Agent testa automaticamente e atualiza o status.
           </p>
+        </div>
+      )}
+
+      {onboardingMode && selectedStore && selectedStore !== "all" && (
+        <div className="bg-white rounded-xl shadow-sm border border-gray-100 p-4">
+          <div className="text-sm font-semibold text-gray-800">Passo a passo</div>
+          <div className="mt-3 space-y-2 text-sm text-gray-600">
+            <div>1. Você precisa estar na mesma rede do NVR/câmeras (ex.: PC 192.168.15.x).</div>
+            <div>2. Digite o IP do NVR + usuário/senha.</div>
+            <div>3. Selecione o canal (NVR) ou informe o RTSP.</div>
+            <div>4. Clique em Verificar conexão.</div>
+          </div>
         </div>
       )}
 
@@ -759,21 +818,31 @@ const Cameras = () => {
         testing={testingCameraId === editingCamera?.id}
         testMessage={testMessage}
         testError={testError}
+        createErrorMessage={createErrorMessage}
         onClose={() => {
           setCameraModalOpen(false)
           setEditingCamera(null)
           setTestMessage(null)
           setTestError(null)
+          setCreateErrorMessage(null)
         }}
         onSave={handleSaveCamera}
         onTest={handleTestConnection}
         saving={createCameraMutation.isPending || updateCameraMutation.isPending}
+        edgeOnline={Boolean(edgeStatus?.online)}
+        onOpenHelp={() => setConnectionHelpOpen(true)}
       />
 
       <CameraRoiEditor
         open={Boolean(roiCamera)}
         camera={roiCamera}
         onClose={() => setRoiCamera(null)}
+      />
+
+      <ConnectionHelpModal
+        open={connectionHelpOpen}
+        onClose={() => setConnectionHelpOpen(false)}
+        diagnoseUrl={diagnoseUrl}
       />
     </div>
   )
@@ -785,10 +854,13 @@ type CameraModalProps = {
   testing: boolean
   testMessage: string | null
   testError: string | null
+  createErrorMessage: string | null
   saving: boolean
   onClose: () => void
   onSave: (payload: CreateCameraPayload) => void
   onTest: (cameraId: string) => void
+  edgeOnline: boolean
+  onOpenHelp: () => void
 }
 
 const CameraModal = ({
@@ -797,10 +869,13 @@ const CameraModal = ({
   testing,
   testMessage,
   testError,
+  createErrorMessage,
   saving,
   onClose,
   onSave,
   onTest,
+  edgeOnline,
+  onOpenHelp,
 }: CameraModalProps) => {
   const [name, setName] = useState("")
   const [connectionType, setConnectionType] = useState<"ip_camera" | "nvr">(
@@ -810,6 +885,7 @@ const CameraModal = ({
   const [username, setUsername] = useState("")
   const [password, setPassword] = useState("")
   const [channel, setChannel] = useState("")
+  const [subtype, setSubtype] = useState("1")
   const [brand, setBrand] = useState("")
   const [rtspUrl, setRtspUrl] = useState("")
   const [showRtsp, setShowRtsp] = useState(false)
@@ -823,12 +899,22 @@ const CameraModal = ({
     setUsername("")
     setPassword("")
     setChannel("")
+    setSubtype("1")
     setBrand(camera?.brand ?? "")
     setRtspUrl("")
     setShowRtsp(false)
     setExternalId(camera?.external_id ?? "")
     setActive(camera?.active ?? true)
   }, [camera, open])
+
+  const brandNormalized = brand.trim().toLowerCase()
+  const isIntelbras = brandNormalized.includes("intelbras")
+  const showIntelbrasFields = connectionType === "nvr" && isIntelbras
+
+  const hostname =
+    typeof window !== "undefined" ? window.location.hostname : ""
+  const showNetworkWarning =
+    edgeOnline && isPrivateIp(ip) && !isPrivateHost(hostname)
 
   if (!open) return null
 
@@ -871,8 +957,8 @@ const CameraModal = ({
               }
               className="mt-1 w-full rounded-lg border border-gray-200 px-3 py-2 text-sm"
             >
-              <option value="ip_camera">Câmera IP</option>
-              <option value="nvr">NVR</option>
+              <option value="ip_camera">Câmera IP (RTSP direto)</option>
+              <option value="nvr">NVR / CFTV IP</option>
             </select>
           </div>
           <div>
@@ -912,11 +998,28 @@ const CameraModal = ({
                 Canal (NVR)
               </label>
               <input
+                type="number"
+                min={1}
                 value={channel}
                 onChange={(e) => setChannel(e.target.value)}
                 placeholder="1"
                 className="mt-1 w-full rounded-lg border border-gray-200 px-3 py-2 text-sm"
               />
+            </div>
+          )}
+          {showIntelbrasFields && (
+            <div>
+              <label className="text-sm font-medium text-gray-700">
+                Subtipo (Intelbras)
+              </label>
+              <select
+                value={subtype}
+                onChange={(e) => setSubtype(e.target.value)}
+                className="mt-1 w-full rounded-lg border border-gray-200 px-3 py-2 text-sm"
+              >
+                <option value="1">1 (economia de banda)</option>
+                <option value="0">0 (principal)</option>
+              </select>
             </div>
           )}
           <div>
@@ -926,10 +1029,15 @@ const CameraModal = ({
             <input
               value={brand}
               onChange={(e) => setBrand(e.target.value)}
-              placeholder="Hikvision"
+              placeholder="Intelbras"
               className="mt-1 w-full rounded-lg border border-gray-200 px-3 py-2 text-sm"
             />
           </div>
+          {connectionType === "ip_camera" && (
+            <div className="rounded-lg border border-amber-200 bg-amber-50 px-3 py-2 text-xs text-amber-800">
+              Câmeras cloud-only (iC4/Mibo) não expõem RTSP — recomendamos usar NVR.
+            </div>
+          )}
           <div>
             <button
               type="button"
@@ -977,6 +1085,27 @@ const CameraModal = ({
           </label>
         </div>
 
+        {showNetworkWarning && (
+          <div className="mt-4 rounded-lg border border-amber-200 bg-amber-50 px-3 py-2 text-xs text-amber-800">
+            Parece que você não está na rede da loja. Cadastre a câmera quando estiver na loja
+            ou peça para o gerente rodar o Diagnose e compartilhar o ZIP.
+          </div>
+        )}
+
+        {createErrorMessage && (
+          <div className="mt-4 rounded-lg border border-red-200 bg-red-50 px-3 py-2 text-xs text-red-700">
+            <div className="font-semibold">Não foi possível cadastrar</div>
+            <p className="mt-1">{createErrorMessage}</p>
+            <button
+              type="button"
+              onClick={onOpenHelp}
+              className="mt-2 inline-flex items-center justify-center rounded-lg border border-red-200 bg-white px-3 py-1.5 text-xs font-semibold text-red-700 hover:bg-red-50"
+            >
+              Abrir instruções de conexão
+            </button>
+          </div>
+        )}
+
         <div className="mt-6 flex justify-end gap-2">
           <button
             type="button"
@@ -994,7 +1123,7 @@ const CameraModal = ({
                 testing ? "bg-gray-300 cursor-not-allowed" : "bg-emerald-600 hover:bg-emerald-700"
               }`}
             >
-              {testing ? "Testando..." : "Testar conexão"}
+              {testing ? "Testando..." : "Verificar conexão"}
             </button>
           )}
           <button
@@ -1015,6 +1144,8 @@ const CameraModal = ({
                     username: username.trim(),
                     password,
                     channel: channel.trim(),
+                    brand: brand.trim(),
+                    subtype: subtype.trim(),
                   }) ||
                   undefined,
                 external_id: externalId.trim() || undefined,
@@ -1030,6 +1161,11 @@ const CameraModal = ({
             {saving ? "Salvando..." : "Salvar"}
           </button>
         </div>
+        {!camera && (
+          <p className="mt-2 text-xs text-gray-500">
+            Após salvar, clique em Verificar conexão para confirmar.
+          </p>
+        )}
         {testMessage && (
           <p className="mt-3 text-xs text-emerald-700">{testMessage}</p>
         )}
@@ -1047,6 +1183,8 @@ const buildRtspUrl = (args: {
   username: string
   password: string
   channel: string
+  brand: string
+  subtype: string
 }) => {
   if (!args.ip) return ""
   const auth =
@@ -1055,9 +1193,64 @@ const buildRtspUrl = (args: {
       : ""
   if (args.connectionType === "nvr") {
     const channel = args.channel || "1"
+    const brand = args.brand.trim().toLowerCase()
+    const subtype = args.subtype || "1"
+    if (brand.includes("intelbras")) {
+      return `rtsp://${auth}${args.ip}:554/cam/realmonitor?channel=${channel}&subtype=${subtype}`
+    }
     return `rtsp://${auth}${args.ip}:554/Streaming/Channels/${channel}`
   }
   return `rtsp://${auth}${args.ip}:554/stream`
+}
+
+type ConnectionHelpModalProps = {
+  open: boolean
+  onClose: () => void
+  diagnoseUrl: string
+}
+
+const ConnectionHelpModal = ({ open, onClose, diagnoseUrl }: ConnectionHelpModalProps) => {
+  if (!open) return null
+  return (
+    <div className="fixed inset-0 z-50 flex items-center justify-center px-4">
+      <div className="absolute inset-0 bg-black/40" onClick={onClose} />
+      <div className="relative w-full max-w-lg rounded-2xl bg-white p-6 shadow-xl">
+        <div className="flex items-center justify-between gap-3">
+          <h3 className="text-lg font-semibold text-gray-800">Instruções de conexão</h3>
+          <button
+            type="button"
+            onClick={onClose}
+            className="text-sm text-gray-500 hover:text-gray-700"
+          >
+            Fechar
+          </button>
+        </div>
+        <div className="mt-4 space-y-3 text-sm text-gray-600">
+          <div>1. Confirme que o computador está na mesma rede do NVR/câmeras.</div>
+          <div>2. Verifique IP, usuário e senha do NVR.</div>
+          <div>3. Para Intelbras, informe o canal e mantenha o subtipo em 1.</div>
+          <div>4. Se estiver remoto, peça para o gerente rodar o Diagnose e enviar o ZIP.</div>
+        </div>
+        <div className="mt-4 flex flex-col sm:flex-row gap-2">
+          <a
+            href={diagnoseUrl}
+            target="_blank"
+            rel="noreferrer"
+            className="inline-flex items-center justify-center rounded-lg bg-blue-600 px-4 py-2 text-sm font-semibold text-white hover:bg-blue-700"
+          >
+            Abrir instruções + Diagnose
+          </a>
+          <button
+            type="button"
+            onClick={onClose}
+            className="inline-flex items-center justify-center rounded-lg border border-gray-200 bg-white px-4 py-2 text-sm font-semibold text-gray-700 hover:bg-gray-50"
+          >
+            Entendi
+          </button>
+        </div>
+      </div>
+    </div>
+  )
 }
 
 export default Cameras
