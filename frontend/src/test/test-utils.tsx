@@ -1,4 +1,4 @@
-import { ReactElement } from "react"
+import type { ReactNode, ReactElement } from "react"
 import { render, RenderOptions } from "@testing-library/react"
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query"
 import { BrowserRouter } from "react-router-dom"
@@ -15,7 +15,7 @@ const createTestQueryClient = () =>
   })
 
 type WrapperProps = {
-  children: ReactElement
+  children: ReactNode
 }
 
 const buildWrapper = (queryClient: QueryClient) => {
