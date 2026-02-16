@@ -5,7 +5,7 @@ from rest_framework import viewsets, permissions, status
 from rest_framework.decorators import action
 from rest_framework.response import Response
 
-from apps.core.models import Camera, CameraHealthLog, OrgMember
+from apps.core.models import Camera, CameraHealthLog, OrgMember, Store
 from apps.edge.models import EdgeToken
 from .serializers import (
     CameraSerializer,
@@ -22,7 +22,7 @@ from .permissions import (
     ALLOWED_READ_ROLES,
 )
 from apps.billing.utils import PaywallError
-from backend.utils.entitlements import enforce_can_use_product
+from backend.utils.entitlements import enforce_can_use_product, require_active_subscription
 from apps.stores.services.user_uuid import ensure_user_uuid
 from apps.core.services.onboarding_progress import OnboardingProgressService
 
@@ -57,6 +57,33 @@ class CameraViewSet(viewsets.ModelViewSet):
     serializer_class = CameraSerializer
     permission_classes = [permissions.IsAuthenticated]
 
+    def _require_subscription_for_org_ids(self, org_ids, action: str):
+        if getattr(self.request.user, "is_superuser", False) or getattr(
+            self.request.user, "is_staff", False
+        ):
+            return
+        if not org_ids:
+            return
+        actor_user_id = None
+        try:
+            actor_user_id = ensure_user_uuid(self.request.user)
+        except Exception:
+            actor_user_id = None
+        for org_id in {str(o) for o in org_ids if o}:
+            require_active_subscription(
+                org_id=org_id,
+                actor_user_id=actor_user_id,
+                action=action,
+                endpoint=self.request.path,
+            )
+
+    def _require_subscription_for_camera(self, camera: Camera, action: str):
+        org_id = getattr(getattr(camera, "store", None), "org_id", None)
+        if not org_id:
+            org_id = getattr(camera, "store_id", None)
+        if org_id:
+            self._require_subscription_for_org_ids([org_id], action)
+
     def get_queryset(self):
         store_id = self.request.query_params.get("store_id")
         qs = Camera.objects.all().order_by("-updated_at")
@@ -65,6 +92,35 @@ class CameraViewSet(viewsets.ModelViewSet):
         if store_id:
             qs = qs.filter(store_id=store_id)
         return qs
+
+    def list(self, request, *args, **kwargs):
+        store_id = request.query_params.get("store_id")
+        if store_id:
+            org_id = (
+                Store.objects.filter(id=store_id)
+                .values_list("org_id", flat=True)
+                .first()
+            )
+            if org_id:
+                self._require_subscription_for_org_ids([org_id], "list_cameras")
+        else:
+            user_uuid = None
+            try:
+                user_uuid = ensure_user_uuid(request.user)
+            except Exception:
+                user_uuid = None
+            if user_uuid:
+                org_ids = list(
+                    OrgMember.objects.filter(user_id=user_uuid).values_list("org_id", flat=True)
+                )
+                self._require_subscription_for_org_ids(org_ids, "list_cameras")
+        return super().list(request, *args, **kwargs)
+
+    def retrieve(self, request, *args, **kwargs):
+        cam = self.get_object()
+        self._require_subscription_for_camera(cam, "get_camera")
+        serializer = self.get_serializer(cam)
+        return Response(serializer.data)
 
     def create(self, request, *args, **kwargs):
         serializer = self.get_serializer(data=request.data)
@@ -115,16 +171,19 @@ class CameraViewSet(viewsets.ModelViewSet):
 
     def perform_update(self, serializer):
         require_store_role(self.request.user, str(serializer.instance.store_id), ALLOWED_MANAGE_ROLES)
+        self._require_subscription_for_camera(serializer.instance, "update_camera")
         serializer.save(updated_at=timezone.now())
 
     def perform_destroy(self, instance):
         require_store_role(self.request.user, str(instance.store_id), ALLOWED_MANAGE_ROLES)
+        self._require_subscription_for_camera(instance, "delete_camera")
         instance.delete()
 
     @action(detail=True, methods=["post"], url_path="test-snapshot")
     def test_snapshot(self, request, pk=None):
         cam = self.get_object()
         require_store_role(request.user, str(cam.store_id), ALLOWED_MANAGE_ROLES)
+        self._require_subscription_for_camera(cam, "test_snapshot")
 
         if not cam.rtsp_url:
             return Response({"detail": "Camera sem rtsp_url"}, status=status.HTTP_400_BAD_REQUEST)
@@ -168,6 +227,7 @@ class CameraViewSet(viewsets.ModelViewSet):
     @action(detail=True, methods=["get", "put"], url_path="roi")
     def roi(self, request, pk=None):
         cam = self.get_object()
+        self._require_subscription_for_camera(cam, "camera_roi")
         if request.method == "GET":
             require_store_role(request.user, str(cam.store_id), ALLOWED_READ_ROLES)
             latest = get_latest_roi_config(str(cam.id))
@@ -351,6 +411,7 @@ class CameraViewSet(viewsets.ModelViewSet):
     def test_connection(self, request, pk=None):
         cam = self.get_object()
         require_store_role(request.user, str(cam.store_id), ALLOWED_MANAGE_ROLES)
+        self._require_subscription_for_camera(cam, "test_connection")
 
         return Response(
             {

@@ -154,18 +154,18 @@ const CreateStoreModal = ({ isOpen, onClose }: { isOpen: boolean; onClose: () =>
     },
     onError: (error: any) => {
       const payload = error?.response?.data;
-      if (payload?.code === 'TRIAL_EXPIRED') {
+      if (payload?.code === 'SUBSCRIPTION_REQUIRED') {
         toast.custom((t) => (
           <div className="flex items-center gap-3 rounded-xl border border-gray-200 bg-white px-4 py-3 shadow-lg">
             <div className="text-sm text-gray-700">
-              Seu trial expirou. Faça upgrade para continuar.
+              Trial expirado. Assine para continuar.
             </div>
             <button
               type="button"
               className="rounded-lg bg-blue-600 px-3 py-1.5 text-xs font-semibold text-white hover:bg-blue-700"
               onClick={() => {
                 toast.dismiss(t.id);
-                navigate('/app/upgrade');
+                navigate('/app/billing');
               }}
             >
               Ver planos
@@ -374,18 +374,18 @@ const EditStoreModal = ({
     },
     onError: (error: any) => {
       const payload = error?.response?.data;
-      if (payload?.code === 'TRIAL_EXPIRED') {
+      if (payload?.code === 'SUBSCRIPTION_REQUIRED') {
         toast.custom((t) => (
           <div className="flex items-center gap-3 rounded-xl border border-gray-200 bg-white px-4 py-3 shadow-lg">
             <div className="text-sm text-gray-700">
-              Seu trial expirou. Faça upgrade para continuar.
+              Trial expirado. Assine para continuar.
             </div>
             <button
               type="button"
               className="rounded-lg bg-blue-600 px-3 py-1.5 text-xs font-semibold text-white hover:bg-blue-700"
               onClick={() => {
                 toast.dismiss(t.id);
-                navigate('/app/upgrade');
+                navigate('/app/billing');
               }}
             >
               Ver planos
@@ -620,18 +620,18 @@ const StoreCard = ({ store, onEdit }: StoreCardProps) => {
     },
     onError: (error: any) => {
       const payload = error?.response?.data;
-      if (payload?.code === 'TRIAL_EXPIRED') {
+      if (payload?.code === 'SUBSCRIPTION_REQUIRED') {
         toast.custom((t) => (
           <div className="flex items-center gap-3 rounded-xl border border-gray-200 bg-white px-4 py-3 shadow-lg">
             <div className="text-sm text-gray-700">
-              Seu trial expirou. Faça upgrade para continuar.
+              Trial expirado. Assine para continuar.
             </div>
             <button
               type="button"
               className="rounded-lg bg-blue-600 px-3 py-1.5 text-xs font-semibold text-white hover:bg-blue-700"
               onClick={() => {
                 toast.dismiss(t.id);
-                navigate('/app/upgrade');
+                navigate('/app/billing');
               }}
             >
               Ver planos

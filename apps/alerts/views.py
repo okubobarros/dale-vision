@@ -24,7 +24,10 @@ from apps.core.models import (
     NotificationLog,
     Store,
     JourneyEvent,
+    OrgMember,
 )
+from backend.utils.entitlements import require_active_subscription
+from apps.stores.services.user_uuid import ensure_user_uuid
 
 from .serializers import (
     AlertRuleSerializer,
@@ -53,6 +56,7 @@ class CoreStoreListView(APIView):
     permission_classes = [permissions.IsAuthenticated]
 
     def get(self, request):
+        _require_subscription_for_user_orgs(request=request, action="alert_core_store_list")
         qs = Store.objects.all().order_by("name")
         return Response(CoreStoreSerializer(qs, many=True).data)
 
@@ -79,6 +83,48 @@ def _dest_to_text(dest):
     if isinstance(dest, list):
         return ",".join([str(x).strip() for x in dest if str(x).strip()])
     return str(dest).strip()
+
+def _require_subscription_for_org(*, org_id, request, action: str):
+    if getattr(request.user, "is_superuser", False) or getattr(request.user, "is_staff", False):
+        return
+    actor_user_id = None
+    try:
+        actor_user_id = ensure_user_uuid(request.user)
+    except Exception:
+        actor_user_id = None
+    require_active_subscription(
+        org_id=org_id,
+        actor_user_id=actor_user_id,
+        action=action,
+        endpoint=request.path,
+    )
+
+def _require_subscription_for_store_id(*, store_id, request, action: str):
+    row = Store.objects.filter(id=store_id).values("org_id").first()
+    org_id = row.get("org_id") if row else None
+    if org_id:
+        _require_subscription_for_org(org_id=org_id, request=request, action=action)
+
+def _require_subscription_for_user_orgs(*, request, action: str):
+    if getattr(request.user, "is_superuser", False) or getattr(request.user, "is_staff", False):
+        return
+    actor_user_id = None
+    try:
+        actor_user_id = ensure_user_uuid(request.user)
+    except Exception:
+        actor_user_id = None
+    if not actor_user_id:
+        return
+    org_ids = list(
+        OrgMember.objects.filter(user_id=actor_user_id).values_list("org_id", flat=True)
+    )
+    for org_id in {str(o) for o in org_ids if o}:
+        require_active_subscription(
+            org_id=org_id,
+            actor_user_id=actor_user_id,
+            action=action,
+            endpoint=request.path,
+        )
 
 
 def require_uuid_param(name: str, value: str):
@@ -416,8 +462,32 @@ class AlertRuleViewSet(viewsets.ModelViewSet):
         qs = AlertRule.objects.all()
         if store_id:
             require_uuid_param("store_id", store_id)
+            _require_subscription_for_store_id(
+                store_id=store_id, request=self.request, action="alert_rules_list"
+            )
             qs = qs.filter(store_id=store_id)
         return qs.order_by("-updated_at")
+
+    def retrieve(self, request, *args, **kwargs):
+        rule = self.get_object()
+        _require_subscription_for_store_id(
+            store_id=rule.store_id, request=request, action="alert_rule_get"
+        )
+        serializer = self.get_serializer(rule)
+        return Response(serializer.data)
+
+    def perform_update(self, serializer):
+        rule = serializer.instance
+        _require_subscription_for_store_id(
+            store_id=rule.store_id, request=self.request, action="alert_rule_update"
+        )
+        serializer.save()
+
+    def perform_destroy(self, instance):
+        _require_subscription_for_store_id(
+            store_id=instance.store_id, request=self.request, action="alert_rule_delete"
+        )
+        instance.delete()
 
     @action(detail=False, methods=["post"], url_path="ingest")
     def ingest(self, request):
@@ -478,6 +548,9 @@ class AlertRuleViewSet(viewsets.ModelViewSet):
             raise ValidationError({"detail": "store_id inválido"})
 
         org_id = store.org_id
+        _require_subscription_for_org(
+            org_id=org_id, request=request, action="alert_ingest"
+        )
 
         now = timezone.now()
         occ = now
@@ -778,6 +851,9 @@ class DetectionEventViewSet(viewsets.ModelViewSet):
 
         if store_id:
             require_uuid_param("store_id", store_id)
+            _require_subscription_for_store_id(
+                store_id=store_id, request=self.request, action="events_list"
+            )
             qs = qs.filter(store_id=store_id)
 
         if status_q:
@@ -806,9 +882,20 @@ class DetectionEventViewSet(viewsets.ModelViewSet):
 
         return qs
 
+    def retrieve(self, request, *args, **kwargs):
+        event = self.get_object()
+        _require_subscription_for_org(
+            org_id=event.org_id, request=request, action="event_get"
+        )
+        serializer = self.get_serializer(event)
+        return Response(serializer.data)
+
     @action(detail=True, methods=["post"], url_path="resolve")
     def resolve(self, request, pk=None):
         event = self.get_object()
+        _require_subscription_for_org(
+            org_id=event.org_id, request=request, action="event_resolve"
+        )
         event.status = "resolved"
         event.resolved_at = timezone.now()
         event.resolved_by_user_id = getattr(request.user, "id", None)
@@ -818,6 +905,9 @@ class DetectionEventViewSet(viewsets.ModelViewSet):
     @action(detail=True, methods=["post"], url_path="ignore")
     def ignore(self, request, pk=None):
         event = self.get_object()
+        _require_subscription_for_org(
+            org_id=event.org_id, request=request, action="event_ignore"
+        )
         event.status = "ignored"
         event.save(update_fields=["status"])
         return Response(DetectionEventSerializer(event).data)
@@ -825,6 +915,9 @@ class DetectionEventViewSet(viewsets.ModelViewSet):
     @action(detail=True, methods=["post"], url_path="media")
     def add_media(self, request, pk=None):
         event = self.get_object()
+        _require_subscription_for_org(
+            org_id=event.org_id, request=request, action="event_add_media"
+        )
         serializer = EventMediaSerializer(data=request.data)
         serializer.is_valid(raise_exception=True)
         media = serializer.save(event_id=event.id, created_at=timezone.now())
@@ -846,13 +939,33 @@ class NotificationLogViewSet(viewsets.ReadOnlyModelViewSet):
 
         if store_id:
             require_uuid_param("store_id", store_id)
+            _require_subscription_for_store_id(
+                store_id=store_id, request=self.request, action="notification_logs_list"
+            )
             qs = qs.filter(store_id=store_id)
 
         if event_id:
             require_uuid_param("event_id", event_id)
+            event_org = (
+                DetectionEvent.objects.filter(id=event_id)
+                .values_list("org_id", flat=True)
+                .first()
+            )
+            if event_org:
+                _require_subscription_for_org(
+                    org_id=event_org, request=self.request, action="notification_logs_list"
+                )
             qs = qs.filter(event_id=event_id)
 
         return qs
+
+    def retrieve(self, request, *args, **kwargs):
+        log = self.get_object()
+        _require_subscription_for_org(
+            org_id=log.org_id, request=request, action="notification_log_get"
+        )
+        serializer = self.get_serializer(log)
+        return Response(serializer.data)
 
 
 # =========================
@@ -872,6 +985,7 @@ class JourneyEventViewSet(viewsets.ModelViewSet):
         if lead_id:
             qs = qs.filter(lead_id=lead_id)
         if org_id:
+            _require_subscription_for_org(org_id=org_id, request=self.request, action="journey_events_list")
             qs = qs.filter(org_id=org_id)
         if event_name:
             qs = qs.filter(event_name=event_name)

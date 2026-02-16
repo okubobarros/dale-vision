@@ -153,6 +153,12 @@ api.interceptors.response.use(
       toast.error("Seu trial permite até 3 câmeras por loja.")
     }
 
+    if (paywall?.code === "SUBSCRIPTION_REQUIRED") {
+      if (typeof window !== "undefined") {
+        window.location.href = "/app/billing"
+      }
+    }
+
     if (isTimeout) {
       console.warn("🟠 API Timeout:", {
         url: error.config?.url,

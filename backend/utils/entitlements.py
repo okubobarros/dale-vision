@@ -11,19 +11,17 @@ from apps.core.models import AuditLog, Organization, Store, Subscription
 
 logger = logging.getLogger(__name__)
 
-TRIAL_EXPIRED_CODE = "TRIAL_EXPIRED"
+SUBSCRIPTION_REQUIRED_CODE = "SUBSCRIPTION_REQUIRED"
 
 
-class TrialExpiredError(APIException):
+class SubscriptionRequiredError(APIException):
     status_code = status.HTTP_402_PAYMENT_REQUIRED
-    default_code = TRIAL_EXPIRED_CODE
+    default_code = SUBSCRIPTION_REQUIRED_CODE
 
-    def __init__(self, *, message: Optional[str] = None, upgrade_url: str = "/app/upgrade"):
+    def __init__(self, *, message: Optional[str] = None):
         payload = {
-            "ok": False,
-            "code": TRIAL_EXPIRED_CODE,
-            "message": message or "Seu trial expirou. Faça upgrade para continuar.",
-            "upgrade_url": upgrade_url,
+            "code": SUBSCRIPTION_REQUIRED_CODE,
+            "message": message or "Trial expired. Subscription required.",
         }
         self.detail = payload
 
@@ -69,14 +67,23 @@ def is_subscription_active(org_id: Optional[str]) -> bool:
     if not sub:
         return False
     status_value = (sub.status or "").lower()
-    return status_value in ("active", "trialing")
+    if status_value not in ("active", "trialing"):
+        return False
+    if status_value == "trialing":
+        period_end = getattr(sub, "current_period_end", None)
+        if period_end:
+            if timezone.is_naive(period_end):
+                period_end = timezone.make_aware(period_end)
+            if period_end < timezone.now():
+                return False
+    return True
 
 
 def can_use_product(org_id: Optional[str]) -> bool:
-    return is_subscription_active(org_id) or is_trial_active(org_id)
+    return is_subscription_active(org_id)
 
 
-def log_trial_block(
+def log_subscription_block(
     *,
     org_id: Optional[str],
     actor_user_id: Optional[str],
@@ -88,16 +95,34 @@ def log_trial_block(
             org_id=org_id,
             store_id=None,
             actor_user_id=actor_user_id,
-            action="trial_expired_blocked",
+            action="subscription_required_blocked",
             payload={
-                "code": TRIAL_EXPIRED_CODE,
+                "code": SUBSCRIPTION_REQUIRED_CODE,
                 "action": action,
                 "endpoint": endpoint,
             },
             created_at=timezone.now(),
         )
     except Exception:
-        logger.exception("[ENTITLEMENTS] failed to write trial block audit log")
+        logger.exception("[ENTITLEMENTS] failed to write subscription block audit log")
+
+
+def require_active_subscription(
+    *,
+    org_id: Optional[str],
+    actor_user_id: Optional[str],
+    action: str,
+    endpoint: str,
+) -> None:
+    if is_subscription_active(org_id):
+        return
+    log_subscription_block(
+        org_id=org_id,
+        actor_user_id=actor_user_id,
+        action=action,
+        endpoint=endpoint,
+    )
+    raise SubscriptionRequiredError()
 
 
 def enforce_can_use_product(
@@ -107,12 +132,12 @@ def enforce_can_use_product(
     action: str,
     endpoint: str,
 ) -> None:
-    if can_use_product(org_id):
-        return
-    log_trial_block(
+    require_active_subscription(
         org_id=org_id,
         actor_user_id=actor_user_id,
         action=action,
         endpoint=endpoint,
     )
-    raise TrialExpiredError()
+
+
+TrialExpiredError = SubscriptionRequiredError

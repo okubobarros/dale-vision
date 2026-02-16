@@ -50,10 +50,7 @@ const Cameras = () => {
   const [origin, setOrigin] = useState("")
   const location = useLocation()
   const queryClient = useQueryClient()
-  const siteUrl = (import.meta.env.VITE_SITE_URL || "").trim()
-  const diagnoseUrl = siteUrl
-    ? `${siteUrl.replace(/\/$/, "")}/docs/edge-agent#diagnose`
-    : "/docs/edge-agent#diagnose"
+  const diagnoseUrl = "/app/edge-help"
 
   useEffect(() => {
     if (typeof window !== "undefined") {
@@ -162,18 +159,18 @@ const Cameras = () => {
     },
     onError: (err: unknown) => {
       const payload = (err as { response?: { data?: { code?: string } } })?.response?.data
-      if (payload?.code === "TRIAL_EXPIRED") {
+      if (payload?.code === "SUBSCRIPTION_REQUIRED") {
         toast.custom((t) => (
           <div className="flex items-center gap-3 rounded-xl border border-gray-200 bg-white px-4 py-3 shadow-lg">
             <div className="text-sm text-gray-700">
-              Seu trial expirou. Faça upgrade para continuar.
+              Trial expirado. Assine para continuar.
             </div>
             <button
               type="button"
               className="rounded-lg bg-blue-600 px-3 py-1.5 text-xs font-semibold text-white hover:bg-blue-700"
               onClick={() => {
                 toast.dismiss(t.id)
-                window.location.href = "/app/upgrade"
+                window.location.href = "/app/billing"
               }}
             >
               Ver planos
@@ -943,8 +940,8 @@ const CameraModal = ({
   return (
     <div className="fixed inset-0 z-50 flex items-center justify-center px-4">
       <div className="absolute inset-0 bg-black/40" onClick={onClose} />
-      <div className="relative w-full max-w-lg rounded-2xl bg-white p-6 shadow-xl">
-        <div className="flex items-center justify-between gap-3">
+      <div className="relative w-full max-w-lg rounded-2xl bg-white shadow-xl max-h-[90vh] overflow-hidden flex flex-col">
+        <div className="flex items-center justify-between gap-3 p-6">
           <h3 className="text-lg font-semibold text-gray-800">
             {camera ? "Editar câmera" : "Nova câmera"}
           </h3>
@@ -957,6 +954,7 @@ const CameraModal = ({
           </button>
         </div>
 
+        <div className="flex-1 overflow-y-auto px-6">
         <div className="mt-5 space-y-4">
           <div className="rounded-lg border border-blue-100 bg-blue-50 px-3 py-2 text-xs text-blue-900">
             Não sabe RTSP? Sem problema — informe IP e credenciais da câmera/NVR.
@@ -1127,8 +1125,21 @@ const CameraModal = ({
             </button>
           </div>
         )}
+        {!camera && (
+          <p className="mt-2 text-xs text-gray-500">
+            Após salvar, clique em Verificar conexão para confirmar.
+          </p>
+        )}
+        {testMessage && (
+          <p className="mt-3 text-xs text-emerald-700">{testMessage}</p>
+        )}
+        {testError && (
+          <p className="mt-3 text-xs text-red-600">{testError}</p>
+        )}
+        </div>
+        </div>
 
-        <div className="mt-6 flex justify-end gap-2">
+        <div className="flex justify-end gap-2 px-6 pb-6 pt-4">
           <button
             type="button"
             onClick={onClose}
@@ -1183,17 +1194,6 @@ const CameraModal = ({
             {saving ? "Salvando..." : "Salvar"}
           </button>
         </div>
-        {!camera && (
-          <p className="mt-2 text-xs text-gray-500">
-            Após salvar, clique em Verificar conexão para confirmar.
-          </p>
-        )}
-        {testMessage && (
-          <p className="mt-3 text-xs text-emerald-700">{testMessage}</p>
-        )}
-        {testError && (
-          <p className="mt-3 text-xs text-red-600">{testError}</p>
-        )}
       </div>
     </div>
   )

@@ -4,7 +4,7 @@ from django.utils import timezone
 from unittest.mock import MagicMock, patch
 
 from apps.billing.utils import PaywallError, TRIAL_STORE_LIMIT, enforce_trial_store_limit
-from backend.utils.entitlements import TrialExpiredError
+from backend.utils.entitlements import SubscriptionRequiredError
 from apps.stores.views import StoreViewSet
 from apps.stores import views_edge_status
 from apps.edge import views as edge_views
@@ -231,23 +231,35 @@ class EdgeHeartbeatIngestTests(SimpleTestCase):
         self.assertEqual(called_ts, expected_ts)
 
 
-class TrialExpiredEnforcementTests(SimpleTestCase):
-    @patch("apps.stores.views.enforce_can_use_product", side_effect=TrialExpiredError())
+class SubscriptionRequiredEnforcementTests(SimpleTestCase):
+    @patch("apps.stores.views.enforce_can_use_product", side_effect=SubscriptionRequiredError())
     def test_blocks_create_store_when_trial_expired(self, _enforce):
         view = StoreViewSet()
         request = APIRequestFactory().post("/api/v1/stores/", {}, format="json")
         request.user = MagicMock()
         view.request = request
         serializer = MagicMock()
-        with self.assertRaises(TrialExpiredError):
+        with self.assertRaises(SubscriptionRequiredError):
             view.perform_create(serializer)
 
-    @patch("apps.stores.views.enforce_can_use_product", side_effect=TrialExpiredError())
+    @patch("apps.stores.views.enforce_can_use_product", side_effect=SubscriptionRequiredError())
     def test_blocks_delete_store_when_trial_expired(self, _enforce):
         view = StoreViewSet()
         request = APIRequestFactory().delete("/api/v1/stores/store-1/")
         request.user = MagicMock()
         view.request = request
         view.get_object = MagicMock(return_value=MagicMock(org_id="org-1"))
-        with self.assertRaises(TrialExpiredError):
+        with self.assertRaises(SubscriptionRequiredError):
             view.destroy(request, pk="store-1")
+
+    @patch("apps.stores.views.require_active_subscription", side_effect=SubscriptionRequiredError())
+    def test_dashboard_returns_402_when_subscription_required(self, _enforce):
+        view = StoreViewSet.as_view({"get": "dashboard"})
+        request = APIRequestFactory().get("/api/v1/stores/store-1/dashboard/")
+        request.user = MagicMock(is_authenticated=True)
+        store = MagicMock()
+        store.id = "store-1"
+        store.org_id = "org-1"
+        with patch.object(StoreViewSet, "get_object", return_value=store):
+            response = view(request, pk="store-1")
+        self.assertEqual(response.status_code, 402)
