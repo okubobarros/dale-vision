@@ -230,7 +230,9 @@ export const storesService = {
   },
 
   // Obter métricas no formato antigo (para compatibilidade se necessário)
+  // NOTE: keep storeId in signature for API compatibility; reference it to avoid TS6133.
   async getStoreMetrics(storeId: string): Promise<StoreMetrics> {
+    void storeId;
     return {
       total_cameras: 0,
       active_cameras: 0,
