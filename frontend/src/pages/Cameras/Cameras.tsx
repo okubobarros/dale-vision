@@ -964,10 +964,10 @@ const CameraModal = ({
         </div>
 
         <div className="flex-1 overflow-y-auto px-6">
-        <div className="mt-5 space-y-4">
-          <div className="rounded-lg border border-blue-100 bg-blue-50 px-3 py-2 text-xs text-blue-900">
-            Não sabe RTSP? Sem problema — informe IP e credenciais da câmera/NVR.
-          </div>
+          <div className="mt-5 space-y-4">
+            <div className="rounded-lg border border-blue-100 bg-blue-50 px-3 py-2 text-xs text-blue-900">
+              Não sabe RTSP? Sem problema — informe IP e credenciais da câmera/NVR.
+            </div>
             <div>
               <label className="text-sm font-medium text-gray-700">Nome</label>
               <input
@@ -977,19 +977,19 @@ const CameraModal = ({
                 className="mt-1 w-full rounded-lg border border-gray-200 px-3 py-2 text-sm"
               />
             </div>
-          <div>
-            <label className="text-sm font-medium text-gray-700">Tipo de conexão</label>
-            <select
-              value={connectionType}
-              onChange={(e) =>
-                setConnectionType(e.target.value as "ip_camera" | "nvr")
-              }
-              className="mt-1 w-full rounded-lg border border-gray-200 px-3 py-2 text-sm"
-            >
-              <option value="ip_camera">Câmera IP (RTSP direto)</option>
-              <option value="nvr">NVR / CFTV IP</option>
-            </select>
-          </div>
+            <div>
+              <label className="text-sm font-medium text-gray-700">Tipo de conexão</label>
+              <select
+                value={connectionType}
+                onChange={(e) =>
+                  setConnectionType(e.target.value as "ip_camera" | "nvr")
+                }
+                className="mt-1 w-full rounded-lg border border-gray-200 px-3 py-2 text-sm"
+              >
+                <option value="ip_camera">Câmera IP (RTSP direto)</option>
+                <option value="nvr">NVR / CFTV IP</option>
+              </select>
+            </div>
             <div>
               <label className="text-sm font-medium text-gray-700">IP</label>
               <input
@@ -998,10 +998,10 @@ const CameraModal = ({
                 placeholder="192.168.0.10"
                 className="mt-1 w-full rounded-lg border border-gray-200 px-3 py-2 text-sm"
               />
-            <p className="text-xs text-gray-500 mt-1">
-              Não sabe o IP? Normalmente começa com 192.168… Confira no app da câmera ou no roteador.
-            </p>
-          </div>
+              <p className="text-xs text-gray-500 mt-1">
+                Não sabe o IP? Normalmente começa com 192.168… Confira no app da câmera ou no roteador.
+              </p>
+            </div>
             <div>
               <label className="text-sm font-medium text-gray-700">Usuário</label>
               <input
@@ -1021,11 +1021,11 @@ const CameraModal = ({
                 className="mt-1 w-full rounded-lg border border-gray-200 px-3 py-2 text-sm"
               />
             </div>
-          {connectionType === "nvr" && (
-            <div>
-              <label className="text-sm font-medium text-gray-700">
-                Canal (NVR)
-              </label>
+            {connectionType === "nvr" && (
+              <div>
+                <label className="text-sm font-medium text-gray-700">
+                  Canal (NVR)
+                </label>
                 <input
                   type="number"
                   min={1}
@@ -1042,8 +1042,8 @@ const CameraModal = ({
                 />
               </div>
             )}
-          {showIntelbrasFields && (
-            <div>
+            {showIntelbrasFields && (
+              <div>
                 <label className="text-sm font-medium text-gray-700">
                   Subtipo (Intelbras)
                 </label>
@@ -1060,9 +1060,9 @@ const CameraModal = ({
                 >
                   <option value="1">1 (economia de banda)</option>
                   <option value="0">0 (principal)</option>
-              </select>
-            </div>
-          )}
+                </select>
+              </div>
+            )}
             <div>
               <label className="text-sm font-medium text-gray-700">
                 Marca (opcional)
@@ -1074,36 +1074,36 @@ const CameraModal = ({
                 className="mt-1 w-full rounded-lg border border-gray-200 px-3 py-2 text-sm"
               />
             </div>
-          {connectionType === "ip_camera" && (
-            <div className="rounded-lg border border-amber-200 bg-amber-50 px-3 py-2 text-xs text-amber-800">
-              Câmeras cloud-only (iC4/Mibo) não expõem RTSP — recomendamos usar NVR.
-            </div>
-          )}
-          <div>
-            <button
-              type="button"
-              onClick={() => setShowRtsp((prev) => !prev)}
-              className="text-xs font-semibold text-blue-600 hover:text-blue-700"
-            >
-              {showRtsp ? "Ocultar RTSP manual" : "Inserir RTSP manualmente"}
-            </button>
-          </div>
-          {showRtsp && (
+            {connectionType === "ip_camera" && (
+              <div className="rounded-lg border border-amber-200 bg-amber-50 px-3 py-2 text-xs text-amber-800">
+                Câmeras cloud-only (iC4/Mibo) não expõem RTSP — recomendamos usar NVR.
+              </div>
+            )}
             <div>
-              <label className="text-sm font-medium text-gray-700">RTSP URL</label>
-              <input
-                value={rtspUrl}
-                onChange={(e) => setRtspUrl(e.target.value)}
-                placeholder="rtsp://usuario:senha@host/stream"
-                className="mt-1 w-full rounded-lg border border-gray-200 px-3 py-2 text-sm"
-              />
-              {camera?.rtsp_url_masked && (
-                <p className="text-xs text-gray-400 mt-1">
-                  Atual: {camera.rtsp_url_masked}
-                </p>
-              )}
+              <button
+                type="button"
+                onClick={() => setShowRtsp((prev) => !prev)}
+                className="text-xs font-semibold text-blue-600 hover:text-blue-700"
+              >
+                {showRtsp ? "Ocultar RTSP manual" : "Inserir RTSP manualmente"}
+              </button>
             </div>
-          )}
+            {showRtsp && (
+              <div>
+                <label className="text-sm font-medium text-gray-700">RTSP URL</label>
+                <input
+                  value={rtspUrl}
+                  onChange={(e) => setRtspUrl(e.target.value)}
+                  placeholder="rtsp://usuario:senha@host/stream"
+                  className="mt-1 w-full rounded-lg border border-gray-200 px-3 py-2 text-sm"
+                />
+                {camera?.rtsp_url_masked && (
+                  <p className="text-xs text-gray-400 mt-1">
+                    Atual: {camera.rtsp_url_masked}
+                  </p>
+                )}
+              </div>
+            )}
             <div>
               <label className="text-sm font-medium text-gray-700">
                 ID externo (opcional)
@@ -1124,40 +1124,39 @@ const CameraModal = ({
               />
               Câmera ativa
             </label>
-        </div>
-
-        {showNetworkWarning && (
-          <div className="mt-4 rounded-lg border border-amber-200 bg-amber-50 px-3 py-2 text-xs text-amber-800">
-            Parece que você não está na rede da loja. Cadastre a câmera quando estiver na loja
-            ou peça para o gerente rodar o Diagnose e compartilhar o ZIP.
           </div>
-        )}
 
-        {createErrorMessage && (
-          <div className="mt-4 rounded-lg border border-red-200 bg-red-50 px-3 py-2 text-xs text-red-700">
-            <div className="font-semibold">Não foi possível cadastrar</div>
-            <p className="mt-1">{createErrorMessage}</p>
-            <button
-              type="button"
-              onClick={onOpenHelp}
-              className="mt-2 inline-flex items-center justify-center rounded-lg border border-red-200 bg-white px-3 py-1.5 text-xs font-semibold text-red-700 hover:bg-red-50"
-            >
-              Abrir instruções de conexão
-            </button>
-          </div>
-        )}
-        {!camera && (
-          <p className="mt-2 text-xs text-gray-500">
-            Após salvar, clique em Verificar conexão para confirmar.
-          </p>
-        )}
-        {testMessage && (
-          <p className="mt-3 text-xs text-emerald-700">{testMessage}</p>
-        )}
-        {testError && (
-          <p className="mt-3 text-xs text-red-600">{testError}</p>
-        )}
-        </div>
+          {showNetworkWarning && (
+            <div className="mt-4 rounded-lg border border-amber-200 bg-amber-50 px-3 py-2 text-xs text-amber-800">
+              Parece que você não está na rede da loja. Cadastre a câmera quando estiver na loja
+              ou peça para o gerente rodar o Diagnose e compartilhar o ZIP.
+            </div>
+          )}
+
+          {createErrorMessage && (
+            <div className="mt-4 rounded-lg border border-red-200 bg-red-50 px-3 py-2 text-xs text-red-700">
+              <div className="font-semibold">Não foi possível cadastrar</div>
+              <p className="mt-1">{createErrorMessage}</p>
+              <button
+                type="button"
+                onClick={onOpenHelp}
+                className="mt-2 inline-flex items-center justify-center rounded-lg border border-red-200 bg-white px-3 py-1.5 text-xs font-semibold text-red-700 hover:bg-red-50"
+              >
+                Abrir instruções de conexão
+              </button>
+            </div>
+          )}
+          {!camera && (
+            <p className="mt-2 text-xs text-gray-500">
+              Após salvar, clique em Verificar conexão para confirmar.
+            </p>
+          )}
+          {testMessage && (
+            <p className="mt-3 text-xs text-emerald-700">{testMessage}</p>
+          )}
+          {testError && (
+            <p className="mt-3 text-xs text-red-600">{testError}</p>
+          )}
         </div>
 
         <div className="flex justify-end gap-2 px-6 pb-6 pt-4">
