@@ -4,8 +4,6 @@ import userEvent from "@testing-library/user-event"
 import Cameras from "./Cameras"
 import { renderWithProviders } from "../../test/test-utils"
 
-const createStoreCamera = vi.fn().mockRejectedValue({ response: { status: 400 } })
-
 vi.mock("../../services/stores", () => ({
   storesService: {
     getStores: vi.fn().mockResolvedValue([
@@ -28,7 +26,7 @@ vi.mock("../../services/cameras", () => ({
       limits: { cameras: 3, stores: 1 },
       usage: { cameras: 0, stores: 1 },
     }),
-    createStoreCamera,
+    createStoreCamera: vi.fn().mockRejectedValue({ response: { status: 400 } }),
     updateCamera: vi.fn(),
     deleteCamera: vi.fn(),
     getCamera: vi.fn(),
@@ -54,7 +52,7 @@ describe("Cameras 400 error guidance", () => {
     })
     await user.click(addButton)
 
-    const nameInput = await screen.findByLabelText(/Nome/i)
+    const nameInput = await screen.findByPlaceholderText(/Ex: Entrada/i)
     await user.type(nameInput, "Entrada")
 
     const saveButton = screen.getByRole("button", { name: /Salvar/i })

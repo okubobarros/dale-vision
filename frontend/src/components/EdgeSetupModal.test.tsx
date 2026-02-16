@@ -31,7 +31,11 @@ describe("EdgeSetupModal step 2", () => {
       <EdgeSetupModal open={true} onClose={() => {}} defaultStoreId="store-1" />
     )
 
-    expect(await screen.findByText(/Baixar Edge Agent/i)).toBeInTheDocument()
-    expect(screen.getByText(/Já baixei e extraí/i)).toBeInTheDocument()
+    expect(
+      await screen.findByRole("link", { name: /Baixar Edge Agent/i })
+    ).toBeInTheDocument()
+    expect(
+      screen.getByRole("button", { name: /Já baixei e extraí/i })
+    ).toBeInTheDocument()
   })
 })
