@@ -60,56 +60,6 @@ const MetricCard = ({
   </div>
 )
 
-interface RecommendationCardProps {
-  title: string
-  description: string
-  priority: string
-  impact: string
-}
-
-const RecommendationCard = ({
-  title,
-  description,
-  priority,
-  impact,
-}: RecommendationCardProps) => {
-  const priorityColors = {
-    high: "border-red-500 bg-red-50",
-    medium: "border-yellow-500 bg-yellow-50",
-    low: "border-blue-500 bg-blue-50",
-  }
-
-  const priorityLabels = {
-    high: "Alta Prioridade",
-    medium: "Média Prioridade",
-    low: "Baixa Prioridade",
-  }
-
-  return (
-    <div
-      className={`border-l-4 ${
-        priorityColors[priority as keyof typeof priorityColors]
-      } pl-4 py-3 pr-3 rounded-r-lg`}
-    >
-      <div className="flex items-start justify-between gap-3 mb-2">
-        <h4 className="font-semibold text-gray-800 leading-snug">{title}</h4>
-        <span
-          className={`shrink-0 px-2 py-1 text-[11px] font-semibold rounded ${
-            priority === "high"
-              ? "bg-red-100 text-red-800"
-              : priority === "medium"
-              ? "bg-yellow-100 text-yellow-800"
-              : "bg-blue-100 text-blue-800"
-          }`}
-        >
-          {priorityLabels[priority as keyof typeof priorityLabels]}
-        </span>
-      </div>
-      <p className="text-gray-600 text-sm mb-2">{description}</p>
-      <p className="text-gray-500 text-xs">🎯 Impacto: {impact}</p>
-    </div>
-  )
-}
 
 const ONLINE_MAX_AGE_SEC = 120
 
@@ -213,10 +163,11 @@ const Dashboard = () => {
     queryKey: ["store-edge-status", selectedStore],
     queryFn: () => storesService.getStoreEdgeStatus(selectedStore),
     enabled: selectedStore !== ALL_STORES_VALUE,
-    refetchInterval: (data) => {
+    refetchInterval: (query) => {
       if (typeof document !== "undefined" && document.visibilityState === "hidden") {
         return false
       }
+      const data = query.state.data
       if (!data?.online) return 30000
       return edgeSetupOpen ? 15000 : 20000
     },

@@ -121,10 +121,11 @@ const Cameras = () => {
     queryKey: ["store-edge-status", selectedStore],
     queryFn: () => storesService.getStoreEdgeStatus(selectedStore),
     enabled: Boolean(selectedStore && selectedStore !== "all"),
-    refetchInterval: (data) => {
+    refetchInterval: (query) => {
       if (typeof document !== "undefined" && document.visibilityState === "hidden") {
         return false
       }
+      const data = query.state.data
       if (!data?.online) return 30000
       return 20000
     },
