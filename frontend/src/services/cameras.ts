@@ -28,7 +28,9 @@ export type CreateCameraPayload = {
   username?: string
   password?: string
   rtsp_url?: string
-  external_id?: string
+  external_id?: string | null
+  channel?: number
+  subtype?: number
   active?: boolean
 }
 

@@ -351,6 +351,602 @@ const Cameras = () => {
   }, [stopTestPolling])
 
   return (
+    <div className="p-6 space-y-6">
+      <div className="flex flex-col gap-4">
+        <div className="min-w-0">
+          <h1 className="text-3xl font-bold text-gray-800">Câmeras</h1>
+          <p className="text-gray-600 mt-1">
+            Cadastre câmeras, desenhe ROIs e monitore status.
+          </p>
+        </div>
+
+        {stores && stores.length > 0 && (
+          <div className="flex flex-col sm:flex-row sm:items-center gap-2">
+            <label
+              htmlFor="store-select"
+              className="text-gray-700 font-semibold text-sm"
+            >
+              Loja
+            </label>
+
+            <div className="flex items-center gap-2">
+              <select
+                id="store-select"
+                value={selectedStore}
+                onChange={(e) => setSelectedStore(e.target.value)}
+                className="w-full sm:w-[320px] border border-gray-300 rounded-lg px-4 py-2 focus:ring-2 focus:ring-blue-500 focus:border-transparent"
+                disabled={storesLoading}
+                aria-label="Selecionar loja para visualizar câmeras"
+              >
+                <option value="">Selecione uma loja</option>
+                <option value="all">Todas as lojas</option>
+                {stores.map((store) => (
+                  <option key={store.id} value={store.id}>
+                    {store.name}
+                  </option>
+                ))}
+              </select>
+
+              {storesLoading && (
+                <div className="animate-spin rounded-full h-5 w-5 border-t-2 border-b-2 border-blue-500" />
+              )}
+            </div>
+          </div>
+        )}
+      </div>
+
+      {onboardingMode && selectedStore && selectedStore !== "all" && (
+        <div className="bg-blue-50 border border-blue-200 rounded-xl p-4 text-blue-900">
+          <div className="text-sm font-semibold">Passo 2 de 4 — Conecte sua primeira câmera</div>
+          <p className="text-xs text-blue-800 mt-1">
+            Preencha o IP e as credenciais. O Edge Agent testa automaticamente e atualiza o status.
+          </p>
+        </div>
+      )}
+
+      {onboardingMode && selectedStore && selectedStore !== "all" && (
+        <div className="bg-white rounded-xl shadow-sm border border-gray-100 p-4">
+          <div className="text-sm font-semibold text-gray-800">Passo a passo</div>
+          <div className="mt-3 space-y-2 text-sm text-gray-600">
+            <div>1. Você precisa estar na mesma rede do NVR/câmeras (ex.: PC 192.168.15.x).</div>
+            <div>2. Digite o IP do NVR + usuário/senha.</div>
+            <div>3. Selecione o canal (NVR) ou informe o RTSP.</div>
+            <div>4. Clique em Verificar conexão.</div>
+          </div>
+        </div>
+      )}
+
+      {!selectedStore || selectedStore === "all" ? (
+        <div className="bg-white rounded-xl shadow-sm p-6 text-center border border-gray-100 text-gray-500">
+          Selecione uma loja para gerenciar câmeras.
+        </div>
+      ) : (
+        <div className="space-y-4">
+          <div className="bg-white rounded-xl shadow-sm border border-gray-100 p-5 space-y-3">
+            <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3">
+              <div>
+                <h2 className="text-lg font-semibold text-gray-800">
+                  Status do Edge
+                </h2>
+                <p className="text-xs text-gray-500 mt-1">
+                  {edgeStatus?.online
+                    ? "Agente online"
+                    : "Agente offline — abra o Edge Agent para retomar o monitoramento."}
+                </p>
+              </div>
+              {!edgeStatus?.online && (
+                <button
+                  type="button"
+                  onClick={() => setEdgeSetupOpen(true)}
+                  className="inline-flex w-full sm:w-auto items-center justify-center rounded-lg bg-blue-600 px-4 py-2 text-sm font-semibold text-white hover:bg-blue-700"
+                >
+                  Abrir Edge Setup
+                </button>
+              )}
+            </div>
+
+            {edgeStatus?.online && (edgeStatus?.cameras_total ?? 0) === 0 && (
+              <div className="rounded-lg border border-blue-100 bg-blue-50 px-4 py-3 text-sm text-blue-900">
+                Você só precisa do IP + login da câmera/NVR.
+                <div className="mt-3">
+                  <button
+                    type="button"
+                    onClick={openCreateModal}
+                    disabled={limitReached}
+                    className={`inline-flex items-center justify-center rounded-lg px-4 py-2 text-sm font-semibold text-white ${
+                      limitReached
+                        ? "bg-gray-300 cursor-not-allowed"
+                        : "bg-blue-600 hover:bg-blue-700"
+                    }`}
+                  >
+                    Adicionar primeira câmera (guiado)
+                  </button>
+                </div>
+              </div>
+            )}
+
+            <div className="flex flex-wrap gap-2">
+              {stepStates.map((step) => (
+                <span
+                  key={step.label}
+                  className={`px-3 py-1 text-xs rounded-full font-semibold ${
+                    step.done
+                      ? "bg-green-100 text-green-700"
+                      : "bg-gray-100 text-gray-600"
+                  }`}
+                >
+                  {step.label}
+                </span>
+              ))}
+            </div>
+          </div>
+
+          <div className="bg-white rounded-xl shadow-sm border border-gray-100 p-5 space-y-4">
+          <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3">
+            <div>
+              <h2 className="text-lg font-semibold text-gray-800">
+                Gerenciar câmeras
+              </h2>
+              <p className="text-xs text-gray-500 mt-1">
+                {camerasLimit !== null
+                  ? `${camerasUsed}/${camerasLimit} câmeras ${
+                      isTrial ? "(Trial)" : ""
+                    }`
+                  : `${camerasUsed} câmeras cadastradas`}
+              </p>
+            </div>
+            <button
+              type="button"
+              onClick={openCreateModal}
+              disabled={limitReached}
+              title={
+                limitReached
+                  ? "Limite de câmeras do trial atingido."
+                  : "Adicionar câmera"
+              }
+              className={`inline-flex w-full sm:w-auto items-center justify-center rounded-lg px-4 py-2 text-sm font-semibold text-white ${
+                limitReached
+                  ? "bg-gray-300 cursor-not-allowed"
+                  : "bg-blue-600 hover:bg-blue-700"
+              }`}
+            >
+              Adicionar câmera
+            </button>
+          </div>
+
+          {camerasLoading ? (
+            <div className="text-sm text-gray-500">Carregando câmeras...</div>
+          ) : camerasError ? (
+            <div className="text-sm text-red-600">Falha ao carregar câmeras</div>
+          ) : cameras && cameras.length > 0 ? (
+            <div className="space-y-3">
+              {cameras.map((camera) => (
+                <div
+                  key={camera.id}
+                  className="border border-gray-100 rounded-xl p-4 flex flex-col md:flex-row md:items-center md:justify-between gap-3"
+                >
+                  <div className="min-w-0">
+                    <div className="flex items-center gap-2">
+                      <p className="text-sm font-semibold text-gray-800 truncate">
+                        {camera.name}
+                      </p>
+                      <span
+                        className={`px-2 py-0.5 text-xs rounded-full ${
+                          camera.status === "online"
+                            ? "bg-green-100 text-green-800"
+                            : camera.status === "degraded"
+                            ? "bg-yellow-100 text-yellow-800"
+                            : camera.status === "error"
+                            ? "bg-red-100 text-red-800"
+                            : camera.status === "offline"
+                            ? "bg-gray-100 text-gray-700"
+                            : "bg-yellow-100 text-yellow-800"
+                        }`}
+                      >
+                        {camera.status ?? "unknown"}
+                      </span>
+                    </div>
+                    <p className="text-xs text-gray-500 mt-1">
+                      RTSP: {camera.rtsp_url_masked ?? "não informado"}
+                    </p>
+                    {camera.last_seen_at && (
+                      <p className="text-xs text-gray-500 mt-1">
+                        Última verificação: {formatTimestamp(camera.last_seen_at)}
+                      </p>
+                    )}
+                    {camera.latency_ms !== null && camera.latency_ms !== undefined && (
+                      <p className="text-xs text-gray-500 mt-1">
+                        Latência: {camera.latency_ms} ms
+                      </p>
+                    )}
+                    {camera.last_error && (
+                      <p className="text-xs text-red-600 mt-1">
+                        Erro: {camera.last_error}
+                      </p>
+                    )}
+                    {camera.last_snapshot_url && (
+                      <div className="mt-2">
+                        <p className="text-xs text-blue-600 truncate">
+                          Snapshot: {camera.last_snapshot_url}
+                        </p>
+                        <img
+                          src={camera.last_snapshot_url}
+                          alt={`Snapshot ${camera.name}`}
+                          className="mt-2 h-24 w-full max-w-xs rounded-lg border border-gray-200 object-cover"
+                        />
+                      </div>
+                    )}
+                  </div>
+                  <div className="flex flex-wrap gap-2">
+                    <button
+                      type="button"
+                      onClick={() => openEditModal(camera)}
+                      className="rounded-lg border border-gray-200 px-3 py-1.5 text-xs font-semibold text-gray-700 hover:bg-gray-50"
+                    >
+                      Editar
+                    </button>
+                    <button
+                      type="button"
+                      onClick={() => handleTestConnection(camera.id)}
+                      className="rounded-lg border border-emerald-200 px-3 py-1.5 text-xs font-semibold text-emerald-700 hover:bg-emerald-50"
+                    >
+                      Testar conexão
+                    </button>
+                    <button
+                      type="button"
+                      onClick={() => setRoiCamera(camera)}
+                      className="rounded-lg border border-blue-200 px-3 py-1.5 text-xs font-semibold text-blue-700 hover:bg-blue-50"
+                    >
+                      ROI
+                    </button>
+                    <button
+                      type="button"
+                      onClick={() => handleDelete(camera.id)}
+                      className="rounded-lg border border-red-200 px-3 py-1.5 text-xs font-semibold text-red-700 hover:bg-red-50"
+                    >
+                      Remover
+                    </button>
+                  </div>
+                </div>
+              ))}
+            </div>
+          ) : (
+            <div className="text-sm text-gray-500">
+              Nenhuma câmera cadastrada nesta loja.
+            </div>
+          )}
+        </div>
+        </div>
+      )}
+
+      {!onboardingMode && (
+        <>
+          <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3">
+            <div>
+              <h2 className="text-lg font-semibold text-gray-800">
+                Status das câmeras
+              </h2>
+              <p className="text-xs text-gray-500">
+                Gere o .env do agente e valide a conexão com a API.
+              </p>
+            </div>
+            <div className="flex flex-col sm:flex-row gap-2">
+              <button
+                type="button"
+                onClick={() => setEdgeSetupOpen(true)}
+                className="inline-flex w-full sm:w-auto items-center justify-center rounded-lg bg-blue-600 px-4 py-2 text-sm font-semibold text-white hover:bg-blue-700"
+              >
+                Abrir Edge Setup
+              </button>
+              <button
+                type="button"
+                onClick={() => setShowAdvancedHelp((prev) => !prev)}
+                className="inline-flex w-full sm:w-auto items-center justify-center rounded-lg border border-gray-200 bg-white px-4 py-2 text-sm font-semibold text-gray-700 hover:bg-gray-50"
+              >
+                {showAdvancedHelp ? "Ocultar avançado" : "Avançado"}
+              </button>
+            </div>
+          </div>
+
+          {showAdvancedHelp && isMobile && edgeSetupLink && (
+            <div className="bg-white rounded-xl shadow-sm border border-gray-100 p-4 space-y-3">
+              <div>
+                <h3 className="text-sm font-semibold text-gray-800">
+                  Ajuda rápida
+                </h3>
+                <p className="text-xs text-gray-600 mt-1">
+                  Envie o link para abrir o Edge Setup no PC.
+                </p>
+              </div>
+              <div className="flex flex-col sm:flex-row gap-2">
+                <button
+                  type="button"
+                  onClick={async () => {
+                    try {
+                      await navigator.clipboard.writeText(edgeSetupLink)
+                      toast.success("Link copiado")
+                    } catch {
+                      toast.error("Falha ao copiar link")
+                    }
+                  }}
+                  className="w-full rounded-lg border border-gray-200 px-4 py-2 text-sm font-semibold text-gray-700 hover:bg-gray-50"
+                >
+                  Copiar link
+                </button>
+                <a
+                  href={`https://wa.me/?text=${encodeURIComponent(
+                    `Abra este link no computador para configurar o Edge Agent:\n${edgeSetupLink}`
+                  )}`}
+                  target="_blank"
+                  rel="noreferrer"
+                  className="w-full rounded-lg bg-green-600 px-4 py-2 text-sm font-semibold text-white text-center hover:bg-green-700"
+                >
+                  Enviar por WhatsApp
+                </a>
+              </div>
+            </div>
+          )}
+
+          {showAdvancedHelp && !isMobile && edgeSetupLink && (
+            <div className="bg-white rounded-xl shadow-sm border border-gray-100 p-4 flex items-center gap-4">
+              <img
+                src={qrUrl}
+                alt="QR code do Edge Setup"
+                className="h-24 w-24 rounded-lg border border-gray-200"
+              />
+              <div>
+                <div className="text-sm font-semibold text-gray-800">
+                  Ajuda (QR Code)
+                </div>
+                <div className="text-xs text-gray-600 mt-1">
+                  Escaneie para abrir o Edge Setup no celular.
+                </div>
+                <div className="mt-2 text-xs text-blue-600 break-all">
+                  {edgeSetupLink}
+                </div>
+              </div>
+            </div>
+          )}
+
+          {!selectedStore || selectedStore === "all" ? (
+            <div className="bg-white rounded-xl shadow-sm p-6 text-center border border-gray-100 text-gray-500">
+              Selecione uma loja para ver status das câmeras.
+            </div>
+          ) : edgeStatusLoading ? (
+            <div className="bg-white rounded-xl shadow-sm p-6 text-center border border-gray-100 text-gray-500">
+              Carregando status...
+            </div>
+          ) : edgeStatusError ? (
+            <div className="bg-white rounded-xl shadow-sm p-6 text-center border border-gray-100 text-red-600">
+              Falha ao carregar status das câmeras
+            </div>
+          ) : edgeStatus && edgeStatus.cameras.length > 0 ? (
+            <div className="space-y-4">
+              <div className="bg-white rounded-xl shadow-sm border border-gray-100 p-4">
+                <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3">
+                  <div>
+                    <p className="text-sm text-gray-500">Status da loja</p>
+                    <p className="text-lg font-semibold text-gray-800">
+                      {edgeStatus.store_status === "online"
+                        ? "Loja Online"
+                        : edgeStatus.store_status === "degraded"
+                        ? "Loja Instável"
+                        : edgeStatus.store_status === "offline"
+                        ? "Loja Offline"
+                        : "Status desconhecido"}
+                    </p>
+                    <p className="text-xs text-gray-500 mt-1">
+                      Último heartbeat há{" "}
+                      <span className="font-semibold text-gray-700">
+                        {formatAge(edgeStatus.store_status_age_seconds)}
+                      </span>
+                    </p>
+                    {edgeStatus.store_status_reason && (
+                      <p className="text-xs text-gray-500 mt-1">
+                        {formatReason(edgeStatus.store_status_reason)}
+                      </p>
+                    )}
+                  </div>
+                  <span
+                    className={`px-3 py-1 text-xs font-semibold rounded-full ${
+                      edgeStatus.store_status === "online"
+                        ? "bg-green-100 text-green-800"
+                        : edgeStatus.store_status === "degraded"
+                        ? "bg-yellow-100 text-yellow-800"
+                        : edgeStatus.store_status === "offline"
+                        ? "bg-gray-100 text-gray-800"
+                        : "bg-gray-100 text-gray-600"
+                    }`}
+                  >
+                    {edgeStatus.store_status ?? "unknown"}
+                  </span>
+                </div>
+              </div>
+
+              <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4">
+                {edgeStatus.cameras.map((cam) => (
+                  <div
+                    key={cam.camera_id}
+                    className="bg-white rounded-xl shadow-sm border border-gray-100 p-4"
+                  >
+                    <div className="flex items-start justify-between gap-3">
+                      <div className="min-w-0">
+                        <p className="text-sm font-semibold text-gray-800 truncate">
+                          {cam.name}
+                        </p>
+                        <p className="text-xs text-gray-500">{cam.camera_id}</p>
+                      </div>
+                      <span
+                        className={`px-2 py-0.5 text-xs rounded-full ${
+                          cam.status === "online"
+                            ? "bg-green-100 text-green-800"
+                            : cam.status === "degraded"
+                            ? "bg-yellow-100 text-yellow-800"
+                            : cam.status === "offline"
+                            ? "bg-gray-100 text-gray-700"
+                            : "bg-gray-100 text-gray-600"
+                        }`}
+                      >
+                        {cam.status}
+                      </span>
+                    </div>
+
+                    <div className="mt-3 text-xs text-gray-600 flex items-center gap-2">
+                      <span className="font-semibold text-gray-700">Idade:</span>
+                      <span>{formatAge(cam.age_seconds)}</span>
+                    </div>
+
+                    <div className="mt-2 text-xs text-gray-600 flex items-center gap-2">
+                      <span className="font-semibold text-gray-700">Último:</span>
+                      <span>{formatTimestamp(cam.camera_last_heartbeat_ts)}</span>
+                    </div>
+
+                    {cam.reason && (
+                      <p className="text-xs text-gray-500 mt-2">
+                        {formatReason(cam.reason)}
+                      </p>
+                    )}
+                  </div>
+                ))}
+              </div>
+            </div>
+          ) : (
+            <div className="bg-white rounded-xl shadow-sm p-6 text-center border border-gray-100 text-gray-500">
+              <p className="mb-3">Nenhuma câmera encontrada.</p>
+              <button
+                type="button"
+                onClick={() => setEdgeSetupOpen(true)}
+                className="text-sm font-semibold text-blue-600 hover:text-blue-700"
+              >
+                Abrir Edge Setup
+              </button>
+            </div>
+          )}
+        </>
+      )}
+
+      <EdgeSetupModal
+        open={edgeSetupOpen}
+        onClose={() => setEdgeSetupOpen(false)}
+        defaultStoreId={selectedStore && selectedStore !== "all" ? selectedStore : ""}
+      />
+
+      <CameraModal
+        open={cameraModalOpen}
+        camera={editingCamera}
+        testing={testingCameraId === editingCamera?.id}
+        testMessage={testMessage}
+        testError={testError}
+        createErrorMessage={createErrorMessage}
+        onClose={() => {
+          setCameraModalOpen(false)
+          setEditingCamera(null)
+          setTestMessage(null)
+          setTestError(null)
+          setCreateErrorMessage(null)
+        }}
+        onSave={handleSaveCamera}
+        onTest={handleTestConnection}
+        isSaving={createCameraMutation.isPending || updateCameraMutation.isPending}
+        edgeOnline={Boolean(edgeStatus?.online)}
+        onOpenHelp={() => setConnectionHelpOpen(true)}
+      />
+
+      <CameraRoiEditor
+        open={Boolean(roiCamera)}
+        camera={roiCamera}
+        onClose={() => setRoiCamera(null)}
+      />
+
+      <ConnectionHelpModal
+        open={connectionHelpOpen}
+        onClose={() => setConnectionHelpOpen(false)}
+        diagnoseUrl={diagnoseUrl}
+      />
+    </div>
+  )
+}
+
+type CameraModalProps = {
+  open: boolean
+  camera: Camera | null
+  testing: boolean
+  testMessage: string | null
+  testError: string | null
+  createErrorMessage: string | null
+  isSaving: boolean
+  onClose: () => void
+  onSave: (payload: CreateCameraPayload) => void
+  onTest: (cameraId: string) => void
+  edgeOnline: boolean
+  onOpenHelp: () => void
+}
+
+const CameraModal = ({
+  open,
+  camera,
+  testing,
+  testMessage,
+  testError,
+  createErrorMessage,
+  isSaving,
+  onClose,
+  onSave,
+  onTest,
+  edgeOnline,
+  onOpenHelp,
+}: CameraModalProps) => {
+  const [form, setForm] = useState({
+    name: "",
+    ip: "",
+    username: "",
+    password: "",
+    brand: "intelbras",
+    channel: 1,
+    subtype: 1,
+    externalId: "",
+    active: true,
+  })
+  const [saving, setSaving] = useState(false)
+  const [connectionType, setConnectionType] = useState<"ip_camera" | "nvr">(
+    "ip_camera"
+  )
+  const [rtspUrl, setRtspUrl] = useState("")
+  const [showRtsp, setShowRtsp] = useState(false)
+
+  useEffect(() => {
+    setForm({
+      name: camera?.name ?? "",
+      ip: camera?.ip ?? "",
+      username: "",
+      password: "",
+      brand: camera?.brand ?? "intelbras",
+      channel: 1,
+      subtype: 1,
+      externalId: camera?.external_id ?? "",
+      active: camera?.active ?? true,
+    })
+    setConnectionType("ip_camera")
+    setRtspUrl("")
+    setShowRtsp(false)
+  }, [camera, open])
+
+  useEffect(() => {
+    setSaving(Boolean(isSaving))
+  }, [isSaving])
+
+  const brandNormalized = form.brand.trim().toLowerCase()
+  const isIntelbras = brandNormalized.includes("intelbras")
+  const showIntelbrasFields = connectionType === "nvr" && isIntelbras
+
+  const hostname =
+    typeof window !== "undefined" ? window.location.hostname : ""
+  const showNetworkWarning =
+    edgeOnline && isPrivateIp(form.ip) && !isPrivateHost(hostname)
+
+  if (!open) return null
+
+  return (
     <div className="fixed inset-0 z-50 flex items-center justify-center px-4">
       <div className="absolute inset-0 bg-black/40" onClick={onClose} />
       <div className="relative w-full max-w-lg rounded-2xl bg-white shadow-xl max-h-[90vh] overflow-hidden flex flex-col">
@@ -368,49 +964,49 @@ const Cameras = () => {
         </div>
 
         <div className="flex-1 overflow-y-auto px-6">
-          <div className="mt-5 space-y-4">
-            <div className="rounded-lg border border-blue-100 bg-blue-50 px-3 py-2 text-xs text-blue-900">
-              Não sabe RTSP? Sem problema — informe IP e credenciais da câmera/NVR.
-            </div>
+        <div className="mt-5 space-y-4">
+          <div className="rounded-lg border border-blue-100 bg-blue-50 px-3 py-2 text-xs text-blue-900">
+            Não sabe RTSP? Sem problema — informe IP e credenciais da câmera/NVR.
+          </div>
             <div>
               <label className="text-sm font-medium text-gray-700">Nome</label>
               <input
-                value={name}
-                onChange={(e) => setName(e.target.value)}
+                value={form.name}
+                onChange={(e) => setForm((prev) => ({ ...prev, name: e.target.value }))}
                 placeholder="Ex: Entrada"
                 className="mt-1 w-full rounded-lg border border-gray-200 px-3 py-2 text-sm"
               />
             </div>
-            <div>
-              <label className="text-sm font-medium text-gray-700">Tipo de conexão</label>
-              <select
-                value={connectionType}
-                onChange={(e) =>
-                  setConnectionType(e.target.value as "ip_camera" | "nvr")
-                }
-                className="mt-1 w-full rounded-lg border border-gray-200 px-3 py-2 text-sm"
-              >
-                <option value="ip_camera">Câmera IP (RTSP direto)</option>
-                <option value="nvr">NVR / CFTV IP</option>
-              </select>
-            </div>
+          <div>
+            <label className="text-sm font-medium text-gray-700">Tipo de conexão</label>
+            <select
+              value={connectionType}
+              onChange={(e) =>
+                setConnectionType(e.target.value as "ip_camera" | "nvr")
+              }
+              className="mt-1 w-full rounded-lg border border-gray-200 px-3 py-2 text-sm"
+            >
+              <option value="ip_camera">Câmera IP (RTSP direto)</option>
+              <option value="nvr">NVR / CFTV IP</option>
+            </select>
+          </div>
             <div>
               <label className="text-sm font-medium text-gray-700">IP</label>
               <input
-                value={ip}
-                onChange={(e) => setIp(e.target.value)}
+                value={form.ip}
+                onChange={(e) => setForm((prev) => ({ ...prev, ip: e.target.value }))}
                 placeholder="192.168.0.10"
                 className="mt-1 w-full rounded-lg border border-gray-200 px-3 py-2 text-sm"
               />
-              <p className="text-xs text-gray-500 mt-1">
-                Não sabe o IP? Normalmente começa com 192.168… Confira no app da câmera ou no roteador.
-              </p>
-            </div>
+            <p className="text-xs text-gray-500 mt-1">
+              Não sabe o IP? Normalmente começa com 192.168… Confira no app da câmera ou no roteador.
+            </p>
+          </div>
             <div>
               <label className="text-sm font-medium text-gray-700">Usuário</label>
               <input
-                value={username}
-                onChange={(e) => setUsername(e.target.value)}
+                value={form.username}
+                onChange={(e) => setForm((prev) => ({ ...prev, username: e.target.value }))}
                 placeholder="admin"
                 className="mt-1 w-full rounded-lg border border-gray-200 px-3 py-2 text-sm"
               />
@@ -419,90 +1015,102 @@ const Cameras = () => {
               <label className="text-sm font-medium text-gray-700">Senha</label>
               <input
                 type="password"
-                value={password}
-                onChange={(e) => setPassword(e.target.value)}
+                value={form.password}
+                onChange={(e) => setForm((prev) => ({ ...prev, password: e.target.value }))}
                 placeholder="••••••••"
                 className="mt-1 w-full rounded-lg border border-gray-200 px-3 py-2 text-sm"
               />
             </div>
-            {connectionType === "nvr" && (
-              <div>
-                <label className="text-sm font-medium text-gray-700">
-                  Canal (NVR)
-                </label>
+          {connectionType === "nvr" && (
+            <div>
+              <label className="text-sm font-medium text-gray-700">
+                Canal (NVR)
+              </label>
                 <input
                   type="number"
                   min={1}
-                  value={channel}
-                  onChange={(e) => setChannel(e.target.value)}
+                  value={form.channel}
+                  onChange={(e) => {
+                    const next = Number(e.target.value)
+                    setForm((prev) => ({
+                      ...prev,
+                      channel: Number.isNaN(next) ? 1 : next,
+                    }))
+                  }}
                   placeholder="1"
                   className="mt-1 w-full rounded-lg border border-gray-200 px-3 py-2 text-sm"
                 />
               </div>
             )}
-            {showIntelbrasFields && (
-              <div>
+          {showIntelbrasFields && (
+            <div>
                 <label className="text-sm font-medium text-gray-700">
                   Subtipo (Intelbras)
                 </label>
                 <select
-                  value={subtype}
-                  onChange={(e) => setSubtype(e.target.value)}
+                  value={form.subtype}
+                  onChange={(e) => {
+                    const next = Number(e.target.value)
+                    setForm((prev) => ({
+                      ...prev,
+                      subtype: Number.isNaN(next) ? 1 : next,
+                    }))
+                  }}
                   className="mt-1 w-full rounded-lg border border-gray-200 px-3 py-2 text-sm"
                 >
                   <option value="1">1 (economia de banda)</option>
                   <option value="0">0 (principal)</option>
-                </select>
-              </div>
-            )}
+              </select>
+            </div>
+          )}
             <div>
               <label className="text-sm font-medium text-gray-700">
                 Marca (opcional)
               </label>
               <input
-                value={brand}
-                onChange={(e) => setBrand(e.target.value)}
+                value={form.brand}
+                onChange={(e) => setForm((prev) => ({ ...prev, brand: e.target.value }))}
                 placeholder="Intelbras"
                 className="mt-1 w-full rounded-lg border border-gray-200 px-3 py-2 text-sm"
               />
             </div>
-            {connectionType === "ip_camera" && (
-              <div className="rounded-lg border border-amber-200 bg-amber-50 px-3 py-2 text-xs text-amber-800">
-                Câmeras cloud-only (iC4/Mibo) não expõem RTSP — recomendamos usar NVR.
-              </div>
-            )}
-            <div>
-              <button
-                type="button"
-                onClick={() => setShowRtsp((prev) => !prev)}
-                className="text-xs font-semibold text-blue-600 hover:text-blue-700"
-              >
-                {showRtsp ? "Ocultar RTSP manual" : "Inserir RTSP manualmente"}
-              </button>
+          {connectionType === "ip_camera" && (
+            <div className="rounded-lg border border-amber-200 bg-amber-50 px-3 py-2 text-xs text-amber-800">
+              Câmeras cloud-only (iC4/Mibo) não expõem RTSP — recomendamos usar NVR.
             </div>
-            {showRtsp && (
-              <div>
-                <label className="text-sm font-medium text-gray-700">RTSP URL</label>
-                <input
-                  value={rtspUrl}
-                  onChange={(e) => setRtspUrl(e.target.value)}
-                  placeholder="rtsp://usuario:senha@host/stream"
-                  className="mt-1 w-full rounded-lg border border-gray-200 px-3 py-2 text-sm"
-                />
-                {camera?.rtsp_url_masked && (
-                  <p className="text-xs text-gray-400 mt-1">
-                    Atual: {camera.rtsp_url_masked}
-                  </p>
-                )}
-              </div>
-            )}
+          )}
+          <div>
+            <button
+              type="button"
+              onClick={() => setShowRtsp((prev) => !prev)}
+              className="text-xs font-semibold text-blue-600 hover:text-blue-700"
+            >
+              {showRtsp ? "Ocultar RTSP manual" : "Inserir RTSP manualmente"}
+            </button>
+          </div>
+          {showRtsp && (
+            <div>
+              <label className="text-sm font-medium text-gray-700">RTSP URL</label>
+              <input
+                value={rtspUrl}
+                onChange={(e) => setRtspUrl(e.target.value)}
+                placeholder="rtsp://usuario:senha@host/stream"
+                className="mt-1 w-full rounded-lg border border-gray-200 px-3 py-2 text-sm"
+              />
+              {camera?.rtsp_url_masked && (
+                <p className="text-xs text-gray-400 mt-1">
+                  Atual: {camera.rtsp_url_masked}
+                </p>
+              )}
+            </div>
+          )}
             <div>
               <label className="text-sm font-medium text-gray-700">
                 ID externo (opcional)
               </label>
               <input
-                value={externalId}
-                onChange={(e) => setExternalId(e.target.value)}
+                value={form.externalId}
+                onChange={(e) => setForm((prev) => ({ ...prev, externalId: e.target.value }))}
                 placeholder="cam-001"
                 className="mt-1 w-full rounded-lg border border-gray-200 px-3 py-2 text-sm"
               />
@@ -510,45 +1118,46 @@ const Cameras = () => {
             <label className="flex items-center gap-2 text-sm text-gray-700">
               <input
                 type="checkbox"
-                checked={active}
-                onChange={(e) => setActive(e.target.checked)}
+                checked={form.active}
+                onChange={(e) => setForm((prev) => ({ ...prev, active: e.target.checked }))}
                 className="h-4 w-4 rounded border-gray-300"
               />
               Câmera ativa
             </label>
+        </div>
+
+        {showNetworkWarning && (
+          <div className="mt-4 rounded-lg border border-amber-200 bg-amber-50 px-3 py-2 text-xs text-amber-800">
+            Parece que você não está na rede da loja. Cadastre a câmera quando estiver na loja
+            ou peça para o gerente rodar o Diagnose e compartilhar o ZIP.
           </div>
+        )}
 
-          {showNetworkWarning && (
-            <div className="mt-4 rounded-lg border border-amber-200 bg-amber-50 px-3 py-2 text-xs text-amber-800">
-              Parece que você não está na rede da loja. Cadastre a câmera quando estiver na loja
-              ou peça para o gerente rodar o Diagnose e compartilhar o ZIP.
-            </div>
-          )}
-
-          {createErrorMessage && (
-            <div className="mt-4 rounded-lg border border-red-200 bg-red-50 px-3 py-2 text-xs text-red-700">
-              <div className="font-semibold">Não foi possível cadastrar</div>
-              <p className="mt-1">{createErrorMessage}</p>
-              <button
-                type="button"
-                onClick={onOpenHelp}
-                className="mt-2 inline-flex items-center justify-center rounded-lg border border-red-200 bg-white px-3 py-1.5 text-xs font-semibold text-red-700 hover:bg-red-50"
-              >
-                Abrir instruções de conexão
-              </button>
-            </div>
-          )}
-          {!camera && (
-            <p className="mt-2 text-xs text-gray-500">
-              Após salvar, clique em Verificar conexão para confirmar.
-            </p>
-          )}
-          {testMessage && (
-            <p className="mt-3 text-xs text-emerald-700">{testMessage}</p>
-          )}
-          {testError && (
-            <p className="mt-3 text-xs text-red-600">{testError}</p>
-          )}
+        {createErrorMessage && (
+          <div className="mt-4 rounded-lg border border-red-200 bg-red-50 px-3 py-2 text-xs text-red-700">
+            <div className="font-semibold">Não foi possível cadastrar</div>
+            <p className="mt-1">{createErrorMessage}</p>
+            <button
+              type="button"
+              onClick={onOpenHelp}
+              className="mt-2 inline-flex items-center justify-center rounded-lg border border-red-200 bg-white px-3 py-1.5 text-xs font-semibold text-red-700 hover:bg-red-50"
+            >
+              Abrir instruções de conexão
+            </button>
+          </div>
+        )}
+        {!camera && (
+          <p className="mt-2 text-xs text-gray-500">
+            Após salvar, clique em Verificar conexão para confirmar.
+          </p>
+        )}
+        {testMessage && (
+          <p className="mt-3 text-xs text-emerald-700">{testMessage}</p>
+        )}
+        {testError && (
+          <p className="mt-3 text-xs text-red-600">{testError}</p>
+        )}
+        </div>
         </div>
 
         <div className="flex justify-end gap-2 px-6 pb-6 pt-4">
@@ -573,32 +1182,35 @@ const Cameras = () => {
           )}
           <button
             type="button"
-            disabled={saving || !name.trim()}
-            onClick={() =>
-              onSave({
-                name: name.trim(),
-                brand: brand.trim() || undefined,
-                ip: ip.trim() || undefined,
-                username: username.trim() || undefined,
-                password: password || undefined,
+            disabled={saving || !form.name?.trim()}
+            onClick={() => {
+              const payload = {
+                name: form.name,
+                ip: form.ip,
+                username: form.username,
+                password: form.password,
+                brand: form.brand,
+                channel: form.channel,
+                subtype: form.subtype,
+                external_id: form.externalId || null,
+                active: form.active,
                 rtsp_url:
                   rtspUrl.trim() ||
                   buildRtspUrl({
                     connectionType,
-                    ip: ip.trim(),
-                    username: username.trim(),
-                    password,
-                    channel: channel.trim(),
-                    brand: brand.trim(),
-                    subtype: subtype.trim(),
+                    ip: form.ip.trim(),
+                    username: form.username.trim(),
+                    password: form.password,
+                    channel: String(form.channel),
+                    brand: form.brand.trim(),
+                    subtype: String(form.subtype),
                   }) ||
                   undefined,
-                external_id: externalId.trim() || undefined,
-                active,
-              })
-            }
+              }
+              onSave(payload as CreateCameraPayload)
+            }}
             className={`rounded-lg px-4 py-2 text-sm font-semibold text-white ${
-              saving || !name.trim()
+              saving || !form.name?.trim()
                 ? "bg-gray-300 cursor-not-allowed"
                 : "bg-blue-600 hover:bg-blue-700"
             }`}

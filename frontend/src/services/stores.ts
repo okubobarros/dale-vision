@@ -231,7 +231,6 @@ export const storesService = {
 
   // Obter métricas no formato antigo (para compatibilidade se necessário)
   async getStoreMetrics(storeId: string): Promise<StoreMetrics> {
-    const dashboard = await this.getStoreDashboard(storeId);
     return {
       total_cameras: 0,
       active_cameras: 0,
