@@ -22,6 +22,7 @@ from .permissions import (
     ALLOWED_READ_ROLES,
 )
 from apps.billing.utils import PaywallError
+from backend.utils.entitlements import enforce_can_use_product
 from apps.stores.services.user_uuid import ensure_user_uuid
 from apps.core.services.onboarding_progress import OnboardingProgressService
 
@@ -72,6 +73,17 @@ class CameraViewSet(viewsets.ModelViewSet):
         store_id = getattr(store, "id", None) or serializer.validated_data.get("store_id")
         if store_id:
             require_store_role(request.user, str(store_id), ALLOWED_MANAGE_ROLES)
+            actor_user_id = None
+            try:
+                actor_user_id = ensure_user_uuid(request.user)
+            except Exception:
+                actor_user_id = None
+            enforce_can_use_product(
+                org_id=getattr(store, "org_id", None),
+                actor_user_id=actor_user_id,
+                action="create_camera",
+                endpoint=request.path,
+            )
         try:
             self.perform_create(serializer)
         except PaywallError as exc:

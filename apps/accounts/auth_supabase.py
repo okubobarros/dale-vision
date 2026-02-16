@@ -141,6 +141,7 @@ def ensure_org_membership(user: User, *, user_uuid: Optional[str] = None) -> Non
     org = Organization.objects.create(
         name=name,
         created_at=timezone.now(),
+        trial_ends_at=timezone.now() + timezone.timedelta(hours=72),
     )
     OrgMember.objects.create(
         org=org,

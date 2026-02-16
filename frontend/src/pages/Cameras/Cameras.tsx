@@ -125,7 +125,7 @@ const Cameras = () => {
       if (typeof document !== "undefined" && document.visibilityState === "hidden") {
         return false
       }
-      const data = query.state.data
+      const data = query.state.data as StoreEdgeStatus | undefined
       if (!data?.online) return 30000
       return 20000
     },
@@ -161,6 +161,27 @@ const Cameras = () => {
       setEditingCamera(null)
     },
     onError: (err: unknown) => {
+      const payload = (err as { response?: { data?: { code?: string } } })?.response?.data
+      if (payload?.code === "TRIAL_EXPIRED") {
+        toast.custom((t) => (
+          <div className="flex items-center gap-3 rounded-xl border border-gray-200 bg-white px-4 py-3 shadow-lg">
+            <div className="text-sm text-gray-700">
+              Seu trial expirou. Faça upgrade para continuar.
+            </div>
+            <button
+              type="button"
+              className="rounded-lg bg-blue-600 px-3 py-1.5 text-xs font-semibold text-white hover:bg-blue-700"
+              onClick={() => {
+                toast.dismiss(t.id)
+                window.location.href = "/app/upgrade"
+              }}
+            >
+              Ver planos
+            </button>
+          </div>
+        ))
+        return
+      }
       const code = (err as { code?: string })?.code
       if (code === "LIMIT_CAMERAS_REACHED") {
         toast.error("Limite de câmeras do trial atingido.")

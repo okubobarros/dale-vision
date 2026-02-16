@@ -89,6 +89,7 @@ class Organization(UnmanagedModel):
     country = models.TextField(default="BR")
     timezone = models.TextField(default="America/Sao_Paulo")
     created_at = models.DateTimeField()
+    trial_ends_at = models.DateTimeField(null=True, blank=True)
 
     class Meta(UnmanagedModel.Meta):
         db_table = "organizations"

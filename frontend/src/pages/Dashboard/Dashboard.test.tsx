@@ -64,3 +64,29 @@ describe("Dashboard empty state", () => {
     })
   })
 })
+
+describe("Dashboard trial upgrade CTA", () => {
+  beforeEach(() => {
+    localStorage.setItem(
+      "userData",
+      JSON.stringify({ id: "u1", username: "tester", email: "t@x.com" })
+    )
+    localStorage.setItem("authToken", "token")
+  })
+
+  it("links Assinar agora to /app/upgrade", async () => {
+    const { storesService } = await import("../../services/stores")
+    ;(storesService.getStores as unknown as vi.Mock).mockResolvedValueOnce([
+      {
+        id: "store-1",
+        name: "Loja 1",
+        status: "blocked",
+        blocked_reason: "trial_expired",
+        plan: "trial",
+      },
+    ])
+    renderWithProviders(<Dashboard />)
+    const link = await screen.findByRole("link", { name: /Assinar agora/i })
+    expect(link).toHaveAttribute("href", "/app/upgrade")
+  })
+})

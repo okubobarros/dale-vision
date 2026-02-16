@@ -56,7 +56,7 @@ export interface StoreLimits {
 }
 
 type ApiErrorLike = {
-  response?: { status?: number; data?: { detail?: string; code?: string; message?: string } }
+  response?: { status?: number; data?: { detail?: string; code?: string; message?: string; upgrade_url?: string } }
   message?: string
   code?: string
 }
@@ -71,7 +71,7 @@ const normalizeApiError = (error: unknown, fallbackMessage: string) => {
   const normalized = new Error(detail)
   ;(normalized as ApiErrorLike).response = {
     status: err.response?.status,
-    data: { detail, code: err.response?.data?.code },
+    data: { detail, code: err.response?.data?.code, upgrade_url: err.response?.data?.upgrade_url },
   }
   ;(normalized as ApiErrorLike).code = err.response?.data?.code || err.code
   return normalized

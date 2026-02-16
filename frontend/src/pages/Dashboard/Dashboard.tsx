@@ -137,8 +137,6 @@ const Dashboard = () => {
     staleTime: 60000,
   })
 
-  const checkoutUrl = import.meta.env.VITE_STRIPE_CHECKOUT_URL || "/agendar-demo"
-
   const trialBlockedStore = useMemo(() => {
     return (stores ?? []).find(
       (s) => s.status === "blocked" && s.blocked_reason === "trial_expired"
@@ -167,7 +165,7 @@ const Dashboard = () => {
       if (typeof document !== "undefined" && document.visibilityState === "hidden") {
         return false
       }
-      const data = query.state.data
+      const data = query.state.data as StoreEdgeStatus | undefined
       if (!data?.online) return 30000
       return edgeSetupOpen ? 15000 : 20000
     },
@@ -727,20 +725,25 @@ const Dashboard = () => {
           </div>
 
           <div className="mt-6 flex flex-col sm:flex-row gap-3">
-            <a
-              href={checkoutUrl}
-              target="_blank"
-              rel="noopener noreferrer"
+            <Link
+              to="/app/upgrade"
               className="inline-flex items-center justify-center rounded-lg bg-blue-600 px-5 py-3 text-sm font-semibold text-white hover:bg-blue-700"
             >
               Assinar agora
-            </a>
-            <Link
-              to="/agendar-demo"
+            </Link>
+            <button
+              type="button"
+              onClick={() =>
+                window.open(
+                  "https://api.whatsapp.com/send/?phone=5511996918070&text&type=phone_number&app_absent=0",
+                  "_blank",
+                  "noopener,noreferrer"
+                )
+              }
               className="inline-flex items-center justify-center rounded-lg border border-gray-200 bg-white px-5 py-3 text-sm font-semibold text-gray-700 hover:bg-gray-50"
             >
               Falar com especialista
-            </Link>
+            </button>
           </div>
         </div>
       </div>

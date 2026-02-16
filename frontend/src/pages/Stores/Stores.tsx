@@ -1,5 +1,6 @@
 // src/pages/Stores/Stores.tsx
 import { useState, useEffect } from 'react';
+import { useNavigate } from 'react-router-dom';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import {
   storesService,
@@ -121,6 +122,7 @@ const PaywallModal = ({ state, onClose }: { state: PaywallState; onClose: () => 
 // =======================
 const CreateStoreModal = ({ isOpen, onClose }: { isOpen: boolean; onClose: () => void }) => {
   const queryClient = useQueryClient();
+  const navigate = useNavigate();
   const [paywall, setPaywall] = useState<PaywallState>({
     open: false,
     title: '',
@@ -132,8 +134,6 @@ const CreateStoreModal = ({ isOpen, onClose }: { isOpen: boolean; onClose: () =>
     address: '',
     city: '',
     state: '',
-    phone: '',
-    email: '',
     status: 'active',
   });
 
@@ -149,13 +149,31 @@ const CreateStoreModal = ({ isOpen, onClose }: { isOpen: boolean; onClose: () =>
         address: '',
         city: '',
         state: '',
-        phone: '',
-        email: '',
         status: 'active',
       });
     },
     onError: (error: any) => {
       const payload = error?.response?.data;
+      if (payload?.code === 'TRIAL_EXPIRED') {
+        toast.custom((t) => (
+          <div className="flex items-center gap-3 rounded-xl border border-gray-200 bg-white px-4 py-3 shadow-lg">
+            <div className="text-sm text-gray-700">
+              Seu trial expirou. Faça upgrade para continuar.
+            </div>
+            <button
+              type="button"
+              className="rounded-lg bg-blue-600 px-3 py-1.5 text-xs font-semibold text-white hover:bg-blue-700"
+              onClick={() => {
+                toast.dismiss(t.id);
+                navigate('/app/upgrade');
+              }}
+            >
+              Ver planos
+            </button>
+          </div>
+        ));
+        return;
+      }
       if (payload?.code === 'PAYWALL_TRIAL_LIMIT') {
         setPaywall({
           open: true,
@@ -260,36 +278,6 @@ const CreateStoreModal = ({ isOpen, onClose }: { isOpen: boolean; onClose: () =>
 
               <div>
                 <label className="block text-sm font-medium text-gray-700 mb-1">
-                  Telefone
-                </label>
-                <input
-                  type="tel"
-                  value={formData.phone}
-                  onChange={(e) => setFormData({ ...formData, phone: e.target.value })}
-                  className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent"
-                  placeholder="(11) 99999-9999"
-                  disabled={createMutation.isPending}
-                  aria-label="Telefone"
-                />
-              </div>
-
-              <div>
-                <label className="block text-sm font-medium text-gray-700 mb-1">
-                  Email
-                </label>
-                <input
-                  type="email"
-                  value={formData.email}
-                  onChange={(e) => setFormData({ ...formData, email: e.target.value })}
-                  className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent"
-                  placeholder="loja@email.com"
-                  disabled={createMutation.isPending}
-                  aria-label="Email"
-                />
-              </div>
-
-              <div>
-                <label className="block text-sm font-medium text-gray-700 mb-1">
                   Status
                 </label>
                 <select
@@ -366,14 +354,13 @@ const EditStoreModal = ({
   onClose: () => void 
 }) => {
   const queryClient = useQueryClient();
+  const navigate = useNavigate();
   const [formData, setFormData] = useState<UpdateStorePayload>({
     name: '',
     description: '',
     address: '',
     city: '',
     state: '',
-    phone: '',
-    email: '',
     status: 'active',
   });
 
@@ -385,7 +372,28 @@ const EditStoreModal = ({
       toast.success('Loja atualizada com sucesso!');
       onClose();
     },
-    onError: (error) => {
+    onError: (error: any) => {
+      const payload = error?.response?.data;
+      if (payload?.code === 'TRIAL_EXPIRED') {
+        toast.custom((t) => (
+          <div className="flex items-center gap-3 rounded-xl border border-gray-200 bg-white px-4 py-3 shadow-lg">
+            <div className="text-sm text-gray-700">
+              Seu trial expirou. Faça upgrade para continuar.
+            </div>
+            <button
+              type="button"
+              className="rounded-lg bg-blue-600 px-3 py-1.5 text-xs font-semibold text-white hover:bg-blue-700"
+              onClick={() => {
+                toast.dismiss(t.id);
+                navigate('/app/upgrade');
+              }}
+            >
+              Ver planos
+            </button>
+          </div>
+        ));
+        return;
+      }
       toast.error('Erro ao atualizar loja. Tente novamente.');
       console.error('Update store error:', error);
     },
@@ -400,8 +408,6 @@ const EditStoreModal = ({
         address: store.address || '',
         city: store.city || '',
         state: store.state || '',
-        phone: store.phone || '',
-        email: store.email || '',
         status: store.status || 'active',
       });
     }
@@ -498,36 +504,6 @@ const EditStoreModal = ({
 
               <div>
                 <label className="block text-sm font-medium text-gray-700 mb-1">
-                  Telefone
-                </label>
-                <input
-                  type="tel"
-                  value={formData.phone}
-                  onChange={(e) => setFormData({ ...formData, phone: e.target.value })}
-                  className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent"
-                  placeholder="(11) 99999-9999"
-                  disabled={updateMutation.isPending}
-                  aria-label="Telefone"
-                />
-              </div>
-
-              <div>
-                <label className="block text-sm font-medium text-gray-700 mb-1">
-                  Email
-                </label>
-                <input
-                  type="email"
-                  value={formData.email}
-                  onChange={(e) => setFormData({ ...formData, email: e.target.value })}
-                  className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent"
-                  placeholder="loja@email.com"
-                  disabled={updateMutation.isPending}
-                  aria-label="Email"
-                />
-              </div>
-
-              <div>
-                <label className="block text-sm font-medium text-gray-700 mb-1">
                   Status
                 </label>
                 <select
@@ -593,6 +569,7 @@ interface StoreCardProps {
 
 const StoreCard = ({ store, onEdit }: StoreCardProps) => {
   const queryClient = useQueryClient();
+  const navigate = useNavigate();
   const [showActions, setShowActions] = useState(false);
   const storeLastSeenAt = store.last_seen_at ?? null;
   const shouldFetchEdgeStatus = !storeLastSeenAt;
@@ -641,7 +618,28 @@ const StoreCard = ({ store, onEdit }: StoreCardProps) => {
       queryClient.invalidateQueries({ queryKey: ['stores'] });
       toast.success('Loja excluída com sucesso!');
     },
-    onError: (error) => {
+    onError: (error: any) => {
+      const payload = error?.response?.data;
+      if (payload?.code === 'TRIAL_EXPIRED') {
+        toast.custom((t) => (
+          <div className="flex items-center gap-3 rounded-xl border border-gray-200 bg-white px-4 py-3 shadow-lg">
+            <div className="text-sm text-gray-700">
+              Seu trial expirou. Faça upgrade para continuar.
+            </div>
+            <button
+              type="button"
+              className="rounded-lg bg-blue-600 px-3 py-1.5 text-xs font-semibold text-white hover:bg-blue-700"
+              onClick={() => {
+                toast.dismiss(t.id);
+                navigate('/app/upgrade');
+              }}
+            >
+              Ver planos
+            </button>
+          </div>
+        ));
+        return;
+      }
       toast.error('Erro ao excluir loja. Tente novamente.');
       console.error('Delete store error:', error);
     },

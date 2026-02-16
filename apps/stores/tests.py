@@ -4,6 +4,8 @@ from django.utils import timezone
 from unittest.mock import MagicMock, patch
 
 from apps.billing.utils import PaywallError, TRIAL_STORE_LIMIT, enforce_trial_store_limit
+from backend.utils.entitlements import TrialExpiredError
+from apps.stores.views import StoreViewSet
 from apps.stores import views_edge_status
 from apps.edge import views as edge_views
 from apps.edge.views import EdgeEventsIngestView
@@ -227,3 +229,25 @@ class EdgeHeartbeatIngestTests(SimpleTestCase):
         expected_ts = edge_views._parse_edge_ts(ts)
         self.assertEqual(called_store_id, store_id)
         self.assertEqual(called_ts, expected_ts)
+
+
+class TrialExpiredEnforcementTests(SimpleTestCase):
+    @patch("apps.stores.views.enforce_can_use_product", side_effect=TrialExpiredError())
+    def test_blocks_create_store_when_trial_expired(self, _enforce):
+        view = StoreViewSet()
+        request = APIRequestFactory().post("/api/v1/stores/", {}, format="json")
+        request.user = MagicMock()
+        view.request = request
+        serializer = MagicMock()
+        with self.assertRaises(TrialExpiredError):
+            view.perform_create(serializer)
+
+    @patch("apps.stores.views.enforce_can_use_product", side_effect=TrialExpiredError())
+    def test_blocks_delete_store_when_trial_expired(self, _enforce):
+        view = StoreViewSet()
+        request = APIRequestFactory().delete("/api/v1/stores/store-1/")
+        request.user = MagicMock()
+        view.request = request
+        view.get_object = MagicMock(return_value=MagicMock(org_id="org-1"))
+        with self.assertRaises(TrialExpiredError):
+            view.destroy(request, pk="store-1")

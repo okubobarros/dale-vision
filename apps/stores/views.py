@@ -30,6 +30,7 @@ from apps.billing.utils import (
     enforce_trial_store_limit,
     is_trial,
 )
+from backend.utils.entitlements import enforce_can_use_product
 import hashlib
 import secrets
 import uuid
@@ -182,12 +183,38 @@ class StoreViewSet(viewsets.ModelViewSet):
             'timestamp': timezone.now().isoformat()
         })
 
+    def destroy(self, request, *args, **kwargs):
+        store = self.get_object()
+        actor_user_id = None
+        try:
+            actor_user_id = ensure_user_uuid(request.user)
+        except Exception:
+            actor_user_id = None
+        enforce_can_use_product(
+            org_id=store.org_id,
+            actor_user_id=actor_user_id,
+            action="delete_store",
+            endpoint=request.path,
+        )
+        return super().destroy(request, *args, **kwargs)
+
     @action(detail=True, methods=['get'])
     def edge_token(self, request, pk=None):
         """
         Retorna um token do edge para a store (não rotaciona se já existir).
         """
         store = self.get_object()
+        actor_user_id = None
+        try:
+            actor_user_id = ensure_user_uuid(request.user)
+        except Exception:
+            actor_user_id = None
+        enforce_can_use_product(
+            org_id=store.org_id,
+            actor_user_id=actor_user_id,
+            action="edge_token",
+            endpoint=request.path,
+        )
         edge_token = _get_active_edge_token(store.id)
         raw_token = edge_token.token_plaintext if edge_token else None
         if not edge_token:
@@ -206,6 +233,17 @@ class StoreViewSet(viewsets.ModelViewSet):
         """
         store = self.get_object()
         _require_store_owner_or_admin(request.user, store)
+        actor_user_id = None
+        try:
+            actor_user_id = ensure_user_uuid(request.user)
+        except Exception:
+            actor_user_id = None
+        enforce_can_use_product(
+            org_id=store.org_id,
+            actor_user_id=actor_user_id,
+            action="edge_credentials",
+            endpoint=request.path,
+        )
 
         edge_token = _get_active_edge_token(store.id)
         raw_token = edge_token.token_plaintext if edge_token else None
@@ -230,6 +268,17 @@ class StoreViewSet(viewsets.ModelViewSet):
         """
         store = self.get_object()
         _require_store_owner_or_admin(request.user, store)
+        actor_user_id = None
+        try:
+            actor_user_id = ensure_user_uuid(request.user)
+        except Exception:
+            actor_user_id = None
+        enforce_can_use_product(
+            org_id=store.org_id,
+            actor_user_id=actor_user_id,
+            action="edge_setup",
+            endpoint=request.path,
+        )
 
         edge_token = _get_active_edge_token(store.id)
         raw_token = edge_token.token_plaintext if edge_token else None
@@ -253,6 +302,17 @@ class StoreViewSet(viewsets.ModelViewSet):
         """
         store = self.get_object()
         _require_store_owner_or_admin(request.user, store)
+        actor_user_id = None
+        try:
+            actor_user_id = ensure_user_uuid(request.user)
+        except Exception:
+            actor_user_id = None
+        enforce_can_use_product(
+            org_id=store.org_id,
+            actor_user_id=actor_user_id,
+            action="edge_token_rotate",
+            endpoint=request.path,
+        )
 
         edge_token, raw_token = _rotate_edge_token(store.id)
         return Response(
@@ -353,6 +413,17 @@ class StoreViewSet(viewsets.ModelViewSet):
             return Response(serializer.data)
 
         require_store_role(request.user, str(store.id), ALLOWED_MANAGE_ROLES)
+        actor_user_id = None
+        try:
+            actor_user_id = ensure_user_uuid(request.user)
+        except Exception:
+            actor_user_id = None
+        enforce_can_use_product(
+            org_id=store.org_id,
+            actor_user_id=actor_user_id,
+            action="create_camera",
+            endpoint=request.path,
+        )
         serializer = CameraSerializer(data=request.data)
         serializer.is_valid(raise_exception=True)
         requested_active = serializer.validated_data.get("active", True)
@@ -421,6 +492,12 @@ class StoreViewSet(viewsets.ModelViewSet):
                     user_uuid = ensure_user_uuid(user)
                 except Exception:
                     user_uuid = None
+            enforce_can_use_product(
+                org_id=requested_org_id,
+                actor_user_id=user_uuid,
+                action="create_store",
+                endpoint=self.request.path,
+            )
             enforce_trial_store_limit(org_id=requested_org_id, actor_user_id=user_uuid)
             store = serializer.save(
                 org_id=requested_org_id,
@@ -438,6 +515,12 @@ class StoreViewSet(viewsets.ModelViewSet):
                     user_uuid = ensure_user_uuid(user)
                 except Exception:
                     user_uuid = None
+            enforce_can_use_product(
+                org_id=org_ids[0],
+                actor_user_id=user_uuid,
+                action="create_store",
+                endpoint=self.request.path,
+            )
             enforce_trial_store_limit(org_id=org_ids[0], actor_user_id=user_uuid)
             store = serializer.save(
                 org_id=org_ids[0],
@@ -459,6 +542,7 @@ class StoreViewSet(viewsets.ModelViewSet):
                 country="BR",
                 timezone="America/Sao_Paulo",
                 created_at=timezone.now(),
+                trial_ends_at=timezone.now() + timedelta(hours=72),
             )
             OrgMember.objects.create(
                 org=org,
@@ -467,6 +551,12 @@ class StoreViewSet(viewsets.ModelViewSet):
                 created_at=timezone.now(),
             )
             logger.info("[ORG] created org_id=%s user_uuid=%s", str(org.id), str(user_uuid))
+            enforce_can_use_product(
+                org_id=org.id,
+                actor_user_id=user_uuid,
+                action="create_store",
+                endpoint=self.request.path,
+            )
             enforce_trial_store_limit(org_id=org.id, actor_user_id=user_uuid)
             store = serializer.save(
                 org=org,
@@ -489,7 +579,7 @@ class StoreViewSet(viewsets.ModelViewSet):
             status_ui = "active" if store_status in ("active", "trial") else "inactive"
             plan_value = "trial" if store_status == "trial" else None
 
-            # ⭐ MOCK DATA - depois substituímos por dados reais
+            # Sem dados reais ainda (estrutura vazia)
             dashboard_data = {
                 'store': {
                     'id': str(store.id),
@@ -498,54 +588,10 @@ class StoreViewSet(viewsets.ModelViewSet):
                     'plan': plan_value,
                     'status': status_ui,
                 },
-                'metrics': {
-                    'health_score': 92,
-                    'productivity': 88,
-                    'idle_time': 12,
-                    'visitor_flow': 1240,
-                    'conversion_rate': 77.5,
-                    'avg_cart_value': 89.90,
-                },
-                'insights': {
-                    'peak_hour': '14:00-16:00',
-                    'best_selling_zone': 'Corredor A',
-                    'employee_performance': {
-                        'best': 'Maria Silva (94% produtiva)',
-                        'needs_attention': 'João Santos (67% produtiva)'
-                    },
-                },
-                'recommendations': [
-                    {
-                        'id': 'staff_redistribution',
-                        'title': 'Redistribuir Equipe',
-                        'description': 'Pico de fluxo esperado às 12:00. Mover 2 colaboradores para o setor têxtil.',
-                        'priority': 'high',
-                        'action': 'redistribute_staff',
-                        'estimated_impact': 'Aumento de 15% na conversão',
-                    },
-                    {
-                        'id': 'inventory_check',
-                        'title': 'Verificar Estoque',
-                        'description': 'Produtos da linha verão com baixo estoque. Reabastecer até sexta.',
-                        'priority': 'medium',
-                        'action': 'check_inventory',
-                        'estimated_impact': 'Evitar perda de R$ 2.400 em vendas',
-                    }
-                ],
-                'alerts': [
-                    {
-                        'type': 'high_idle_time',
-                        'message': 'Funcionário João teve 45min de ociosidade hoje',
-                        'severity': 'medium',
-                        'time': '10:30',
-                    },
-                    {
-                        'type': 'conversion_opportunity',
-                        'message': '5 clientes abandonaram carrinho no setor eletrônicos',
-                        'severity': 'high',
-                        'time': '11:15',
-                    }
-                ]
+                'metrics': None,
+                'insights': None,
+                'recommendations': [],
+                'alerts': [],
             }
 
             return Response(dashboard_data)
@@ -560,22 +606,8 @@ class StoreViewSet(viewsets.ModelViewSet):
                     'plan': None,
                     'status': fallback_status,
                 },
-                'metrics': {
-                    'health_score': 0,
-                    'productivity': 0,
-                    'idle_time': 0,
-                    'visitor_flow': 0,
-                    'conversion_rate': 0,
-                    'avg_cart_value': 0,
-                },
-                'insights': {
-                    'peak_hour': None,
-                    'best_selling_zone': None,
-                    'employee_performance': {
-                        'best': None,
-                        'needs_attention': None,
-                    },
-                },
+                'metrics': None,
+                'insights': None,
                 'recommendations': [],
                 'alerts': [],
                 'timestamp': timezone.now().isoformat(),
@@ -660,38 +692,17 @@ class StoreViewSet(viewsets.ModelViewSet):
         try:
             stores = list(self.get_queryset())
             total_stores = len(stores)
-            active_stores = 0
+            active_stores = len([s for s in stores if getattr(s, "status", None) in ("active", "trial")])
 
             network_data = {
                 'network': {
                     'total_stores': total_stores,
-                    'active_stores': 0,
-                    'total_visitors': 3124,
-                    'avg_conversion': 75.2,
+                    'active_stores': active_stores,
+                    'total_visitors': 0,
+                    'avg_conversion': 0,
                 },
                 'stores': []
             }
-
-            for store in stores:
-                store_status = getattr(store, "status", None)
-                status_ui = "active" if store_status in ("active", "trial") else "inactive"
-                if status_ui == "active":
-                    active_stores += 1
-
-                # MOCK metrics por loja
-                store_metrics = {
-                    'id': str(getattr(store, "id", "")),
-                    'name': getattr(store, "name", None),
-                    'location': f'{getattr(store, "name", "Loja")} - Matriz',  # Placeholder
-                    'health': 92 - (total_stores * 2),  # Mock
-                    'visitor_flow': 1240 - (total_stores * 100),
-                    'conversion': 77.5 - (total_stores * 1.5),
-                    'status': status_ui,
-                    'alerts': 2 if status_ui == "active" else 0
-                }
-                network_data['stores'].append(store_metrics)
-
-            network_data['network']['active_stores'] = active_stores
             return Response(network_data)
         except (ProgrammingError, ObjectDoesNotExist) as exc:
             print(f"[WARN] network_dashboard fallback: {exc}")
