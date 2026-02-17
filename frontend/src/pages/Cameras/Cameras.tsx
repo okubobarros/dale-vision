@@ -159,7 +159,10 @@ const Cameras = () => {
     },
     onError: (err: unknown) => {
       const payload = (err as { response?: { data?: { code?: string } } })?.response?.data
-      if (payload?.code === "SUBSCRIPTION_REQUIRED") {
+      if (
+        payload?.code === "TRIAL_EXPIRED" ||
+        payload?.code === "SUBSCRIPTION_REQUIRED"
+      ) {
         toast.custom((t) => (
           <div className="flex items-center gap-3 rounded-xl border border-gray-200 bg-white px-4 py-3 shadow-lg">
             <div className="text-sm text-gray-700">
@@ -170,7 +173,7 @@ const Cameras = () => {
               className="rounded-lg bg-blue-600 px-3 py-1.5 text-xs font-semibold text-white hover:bg-blue-700"
               onClick={() => {
                 toast.dismiss(t.id)
-                window.location.href = "/app/billing"
+                window.location.href = "/app/upgrade"
               }}
             >
               Ver planos
@@ -186,8 +189,14 @@ const Cameras = () => {
       }
       const status = (err as { response?: { status?: number } })?.response?.status
       if (status === 400) {
+        const detail =
+          (err as { response?: { data?: { detail?: string; message?: string } } })
+            ?.response?.data?.detail ||
+          (err as { response?: { data?: { detail?: string; message?: string } } })
+            ?.response?.data?.message
         setCreateErrorMessage(
-          "Você está fora da rede da loja ou faltam campos (ex.: canal)."
+          detail ||
+            "Você está fora da rede da loja ou faltam campos (ex.: canal)."
         )
         setConnectionHelpOpen(true)
         if (import.meta.env.DEV) {
@@ -1142,7 +1151,7 @@ const CameraModal = ({
                 onClick={onOpenHelp}
                 className="mt-2 inline-flex items-center justify-center rounded-lg border border-red-200 bg-white px-3 py-1.5 text-xs font-semibold text-red-700 hover:bg-red-50"
               >
-                Abrir instruções de conexão
+                Rodar Diagnose
               </button>
             </div>
           )}
@@ -1274,7 +1283,10 @@ const ConnectionHelpModal = ({ open, onClose, diagnoseUrl }: ConnectionHelpModal
           <div>1. Confirme que o computador está na mesma rede do NVR/câmeras.</div>
           <div>2. Verifique IP, usuário e senha do NVR.</div>
           <div>3. Para Intelbras, informe o canal e mantenha o subtipo em 1.</div>
-          <div>4. Se estiver remoto, peça para o gerente rodar o Diagnose e enviar o ZIP.</div>
+          <div>
+            4. Se estiver remoto, peça para o gerente rodar o{" "}
+            <span className="font-mono">Diagnose.bat</span> e enviar o ZIP gerado.
+          </div>
         </div>
         <div className="mt-4 flex flex-col sm:flex-row gap-2">
           <a

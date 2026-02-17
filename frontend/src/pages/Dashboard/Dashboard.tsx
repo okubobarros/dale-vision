@@ -178,6 +178,12 @@ const Dashboard = () => {
   const storeLastSeenAt = selectedStoreItem?.last_seen_at ?? null
   const lastSeenAt = storeLastSeenAt ?? getLastSeenAt(edgeStatus)
   const isEdgeOnlineByLastSeen = isRecentTimestamp(lastSeenAt, ONLINE_MAX_AGE_SEC)
+  const selectedStoreStatus = selectedStoreItem?.status ?? null
+  const selectedStorePlan =
+    selectedStoreItem?.plan ??
+    (selectedStoreStatus === "trial" ? "trial" : null)
+  const selectedStoreOwner =
+    selectedStoreItem?.owner_email || user?.email || null
 
   const { data: storeLimits } = useQuery({
     queryKey: ["store-limits", selectedStore],
@@ -408,7 +414,7 @@ const Dashboard = () => {
 
       
 
-      {!dashboard && dashboardError && (
+      {dashboardError && (
         <p className="text-xs text-gray-500 mt-3">{dashboardError}</p>
       )}
     </div>
@@ -622,9 +628,26 @@ const Dashboard = () => {
   const edgeStatusClass = isEdgeOnlineByLastSeen
     ? "bg-green-100 text-green-800"
     : "bg-gray-100 text-gray-800"
+  const selectedStoreStatusLabel =
+    selectedStoreStatus === "active"
+      ? "Ativa"
+      : selectedStoreStatus === "trial"
+      ? "Trial"
+      : selectedStoreStatus === "blocked"
+      ? "Bloqueada"
+      : "Inativa"
+  const selectedStoreStatusClass =
+    selectedStoreStatus === "active"
+      ? "bg-green-100 text-green-800"
+      : selectedStoreStatus === "trial"
+      ? "bg-yellow-100 text-yellow-800"
+      : selectedStoreStatus === "blocked"
+      ? "bg-red-100 text-red-800"
+      : "bg-gray-100 text-gray-800"
 
   const showStoreIndicators =
     Boolean(selectedStore) && selectedStore !== ALL_STORES_VALUE
+  const hasRealDashboardData = Boolean(dashboard?.metrics || dashboard?.insights)
 
   const eventStatusClass = (status: string) =>
     status === "open"
@@ -765,25 +788,26 @@ const Dashboard = () => {
             {user?.first_name || user?.username}, bem-vindo ao DALE Vision
           </p>
 
-          {dashboard && (
+          {selectedStoreItem && selectedStore !== ALL_STORES_VALUE && (
             <div className="mt-2 flex flex-wrap items-center gap-2">
               <span
-                className={`px-3 py-1 rounded-full text-xs sm:text-sm font-semibold ${
-                  dashboard.store.status === "active"
-                    ? "bg-green-100 text-green-800"
-                    : "bg-gray-100 text-gray-800"
-                }`}
+                className={`px-3 py-1 rounded-full text-xs sm:text-sm font-semibold ${selectedStoreStatusClass}`}
               >
-                {dashboard.store.status === "active" ? "Ativa" : "Inativa"}
+                {selectedStoreStatusLabel}
               </span>
 
               <span className="text-xs sm:text-sm text-gray-600">
-                Plano: <span className="font-semibold">{dashboard.store.plan}</span>
+                Plano:{" "}
+                <span className="font-semibold">
+                  {selectedStorePlan || "—"}
+                </span>
               </span>
 
-              <span className="text-xs sm:text-sm text-gray-500 truncate max-w-[220px]">
-                {dashboard.store.owner_email}
-              </span>
+              {selectedStoreOwner && (
+                <span className="text-xs sm:text-sm text-gray-500 truncate max-w-[220px]">
+                  {selectedStoreOwner}
+                </span>
+              )}
             </div>
           )}
         </div>
@@ -823,22 +847,20 @@ const Dashboard = () => {
         )}
       </div>
 
-      {dashboard ? (
-        <>
-          {selectedStore !== ALL_STORES_VALUE && (
-            <div className="space-y-4 sm:space-y-6">
-              <div className="bg-white rounded-xl shadow-sm border border-gray-100 p-4 sm:p-6">
-                <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3">
-                  <div>
-                    <h2 className="text-lg sm:text-xl font-bold text-gray-800">
-                      Store Health
-                  </h2>
-                  <p className="text-sm text-gray-500 mt-1">
-                    Última comunicação:{" "}
-                    <span className="font-semibold text-gray-700">
-                      {formatLastSeenDisplay(lastSeenAt)}
-                    </span>
-                  </p>
+      {selectedStore !== ALL_STORES_VALUE && (
+        <div className="space-y-4 sm:space-y-6">
+          <div className="bg-white rounded-xl shadow-sm border border-gray-100 p-4 sm:p-6">
+            <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3">
+              <div>
+                <h2 className="text-lg sm:text-xl font-bold text-gray-800">
+                  Store Health
+                </h2>
+                <p className="text-sm text-gray-500 mt-1">
+                  Última comunicação:{" "}
+                  <span className="font-semibold text-gray-700">
+                    {formatLastSeenDisplay(lastSeenAt)}
+                  </span>
+                </p>
                     {edgeStatus?.store_status_reason && (
                       <p className="text-xs text-gray-500 mt-1">
                         {formatReason(edgeStatus.store_status_reason)}
@@ -937,10 +959,10 @@ const Dashboard = () => {
                       Nenhuma câmera encontrada.
                     </div>
                   )}
-                </div>
-              </div>
+            </div>
+          </div>
 
-              <div className="bg-white rounded-xl shadow-sm border border-gray-100 p-4 sm:p-6">
+          <div className="bg-white rounded-xl shadow-sm border border-gray-100 p-4 sm:p-6">
                 <div className="flex items-center justify-between gap-3 mb-4">
                   <h2 className="text-lg sm:text-xl font-bold text-gray-800">
                     Últimos alertas
@@ -1053,9 +1075,9 @@ const Dashboard = () => {
                     })}
                   </div>
                 )}
-              </div>
-            </div>
-          )}
+          </div>
+        </div>
+      )}
 
           {showStoreIndicators ? (
             isLoadingDashboard ? (
@@ -1064,6 +1086,15 @@ const Dashboard = () => {
               </div>
             ) : (
               <>
+                {!hasRealDashboardData && (
+                  <div className="bg-white rounded-xl shadow-sm border border-gray-100 p-5 text-sm text-gray-700">
+                    <div className="font-semibold text-gray-900">Ainda sem dados</div>
+                    <p className="mt-2 text-gray-600">
+                      Conecte as câmeras e deixe rodar por 72h para gerar métricas
+                      reais. Enquanto isso, use o Edge Setup para validar a conexão.
+                    </p>
+                  </div>
+                )}
                 {/* Métricas topo */}
                 <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4 sm:gap-6">
                   <MetricCard
@@ -1164,39 +1195,6 @@ const Dashboard = () => {
               </div>
             </div>
           </div>
-        </>
-      ) : (
-        <div className="text-center py-12">
-          <div className="inline-flex items-center justify-center w-16 h-16 bg-gray-100 rounded-full mb-4">
-            {isLoadingDashboard ? (
-              <div className="animate-spin rounded-full h-8 w-8 border-t-2 border-b-2 border-blue-500" />
-            ) : (
-              <svg
-                className="w-8 h-8 text-gray-400"
-                fill="none"
-                stroke="currentColor"
-                viewBox="0 0 24 24"
-              >
-                <path
-                  strokeLinecap="round"
-                  strokeLinejoin="round"
-                  strokeWidth={2}
-                  d="M9 19v-6a2 2 0 00-2-2H5a2 2 0 00-2 2v6a2 2 0 002 2h2a2 2 0 002-2zm0 0V9a2 2 0 012-2h2a2 2 0 012 2v10m-6 0a2 2 0 002 2h2a2 2 0 002-2m0 0V5a2 2 0 012-2h2a2 2 0 012 2v14a2 2 0 01-2 2h-2a2 2 0 01-2-2z"
-                />
-              </svg>
-            )}
-          </div>
-          <h3 className="text-lg font-bold text-gray-900 mb-2">
-            {isLoadingDashboard ? "Carregando dashboard" : "Dashboard indisponivel"}
-          </h3>
-          <p className="text-gray-500">
-            {isLoadingDashboard
-              ? "Estamos reunindo os dados da rede."
-              : "Tente novamente em alguns instantes."}
-          </p>
-        </div>
-      )}
-
       <EdgeSetupModal
         open={edgeSetupOpen}
         onClose={() => setEdgeSetupOpen(false)}
