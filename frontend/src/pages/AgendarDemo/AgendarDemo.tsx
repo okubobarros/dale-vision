@@ -6,10 +6,6 @@ import { demoService } from "../../services/demo"
 
 type StoresRange = "1" | "2-5" | "6-20" | "20+"
 type CamerasRange = "1-3" | "4-10" | "11-50" | "50+"
-type CamerasCountRangeLead = "1-3" | "4-10" | "11-50" | "50+" | "dontknow"
-type HasNvrLead = "yes" | "no" | "dontknow"
-type CameraBrandLead = "intelbras" | "hikvision" | "dahua" | "other" | "dontknow"
-type AppUsedLead = "isic_lite" | "mibo" | "other" | "dontknow"
 
 type GoalValue =
   | "loss_prevention"
@@ -20,9 +16,23 @@ type GoalValue =
   | "heatmap"
   | "other"
 
-type SetupWhereValue = "store_pc" | "nvr_server" | "not_sure"
+type SetupWhereValue = "store_pc" | "store_pc_linux" | "nvr_server" | "not_sure"
 type AccessWhoValue = "owner" | "store_manager" | "staff" | "not_sure"
 type HowHeardValue = "referral" | "instagram" | "google" | "youtube" | "other"
+type OperatorsAccessValue = "yes" | "no" | ""
+type OperationTypeValue =
+  | "gelateria"
+  | "fashion"
+  | "cafeteria"
+  | "bakery"
+  | "restaurant"
+  | "market"
+  | "pharmacy"
+  | "cosmetics"
+  | "electronics"
+  | "petshop"
+  | "services"
+  | "other"
 
 // Dor do multilojista
 type MultiPainValue =
@@ -41,6 +51,21 @@ const HOW_HEARD: { label: string; value: HowHeardValue }[] = [
   { label: "Indicação", value: "referral" },
   { label: "Google / Busca", value: "google" },
   { label: "Outro", value: "other" },
+]
+
+const OPERATION_TYPES: { label: string; value: OperationTypeValue }[] = [
+  { label: "Sorveteria / Gelateria", value: "gelateria" },
+  { label: "Moda / Vestuário", value: "fashion" },
+  { label: "Cafeteria", value: "cafeteria" },
+  { label: "Padaria", value: "bakery" },
+  { label: "Restaurante", value: "restaurant" },
+  { label: "Mercado / Mini mercado", value: "market" },
+  { label: "Farmácia", value: "pharmacy" },
+  { label: "Cosméticos", value: "cosmetics" },
+  { label: "Eletrônicos", value: "electronics" },
+  { label: "Pet shop", value: "petshop" },
+  { label: "Serviços (lavanderia, salão, etc.)", value: "services" },
+  { label: "Outros", value: "other" },
 ]
 
 const CAMERA_BRANDS = [
@@ -73,6 +98,48 @@ const MULTI_PAINS: { label: string; value: MultiPainValue }[] = [
   { label: "Outro", value: "other" },
 ]
 
+const BRAZIL_UF = [
+  "AC",
+  "AL",
+  "AP",
+  "AM",
+  "BA",
+  "CE",
+  "DF",
+  "ES",
+  "GO",
+  "MA",
+  "MT",
+  "MS",
+  "MG",
+  "PA",
+  "PB",
+  "PR",
+  "PE",
+  "PI",
+  "RJ",
+  "RN",
+  "RS",
+  "RO",
+  "RR",
+  "SC",
+  "SP",
+  "SE",
+  "TO",
+] as const
+
+const PILOT_CITY_OPTIONS = [
+  "São Paulo",
+  "Rio de Janeiro",
+  "Belo Horizonte",
+  "Brasília",
+  "Curitiba",
+  "Porto Alegre",
+  "Salvador",
+  "Fortaleza",
+  "Recife",
+  "Outra",
+] as const
 function onlyDigits(v: string) {
   return (v || "").replace(/\D/g, "")
 }
@@ -145,21 +212,19 @@ export default function AgendarDemo() {
   const [howHeard, setHowHeard] = useState<HowHeardValue | "">("")
   const [howHeardOther, setHowHeardOther] = useState("")
 
-  const [operationType, setOperationType] = useState("")
+  const [operationType, setOperationType] = useState<OperationTypeValue | "">("")
+  const [operationTypeOther, setOperationTypeOther] = useState("")
   const [storesRange, setStoresRange] = useState<StoresRange | "">("")
   const [camerasRange, setCamerasRange] = useState<CamerasRange | "">("")
   const [cameraBrands, setCameraBrands] = useState<string[]>([])
-  const [camerasCountRangeLead, setCamerasCountRangeLead] =
-    useState<CamerasCountRangeLead | "">("")
-  const [hasNvrLead, setHasNvrLead] = useState<HasNvrLead | "">("")
-  const [cameraBrandLead, setCameraBrandLead] = useState<CameraBrandLead | "">("")
-  const [appUsedLead, setAppUsedLead] = useState<AppUsedLead | "">("")
-  const [city, setCity] = useState("")
-  const [stateUF, setStateUF] = useState("")
+  const [pilotCity, setPilotCity] = useState("")
+  const [pilotCityOther, setPilotCityOther] = useState("")
+  const [pilotState, setPilotState] = useState("")
 
   // ⚠️ Agora fica ABERTO no formulário e OBRIGATÓRIO (sem accordion)
   const [setupWhere, setSetupWhere] = useState<SetupWhereValue | "">("")
   const [accessWho, setAccessWho] = useState<AccessWhoValue | "">("")
+  const [operatorsHaveAccess, setOperatorsHaveAccess] = useState<OperatorsAccessValue>("")
 
   // Objetivos (multi seleção)
   const [goals, setGoals] = useState<GoalValue[]>([])
@@ -196,17 +261,33 @@ export default function AgendarDemo() {
 
   const progress = useMemo(() => {
     let done = 0
-    const total = 8
+    let total = 9
     if (name.trim()) done++
     if (isValidWhatsappBR11Mobile(whatsapp)) done++
-    if (operationType.trim()) done++
+    if (operationType) done++
+    if (operationType === "other") {
+      total += 1
+      if (operationTypeOther.trim()) done++
+    }
     if (storesRange) done++
     if (camerasRange) done++
     if (goals.length > 0) done++
     if (setupWhere) done++
+    if (operatorsHaveAccess) done++
     if (accessWho) done++
     return Math.round((done / total) * 100)
-  }, [name, whatsapp, operationType, storesRange, camerasRange, goals.length, setupWhere, accessWho])
+  }, [
+    name,
+    whatsapp,
+    operationType,
+    operationTypeOther,
+    storesRange,
+    camerasRange,
+    goals.length,
+    setupWhere,
+    operatorsHaveAccess,
+    accessWho,
+  ])
 
   function toggleBrand(brand: (typeof CAMERA_BRANDS)[number]) {
     setCameraBrands((prev) => {
@@ -237,7 +318,10 @@ export default function AgendarDemo() {
     if (!isValidWhatsappBR11Mobile(whatsapp)) {
       return toast.error("WhatsApp inválido. Use DDD + número de celular (11 dígitos, começando com 9).")
     }
-    if (!operationType.trim()) return toast.error("Informe o segmento da operação.")
+    if (!operationType) return toast.error("Informe o segmento da operação.")
+    if (operationType === "other" && !operationTypeOther.trim()) {
+      return toast.error('Preencha "Qual?" (segmento da operação).')
+    }
     if (!storesRange) return toast.error("Selecione a faixa de quantidade de lojas.")
     if (!camerasRange) return toast.error("Selecione a faixa de quantidade de câmeras.")
 
@@ -251,6 +335,9 @@ export default function AgendarDemo() {
 
     if (!setupWhere) return toast.error("Responda onde a DaleVision irá rodar em sua loja.")
     if (!accessWho) return toast.error("Selecione quem terá acesso para ajudar na ativação.")
+    if (!operatorsHaveAccess) {
+      return toast.error("Informe se operadores terão acesso ao computador.")
+    }
 
     if (!emailClean || !isValidEmail(emailClean)) return toast.error("Informe um e-mail válido.")
 
@@ -266,13 +353,18 @@ export default function AgendarDemo() {
         email: emailClean,
         whatsapp: whatsappClean,
 
-        operation_type: operationType.trim(),
+        operation_type: operationType,
         stores_range: storesRange,
         cameras_range: camerasRange,
         camera_brands_json: cameraBrands,
 
-        pilot_city: city.trim() ? city.trim() : null,
-        pilot_state: stateUF.trim() ? stateUF.trim().toUpperCase() : null,
+        pilot_city:
+          pilotCity.trim()
+            ? pilotCity === "Outra"
+              ? pilotCityOther.trim() || null
+              : pilotCity
+            : null,
+        pilot_state: pilotState.trim() ? pilotState.trim().toUpperCase() : null,
 
         primary_goal: primaryGoal || null,
         primary_goals: goals,
@@ -299,10 +391,9 @@ export default function AgendarDemo() {
 
           activation_setup_where: setupWhere,
           activation_access_who: accessWho,
-          lead_cameras_count_range: camerasCountRangeLead || null,
-          lead_has_nvr: hasNvrLead || null,
-          lead_camera_brand: cameraBrandLead || null,
-          lead_app_used: appUsedLead || null,
+          operators_have_access: operatorsHaveAccess,
+          operation_type_other:
+            operationType === "other" ? operationTypeOther.trim() || null : null,
 
           next_step_hint:
             "Após a demo, enviamos um checklist simples com o passo a passo do piloto e como conectamos as câmeras.",
@@ -502,13 +593,33 @@ export default function AgendarDemo() {
               <label className="text-sm font-medium text-slate-700" htmlFor="demo-operation">
                 Segmento / tipo de operação *
               </label>
-              <input
+              <select
                 id="demo-operation"
-                className={inputBase}
-                placeholder="Ex: supermercado, farmácia, moda, atacarejo…"
+                className={selectBase}
                 value={operationType}
-                onChange={(e) => setOperationType(e.target.value)}
-              />
+                onChange={(e) => setOperationType(e.target.value as OperationTypeValue)}
+              >
+                <option value="">Selecione</option>
+                {OPERATION_TYPES.map((item) => (
+                  <option key={item.value} value={item.value}>
+                    {item.label}
+                  </option>
+                ))}
+              </select>
+              {operationType === "other" && (
+                <div className="mt-3">
+                  <label className="text-sm font-medium text-slate-700" htmlFor="demo-operation-other">
+                    Qual? *
+                  </label>
+                  <input
+                    id="demo-operation-other"
+                    className={inputBase}
+                    placeholder="Descreva o segmento"
+                    value={operationTypeOther}
+                    onChange={(e) => setOperationTypeOther(e.target.value)}
+                  />
+                </div>
+              )}
               {fieldErrors.operation_type && <p className="mt-2 text-xs text-red-600">{fieldErrors.operation_type}</p>}
             </div>
 
@@ -534,7 +645,7 @@ export default function AgendarDemo() {
 
               <div>
                 <label className="text-sm font-medium text-slate-700" htmlFor="demo-cameras-range">
-                  Quantas câmeras (aprox.)? *
+                  Quantidade total de Câmeras? *
                 </label>
                 <select
                   id="demo-cameras-range"
@@ -549,87 +660,6 @@ export default function AgendarDemo() {
                   <option value="50+">50+</option>
                 </select>
                 {fieldErrors.cameras_range && <p className="mt-2 text-xs text-red-600">{fieldErrors.cameras_range}</p>}
-              </div>
-            </div>
-
-            <div className="rounded-2xl border border-slate-200 bg-white/70 p-4">
-              <div className="flex items-center justify-between gap-2">
-                <h3 className="font-semibold text-slate-900">Infraestrutura atual (opcional)</h3>
-                <span className="text-xs text-slate-500">Leva 10s</span>
-              </div>
-              <div className="mt-3 grid gap-3 sm:grid-cols-2">
-                <div>
-                  <label className="text-sm font-medium text-slate-700" htmlFor="lead-cameras-count-range">
-                    Faixa de câmeras (aprox.)
-                  </label>
-                  <select
-                    id="lead-cameras-count-range"
-                    className={selectBase}
-                    value={camerasCountRangeLead}
-                    onChange={(e) => setCamerasCountRangeLead(e.target.value as CamerasCountRangeLead)}
-                  >
-                    <option value="">Selecione</option>
-                    <option value="1-3">1–3</option>
-                    <option value="4-10">4–10</option>
-                    <option value="11-50">11–50</option>
-                    <option value="50+">50+</option>
-                    <option value="dontknow">Não sei</option>
-                  </select>
-                </div>
-
-                <div>
-                  <label className="text-sm font-medium text-slate-700" htmlFor="lead-has-nvr">
-                    Você tem NVR/DVR?
-                  </label>
-                  <select
-                    id="lead-has-nvr"
-                    className={selectBase}
-                    value={hasNvrLead}
-                    onChange={(e) => setHasNvrLead(e.target.value as HasNvrLead)}
-                  >
-                    <option value="">Selecione</option>
-                    <option value="yes">Sim</option>
-                    <option value="no">Não</option>
-                    <option value="dontknow">Não sei</option>
-                  </select>
-                </div>
-
-                <div>
-                  <label className="text-sm font-medium text-slate-700" htmlFor="lead-camera-brand">
-                    Marca principal
-                  </label>
-                  <select
-                    id="lead-camera-brand"
-                    className={selectBase}
-                    value={cameraBrandLead}
-                    onChange={(e) => setCameraBrandLead(e.target.value as CameraBrandLead)}
-                  >
-                    <option value="">Selecione</option>
-                    <option value="intelbras">Intelbras</option>
-                    <option value="hikvision">Hikvision</option>
-                    <option value="dahua">Dahua</option>
-                    <option value="other">Outra</option>
-                    <option value="dontknow">Não sei</option>
-                  </select>
-                </div>
-
-                <div>
-                  <label className="text-sm font-medium text-slate-700" htmlFor="lead-app-used">
-                    App atual
-                  </label>
-                  <select
-                    id="lead-app-used"
-                    className={selectBase}
-                    value={appUsedLead}
-                    onChange={(e) => setAppUsedLead(e.target.value as AppUsedLead)}
-                  >
-                    <option value="">Selecione</option>
-                    <option value="isic_lite">iSIC Lite</option>
-                    <option value="mibo">Mibo</option>
-                    <option value="other">Outro</option>
-                    <option value="dontknow">Não sei</option>
-                  </select>
-                </div>
               </div>
             </div>
 
@@ -752,8 +782,25 @@ export default function AgendarDemo() {
                   >
                     <option value="">Selecione</option>
                     <option value="store_pc">Computador na loja (Windows)</option>
+                    <option value="store_pc_linux">Computador na loja (Linux)</option>
                     <option value="nvr_server">Servidor/NVR onde ficam as câmeras</option>
                     <option value="not_sure">Não sei ainda</option>
+                  </select>
+                </div>
+
+                <div>
+                  <label className="text-sm font-medium text-slate-700" htmlFor="demo-operators-access">
+                    Operadores terão acesso se rodar no computador? *
+                  </label>
+                  <select
+                    id="demo-operators-access"
+                    className={selectBase}
+                    value={operatorsHaveAccess}
+                    onChange={(e) => setOperatorsHaveAccess(e.target.value as OperatorsAccessValue)}
+                  >
+                    <option value="">Selecione</option>
+                    <option value="yes">Sim</option>
+                    <option value="no">Não</option>
                   </select>
                 </div>
 
@@ -850,35 +897,63 @@ export default function AgendarDemo() {
 
             {/* Loja piloto opcional */}
             <div className="space-y-2">
-              <h3 className="font-semibold text-slate-900">Loja piloto (opcional)</h3>
-              <div className="flex gap-3">
-                <div className="w-full">
-                  <label className="text-sm font-medium text-slate-700" htmlFor="demo-city">
-                    Cidade
+              <h3 className="font-semibold text-slate-900">Local da loja piloto (opcional)</h3>
+              <div className="grid gap-3 sm:grid-cols-2">
+                <div>
+                  <label className="text-sm font-medium text-slate-700" htmlFor="demo-pilot-uf">
+                    Estado (UF)
                   </label>
-                  <input
-                    id="demo-city"
-                    className={inputBase}
-                    placeholder="Cidade"
-                    value={city}
-                    onChange={(e) => setCity(e.target.value)}
-                  />
+                  <select
+                    id="demo-pilot-uf"
+                    className={selectBase}
+                    value={pilotState}
+                    onChange={(e) => setPilotState(e.target.value)}
+                  >
+                    <option value="">Selecione</option>
+                    {BRAZIL_UF.map((uf) => (
+                      <option key={uf} value={uf}>
+                        {uf}
+                      </option>
+                    ))}
+                  </select>
                 </div>
 
-                <div className="w-28">
-                  <label className="text-sm font-medium text-slate-700" htmlFor="demo-uf">
-                    UF
+                <div>
+                  <label className="text-sm font-medium text-slate-700" htmlFor="demo-pilot-city">
+                    Cidade
                   </label>
-                  <input
-                    id="demo-uf"
-                    className={inputBase}
-                    placeholder="SP"
-                    value={stateUF}
-                    onChange={(e) => setStateUF(e.target.value)}
-                    maxLength={2}
-                  />
+                  <select
+                    id="demo-pilot-city"
+                    className={selectBase}
+                    value={pilotCity}
+                    onChange={(e) => {
+                      setPilotCity(e.target.value)
+                      setPilotCityOther("")
+                    }}
+                  >
+                    <option value="">Selecione</option>
+                    {PILOT_CITY_OPTIONS.map((city) => (
+                      <option key={city} value={city}>
+                        {city}
+                      </option>
+                    ))}
+                  </select>
                 </div>
               </div>
+              {pilotCity === "Outra" && (
+                <div>
+                  <label className="text-sm font-medium text-slate-700" htmlFor="demo-pilot-city-other">
+                    Qual cidade?
+                  </label>
+                  <input
+                    id="demo-pilot-city-other"
+                    className={inputBase}
+                    placeholder="Digite a cidade"
+                    value={pilotCityOther}
+                    onChange={(e) => setPilotCityOther(e.target.value)}
+                  />
+                </div>
+              )}
             </div>
           </div>
 
