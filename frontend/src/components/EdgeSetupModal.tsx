@@ -341,7 +341,9 @@ const EdgeSetupModal = ({ open, onClose, defaultStoreId }: EdgeSetupModalProps) 
       const lastAgeSeconds = getAgeSeconds(lastHeartbeatAt)
       if (lastAgeSeconds !== null) {
         const ageMinutes = Math.floor(lastAgeSeconds / 60)
-      setPollError(`Último sinal recebido há ${ageMinutes} min. Verifique token, .env, run.bat e logs.`)
+      setPollError(
+        `Último sinal recebido há ${ageMinutes} min. Verifique token, .env, 01 - Iniciar Agent.bat e logs.`
+      )
       }
       setShowTroubleshoot(true)
       setPollMessage(null)
@@ -636,6 +638,10 @@ const EdgeSetupModal = ({ open, onClose, defaultStoreId }: EdgeSetupModalProps) 
                 Loja confirmada
               </p>
             )}
+            <div className="text-xs text-gray-500 mb-3 space-y-1">
+                <div>Você precisa estar no computador da loja, mesma rede das câmeras/NVR (Network Video Recorder).</div>
+  
+              </div>
           </div>
 
           <div className="rounded-xl border border-gray-200 bg-white px-4 py-3">
@@ -737,26 +743,10 @@ const EdgeSetupModal = ({ open, onClose, defaultStoreId }: EdgeSetupModalProps) 
                 )}
                 <div className="text-xs text-gray-600 space-y-2">
                   <div>1. Extraia o arquivo ZIP.</div>
-                  <div>2. Abra a pasta extraída.</div>
-                  <div>
-                    3. Não rode nenhum <span className="font-mono">.bat</span> agora
-                    (usaremos o <span className="font-mono">run.bat</span> no passo 4).
-                  </div>
-                  <div>4. Volte aqui e clique em “Já baixei e extraí”.</div>
+                  <div>2. Abra a pasta extraída (veja os arquivos .env e DaleVision Edge Agent.exe).</div>
+                  <div>3. Volte aqui e clique em “Já baixei e extraí”.</div>
                 </div>
-                {canDownload && (
-                  <div className="text-[11px] text-gray-500">
-                    Link direto:{" "}
-                    <a
-                      href={downloadUrl}
-                      target="_blank"
-                      rel="noreferrer"
-                      className="text-blue-700 hover:underline break-all"
-                    >
-                      {downloadUrl}
-                    </a>
-                  </div>
-                )}
+
                 {!canDownload && (
                   <div className="text-[11px] text-amber-700">
                     Download indisponível. Veja as instruções em{" "}
@@ -850,11 +840,11 @@ const EdgeSetupModal = ({ open, onClose, defaultStoreId }: EdgeSetupModalProps) 
             </div>
 
             <div className={step4Enabled ? "rounded-xl border border-gray-200 bg-gray-50 px-4 py-3" : "rounded-xl border border-gray-200 bg-gray-50 px-4 py-3 opacity-60 pointer-events-none"}>
-              <div className="text-sm text-gray-700 font-semibold">4. Rodar o agent</div>
+              <div className="text-sm text-gray-700 font-semibold">4. Iniciar Agent</div>
               <div className="mt-1 text-xs text-gray-500 space-y-1">
                 <div>
                   Após atualizar o <span className="font-mono">.env</span>, dê duplo clique em{" "}
-                  <span className="font-mono">run.bat</span> (somente ele).
+                  <span className="font-mono">01 - Iniciar Agent.bat</span> (somente ele).
                 </div>
                 <div>Na janela Abrir Arquivo - Aviso de segurança, clique no botão Executar</div>
                 <div>
@@ -864,8 +854,19 @@ const EdgeSetupModal = ({ open, onClose, defaultStoreId }: EdgeSetupModalProps) 
               </div>
               <div className="mt-2 rounded-lg border border-gray-200 bg-white px-3 py-2 text-xs text-gray-600">
                 Se o Windows bloquear: “Mais informações” → “Executar assim mesmo”.
-                <div className="mt-1">
-                  <span className="font-mono">Diagnose.bat</span> é só para suporte.
+                <div className="mt-1 space-y-1">
+                  <div>
+                    <span className="font-mono">02 - Teste rápido (run once).bat</span> é só para
+                    diagnóstico pontual.
+                  </div>
+                  <div>
+                    <span className="font-mono">03 - Diagnóstico (gerar ZIP).bat</span> é só para
+                    suporte.
+                  </div>
+                  <div>
+                    <span className="font-mono">04 - Instalar como Serviço (Admin).ps1</span> é
+                    opcional (admin).
+                  </div>
                 </div>
               </div>
               <div className="mt-2 flex flex-col sm:flex-row sm:items-center gap-3">
@@ -1037,7 +1038,7 @@ const EdgeSetupModal = ({ open, onClose, defaultStoreId }: EdgeSetupModalProps) 
                   <div className="mt-3 text-xs text-yellow-800 space-y-1">
                     <div>1. Confirme que você editou o arquivo .env (não .env.example).</div>
                     <div>2. Verifique se STORE_ID e EDGE_TOKEN estão corretos.</div>
-                    <div>3. Abra a pasta e dê duplo clique em run.bat.</div>
+                    <div>3. Abra a pasta e dê duplo clique em 01 - Iniciar Agent.bat.</div>
                     <div>4. Verifique rede/firewall/antivírus que possam bloquear o acesso.</div>
                     <div>5. Execute o agent como administrador (Windows) se necessário.</div>
                   </div>

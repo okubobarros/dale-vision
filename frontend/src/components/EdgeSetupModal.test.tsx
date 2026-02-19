@@ -37,5 +37,8 @@ describe("EdgeSetupModal step 2", () => {
     expect(
       screen.getByRole("button", { name: /Já baixei e extraí/i })
     ).toBeInTheDocument()
+    expect(
+      screen.getByText(/01 - Iniciar Agent\.bat/i)
+    ).toBeInTheDocument()
   })
 })
