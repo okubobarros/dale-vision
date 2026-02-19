@@ -246,7 +246,7 @@ export default function AgendarDemo() {
   const hasOtherGoal = goals.includes("other")
   const needsSourceDetail = howHeard === "other" || howHeard === "referral"
 
-  const isMultiStore = storesRange !== "" && storesRange !== "1"
+  const isMultiStore = storesRange.trim() !== "" && storesRange.trim() !== "1"
   const needsMultiStoreOther = multiStoreChallenges.includes("other")
 
   const primaryGoal: GoalValue | "" = useMemo(() => {
