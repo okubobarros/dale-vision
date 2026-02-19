@@ -149,7 +149,7 @@ describe("AgendarDemo", () => {
       screen.getByLabelText(/^Outro$/i, { selector: 'input[type="checkbox"]' })
     )
 
-    expect(screen.getByLabelText(/Qual\?$/i)).toBeInTheDocument()
+    expect(screen.getByLabelText(/Outro \(desafios\) \*/i)).toBeInTheDocument()
   })
 
   it("bloqueia submit multilojista quando 'Outro' sem texto", async () => {
@@ -177,7 +177,7 @@ describe("AgendarDemo", () => {
     )
 
     expect(demoService.createLead).not.toHaveBeenCalled()
-    expect(toastError).toHaveBeenCalledWith('Preencha "Outro" (gestão entre lojas).')
+    expect(toastError).toHaveBeenCalledWith('Preencha "Outro" (desafios).')
   })
 
   it("bloqueia envio quando Operadores terão acesso não foi selecionado", async () => {

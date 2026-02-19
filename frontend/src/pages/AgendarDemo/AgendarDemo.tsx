@@ -342,7 +342,7 @@ export default function AgendarDemo() {
       return toast.error("Selecione pelo menos 1 desafio na gestão das suas lojas.")
     }
     if (isMultiStore && multiStoreChallenges.includes("other") && !multiStoreOther.trim()) {
-      return toast.error('Preencha "Outro" (gestão entre lojas).')
+      return toast.error('Preencha "Outro" (desafios).')
     }
 
     if (!goals.length) return toast.error("Selecione pelo menos 1 objetivo.")
@@ -711,12 +711,12 @@ export default function AgendarDemo() {
                 {needsMultiStoreOther && (
                   <div>
                     <label className="text-sm font-medium text-slate-700" htmlFor="multi-pain-other">
-                      Descreva em 1 frase (ajuda muito) *
+                      Outro (desafios) *
                     </label>
                     <input
                       id="multi-pain-other"
                       className={inputBase}
-                      placeholder="Ex: não consigo auditar execução sem estar presente em cada loja…"
+                      placeholder="Descreva em poucas palavras"
                       value={multiStoreOther}
                       onChange={(e) => setMultiStoreOther(e.target.value)}
                     />
