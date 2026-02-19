@@ -243,10 +243,13 @@ export default function AgendarDemo() {
 
   const [consent, setConsent] = useState(false)
 
+  // TODO: remover após deploy de validação
+  console.log("[AgendarDemo] storesRange:", storesRange, "isMultiStore:", true)
+
   const hasOtherGoal = goals.includes("other")
   const needsSourceDetail = howHeard === "other" || howHeard === "referral"
 
-  const isMultiStore = storesRange.trim() !== "" && storesRange.trim() !== "1"
+  const isMultiStore = true
   const needsMultiStoreOther = multiStoreChallenges.includes("other")
 
   const primaryGoal: GoalValue | "" = useMemo(() => {
