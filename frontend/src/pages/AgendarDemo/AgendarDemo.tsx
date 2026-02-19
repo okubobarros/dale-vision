@@ -35,21 +35,6 @@ type OperationTypeValue =
   | "other"
 
 // Dor do multilojista
-type MultiPainValue =
-  | "lack_standardization"
-  | "process_inconsistency"
-  | "campaign_inconsistency"
-  | "store_comparison_difficulty"
-  | "lack_operational_kpis"
-  | "unclear_top_store_performance"
-  | "team_productivity_visibility"
-  | "lack_manager_accountability"
-  | "recurring_losses"
-  | "no_incident_history"
-  | "no_real_time_visibility"
-  | "inconsistent_customer_experience"
-  | "other"
-
 const HOW_HEARD: { label: string; value: HowHeardValue }[] = [
   { label: "Instagram", value: "instagram" },
   { label: "YouTube", value: "youtube" },
@@ -92,7 +77,7 @@ const GOALS: { label: string; value: GoalValue }[] = [
   { label: "Outro", value: "other" },
 ]
 
-const MULTI_PAINS: { label: string; value: MultiPainValue }[] = [
+const MULTI_STORE_CHALLENGES = [
   {
     label: "Falta de padronização na execução entre unidades",
     value: "lack_standardization",
@@ -130,7 +115,7 @@ const MULTI_PAINS: { label: string; value: MultiPainValue }[] = [
     value: "inconsistent_customer_experience",
   },
   { label: "Outro", value: "other" },
-]
+] as const
 
 const BRAZIL_UF = [
   "AC",
@@ -162,18 +147,6 @@ const BRAZIL_UF = [
   "TO",
 ] as const
 
-const PILOT_CITY_OPTIONS = [
-  "São Paulo",
-  "Rio de Janeiro",
-  "Belo Horizonte",
-  "Brasília",
-  "Curitiba",
-  "Porto Alegre",
-  "Salvador",
-  "Fortaleza",
-  "Recife",
-  "Outra",
-] as const
 function onlyDigits(v: string) {
   return (v || "").replace(/\D/g, "")
 }
@@ -252,7 +225,6 @@ export default function AgendarDemo() {
   const [camerasRange, setCamerasRange] = useState<CamerasRange | "">("")
   const [cameraBrands, setCameraBrands] = useState<string[]>([])
   const [pilotCity, setPilotCity] = useState("")
-  const [pilotCityOther, setPilotCityOther] = useState("")
   const [pilotState, setPilotState] = useState("")
 
   // ⚠️ Agora fica ABERTO no formulário e OBRIGATÓRIO (sem accordion)
@@ -266,8 +238,8 @@ export default function AgendarDemo() {
   const [contextNote, setContextNote] = useState("")
 
   // Dor multilojista
-  const [multiPains, setMultiPains] = useState<MultiPainValue[]>([])
-  const [multiPainOther, setMultiPainOther] = useState("")
+  const [multiStoreChallenges, setMultiStoreChallenges] = useState<string[]>([])
+  const [multiStoreOther, setMultiStoreOther] = useState("")
 
   const [consent, setConsent] = useState(false)
 
@@ -275,7 +247,7 @@ export default function AgendarDemo() {
   const needsSourceDetail = howHeard === "other" || howHeard === "referral"
 
   const isMultiStore = storesRange !== "" && storesRange !== "1"
-  const needsMultiPainOther = multiPains.includes("other")
+  const needsMultiStoreOther = multiStoreChallenges.includes("other")
 
   const primaryGoal: GoalValue | "" = useMemo(() => {
     if (!goals.length) return ""
@@ -339,11 +311,10 @@ export default function AgendarDemo() {
     })
   }
 
-  function toggleMultiPain(pain: MultiPainValue) {
-    setMultiPains((prev) => {
-      const exists = prev.includes(pain)
-      const next = exists ? prev.filter((p) => p !== pain) : [...prev, pain]
-      return next
+  function toggleMultiStoreChallenge(value: string) {
+    setMultiStoreChallenges((prev) => {
+      const exists = prev.includes(value)
+      return exists ? prev.filter((item) => item !== value) : [...prev, value]
     })
   }
 
@@ -367,10 +338,10 @@ export default function AgendarDemo() {
     if (!storesRange) return toast.error("Selecione a faixa de quantidade de lojas.")
     if (!camerasRange) return toast.error("Selecione a faixa de quantidade de câmeras.")
 
-    if (isMultiStore && multiPains.length === 0) {
+    if (isMultiStore && multiStoreChallenges.length === 0) {
       return toast.error("Selecione pelo menos 1 desafio na gestão das suas lojas.")
     }
-    if (isMultiStore && multiPains.includes("other") && !multiPainOther.trim()) {
+    if (isMultiStore && multiStoreChallenges.includes("other") && !multiStoreOther.trim()) {
       return toast.error('Preencha "Outro" (gestão entre lojas).')
     }
 
@@ -402,12 +373,7 @@ export default function AgendarDemo() {
         cameras_range: camerasRange,
         camera_brands_json: cameraBrands,
 
-        pilot_city:
-          pilotCity.trim()
-            ? pilotCity === "Outra"
-              ? pilotCityOther.trim() || null
-              : pilotCity
-            : null,
+        pilot_city: pilotCity.trim() ? pilotCity.trim() : null,
         pilot_state: pilotState.trim() ? pilotState.trim().toUpperCase() : null,
 
         primary_goal: primaryGoal || null,
@@ -427,10 +393,9 @@ export default function AgendarDemo() {
           goals_selected: goals,
           context_note: contextNote.trim() ? contextNote.trim() : null,
 
-          multi_store_pains: isMultiStore ? multiPains : null,
-          multi_store_pains_other: isMultiStore && needsMultiPainOther ? multiPainOther.trim() : null,
-          multi_store_pain: null,
-          multi_store_pain_other: null,
+          multi_store_challenges: isMultiStore ? multiStoreChallenges : null,
+          multi_store_challenges_other:
+            isMultiStore && needsMultiStoreOther ? multiStoreOther.trim() : null,
 
           source_detail: needsSourceDetail ? howHeardOther.trim() : null,
           source_channel: "web",
@@ -718,12 +683,12 @@ export default function AgendarDemo() {
                 </div>
 
                 <div className="space-y-2">
-                  {MULTI_PAINS.map((p) => (
+                  {MULTI_STORE_CHALLENGES.map((p) => (
                     <label
                       key={p.value}
                       className={[
                         "flex items-start gap-3 rounded-2xl border p-3 cursor-pointer transition",
-                        multiPains.includes(p.value)
+                        multiStoreChallenges.includes(p.value)
                           ? "border-cyan-300 bg-cyan-50/60"
                           : "border-slate-200 bg-white hover:bg-slate-50",
                       ].join(" ")}
@@ -732,8 +697,8 @@ export default function AgendarDemo() {
                         type="checkbox"
                         name={`multi-pain-${p.value}`}
                         value={p.value}
-                        checked={multiPains.includes(p.value)}
-                        onChange={() => toggleMultiPain(p.value)}
+                        checked={multiStoreChallenges.includes(p.value)}
+                        onChange={() => toggleMultiStoreChallenge(p.value)}
                         className="mt-1 h-4 w-4 border-slate-300 text-cyan-600 focus:ring-cyan-200"
                       />
                       <div className="flex-1">
@@ -743,7 +708,7 @@ export default function AgendarDemo() {
                   ))}
                 </div>
 
-                {needsMultiPainOther && (
+                {needsMultiStoreOther && (
                   <div>
                     <label className="text-sm font-medium text-slate-700" htmlFor="multi-pain-other">
                       Descreva em 1 frase (ajuda muito) *
@@ -752,8 +717,8 @@ export default function AgendarDemo() {
                       id="multi-pain-other"
                       className={inputBase}
                       placeholder="Ex: não consigo auditar execução sem estar presente em cada loja…"
-                      value={multiPainOther}
-                      onChange={(e) => setMultiPainOther(e.target.value)}
+                      value={multiStoreOther}
+                      onChange={(e) => setMultiStoreOther(e.target.value)}
                     />
                   </div>
                 )}
@@ -968,38 +933,15 @@ export default function AgendarDemo() {
                   <label className="text-sm font-medium text-slate-700" htmlFor="demo-pilot-city">
                     Cidade
                   </label>
-                  <select
-                    id="demo-pilot-city"
-                    className={selectBase}
-                    value={pilotCity}
-                    onChange={(e) => {
-                      setPilotCity(e.target.value)
-                      setPilotCityOther("")
-                    }}
-                  >
-                    <option value="">Selecione</option>
-                    {PILOT_CITY_OPTIONS.map((city) => (
-                      <option key={city} value={city}>
-                        {city}
-                      </option>
-                    ))}
-                  </select>
-                </div>
-              </div>
-              {pilotCity === "Outra" && (
-                <div>
-                  <label className="text-sm font-medium text-slate-700" htmlFor="demo-pilot-city-other">
-                    Qual cidade?
-                  </label>
                   <input
-                    id="demo-pilot-city-other"
+                    id="demo-pilot-city"
                     className={inputBase}
                     placeholder="Digite a cidade"
-                    value={pilotCityOther}
-                    onChange={(e) => setPilotCityOther(e.target.value)}
+                    value={pilotCity}
+                    onChange={(e) => setPilotCity(e.target.value)}
                   />
                 </div>
-              )}
+              </div>
             </div>
           </div>
 
