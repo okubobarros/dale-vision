@@ -26,7 +26,7 @@ describe("EdgeSetupModal step 2", () => {
     vi.stubEnv("VITE_SITE_URL", "https://example.com")
   })
 
-  it("renders the primary and secondary CTAs with correct text", async () => {
+  it("renders the updated package filenames", async () => {
     renderWithProviders(
       <EdgeSetupModal open={true} onClose={() => {}} defaultStoreId="store-1" />
     )
@@ -38,7 +38,13 @@ describe("EdgeSetupModal step 2", () => {
       screen.getByRole("button", { name: /Já baixei e extraí/i })
     ).toBeInTheDocument()
     expect(
-      screen.getByText(/01 - Iniciar Agent\.bat/i)
+      screen.getByText(/Start_DaleVision_Agent\.bat/i)
+    ).toBeInTheDocument()
+    expect(
+      screen.getByText(/Diagnose\.bat/i)
+    ).toBeInTheDocument()
+    expect(
+      screen.getByText(/install-service\.ps1/i)
     ).toBeInTheDocument()
   })
 })

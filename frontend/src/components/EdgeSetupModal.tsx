@@ -120,10 +120,6 @@ const EdgeSetupModal = ({ open, onClose, defaultStoreId }: EdgeSetupModalProps) 
   const primaryCtaClass =
     "inline-flex w-full sm:w-auto items-center justify-center rounded-lg px-4 py-2.5 text-sm font-semibold text-white " +
     "bg-gradient-to-r from-blue-500 to-purple-600 shadow-sm hover:opacity-95 transition disabled:opacity-60"
-  const secondaryCtaClass =
-    "inline-flex w-full sm:w-auto items-center justify-center rounded-lg px-4 py-2.5 text-sm font-semibold " +
-    "border border-gray-200 bg-white text-gray-700 hover:bg-gray-50 disabled:opacity-60"
-
   const downloadUrl = (import.meta.env.VITE_EDGE_AGENT_DOWNLOAD_URL || "").trim()
   const siteUrl = (import.meta.env.VITE_SITE_URL || "").trim()
   const docsUrl = siteUrl ? `${siteUrl.replace(/\/$/, "")}/docs/edge-agent` : "/docs/edge-agent"
@@ -342,7 +338,7 @@ const EdgeSetupModal = ({ open, onClose, defaultStoreId }: EdgeSetupModalProps) 
       if (lastAgeSeconds !== null) {
         const ageMinutes = Math.floor(lastAgeSeconds / 60)
       setPollError(
-        `Último sinal recebido há ${ageMinutes} min. Verifique token, .env, 01 - Iniciar Agent.bat e logs.`
+        `Último sinal recebido há ${ageMinutes} min. Verifique token, .env, Start_DaleVision_Agent.bat e logs.`
       )
       }
       setShowTroubleshoot(true)
@@ -598,7 +594,7 @@ const EdgeSetupModal = ({ open, onClose, defaultStoreId }: EdgeSetupModalProps) 
 
   return (
     <div className="fixed inset-0 z-[60] flex items-center justify-center bg-black/50 p-4">
-      <div className="w-full max-w-2xl max-h-[90vh] rounded-2xl bg-white shadow-xl border border-gray-100 flex flex-col overflow-hidden">
+      <div className="w-full max-w-2xl max-h-[90svh] sm:max-h-[90vh] rounded-2xl bg-white shadow-xl border border-gray-100 flex min-h-0 flex-col overflow-hidden">
         <div className="sticky top-0 z-10 flex items-center justify-between border-b px-5 py-4 bg-white">
           <h2 className="text-lg font-semibold text-gray-900">Edge Setup Wizard</h2>
           <button
@@ -720,35 +716,23 @@ const EdgeSetupModal = ({ open, onClose, defaultStoreId }: EdgeSetupModalProps) 
             >
               <div className="text-sm text-gray-700 font-semibold">2. Download do Edge Agent</div>
               <p className="mt-1 text-xs text-gray-500">
-                Baixe o Edge Agent no computador da loja.
+                Baixe e extraia o pacote no computador da loja.
               </p>
-              <div className="mt-3 flex flex-col gap-3">
+              <div className="mt-3 space-y-2 text-xs text-gray-600">
                 {canDownload ? (
-                  <a
-                    href={downloadUrl}
-                    target="_blank"
-                    rel="noreferrer"
-                    className={primaryCtaClass}
-                  >
-                    Baixar Edge Agent
-                  </a>
+                  <div>
+                    Download:{" "}
+                    <a
+                      href={downloadUrl}
+                      target="_blank"
+                      rel="noreferrer"
+                      className="text-blue-700 hover:underline"
+                    >
+                      Baixar Edge Agent
+                    </a>
+                  </div>
                 ) : (
-                  <button
-                    type="button"
-                    disabled
-                    className={`${primaryCtaClass} opacity-60`}
-                  >
-                    Baixar Edge Agent
-                  </button>
-                )}
-                <div className="text-xs text-gray-600 space-y-2">
-                  <div>1. Extraia o arquivo ZIP.</div>
-                  <div>2. Abra a pasta extraída (veja os arquivos .env e DaleVision Edge Agent.exe).</div>
-                  <div>3. Volte aqui e clique em “Já baixei e extraí”.</div>
-                </div>
-
-                {!canDownload && (
-                  <div className="text-[11px] text-amber-700">
+                  <div className="text-amber-700">
                     Download indisponível. Veja as instruções em{" "}
                     <a
                       href={docsUrl}
@@ -761,15 +745,20 @@ const EdgeSetupModal = ({ open, onClose, defaultStoreId }: EdgeSetupModalProps) 
                     .
                   </div>
                 )}
-                <button
-                  type="button"
-                  onClick={handleConfirmDownload}
-                  disabled={!isStoreSelected}
-                  className={secondaryCtaClass}
-                >
-                  Já baixei e extraí
-                </button>
+                <div>
+                  Abra a pasta extraída e confirme que existem{" "}
+                  <span className="font-mono">Start_DaleVision_Agent.bat</span> e{" "}
+                  <span className="font-mono">README.txt</span>.
+                </div>
               </div>
+              <button
+                type="button"
+                onClick={handleConfirmDownload}
+                disabled={!isStoreSelected}
+                className={`mt-3 ${primaryCtaClass}`}
+              >
+                Já baixei e extraí
+              </button>
               {downloadConfirmed && (
                 <div className="mt-2 text-xs text-green-600 font-semibold">
                   Download confirmado
@@ -843,30 +832,25 @@ const EdgeSetupModal = ({ open, onClose, defaultStoreId }: EdgeSetupModalProps) 
               <div className="text-sm text-gray-700 font-semibold">4. Iniciar Agent</div>
               <div className="mt-1 text-xs text-gray-500 space-y-1">
                 <div>
-                  Após atualizar o <span className="font-mono">.env</span>, dê duplo clique em{" "}
-                  <span className="font-mono">01 - Iniciar Agent.bat</span> (somente ele).
+                  Clique em{" "}
+                  <span className="font-mono">Start_DaleVision_Agent.bat</span> e mantenha a
+                  janela aberta.
                 </div>
-                <div>Na janela Abrir Arquivo - Aviso de segurança, clique no botão Executar</div>
                 <div>
-                  Caso abra uma janela de terminal, mantenha ela aberta.
+                  Se der erro ou você estiver remoto: clique em{" "}
+                  <span className="font-mono">Diagnose.bat</span> e envie o ZIP.
                 </div>
-                
+                <div>
+                  Opcional: <span className="font-mono">install-service.ps1</span> (apenas administrador).
+                </div>
               </div>
               <div className="mt-2 rounded-lg border border-gray-200 bg-white px-3 py-2 text-xs text-gray-600">
                 Se o Windows bloquear: “Mais informações” → “Executar assim mesmo”.
-                <div className="mt-1 space-y-1">
-                  <div>
-                    <span className="font-mono">02 - Teste rápido (run once).bat</span> é só para
-                    diagnóstico pontual.
-                  </div>
-                  <div>
-                    <span className="font-mono">03 - Diagnóstico (gerar ZIP).bat</span> é só para
-                    suporte.
-                  </div>
-                  <div>
-                    <span className="font-mono">04 - Instalar como Serviço (Admin).ps1</span> é
-                    opcional (admin).
-                  </div>
+                <div className="mt-1">
+                  Arquivos avançados (evite se não solicitado):{" "}
+                  <span className="font-mono">run.bat</span>,{" "}
+                  <span className="font-mono">run_once.bat</span>,{" "}
+                  <span className="font-mono">dalevision-edge-agent.exe</span>.
                 </div>
               </div>
               <div className="mt-2 flex flex-col sm:flex-row sm:items-center gap-3">
@@ -1038,7 +1022,9 @@ const EdgeSetupModal = ({ open, onClose, defaultStoreId }: EdgeSetupModalProps) 
                   <div className="mt-3 text-xs text-yellow-800 space-y-1">
                     <div>1. Confirme que você editou o arquivo .env (não .env.example).</div>
                     <div>2. Verifique se STORE_ID e EDGE_TOKEN estão corretos.</div>
-                    <div>3. Abra a pasta e dê duplo clique em 01 - Iniciar Agent.bat.</div>
+                    <div>
+                      3. Abra a pasta e dê duplo clique em Start_DaleVision_Agent.bat.
+                    </div>
                     <div>4. Verifique rede/firewall/antivírus que possam bloquear o acesso.</div>
                     <div>5. Execute o agent como administrador (Windows) se necessário.</div>
                   </div>
