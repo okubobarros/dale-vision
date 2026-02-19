@@ -27,10 +27,10 @@ export function formatTimestamp(ts?: string | null): string {
   if (!ts) return "-"
   try {
     const d = new Date(ts)
-    if (Number.isNaN(d.getTime())) return ts
+    if (Number.isNaN(d.getTime())) return "-"
     return d.toLocaleString()
   } catch {
-    return ts
+    return "-"
   }
 }
 

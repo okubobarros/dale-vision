@@ -9,7 +9,7 @@ from apps.cameras.limits import enforce_trial_camera_limit, TRIAL_CAMERA_LIMIT_M
 from apps.cameras.roi import create_roi_config, get_latest_published_roi_config
 from apps.cameras.permissions import require_store_role
 from apps.cameras.views import CameraViewSet
-from backend.utils.entitlements import SubscriptionRequiredError
+from backend.utils.entitlements import TrialExpiredError
 
 
 class TrialCameraLimitTests(SimpleTestCase):
@@ -209,7 +209,7 @@ class CameraRoiLatestEndpointTests(SimpleTestCase):
 
 
 class SubscriptionRequiredCameraCreateTests(SimpleTestCase):
-    @patch("apps.cameras.views.enforce_can_use_product", side_effect=SubscriptionRequiredError())
+    @patch("apps.cameras.views.enforce_can_use_product", side_effect=TrialExpiredError())
     def test_blocks_create_camera_when_trial_expired(self, _enforce):
         view = CameraViewSet()
         request = APIRequestFactory().post("/api/v1/cameras/", {}, format="json")
@@ -219,5 +219,5 @@ class SubscriptionRequiredCameraCreateTests(SimpleTestCase):
         serializer.validated_data = {"store_id": "store-1"}
         serializer.is_valid.return_value = True
         view.get_serializer = MagicMock(return_value=serializer)
-        with self.assertRaises(SubscriptionRequiredError):
+        with self.assertRaises(TrialExpiredError):
             view.create(request)

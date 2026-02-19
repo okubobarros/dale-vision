@@ -1,199 +1,190 @@
-import { useState } from "react"
-
 const WHATSAPP_URL =
   "https://api.whatsapp.com/send/?phone=5511996918070&text&type=phone_number&app_absent=0"
 
 const Upgrade = () => {
-  const [showCheckoutNotice, setShowCheckoutNotice] = useState(false)
-
   return (
-    <div className="p-6 space-y-8">
-      <div className="bg-white rounded-2xl border border-gray-100 shadow-sm p-6 sm:p-8">
-        <div className="flex flex-col lg:flex-row lg:items-center lg:justify-between gap-6">
-          <div>
-            <h1 className="text-3xl sm:text-4xl font-bold text-gray-900">
-              Transforme suas câmeras em eficiência operacional
+    <div className="p-6 space-y-10">
+      <section className="bg-white rounded-2xl border border-gray-100 shadow-sm p-6 sm:p-10">
+        <div className="flex flex-col lg:flex-row lg:items-center lg:justify-between gap-8">
+          <div className="max-w-2xl">
+            <div className="inline-flex items-center gap-2 rounded-full border border-blue-100 bg-blue-50 px-3 py-1 text-xs font-semibold text-blue-800">
+              Trial expirado • seus dados continuam salvos
+            </div>
+            <h1 className="mt-4 text-3xl sm:text-4xl font-bold text-gray-900">
+              Volte a operar com dados reais em minutos
             </h1>
             <p className="mt-3 text-base text-gray-600">
-              Alertas em tempo real, evidências e relatórios — sem trocar seu CFTV.
+              Ative o plano e preserve câmeras, ROI e alertas. Sem reinstalar o Edge
+              Agent.
             </p>
-            <div className="mt-5 flex flex-col sm:flex-row gap-3">
-              <button
-                type="button"
-                onClick={() => setShowCheckoutNotice(true)}
+            <div className="mt-6 flex flex-col sm:flex-row gap-3">
+              <a
+                href="#checkout"
                 className="inline-flex items-center justify-center rounded-lg bg-blue-600 px-5 py-3 text-sm font-semibold text-white hover:bg-blue-700"
               >
                 Assinar agora
-              </button>
+              </a>
               <button
                 type="button"
-                onClick={() => window.open(WHATSAPP_URL, "_blank", "noopener,noreferrer")}
+                onClick={() =>
+                  window.open(WHATSAPP_URL, "_blank", "noopener,noreferrer")
+                }
                 className="inline-flex items-center justify-center rounded-lg border border-gray-200 bg-white px-5 py-3 text-sm font-semibold text-gray-700 hover:bg-gray-50"
               >
                 Falar com especialista
               </button>
             </div>
+            <div className="mt-4 text-xs text-gray-500">
+              Ativação assistida em até 1 dia útil.
+            </div>
           </div>
-          <div className="rounded-2xl border border-blue-100 bg-blue-50 px-5 py-4 text-sm text-blue-900">
-            <div className="font-semibold">O que você ganha já no primeiro mês</div>
-            <div className="mt-2 space-y-2 text-blue-800">
-              <div>Fila, fluxo e ocorrências em tempo real</div>
-              <div>Snapshots e evidências para auditoria</div>
-              <div>ROI por câmera e health do edge</div>
+
+          <div className="w-full lg:w-[380px] rounded-2xl border border-gray-100 bg-gray-50 p-6">
+            <div className="text-sm font-semibold text-gray-700">
+              O que destrava com o upgrade
+            </div>
+            <ul className="mt-4 space-y-3 text-sm text-gray-600">
+              <li>Alertas em tempo real via WhatsApp</li>
+              <li>Insights e evidências por câmera</li>
+              <li>Health do Edge e diagnósticos rápidos</li>
+              <li>Relatórios semanais automáticos</li>
+            </ul>
+            <div className="mt-6 rounded-xl border border-blue-100 bg-blue-50 p-4 text-xs text-blue-900">
+              Clientes com o plano ativo reduzem tempo de fila em até 22%.
             </div>
           </div>
         </div>
-      </div>
+      </section>
 
-      {showCheckoutNotice && (
-        <div className="bg-amber-50 border border-amber-200 rounded-2xl p-5 text-amber-900">
-          <div className="font-semibold">Checkout em breve</div>
-          <p className="mt-2 text-sm">
-            Estamos finalizando o checkout automático. Enquanto isso, fale com nosso time e
-            ativamos o plano ainda hoje.
+      <section id="checkout" className="space-y-6">
+        <div>
+          <h2 className="text-2xl font-bold text-gray-900">Escolha seu plano</h2>
+          <p className="text-sm text-gray-600 mt-1">
+            Sem fidelidade. Upgrade imediato.
           </p>
-          <div className="mt-4 flex flex-col sm:flex-row gap-3">
-            <button
-              type="button"
-              onClick={() => window.open(WHATSAPP_URL, "_blank", "noopener,noreferrer")}
-              className="inline-flex items-center justify-center rounded-lg bg-amber-600 px-4 py-2 text-sm font-semibold text-white hover:bg-amber-700"
-            >
-              Falar no WhatsApp
-            </button>
-            <button
-              type="button"
-              onClick={() => setShowCheckoutNotice(false)}
-              className="inline-flex items-center justify-center rounded-lg border border-amber-200 bg-white px-4 py-2 text-sm font-semibold text-amber-700 hover:bg-amber-100"
-            >
-              Ok, entendi
-            </button>
-          </div>
         </div>
-      )}
 
-      <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
-        {[
-          {
-            name: "Starter",
-            price: "R$ 499/mês",
-            description: "1 loja, até 3 câmeras",
-          },
-          {
-            name: "Pro",
-            price: "R$ 1.290/mês",
-            description: "até 3 lojas, até 12 câmeras",
-            highlight: true,
-          },
-          {
-            name: "Enterprise",
-            price: "Falar com especialista",
-            description: "multi-loja e integrações",
-          },
-        ].map((plan) => (
-          <div
-            key={plan.name}
-            className={[
-              "rounded-2xl border p-6 shadow-sm",
-              plan.highlight
-                ? "border-blue-200 bg-blue-50"
-                : "border-gray-100 bg-white",
-            ].join(" ")}
-          >
-            <div className="text-sm font-semibold text-gray-500">{plan.name}</div>
-            <div className="mt-2 text-2xl font-bold text-gray-900">{plan.price}</div>
-            <div className="mt-1 text-sm text-gray-600">{plan.description}</div>
-            <div className="mt-5 space-y-2 text-sm text-gray-700">
-              <div>Alertas WhatsApp e e-mail</div>
-              <div>Snapshots e evidências</div>
-              <div>ROI por câmera</div>
-              <div>Health do edge + suporte onboarding</div>
-            </div>
-            <button
-              type="button"
-              onClick={() => setShowCheckoutNotice(true)}
+        <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
+          {[
+            {
+              name: "Starter",
+              price: "R$ 499/mês",
+              description: "1 loja • até 3 câmeras",
+              features: [
+                "Alertas WhatsApp",
+                "Insights básicos",
+                "ROI por câmera",
+                "Suporte onboarding",
+              ],
+            },
+            {
+              name: "Pro",
+              price: "R$ 1.290/mês",
+              description: "até 3 lojas • até 12 câmeras",
+              highlight: true,
+              features: [
+                "Alertas + evidências",
+                "Dashboards avançados",
+                "SLA prioritário",
+                "Treinamento do time",
+              ],
+            },
+            {
+              name: "Multi-loja",
+              price: "Fale com especialista",
+              description: "10+ lojas e integrações",
+              features: [
+                "Integrações com BI",
+                "Multi-unidade",
+                "Gestão centralizada",
+                "Suporte dedicado",
+              ],
+            },
+          ].map((plan) => (
+            <div
+              key={plan.name}
               className={[
-                "mt-6 w-full rounded-lg px-4 py-2 text-sm font-semibold",
-                plan.highlight
-                  ? "bg-blue-600 text-white hover:bg-blue-700"
-                  : "border border-gray-200 bg-white text-gray-700 hover:bg-gray-50",
+                "rounded-2xl border p-6 shadow-sm bg-white",
+                plan.highlight ? "border-blue-200 ring-2 ring-blue-100" : "border-gray-100",
               ].join(" ")}
             >
-              Assinar agora
-            </button>
-          </div>
-        ))}
-      </div>
-
-      <div className="bg-white rounded-2xl border border-gray-100 shadow-sm p-6">
-        <div className="text-lg font-semibold text-gray-900">Por que o DALE Vision</div>
-        <div className="mt-4 grid grid-cols-1 md:grid-cols-2 gap-4 text-sm text-gray-700">
-          <div>Fila, fluxo e ocorrências em tempo real</div>
-          <div>Snapshots e evidências acionáveis</div>
-          <div>ROI por câmera com metas claras</div>
-          <div>Alertas WhatsApp/e-mail e auditoria</div>
-          <div>Health do edge e diagnóstico rápido</div>
-          <div>Onboarding guiado e suporte humano</div>
+              <div className="text-sm font-semibold text-gray-500">{plan.name}</div>
+              <div className="mt-2 text-2xl font-bold text-gray-900">{plan.price}</div>
+              <div className="mt-1 text-sm text-gray-600">{plan.description}</div>
+              <ul className="mt-5 space-y-2 text-sm text-gray-700">
+                {plan.features.map((feature) => (
+                  <li key={feature}>• {feature}</li>
+                ))}
+              </ul>
+              <a
+                href="/app/upgrade#checkout"
+                className={[
+                  "mt-6 inline-flex w-full items-center justify-center rounded-lg px-4 py-2 text-sm font-semibold",
+                  plan.highlight
+                    ? "bg-blue-600 text-white hover:bg-blue-700"
+                    : "border border-gray-200 bg-white text-gray-700 hover:bg-gray-50",
+                ].join(" ")}
+              >
+                Assinar agora
+              </a>
+            </div>
+          ))}
         </div>
-      </div>
+      </section>
 
-      <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
+      <section className="grid grid-cols-1 md:grid-cols-3 gap-6">
         {[
           {
             name: "Rede de farmácias",
-            result: "Reduzimos filas em 22%",
+            result: "Filas -22% em 30 dias",
             quote:
-              "Os alertas chegaram antes do horário de pico e conseguimos reagir rápido.",
+              "Os alertas chegaram antes do pico e ajustamos a escala rapidamente.",
           },
           {
             name: "Varejo de moda",
-            result: "Aumentamos conversão em 14%",
+            result: "Conversão +14%",
             quote:
-              "As métricas por câmera ajudaram a ajustar equipe e layout.",
+              "As métricas por câmera ajudaram a reorganizar equipe e layout.",
           },
           {
             name: "Supermercado regional",
-            result: "Ociosidade caiu 18%",
+            result: "Ociosidade -18%",
             quote:
-              "O health do edge trouxe previsibilidade na operação diária.",
+              "O health do Edge trouxe previsibilidade na operação diária.",
           },
         ].map((item) => (
-          <div key={item.name} className="rounded-2xl border border-gray-100 bg-white p-6 shadow-sm">
+          <div
+            key={item.name}
+            className="rounded-2xl border border-gray-100 bg-white p-6 shadow-sm"
+          >
             <div className="text-sm font-semibold text-gray-500">{item.name}</div>
             <div className="mt-2 text-xl font-bold text-gray-900">{item.result}</div>
             <div className="mt-3 text-sm text-gray-600">“{item.quote}”</div>
           </div>
         ))}
-      </div>
+      </section>
 
-      <div className="bg-white rounded-2xl border border-gray-100 shadow-sm p-6">
+      <section className="bg-white rounded-2xl border border-gray-100 shadow-sm p-6 space-y-4">
         <div className="text-lg font-semibold text-gray-900">Perguntas frequentes</div>
-        <div className="mt-4 space-y-4 text-sm text-gray-700">
+        <div className="text-sm text-gray-700 space-y-4">
           <div>
-            <div className="font-semibold">É compatível com meu CFTV?</div>
+            <div className="font-semibold">Preciso reinstalar o Edge Agent?</div>
             <div className="mt-1">
-              Sim. Integramos via NVR/RTSP. Câmeras cloud-only precisam de NVR.
+              Não. Seu setup continua ativo, apenas liberamos o acesso.
             </div>
           </div>
           <div>
-            <div className="font-semibold">Como funciona a privacidade?</div>
+            <div className="font-semibold">Quanto tempo leva a ativação?</div>
             <div className="mt-1">
-              Processamos somente o necessário, com logs e evidências controladas.
-            </div>
-          </div>
-          <div>
-            <div className="font-semibold">Quanto tempo para instalar?</div>
-            <div className="mt-1">
-              Em 30 a 60 minutos com o assistente e suporte guiado.
+              Normalmente no mesmo dia útil após confirmação.
             </div>
           </div>
           <div>
             <div className="font-semibold">Posso cancelar quando quiser?</div>
-            <div className="mt-1">
-              Sim. Planos mensais, sem fidelidade.
-            </div>
+            <div className="mt-1">Sim. Plano mensal, sem fidelidade.</div>
           </div>
         </div>
-      </div>
+      </section>
     </div>
   )
 }

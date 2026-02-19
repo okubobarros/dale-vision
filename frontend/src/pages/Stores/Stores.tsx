@@ -154,7 +154,7 @@ const CreateStoreModal = ({ isOpen, onClose }: { isOpen: boolean; onClose: () =>
     },
     onError: (error: any) => {
       const payload = error?.response?.data;
-      if (payload?.code === 'SUBSCRIPTION_REQUIRED') {
+      if (payload?.code === 'TRIAL_EXPIRED' || payload?.code === 'SUBSCRIPTION_REQUIRED') {
         toast.custom((t) => (
           <div className="flex items-center gap-3 rounded-xl border border-gray-200 bg-white px-4 py-3 shadow-lg">
             <div className="text-sm text-gray-700">
@@ -165,7 +165,7 @@ const CreateStoreModal = ({ isOpen, onClose }: { isOpen: boolean; onClose: () =>
               className="rounded-lg bg-blue-600 px-3 py-1.5 text-xs font-semibold text-white hover:bg-blue-700"
               onClick={() => {
                 toast.dismiss(t.id);
-                navigate('/app/billing');
+                navigate('/app/upgrade');
               }}
             >
               Ver planos
@@ -374,7 +374,7 @@ const EditStoreModal = ({
     },
     onError: (error: any) => {
       const payload = error?.response?.data;
-      if (payload?.code === 'SUBSCRIPTION_REQUIRED') {
+      if (payload?.code === 'TRIAL_EXPIRED' || payload?.code === 'SUBSCRIPTION_REQUIRED') {
         toast.custom((t) => (
           <div className="flex items-center gap-3 rounded-xl border border-gray-200 bg-white px-4 py-3 shadow-lg">
             <div className="text-sm text-gray-700">
@@ -385,7 +385,7 @@ const EditStoreModal = ({
               className="rounded-lg bg-blue-600 px-3 py-1.5 text-xs font-semibold text-white hover:bg-blue-700"
               onClick={() => {
                 toast.dismiss(t.id);
-                navigate('/app/billing');
+                navigate('/app/upgrade');
               }}
             >
               Ver planos
@@ -565,12 +565,16 @@ const EditStoreModal = ({
 interface StoreCardProps {
   store: Store;
   onEdit: (store: Store) => void;
+  trialExpired: boolean;
 }
 
-const StoreCard = ({ store, onEdit }: StoreCardProps) => {
+const StoreCard = ({ store, onEdit, trialExpired }: StoreCardProps) => {
   const queryClient = useQueryClient();
   const navigate = useNavigate();
   const [showActions, setShowActions] = useState(false);
+  const actionsDisabled =
+    trialExpired ||
+    (store.status === "blocked" && store.blocked_reason === "trial_expired");
   const storeLastSeenAt = store.last_seen_at ?? null;
   const shouldFetchEdgeStatus = !storeLastSeenAt;
   const { data: edgeStatus } = useQuery<StoreEdgeStatus>({
@@ -620,7 +624,7 @@ const StoreCard = ({ store, onEdit }: StoreCardProps) => {
     },
     onError: (error: any) => {
       const payload = error?.response?.data;
-      if (payload?.code === 'SUBSCRIPTION_REQUIRED') {
+      if (payload?.code === 'TRIAL_EXPIRED' || payload?.code === 'SUBSCRIPTION_REQUIRED') {
         toast.custom((t) => (
           <div className="flex items-center gap-3 rounded-xl border border-gray-200 bg-white px-4 py-3 shadow-lg">
             <div className="text-sm text-gray-700">
@@ -631,7 +635,7 @@ const StoreCard = ({ store, onEdit }: StoreCardProps) => {
               className="rounded-lg bg-blue-600 px-3 py-1.5 text-xs font-semibold text-white hover:bg-blue-700"
               onClick={() => {
                 toast.dismiss(t.id);
-                navigate('/app/billing');
+                navigate('/app/upgrade');
               }}
             >
               Ver planos
@@ -662,16 +666,21 @@ const StoreCard = ({ store, onEdit }: StoreCardProps) => {
       <div className="absolute top-4 right-4">
         <button
           onClick={() => setShowActions(!showActions)}
-          className="text-gray-400 hover:text-gray-600 p-1"
+          className={`p-1 ${
+            actionsDisabled
+              ? "text-gray-300 cursor-not-allowed"
+              : "text-gray-400 hover:text-gray-600"
+          }`}
           aria-label="Ações da loja"
           title="Menu de ações"
+          disabled={actionsDisabled}
         >
           <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
             <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 5v.01M12 12v.01M12 19v.01M12 6a1 1 0 110-2 1 1 0 010 2zm0 7a1 1 0 110-2 1 1 0 010 2zm0 7a1 1 0 110-2 1 1 0 010 2z" />
           </svg>
         </button>
         
-        {showActions && (
+        {showActions && !actionsDisabled && (
           <>
             <div 
               className="fixed inset-0 z-10" 
@@ -739,15 +748,6 @@ const StoreCard = ({ store, onEdit }: StoreCardProps) => {
           </div>
         )}
         
-        {store.phone && (
-          <div className="flex items-center text-gray-500">
-            <svg className="w-4 h-4 mr-2 flex-shrink-0" fill="currentColor" viewBox="0 0 20 20">
-              <path d="M2 3a1 1 0 011-1h2.153a1 1 0 01.986.836l.74 4.435a1 1 0 01-.54 1.06l-1.548.773a11.037 11.037 0 006.105 6.105l.774-1.548a1 1 0 011.059-.54l4.435.74a1 1 0 01.836.986V17a1 1 0 01-1 1h-2C7.82 18 2 12.18 2 5V3z" />
-            </svg>
-            <span aria-label={`Telefone: ${store.phone}`}>{store.phone}</span>
-          </div>
-        )}
-
         <div className="flex items-center text-gray-500">
           <svg className="w-4 h-4 mr-2 flex-shrink-0" fill="currentColor" viewBox="0 0 20 20">
             <path
@@ -796,6 +796,20 @@ const StoreCard = ({ store, onEdit }: StoreCardProps) => {
         >
           Ver detalhes
         </button>
+        {actionsDisabled && (
+          <div className="mt-3 rounded-lg border border-blue-100 bg-blue-50 p-3 text-xs text-blue-900">
+            Trial expirado. Para liberar edição ou exclusão, faça upgrade.
+            <div className="mt-2">
+              <button
+                type="button"
+                onClick={() => navigate("/app/upgrade")}
+                className="inline-flex items-center justify-center rounded-lg bg-blue-600 px-3 py-1.5 text-xs font-semibold text-white hover:bg-blue-700"
+              >
+                Assinar agora
+              </button>
+            </div>
+          </div>
+        )}
       </div>
     </div>
   );
@@ -807,6 +821,7 @@ const StoreCard = ({ store, onEdit }: StoreCardProps) => {
 const Stores = () => {
   const [isCreateModalOpen, setIsCreateModalOpen] = useState(false);
   const [storeToEdit, setStoreToEdit] = useState<Store | null>(null);
+  const navigate = useNavigate();
   
   const { data: stores, isLoading, error } = useQuery({
     queryKey: ['stores'],
@@ -816,6 +831,10 @@ const Stores = () => {
   const handleEditStore = (store: Store) => {
     setStoreToEdit(store);
   };
+  const trialExpired =
+    (stores ?? []).some(
+      (store) => store.status === "blocked" && store.blocked_reason === "trial_expired"
+    );
 
   if (isLoading) {
     return (
@@ -869,8 +888,19 @@ const Stores = () => {
           </p>
         </div>
         <button 
-          onClick={() => setIsCreateModalOpen(true)}
-          className="bg-blue-500 hover:bg-blue-600 text-white px-4 py-2 rounded-lg font-medium flex items-center"
+          onClick={() => {
+            if (trialExpired) {
+              navigate("/app/upgrade");
+              return;
+            }
+            setIsCreateModalOpen(true);
+          }}
+          disabled={trialExpired}
+          className={`px-4 py-2 rounded-lg font-medium flex items-center ${
+            trialExpired
+              ? "bg-gray-300 text-gray-600 cursor-not-allowed"
+              : "bg-blue-500 hover:bg-blue-600 text-white"
+          }`}
           aria-label="Criar nova loja"
           title="Abrir formulário para criar nova loja"
         >
@@ -880,6 +910,20 @@ const Stores = () => {
           Nova Loja
         </button>
       </div>
+      {trialExpired && (
+        <div className="mb-6 rounded-xl border border-blue-100 bg-blue-50 p-4 text-sm text-blue-900">
+          Seu trial expirou. Faça upgrade para criar novas lojas e liberar edição.
+          <div className="mt-3">
+            <button
+              type="button"
+              onClick={() => navigate("/app/upgrade")}
+              className="inline-flex items-center justify-center rounded-lg bg-blue-600 px-4 py-2 text-xs font-semibold text-white hover:bg-blue-700"
+            >
+              Assinar agora
+            </button>
+          </div>
+        </div>
+      )}
 
       {stores && stores.length > 0 ? (
         <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
@@ -888,6 +932,7 @@ const Stores = () => {
               key={store.id} 
               store={store} 
               onEdit={handleEditStore}
+              trialExpired={trialExpired}
             />
           ))}
         </div>
@@ -903,8 +948,19 @@ const Stores = () => {
             Você ainda não tem lojas cadastradas. Crie sua primeira loja para começar a monitorar com a DALE Vision.
           </p>
           <button 
-            onClick={() => setIsCreateModalOpen(true)}
-            className="bg-blue-500 hover:bg-blue-600 text-white px-8 py-3 rounded-lg font-medium text-lg inline-flex items-center"
+            onClick={() => {
+              if (trialExpired) {
+                navigate("/app/upgrade");
+                return;
+              }
+              setIsCreateModalOpen(true);
+            }}
+            disabled={trialExpired}
+            className={`px-8 py-3 rounded-lg font-medium text-lg inline-flex items-center ${
+              trialExpired
+                ? "bg-gray-300 text-gray-600 cursor-not-allowed"
+                : "bg-blue-500 hover:bg-blue-600 text-white"
+            }`}
             aria-label="Criar primeira loja"
             title="Criar sua primeira loja"
           >
@@ -918,7 +974,7 @@ const Stores = () => {
 
       {/* Create Store Modal */}
       <CreateStoreModal 
-        isOpen={isCreateModalOpen} 
+        isOpen={isCreateModalOpen && !trialExpired} 
         onClose={() => setIsCreateModalOpen(false)} 
       />
 

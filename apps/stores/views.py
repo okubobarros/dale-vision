@@ -30,7 +30,7 @@ from apps.billing.utils import (
     enforce_trial_store_limit,
     is_trial,
 )
-from backend.utils.entitlements import enforce_can_use_product, require_active_subscription
+from backend.utils.entitlements import enforce_can_use_product, require_trial_active
 import hashlib
 import secrets
 import uuid
@@ -176,7 +176,7 @@ class StoreViewSet(viewsets.ModelViewSet):
         except Exception:
             actor_user_id = None
         for org_id in {str(o) for o in org_ids if o}:
-            require_active_subscription(
+            require_trial_active(
                 org_id=org_id,
                 actor_user_id=actor_user_id,
                 action=action,
@@ -197,11 +197,6 @@ class StoreViewSet(viewsets.ModelViewSet):
     
     def list(self, request):
         """Sobrescreve list para retornar formato personalizado - MANTENHA ESTE!"""
-        org_id = request.query_params.get("org_id")
-        if org_id:
-            self._require_subscription_for_org_ids([org_id], "list_stores")
-        else:
-            self._require_subscription_for_org_ids(get_user_org_ids(request.user), "list_stores")
         stores = self.get_queryset()
         serializer = self.get_serializer(stores, many=True)
         return Response({
@@ -210,12 +205,6 @@ class StoreViewSet(viewsets.ModelViewSet):
             'data': serializer.data,
             'timestamp': timezone.now().isoformat()
         })
-
-    def retrieve(self, request, *args, **kwargs):
-        store = self.get_object()
-        self._require_subscription_for_store(store, "get_store")
-        serializer = self.get_serializer(store)
-        return Response(serializer.data)
 
     def destroy(self, request, *args, **kwargs):
         store = self.get_object()
@@ -232,18 +221,12 @@ class StoreViewSet(viewsets.ModelViewSet):
         )
         return super().destroy(request, *args, **kwargs)
 
-    def perform_update(self, serializer):
-        store = serializer.instance
-        self._require_subscription_for_store(store, "update_store")
-        serializer.save(updated_at=timezone.now())
-
     @action(detail=True, methods=['get'])
     def edge_token(self, request, pk=None):
         """
         Retorna um token do edge para a store (não rotaciona se já existir).
         """
         store = self.get_object()
-        self._require_subscription_for_store(store, "edge_token")
         actor_user_id = None
         try:
             actor_user_id = ensure_user_uuid(request.user)
@@ -273,7 +256,6 @@ class StoreViewSet(viewsets.ModelViewSet):
         """
         store = self.get_object()
         _require_store_owner_or_admin(request.user, store)
-        self._require_subscription_for_store(store, "edge_credentials")
         actor_user_id = None
         try:
             actor_user_id = ensure_user_uuid(request.user)
@@ -309,7 +291,6 @@ class StoreViewSet(viewsets.ModelViewSet):
         """
         store = self.get_object()
         _require_store_owner_or_admin(request.user, store)
-        self._require_subscription_for_store(store, "edge_setup")
         actor_user_id = None
         try:
             actor_user_id = ensure_user_uuid(request.user)
@@ -344,7 +325,6 @@ class StoreViewSet(viewsets.ModelViewSet):
         """
         store = self.get_object()
         _require_store_owner_or_admin(request.user, store)
-        self._require_subscription_for_store(store, "edge_token_rotate")
         actor_user_id = None
         try:
             actor_user_id = ensure_user_uuid(request.user)
@@ -370,7 +350,6 @@ class StoreViewSet(viewsets.ModelViewSet):
     @action(detail=True, methods=["patch"], url_path=r"cameras/(?P<camera_id>[^/.]+)")
     def set_camera_active(self, request, pk=None, camera_id=None):
         store = self.get_object()
-        self._require_subscription_for_store(store, "set_camera_active")
 
         if "active" not in request.data:
             return Response({"detail": "Campo 'active' obrigatório."}, status=status.HTTP_400_BAD_REQUEST)
@@ -450,7 +429,6 @@ class StoreViewSet(viewsets.ModelViewSet):
     @action(detail=True, methods=["get", "post"], url_path="cameras")
     def cameras(self, request, pk=None):
         store = self.get_object()
-        self._require_subscription_for_store(store, "store_cameras")
         if request.method == "GET":
             require_store_role(request.user, str(store.id), ALLOWED_READ_ROLES)
             cameras_qs = Camera.objects.filter(store_id=store.id).order_by("-updated_at")
@@ -663,7 +641,6 @@ class StoreViewSet(viewsets.ModelViewSet):
     def live_monitor(self, request, pk=None):
         """Dados para monitoramento em tempo real"""
         store = self.get_object()
-        self._require_subscription_for_store(store, "store_live_monitor")
         
         # ⭐ MOCK - depois vem do processamento de vídeo
         monitor_data = {
@@ -710,7 +687,6 @@ class StoreViewSet(viewsets.ModelViewSet):
     def limits(self, request, pk=None):
         store = self.get_object()
         require_store_role(request.user, str(store.id), ALLOWED_READ_ROLES)
-        self._require_subscription_for_store(store, "store_limits")
 
         org_id = getattr(store, "org_id", None)
         is_trial_plan = is_trial(org_id)

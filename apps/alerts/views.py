@@ -26,7 +26,7 @@ from apps.core.models import (
     JourneyEvent,
     OrgMember,
 )
-from backend.utils.entitlements import require_active_subscription
+from backend.utils.entitlements import require_trial_active
 from apps.stores.services.user_uuid import ensure_user_uuid
 
 from .serializers import (
@@ -92,7 +92,7 @@ def _require_subscription_for_org(*, org_id, request, action: str):
         actor_user_id = ensure_user_uuid(request.user)
     except Exception:
         actor_user_id = None
-    require_active_subscription(
+    require_trial_active(
         org_id=org_id,
         actor_user_id=actor_user_id,
         action=action,
@@ -119,7 +119,7 @@ def _require_subscription_for_user_orgs(*, request, action: str):
         OrgMember.objects.filter(user_id=actor_user_id).values_list("org_id", flat=True)
     )
     for org_id in {str(o) for o in org_ids if o}:
-        require_active_subscription(
+        require_trial_active(
             org_id=org_id,
             actor_user_id=actor_user_id,
             action=action,

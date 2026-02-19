@@ -7,6 +7,7 @@ import BottomNav from "./BottomNav"
 import { AgentModal } from "../Agent/AgentModal"
 import { useAgent } from "../../contexts/AgentContext"
 import logo from "../../assets/logo.png"
+import SubscriptionGuard from "../SubscriptionGuard"
 
 const Layout = () => {
   const isMobile = useIsMobile(768)
@@ -15,6 +16,7 @@ const Layout = () => {
 
   return (
     <>
+      <SubscriptionGuard />
       {/* CONTAINER PRINCIPAL - trava 100vh e controla scroll */}
       <div className="h-screen bg-gray-50 overflow-hidden">
         <Header onOpenAgent={() => setAgentOpen(true)} />

@@ -11,6 +11,10 @@ const getTokenFromStorage = (): string | null => {
 const DEFAULT_TIMEOUT_MS = import.meta.env.PROD ? 60000 : 30000
 const LONG_TIMEOUT_MS = 60000
 const RETRY_BACKOFF_MS = [1000, 3000]
+const TRIAL_EXPIRED_CODE = "TRIAL_EXPIRED"
+const SUBSCRIPTION_REQUIRED_CODE = "SUBSCRIPTION_REQUIRED"
+const TRIAL_EXPIRED_STORAGE_KEY = "dv_trial_expired"
+const TRIAL_EXPIRED_EVENT = "dv-trial-expired"
 
 const isLongTimeoutPath = (url?: string) => {
   const u = String(url || "")
@@ -64,6 +68,16 @@ const showTimeoutRetryToast = (config: any) => {
       ),
     { id }
   )
+}
+
+const notifyTrialExpired = () => {
+  if (typeof window === "undefined") return
+  try {
+    sessionStorage.setItem(TRIAL_EXPIRED_STORAGE_KEY, "1")
+    window.dispatchEvent(new CustomEvent(TRIAL_EXPIRED_EVENT))
+  } catch {
+    // ignore storage errors
+  }
 }
 
 // Request interceptor
@@ -153,10 +167,12 @@ api.interceptors.response.use(
       toast.error("Seu trial permite até 3 câmeras por loja.")
     }
 
-    if (paywall?.code === "SUBSCRIPTION_REQUIRED") {
-      if (typeof window !== "undefined") {
-        window.location.href = "/app/billing"
-      }
+    if (
+      status === 402 ||
+      paywall?.code === TRIAL_EXPIRED_CODE ||
+      paywall?.code === SUBSCRIPTION_REQUIRED_CODE
+    ) {
+      notifyTrialExpired()
     }
 
     if (isTimeout) {

@@ -37,7 +37,7 @@ vi.mock("../../services/stores", () => ({
   storesService: {
     getStores: vi.fn().mockResolvedValue([]),
     createStore: vi.fn().mockRejectedValue({
-      response: { data: { code: "SUBSCRIPTION_REQUIRED" } },
+      response: { data: { code: "TRIAL_EXPIRED" } },
     }),
     updateStore: vi.fn(),
     deleteStore: vi.fn(),
@@ -45,7 +45,7 @@ vi.mock("../../services/stores", () => ({
   },
 }))
 
-describe("Stores SUBSCRIPTION_REQUIRED handling", () => {
+describe("Stores TRIAL_EXPIRED handling", () => {
   beforeEach(() => {
     localStorage.setItem(
       "userData",
@@ -57,7 +57,7 @@ describe("Stores SUBSCRIPTION_REQUIRED handling", () => {
     toastState.element = null
   })
 
-  it("shows CTA and redirects to /app/billing when subscription required on create", async () => {
+  it("shows CTA and redirects to /app/upgrade when trial expired on create", async () => {
     renderWithProviders(<Stores />)
     const user = userEvent.setup()
 
@@ -79,6 +79,6 @@ describe("Stores SUBSCRIPTION_REQUIRED handling", () => {
     const { getByRole } = render(toastState.element as React.ReactElement)
     await user.click(getByRole("button", { name: /Ver planos/i }))
 
-    expect(navigateMock).toHaveBeenCalledWith("/app/billing")
+    expect(navigateMock).toHaveBeenCalledWith("/app/upgrade")
   })
 })

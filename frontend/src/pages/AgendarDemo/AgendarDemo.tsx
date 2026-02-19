@@ -6,10 +6,20 @@ import { demoService } from "../../services/demo"
 
 type StoresRange = "1" | "2-5" | "6-20" | "20+"
 type CamerasRange = "1-3" | "4-10" | "11-50" | "50+"
-type CamerasCountRangeLead = "1-3" | "4-10" | "11-50" | "50+" | "dontknow"
+type CamerasCountRangeLead = "1_4" | "5_8" | "9_16" | "17_32" | "33_plus"
 type HasNvrLead = "yes" | "no" | "dontknow"
 type CameraBrandLead = "intelbras" | "hikvision" | "dahua" | "other" | "dontknow"
 type AppUsedLead = "isic_lite" | "mibo" | "other" | "dontknow"
+
+type OperationSegmentValue =
+  | "supermarket"
+  | "convenience"
+  | "pharmacy"
+  | "bakery"
+  | "restaurant"
+  | "fashion"
+  | "mall_store"
+  | "other"
 
 type GoalValue =
   | "loss_prevention"
@@ -23,6 +33,7 @@ type GoalValue =
 type SetupWhereValue = "store_pc" | "nvr_server" | "not_sure"
 type AccessWhoValue = "owner" | "store_manager" | "staff" | "not_sure"
 type HowHeardValue = "referral" | "instagram" | "google" | "youtube" | "other"
+type OperatorsAccessValue = "yes" | "no" | ""
 
 // Dor do multilojista
 type MultiPainValue =
@@ -41,6 +52,25 @@ const HOW_HEARD: { label: string; value: HowHeardValue }[] = [
   { label: "Indicação", value: "referral" },
   { label: "Google / Busca", value: "google" },
   { label: "Outro", value: "other" },
+]
+
+const OPERATION_SEGMENTS: { label: string; value: OperationSegmentValue }[] = [
+  { value: "supermarket", label: "Supermercado" },
+  { value: "convenience", label: "Conveniência" },
+  { value: "pharmacy", label: "Farmácia" },
+  { value: "bakery", label: "Padaria" },
+  { value: "restaurant", label: "Restaurante" },
+  { value: "fashion", label: "Moda/Vestuário" },
+  { value: "mall_store", label: "Loja em shopping" },
+  { value: "other", label: "Outro" },
+]
+
+const CAMERA_COUNT_RANGES: { label: string; value: CamerasCountRangeLead }[] = [
+  { value: "1_4", label: "1–4" },
+  { value: "5_8", label: "5–8" },
+  { value: "9_16", label: "9–16" },
+  { value: "17_32", label: "17–32" },
+  { value: "33_plus", label: "33+" },
 ]
 
 const CAMERA_BRANDS = [
@@ -72,6 +102,38 @@ const MULTI_PAINS: { label: string; value: MultiPainValue }[] = [
   { label: "Comparar lojas é impossível (sem métrica igual pra todas)", value: "no_compare" },
   { label: "Outro", value: "other" },
 ]
+
+const BRAZIL_UF = [
+  "AC",
+  "AL",
+  "AP",
+  "AM",
+  "BA",
+  "CE",
+  "DF",
+  "ES",
+  "GO",
+  "MA",
+  "MT",
+  "MS",
+  "MG",
+  "PA",
+  "PB",
+  "PR",
+  "PE",
+  "PI",
+  "RJ",
+  "RN",
+  "RS",
+  "RO",
+  "RR",
+  "SC",
+  "SP",
+  "SE",
+  "TO",
+] as const
+
+const CITY_OPTIONS_BY_UF: Record<string, string[]> = {}
 
 function onlyDigits(v: string) {
   return (v || "").replace(/\D/g, "")
@@ -145,7 +207,7 @@ export default function AgendarDemo() {
   const [howHeard, setHowHeard] = useState<HowHeardValue | "">("")
   const [howHeardOther, setHowHeardOther] = useState("")
 
-  const [operationType, setOperationType] = useState("")
+  const [operationSegment, setOperationSegment] = useState<OperationSegmentValue | "">("")
   const [storesRange, setStoresRange] = useState<StoresRange | "">("")
   const [camerasRange, setCamerasRange] = useState<CamerasRange | "">("")
   const [cameraBrands, setCameraBrands] = useState<string[]>([])
@@ -154,12 +216,14 @@ export default function AgendarDemo() {
   const [hasNvrLead, setHasNvrLead] = useState<HasNvrLead | "">("")
   const [cameraBrandLead, setCameraBrandLead] = useState<CameraBrandLead | "">("")
   const [appUsedLead, setAppUsedLead] = useState<AppUsedLead | "">("")
-  const [city, setCity] = useState("")
-  const [stateUF, setStateUF] = useState("")
+  const [pilotStoreLocation, setPilotStoreLocation] = useState("")
+  const [pilotState, setPilotState] = useState("")
+  const [pilotCity, setPilotCity] = useState("")
 
   // ⚠️ Agora fica ABERTO no formulário e OBRIGATÓRIO (sem accordion)
   const [setupWhere, setSetupWhere] = useState<SetupWhereValue | "">("")
   const [accessWho, setAccessWho] = useState<AccessWhoValue | "">("")
+  const [operatorsHaveAccess, setOperatorsHaveAccess] = useState<OperatorsAccessValue>("")
 
   // Objetivos (multi seleção)
   const [goals, setGoals] = useState<GoalValue[]>([])
@@ -177,6 +241,8 @@ export default function AgendarDemo() {
 
   const isMultiStore = storesRange !== "" && storesRange !== "1"
   const needsMultiPainOther = multiPain === "other"
+  const hasPilotLocation = Boolean(pilotStoreLocation.trim())
+  const cityOptions = pilotState ? CITY_OPTIONS_BY_UF[pilotState] || [] : []
 
   const primaryGoal: GoalValue | "" = useMemo(() => {
     if (!goals.length) return ""
@@ -199,14 +265,14 @@ export default function AgendarDemo() {
     const total = 8
     if (name.trim()) done++
     if (isValidWhatsappBR11Mobile(whatsapp)) done++
-    if (operationType.trim()) done++
+    if (operationSegment) done++
     if (storesRange) done++
     if (camerasRange) done++
     if (goals.length > 0) done++
     if (setupWhere) done++
     if (accessWho) done++
     return Math.round((done / total) * 100)
-  }, [name, whatsapp, operationType, storesRange, camerasRange, goals.length, setupWhere, accessWho])
+  }, [name, whatsapp, operationSegment, storesRange, camerasRange, goals.length, setupWhere, accessWho])
 
   function toggleBrand(brand: (typeof CAMERA_BRANDS)[number]) {
     setCameraBrands((prev) => {
@@ -237,7 +303,7 @@ export default function AgendarDemo() {
     if (!isValidWhatsappBR11Mobile(whatsapp)) {
       return toast.error("WhatsApp inválido. Use DDD + número de celular (11 dígitos, começando com 9).")
     }
-    if (!operationType.trim()) return toast.error("Informe o segmento da operação.")
+    if (!operationSegment) return toast.error("Informe o segmento da operação.")
     if (!storesRange) return toast.error("Selecione a faixa de quantidade de lojas.")
     if (!camerasRange) return toast.error("Selecione a faixa de quantidade de câmeras.")
 
@@ -251,6 +317,13 @@ export default function AgendarDemo() {
 
     if (!setupWhere) return toast.error("Responda onde a DaleVision irá rodar em sua loja.")
     if (!accessWho) return toast.error("Selecione quem terá acesso para ajudar na ativação.")
+
+    if (hasPilotLocation && !pilotState.trim()) {
+      return toast.error("Selecione o UF da loja piloto.")
+    }
+    if (hasPilotLocation && !pilotCity.trim()) {
+      return toast.error("Informe a cidade da loja piloto.")
+    }
 
     if (!emailClean || !isValidEmail(emailClean)) return toast.error("Informe um e-mail válido.")
 
@@ -266,13 +339,26 @@ export default function AgendarDemo() {
         email: emailClean,
         whatsapp: whatsappClean,
 
-        operation_type: operationType.trim(),
+        operation_segment: operationSegment,
+        operation_type: operationSegment,
         stores_range: storesRange,
         cameras_range: camerasRange,
         camera_brands_json: cameraBrands,
 
-        pilot_city: city.trim() ? city.trim() : null,
-        pilot_state: stateUF.trim() ? stateUF.trim().toUpperCase() : null,
+        camera_count_range: camerasCountRangeLead || null,
+        camera_range: camerasCountRangeLead || null,
+        run_location: setupWhere,
+        operators_have_access:
+          operatorsHaveAccess === "yes"
+            ? true
+            : operatorsHaveAccess === "no"
+              ? false
+              : null,
+
+        pilot_store_location: pilotStoreLocation.trim() ? pilotStoreLocation.trim() : null,
+        pilot_city: hasPilotLocation && pilotCity.trim() ? pilotCity.trim() : null,
+        pilot_state:
+          hasPilotLocation && pilotState.trim() ? pilotState.trim().toUpperCase() : null,
 
         primary_goal: primaryGoal || null,
         primary_goals: goals,
@@ -299,7 +385,13 @@ export default function AgendarDemo() {
 
           activation_setup_where: setupWhere,
           activation_access_who: accessWho,
-          lead_cameras_count_range: camerasCountRangeLead || null,
+          run_location: setupWhere,
+          operators_have_access:
+            operatorsHaveAccess === "yes"
+              ? true
+              : operatorsHaveAccess === "no"
+                ? false
+                : null,
           lead_has_nvr: hasNvrLead || null,
           lead_camera_brand: cameraBrandLead || null,
           lead_app_used: appUsedLead || null,
@@ -502,14 +594,24 @@ export default function AgendarDemo() {
               <label className="text-sm font-medium text-slate-700" htmlFor="demo-operation">
                 Segmento / tipo de operação *
               </label>
-              <input
+              <select
                 id="demo-operation"
-                className={inputBase}
-                placeholder="Ex: supermercado, farmácia, moda, atacarejo…"
-                value={operationType}
-                onChange={(e) => setOperationType(e.target.value)}
-              />
-              {fieldErrors.operation_type && <p className="mt-2 text-xs text-red-600">{fieldErrors.operation_type}</p>}
+                className={selectBase}
+                value={operationSegment}
+                onChange={(e) => setOperationSegment(e.target.value as OperationSegmentValue)}
+              >
+                <option value="">Selecione</option>
+                {OPERATION_SEGMENTS.map((segment) => (
+                  <option key={segment.value} value={segment.value}>
+                    {segment.label}
+                  </option>
+                ))}
+              </select>
+              {(fieldErrors.operation_segment || fieldErrors.operation_type) && (
+                <p className="mt-2 text-xs text-red-600">
+                  {fieldErrors.operation_segment || fieldErrors.operation_type}
+                </p>
+              )}
             </div>
 
             <div className="grid gap-3 sm:grid-cols-2">
@@ -560,7 +662,7 @@ export default function AgendarDemo() {
               <div className="mt-3 grid gap-3 sm:grid-cols-2">
                 <div>
                   <label className="text-sm font-medium text-slate-700" htmlFor="lead-cameras-count-range">
-                    Faixa de câmeras (aprox.)
+                    Qtd Câmeras
                   </label>
                   <select
                     id="lead-cameras-count-range"
@@ -569,11 +671,11 @@ export default function AgendarDemo() {
                     onChange={(e) => setCamerasCountRangeLead(e.target.value as CamerasCountRangeLead)}
                   >
                     <option value="">Selecione</option>
-                    <option value="1-3">1–3</option>
-                    <option value="4-10">4–10</option>
-                    <option value="11-50">11–50</option>
-                    <option value="50+">50+</option>
-                    <option value="dontknow">Não sei</option>
+                    {CAMERA_COUNT_RANGES.map((range) => (
+                      <option key={range.value} value={range.value}>
+                        {range.label}
+                      </option>
+                    ))}
                   </select>
                 </div>
 
@@ -755,6 +857,9 @@ export default function AgendarDemo() {
                     <option value="nvr_server">Servidor/NVR onde ficam as câmeras</option>
                     <option value="not_sure">Não sei ainda</option>
                   </select>
+                  <p className="text-xs text-slate-500 mt-1">
+                    Se rodar em um computador, operadores podem ter acesso dependendo de permissões do Windows.
+                  </p>
                 </div>
 
                 <div>
@@ -774,6 +879,22 @@ export default function AgendarDemo() {
                     <option value="not_sure">Ainda não sei</option>
                   </select>
                 </div>
+              </div>
+
+              <div>
+                <label className="text-sm font-medium text-slate-700" htmlFor="demo-operators-access">
+                  Operadores terão acesso ao computador?
+                </label>
+                <select
+                  id="demo-operators-access"
+                  className={selectBase}
+                  value={operatorsHaveAccess}
+                  onChange={(e) => setOperatorsHaveAccess(e.target.value as OperatorsAccessValue)}
+                >
+                  <option value="">Selecione</option>
+                  <option value="yes">Sim</option>
+                  <option value="no">Não</option>
+                </select>
               </div>
 
               <p className="text-xs text-slate-500">
@@ -850,35 +971,73 @@ export default function AgendarDemo() {
 
             {/* Loja piloto opcional */}
             <div className="space-y-2">
-              <h3 className="font-semibold text-slate-900">Loja piloto (opcional)</h3>
-              <div className="flex gap-3">
-                <div className="w-full">
-                  <label className="text-sm font-medium text-slate-700" htmlFor="demo-city">
-                    Cidade
+              <h3 className="font-semibold text-slate-900">Local da loja piloto</h3>
+              <div>
+                <label className="text-sm font-medium text-slate-700" htmlFor="demo-pilot-location">
+                  Local da loja piloto (opcional)
+                </label>
+                <input
+                  id="demo-pilot-location"
+                  className={inputBase}
+                  placeholder="Ex: Bairro, endereço, nome da loja…"
+                  value={pilotStoreLocation}
+                  onChange={(e) => setPilotStoreLocation(e.target.value)}
+                />
+              </div>
+
+              <div
+                className={
+                  hasPilotLocation
+                    ? "grid gap-3 sm:grid-cols-2"
+                    : "grid gap-3 sm:grid-cols-2 opacity-60 pointer-events-none"
+                }
+              >
+                <div>
+                  <label className="text-sm font-medium text-slate-700" htmlFor="demo-pilot-city">
+                    Cidade {hasPilotLocation ? "*" : ""}
                   </label>
                   <input
-                    id="demo-city"
+                    id="demo-pilot-city"
                     className={inputBase}
                     placeholder="Cidade"
-                    value={city}
-                    onChange={(e) => setCity(e.target.value)}
+                    value={pilotCity}
+                    onChange={(e) => setPilotCity(e.target.value)}
+                    list="pilot-city-options"
                   />
+                  <datalist id="pilot-city-options">
+                    {cityOptions.map((cityName) => (
+                      <option key={cityName} value={cityName} />
+                    ))}
+                  </datalist>
                 </div>
 
-                <div className="w-28">
-                  <label className="text-sm font-medium text-slate-700" htmlFor="demo-uf">
-                    UF
+                <div>
+                  <label className="text-sm font-medium text-slate-700" htmlFor="demo-pilot-uf">
+                    UF {hasPilotLocation ? "*" : ""}
                   </label>
-                  <input
-                    id="demo-uf"
-                    className={inputBase}
-                    placeholder="SP"
-                    value={stateUF}
-                    onChange={(e) => setStateUF(e.target.value)}
-                    maxLength={2}
-                  />
+                  <select
+                    id="demo-pilot-uf"
+                    className={selectBase}
+                    value={pilotState}
+                    onChange={(e) => {
+                      setPilotState(e.target.value)
+                      setPilotCity("")
+                    }}
+                  >
+                    <option value="">Selecione</option>
+                    {BRAZIL_UF.map((uf) => (
+                      <option key={uf} value={uf}>
+                        {uf}
+                      </option>
+                    ))}
+                  </select>
                 </div>
               </div>
+              {!hasPilotLocation && (
+                <p className="text-xs text-slate-500">
+                  Se preencher o local da loja piloto, UF e cidade se tornam obrigatórios.
+                </p>
+              )}
             </div>
           </div>
 

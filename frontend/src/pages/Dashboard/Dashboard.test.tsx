@@ -62,6 +62,7 @@ describe("Dashboard empty state", () => {
     await waitFor(() => {
       expect(screen.queryByText(/Invalid Date/i)).not.toBeInTheDocument()
     })
+    expect(screen.getAllByText(/Sem dados ainda/i).length).toBeGreaterThan(0)
   })
 })
 

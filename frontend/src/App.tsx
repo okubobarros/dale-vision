@@ -17,6 +17,7 @@ import Alerts from "./pages/Alerts/Alerts"
 import Settings from "./pages/Settings/Settings"
 import ProfilePage from "./pages/Profile/Profile"
 import Upgrade from "./pages/Billing/Upgrade"
+import EdgeHelp from "./pages/EdgeHelp/EdgeHelp"
 
 // ✅ Alerts stack
 import AlertRules from "./pages/AlertRules/AlertRules"
@@ -70,6 +71,7 @@ function App() {
         <Route path="settings" element={<Settings />} />
         <Route path="profile" element={<ProfilePage />} />
         <Route path="upgrade" element={<Upgrade />} />
+        <Route path="edge-help" element={<EdgeHelp />} />
       </Route>
 
       {/* Compat redirects (rotas antigas sem /app) */}

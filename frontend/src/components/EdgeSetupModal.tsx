@@ -714,7 +714,7 @@ const EdgeSetupModal = ({ open, onClose, defaultStoreId }: EdgeSetupModalProps) 
             >
               <div className="text-sm text-gray-700 font-semibold">2. Download do Edge Agent</div>
               <p className="mt-1 text-xs text-gray-500">
-                Baixe o instalador no computador da loja.
+                Baixe o Edge Agent no computador da loja.
               </p>
               <div className="mt-3 flex flex-col gap-3">
                 {canDownload ? (
@@ -738,7 +738,11 @@ const EdgeSetupModal = ({ open, onClose, defaultStoreId }: EdgeSetupModalProps) 
                 <div className="text-xs text-gray-600 space-y-2">
                   <div>1. Extraia o arquivo ZIP.</div>
                   <div>2. Abra a pasta extraída.</div>
-                  <div>3. Volte aqui e clique em “Já baixei e extraí”.</div>
+                  <div>
+                    3. Não rode nenhum <span className="font-mono">.bat</span> agora
+                    (usaremos o <span className="font-mono">run.bat</span> no passo 4).
+                  </div>
+                  <div>4. Volte aqui e clique em “Já baixei e extraí”.</div>
                 </div>
                 {canDownload && (
                   <div className="text-[11px] text-gray-500">
@@ -850,7 +854,7 @@ const EdgeSetupModal = ({ open, onClose, defaultStoreId }: EdgeSetupModalProps) 
               <div className="mt-1 text-xs text-gray-500 space-y-1">
                 <div>
                   Após atualizar o <span className="font-mono">.env</span>, dê duplo clique em{" "}
-                  <span className="font-mono">run.bat</span>.
+                  <span className="font-mono">run.bat</span> (somente ele).
                 </div>
                 <div>Na janela Abrir Arquivo - Aviso de segurança, clique no botão Executar</div>
                 <div>
@@ -859,7 +863,10 @@ const EdgeSetupModal = ({ open, onClose, defaultStoreId }: EdgeSetupModalProps) 
                 
               </div>
               <div className="mt-2 rounded-lg border border-gray-200 bg-white px-3 py-2 text-xs text-gray-600">
-                Se o Windows bloquear: “Mais informações” → “Executar assim mesmo”
+                Se o Windows bloquear: “Mais informações” → “Executar assim mesmo”.
+                <div className="mt-1">
+                  <span className="font-mono">Diagnose.bat</span> é só para suporte.
+                </div>
               </div>
               <div className="mt-2 flex flex-col sm:flex-row sm:items-center gap-3">
                 <div>Feito o processo anterior, clique em “Já iniciei o agent”.</div>
