@@ -37,9 +37,7 @@ const fillBaseRequired = async (
     "1-3"
   )
 
-  await user.click(
-    screen.getByLabelText(/Reduzir perdas \/ fraudes/i)
-  )
+  await user.click(screen.getByLabelText(/Reduzir perdas \/ fraudes/i))
 
   await user.selectOptions(
     screen.getByLabelText(/Onde a DaleVision irá rodar em sua loja\? \*/i),
@@ -90,10 +88,7 @@ describe("AgendarDemo", () => {
     renderWithProviders(<AgendarDemo />)
     const user = userEvent.setup()
 
-    await user.selectOptions(
-      screen.getByLabelText(/Segmento \/ tipo de operação \*/i),
-      "other"
-    )
+    await user.selectOptions(screen.getByLabelText(/Segmento \/ tipo de operação \*/i), "other")
 
     await fillBaseRequired(user)
 
@@ -133,6 +128,56 @@ describe("AgendarDemo", () => {
     expect(
       screen.queryByLabelText(/Faixa de câmeras \(aprox\.\)/i)
     ).not.toBeInTheDocument()
+  })
+
+  it("permite selecionar múltiplos desafios e mostra 'Outro' quando selecionado", async () => {
+    renderWithProviders(<AgendarDemo />)
+    const user = userEvent.setup()
+
+    await user.selectOptions(
+      screen.getByLabelText(/Quantas lojas você opera hoje\? \*/i),
+      "2-5"
+    )
+
+    await user.click(
+      screen.getByLabelText(/Falta de padronização na execução entre unidades/i)
+    )
+    await user.click(
+      screen.getByLabelText(/Ocorrências sem histórico centralizado/i)
+    )
+    await user.click(
+      screen.getByLabelText(/^Outro$/i, { selector: 'input[type="checkbox"]' })
+    )
+
+    expect(screen.getByLabelText(/Qual\?$/i)).toBeInTheDocument()
+  })
+
+  it("bloqueia submit multilojista quando 'Outro' sem texto", async () => {
+    vi.mocked(demoService.createLead).mockResolvedValue({ id: "lead123" })
+    renderWithProviders(<AgendarDemo />)
+    const user = userEvent.setup()
+
+    await user.selectOptions(
+      screen.getByLabelText(/Segmento \/ tipo de operação \*/i),
+      "gelateria"
+    )
+    await fillBaseRequired(user)
+
+    await user.selectOptions(
+      screen.getByLabelText(/Quantas lojas você opera hoje\? \*/i),
+      "2-5"
+    )
+
+    await user.click(
+      screen.getByLabelText(/^Outro$/i, { selector: 'input[type="checkbox"]' })
+    )
+
+    await user.click(
+      screen.getByRole("button", { name: /Ver horários disponíveis/i })
+    )
+
+    expect(demoService.createLead).not.toHaveBeenCalled()
+    expect(toastError).toHaveBeenCalledWith('Preencha "Outro" (gestão entre lojas).')
   })
 
   it("bloqueia envio quando Operadores terão acesso não foi selecionado", async () => {

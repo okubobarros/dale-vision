@@ -36,13 +36,18 @@ type OperationTypeValue =
 
 // Dor do multilojista
 type MultiPainValue =
-  | "no_standard"
-  | "no_visibility"
-  | "distributed_losses"
-  | "execution_team"
-  | "queues_variance"
-  | "security_incidents"
-  | "no_compare"
+  | "lack_standardization"
+  | "process_inconsistency"
+  | "campaign_inconsistency"
+  | "store_comparison_difficulty"
+  | "lack_operational_kpis"
+  | "unclear_top_store_performance"
+  | "team_productivity_visibility"
+  | "lack_manager_accountability"
+  | "recurring_losses"
+  | "no_incident_history"
+  | "no_real_time_visibility"
+  | "inconsistent_customer_experience"
   | "other"
 
 const HOW_HEARD: { label: string; value: HowHeardValue }[] = [
@@ -88,13 +93,42 @@ const GOALS: { label: string; value: GoalValue }[] = [
 ]
 
 const MULTI_PAINS: { label: string; value: MultiPainValue }[] = [
-  { label: "Falta de padrão: cada loja faz de um jeito (auditoria difícil)", value: "no_standard" },
-  { label: "Sem visibilidade do que acontece no chão de loja (só descobre depois)", value: "no_visibility" },
-  { label: "Perdas/furtos espalhados e sem evidência rápida", value: "distributed_losses" },
-  { label: "Equipe / execução fraca (processo não roda igual em todas)", value: "execution_team" },
-  { label: "Filas e atendimento variam muito entre unidades", value: "queues_variance" },
-  { label: "Segurança e incidentes (ocorrências sem histórico confiável)", value: "security_incidents" },
-  { label: "Comparar lojas é impossível (sem métrica igual pra todas)", value: "no_compare" },
+  {
+    label: "Falta de padronização na execução entre unidades",
+    value: "lack_standardization",
+  },
+  {
+    label: "Dificuldade em garantir que processos rodem igual em todas as lojas",
+    value: "process_inconsistency",
+  },
+  {
+    label: "Campanhas e ações não são aplicadas de forma consistente",
+    value: "campaign_inconsistency",
+  },
+  {
+    label: "Dificuldade para comparar desempenho entre lojas",
+    value: "store_comparison_difficulty",
+  },
+  { label: "Falta de indicadores operacionais confiáveis", value: "lack_operational_kpis" },
+  {
+    label: "Não tenho clareza sobre qual loja performa melhor (e por quê)",
+    value: "unclear_top_store_performance",
+  },
+  {
+    label: "Dificuldade em acompanhar produtividade da equipe por unidade",
+    value: "team_productivity_visibility",
+  },
+  { label: "Falta de accountability entre gestores de loja", value: "lack_manager_accountability" },
+  { label: "Perdas/furtos recorrentes sem evidência estruturada", value: "recurring_losses" },
+  { label: "Ocorrências sem histórico centralizado", value: "no_incident_history" },
+  {
+    label: "Falta de visibilidade em tempo real do que acontece nas lojas",
+    value: "no_real_time_visibility",
+  },
+  {
+    label: "Experiência do cliente varia muito entre unidades",
+    value: "inconsistent_customer_experience",
+  },
   { label: "Outro", value: "other" },
 ]
 
@@ -232,7 +266,7 @@ export default function AgendarDemo() {
   const [contextNote, setContextNote] = useState("")
 
   // Dor multilojista
-  const [multiPain, setMultiPain] = useState<MultiPainValue | "">("")
+  const [multiPains, setMultiPains] = useState<MultiPainValue[]>([])
   const [multiPainOther, setMultiPainOther] = useState("")
 
   const [consent, setConsent] = useState(false)
@@ -241,7 +275,7 @@ export default function AgendarDemo() {
   const needsSourceDetail = howHeard === "other" || howHeard === "referral"
 
   const isMultiStore = storesRange !== "" && storesRange !== "1"
-  const needsMultiPainOther = multiPain === "other"
+  const needsMultiPainOther = multiPains.includes("other")
 
   const primaryGoal: GoalValue | "" = useMemo(() => {
     if (!goals.length) return ""
@@ -305,6 +339,14 @@ export default function AgendarDemo() {
     })
   }
 
+  function toggleMultiPain(pain: MultiPainValue) {
+    setMultiPains((prev) => {
+      const exists = prev.includes(pain)
+      const next = exists ? prev.filter((p) => p !== pain) : [...prev, pain]
+      return next
+    })
+  }
+
   async function handleSubmit() {
     if (loading || success) return
     setSubmitError("")
@@ -325,8 +367,10 @@ export default function AgendarDemo() {
     if (!storesRange) return toast.error("Selecione a faixa de quantidade de lojas.")
     if (!camerasRange) return toast.error("Selecione a faixa de quantidade de câmeras.")
 
-    if (isMultiStore && !multiPain) return toast.error("Multilojista: selecione onde dói mais hoje na gestão entre lojas.")
-    if (isMultiStore && multiPain === "other" && !multiPainOther.trim()) {
+    if (isMultiStore && multiPains.length === 0) {
+      return toast.error("Selecione pelo menos 1 desafio na gestão das suas lojas.")
+    }
+    if (isMultiStore && multiPains.includes("other") && !multiPainOther.trim()) {
       return toast.error('Preencha "Outro" (gestão entre lojas).')
     }
 
@@ -383,8 +427,10 @@ export default function AgendarDemo() {
           goals_selected: goals,
           context_note: contextNote.trim() ? contextNote.trim() : null,
 
-          multi_store_pain: isMultiStore ? multiPain : null,
-          multi_store_pain_other: isMultiStore && needsMultiPainOther ? multiPainOther.trim() : null,
+          multi_store_pains: isMultiStore ? multiPains : null,
+          multi_store_pains_other: isMultiStore && needsMultiPainOther ? multiPainOther.trim() : null,
+          multi_store_pain: null,
+          multi_store_pain_other: null,
 
           source_detail: needsSourceDetail ? howHeardOther.trim() : null,
           source_channel: "web",
@@ -667,8 +713,8 @@ export default function AgendarDemo() {
             {isMultiStore && (
               <div className="space-y-2">
                 <div className="flex items-center justify-between gap-2">
-                  <h3 className="font-semibold text-slate-900">Multilojista: onde dói mais hoje na gestão entre lojas? *</h3>
-                  <span className="text-xs text-slate-500">Escolha 1</span>
+                  <h3 className="font-semibold text-slate-900">Qual é hoje o principal desafio na gestão das suas lojas? *</h3>
+                  <span className="text-xs text-slate-500">Marque quantos quiser</span>
                 </div>
 
                 <div className="space-y-2">
@@ -677,17 +723,17 @@ export default function AgendarDemo() {
                       key={p.value}
                       className={[
                         "flex items-start gap-3 rounded-2xl border p-3 cursor-pointer transition",
-                        multiPain === p.value
+                        multiPains.includes(p.value)
                           ? "border-cyan-300 bg-cyan-50/60"
                           : "border-slate-200 bg-white hover:bg-slate-50",
                       ].join(" ")}
                     >
                       <input
-                        type="radio"
-                        name="multi-pain"
+                        type="checkbox"
+                        name={`multi-pain-${p.value}`}
                         value={p.value}
-                        checked={multiPain === p.value}
-                        onChange={() => setMultiPain(p.value)}
+                        checked={multiPains.includes(p.value)}
+                        onChange={() => toggleMultiPain(p.value)}
                         className="mt-1 h-4 w-4 border-slate-300 text-cyan-600 focus:ring-cyan-200"
                       />
                       <div className="flex-1">
@@ -717,7 +763,7 @@ export default function AgendarDemo() {
             {/* GOALS multi */}
             <div className="space-y-3">
               <div className="flex items-center justify-between gap-2">
-                <h3 className="font-semibold text-slate-900">Quais são os principais objetivos da sua demo? *</h3>
+                <h3 className="font-semibold text-slate-900">O que você quer validar na demonstração? *</h3>
                 <span className="text-xs text-slate-500">Marque quantos quiser</span>
               </div>
 
