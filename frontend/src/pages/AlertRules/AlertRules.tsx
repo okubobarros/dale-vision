@@ -1,6 +1,6 @@
 // frontend/src/pages/AlertRules/AlertRules.tsx
 // src/pages/AlertRules/AlertRules.tsx
-import { useEffect, useMemo, useState } from "react"
+import { useMemo, useState } from "react"
 import toast from "react-hot-toast"
 import { useQuery, useQueryClient, useMutation } from "@tanstack/react-query"
 import { alertsService, type AlertRule } from "../../services/alerts"
@@ -12,7 +12,7 @@ const defaultChannels = { dashboard: true, email: false, whatsapp: false }
 export default function AlertRulesPage() {
   const qc = useQueryClient()
 
-  const [storeId, setStoreId] = useState<string>("")
+  const [storeIdOverride, setStoreIdOverride] = useState<string | null>(null)
   const [type, setType] = useState("queue_long")
   const [severity, setSeverity] = useState<Severity>("warning")
   const [cooldown, setCooldown] = useState<number>(15)
@@ -27,12 +27,11 @@ export default function AlertRulesPage() {
     queryFn: alertsService.listCoreStores,
   })
 
-  // seta store default
-  useEffect(() => {
-    if (!storeId && storesQ.data?.length) {
-      setStoreId(String(storesQ.data[0].id))
-    }
-  }, [storeId, storesQ.data])
+  const storeId = useMemo(() => {
+    if (storeIdOverride !== null) return storeIdOverride
+    const firstStoreId = storesQ.data?.[0]?.id
+    return firstStoreId ? String(firstStoreId) : ""
+  }, [storeIdOverride, storesQ.data])
 
   // ✅ regras por store UUID
   const rulesQ = useQuery({
@@ -49,7 +48,7 @@ export default function AlertRulesPage() {
       await qc.invalidateQueries({ queryKey: ["alerts", "rules", storeId] })
       setShowCreate(false)
     },
-    onError: (err: any) => {
+    onError: (err: unknown) => {
       console.error(err)
       toast.error("Erro ao salvar regra. Verifique o backend e tente novamente.")
     },
@@ -127,7 +126,7 @@ export default function AlertRulesPage() {
               aria-label="Selecionar loja"
               title="Selecionar loja"
               value={storeId}
-              onChange={(e) => setStoreId(e.target.value)}
+              onChange={(e) => setStoreIdOverride(e.target.value)}
               className="w-full rounded-lg border border-gray-300 px-4 py-2"
               disabled={storesQ.isLoading}
             >

@@ -1,5 +1,5 @@
 // src/pages/Stores/Stores.tsx
-import { useState, useEffect } from 'react';
+import { useState } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import {
@@ -152,8 +152,8 @@ const CreateStoreModal = ({ isOpen, onClose }: { isOpen: boolean; onClose: () =>
         status: 'active',
       });
     },
-    onError: (error: any) => {
-      const payload = error?.response?.data;
+    onError: (error: unknown) => {
+      const payload = (error as { response?: { data?: { code?: string } } })?.response?.data;
       if (payload?.code === 'TRIAL_EXPIRED' || payload?.code === 'SUBSCRIPTION_REQUIRED') {
         toast.custom((t) => (
           <div className="flex items-center gap-3 rounded-xl border border-gray-200 bg-white px-4 py-3 shadow-lg">
@@ -355,14 +355,14 @@ const EditStoreModal = ({
 }) => {
   const queryClient = useQueryClient();
   const navigate = useNavigate();
-  const [formData, setFormData] = useState<UpdateStorePayload>({
-    name: '',
-    description: '',
-    address: '',
-    city: '',
-    state: '',
-    status: 'active',
-  });
+  const [formData, setFormData] = useState<UpdateStorePayload>(() => ({
+    name: store?.name || '',
+    description: store?.description || '',
+    address: store?.address || '',
+    city: store?.city || '',
+    state: store?.state || '',
+    status: store?.status || 'active',
+  }));
 
   const updateMutation = useMutation({
     mutationFn: ({ storeId, payload }: { storeId: string; payload: UpdateStorePayload }) =>
@@ -372,8 +372,8 @@ const EditStoreModal = ({
       toast.success('Loja atualizada com sucesso!');
       onClose();
     },
-    onError: (error: any) => {
-      const payload = error?.response?.data;
+    onError: (error: unknown) => {
+      const payload = (error as { response?: { data?: { code?: string } } })?.response?.data;
       if (payload?.code === 'TRIAL_EXPIRED' || payload?.code === 'SUBSCRIPTION_REQUIRED') {
         toast.custom((t) => (
           <div className="flex items-center gap-3 rounded-xl border border-gray-200 bg-white px-4 py-3 shadow-lg">
@@ -398,20 +398,6 @@ const EditStoreModal = ({
       console.error('Update store error:', error);
     },
   });
-
-  // Atualizar formData quando store muda
-  useEffect(() => {
-    if (store) {
-      setFormData({
-        name: store.name || '',
-        description: store.description || '',
-        address: store.address || '',
-        city: store.city || '',
-        state: store.state || '',
-        status: store.status || 'active',
-      });
-    }
-  }, [store]);
 
   if (!isOpen || !store) return null;
 
@@ -622,8 +608,8 @@ const StoreCard = ({ store, onEdit, trialExpired }: StoreCardProps) => {
       queryClient.invalidateQueries({ queryKey: ['stores'] });
       toast.success('Loja excluída com sucesso!');
     },
-    onError: (error: any) => {
-      const payload = error?.response?.data;
+    onError: (error: unknown) => {
+      const payload = (error as { response?: { data?: { code?: string } } })?.response?.data;
       if (payload?.code === 'TRIAL_EXPIRED' || payload?.code === 'SUBSCRIPTION_REQUIRED') {
         toast.custom((t) => (
           <div className="flex items-center gap-3 rounded-xl border border-gray-200 bg-white px-4 py-3 shadow-lg">
@@ -979,7 +965,8 @@ const Stores = () => {
       />
 
       {/* Edit Store Modal */}
-      <EditStoreModal 
+      <EditStoreModal
+        key={storeToEdit?.id ?? "empty"}
         store={storeToEdit}
         isOpen={!!storeToEdit}
         onClose={() => setStoreToEdit(null)}

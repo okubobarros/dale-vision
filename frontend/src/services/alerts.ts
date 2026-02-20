@@ -23,7 +23,7 @@ export interface AlertRule {
     whatsapp: boolean
   } | null
 
-  threshold?: any
+  threshold?: unknown
   created_at: string
   updated_at: string
 }
@@ -31,6 +31,7 @@ export interface AlertRule {
 export interface DetectionEvent {
   id: string
   store_id: string
+  org_id?: string
   camera_id?: string | null
   zone_id?: string | null
   type: string
@@ -43,7 +44,7 @@ export interface DetectionEvent {
   resolved_by_user_id?: string | null
   suppressed_by_rule_id?: string | null
   suppressed_reason?: string | null
-  metadata?: any
+  metadata?: unknown
   created_at: string
   media?: EventMedia[]
 }
@@ -83,7 +84,8 @@ export interface AlertIngestPayload {
   occurred_at?: string
   clip_url?: string
   snapshot_url?: string
-  metadata?: any
+  receipt_id?: string
+  metadata?: unknown
   destinations?: {
     email?: string | null
     whatsapp?: string | null
@@ -91,19 +93,25 @@ export interface AlertIngestPayload {
 }
 
 type CoreStore = { id: string; name: string }
+type UnknownRecord = Record<string, unknown>
+type RuleStoreLike = { store_id?: string; store?: string }
 
 // helper: normaliza {results: []} | {data: []} | []
-function normalizeArray<T = any>(input: any): T[] {
+function normalizeArray<T>(input: unknown): T[] {
   if (!input) return []
   if (Array.isArray(input)) return input
-  if (Array.isArray(input.results)) return input.results
-  if (Array.isArray(input.data)) return input.data
+  if (typeof input === "object" && input) {
+    const results = (input as { results?: unknown }).results
+    const data = (input as { data?: unknown }).data
+    if (Array.isArray(results)) return results as T[]
+    if (Array.isArray(data)) return data as T[]
+  }
   return []
 }
 
 // helper: normaliza store_id de regra (store ou store_id)
-function getRuleStoreId(rule: any): string | undefined {
-  return rule?.store_id || rule?.store
+function getRuleStoreId(rule: RuleStoreLike): string | undefined {
+  return rule.store_id || rule.store
 }
 
 export const alertsService = {
@@ -114,16 +122,19 @@ export const alertsService = {
   async listRules(storeId?: string): Promise<AlertRule[]> {
     const params = storeId ? { store_id: storeId } : undefined
     const res = await api.get("/alerts/alert-rules/", { params })
-    return normalizeArray<AlertRule>(res.data).map((r: any) => ({
-      ...r,
-      store_id: getRuleStoreId(r),
-      zone_id: r?.zone_id ?? r?.zone ?? null,
-    }))
+    return normalizeArray<AlertRule>(res.data).map((r) => {
+      const rule = r as AlertRule & { store?: string; store_id?: string; zone?: string | null }
+      return {
+        ...rule,
+        store_id: rule.store_id ?? rule.store,
+        zone_id: rule.zone_id ?? rule.zone ?? null,
+      }
+    })
   },
 
   async getRule(id: string): Promise<AlertRule> {
     const res = await api.get(`/alerts/alert-rules/${id}/`)
-    const r: any = res.data
+    const r = res.data as AlertRule & { store?: string; store_id?: string; zone?: string | null }
     return {
       ...r,
       store_id: getRuleStoreId(r),
@@ -133,7 +144,7 @@ export const alertsService = {
 
   // IMPORTANTE: enviar "store" (FK) e não "store_id"
   async createRule(payload: Partial<AlertRule> & { store_id?: string }): Promise<AlertRule> {
-    const body: any = {
+    const body: UnknownRecord = {
       ...payload,
       store: payload.store ?? payload.store_id, // <- aqui
       zone: payload.zone ?? payload.zone_id ?? null,
@@ -142,7 +153,7 @@ export const alertsService = {
     delete body.zone_id
 
     const res = await api.post("/alerts/alert-rules/", body)
-    const r: any = res.data
+    const r = res.data as AlertRule & { store?: string; store_id?: string; zone?: string | null }
     return {
       ...r,
       store_id: getRuleStoreId(r),
@@ -151,7 +162,7 @@ export const alertsService = {
   },
 
   async updateRule(id: string, payload: Partial<AlertRule> & { store_id?: string }): Promise<AlertRule> {
-    const body: any = {
+    const body: UnknownRecord = {
       ...payload,
       ...(payload.store || payload.store_id ? { store: payload.store ?? payload.store_id } : {}),
       ...(payload.zone || payload.zone_id ? { zone: payload.zone ?? payload.zone_id } : {}),
@@ -160,7 +171,7 @@ export const alertsService = {
     delete body.zone_id
 
     const res = await api.patch(`/alerts/alert-rules/${id}/`, body)
-    const r: any = res.data
+    const r = res.data as AlertRule & { store?: string; store_id?: string; zone?: string | null }
     return {
       ...r,
       store_id: getRuleStoreId(r),
@@ -180,7 +191,7 @@ export const alertsService = {
     const res = await api.post("/alerts/alert-rules/ingest/", payload)
     return res.data as {
       event: DetectionEvent
-      n8n: any
+      n8n: unknown
       suppressed: boolean
     }
   },
@@ -197,13 +208,21 @@ export const alertsService = {
     occurred_to?: string
   }): Promise<DetectionEvent[]> {
     const res = await api.get("/alerts/events/", { params })
-    return normalizeArray<DetectionEvent>(res.data).map((event: any) => ({
-      ...event,
-      store_id: event?.store_id ?? event?.store,
-      camera_id: event?.camera_id ?? event?.camera,
-      zone_id: event?.zone_id ?? event?.zone,
-      org_id: event?.org_id ?? event?.org,
-    }))
+    return normalizeArray<DetectionEvent>(res.data).map((event) => {
+      const item = event as DetectionEvent & {
+        store?: string
+        camera?: string
+        zone?: string
+        org?: string
+      }
+      return {
+        ...item,
+        store_id: item.store_id ?? item.store,
+        camera_id: item.camera_id ?? item.camera,
+        zone_id: item.zone_id ?? item.zone,
+        org_id: (item as DetectionEvent & { org_id?: string }).org_id ?? item.org,
+      }
+    })
   },
 
   async resolveEvent(eventId: string): Promise<DetectionEvent> {
@@ -239,4 +258,3 @@ export const alertsService = {
     return normalizeArray<CoreStore>(res.data)
   },
 }
-

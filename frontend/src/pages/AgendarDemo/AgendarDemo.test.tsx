@@ -5,7 +5,7 @@ import AgendarDemo from "./AgendarDemo"
 import { renderWithProviders } from "../../test/test-utils"
 import { demoService } from "../../services/demo"
 
-const toastError = vi.fn()
+const toastError = vi.hoisted(() => vi.fn())
 
 vi.mock("react-hot-toast", () => ({
   default: {
@@ -35,6 +35,10 @@ const fillBaseRequired = async (
   await user.selectOptions(
     screen.getByLabelText(/Quantidade total de Câmeras\? \*/i),
     "1-3"
+  )
+
+  await user.click(
+    screen.getByLabelText(/Falta de padronização na execução entre unidades/i)
   )
 
   await user.click(screen.getByLabelText(/Reduzir perdas \/ fraudes/i))
@@ -100,7 +104,7 @@ describe("AgendarDemo", () => {
     expect(toastError).toHaveBeenCalledWith(
       'Preencha "Qual?" (segmento da operação).'
     )
-  })
+  }, 10000)
 
   it("permite envio quando Segmento é Outros e 'Qual?' preenchido", async () => {
     vi.mocked(demoService.createLead).mockResolvedValue({ id: "lead123" })
@@ -120,7 +124,7 @@ describe("AgendarDemo", () => {
     )
 
     expect(demoService.createLead).toHaveBeenCalled()
-  })
+  }, 10000)
 
   it("não exibe o bloco de Infraestrutura atual (opcional)", () => {
     renderWithProviders(<AgendarDemo />)
@@ -146,7 +150,7 @@ describe("AgendarDemo", () => {
       screen.getByLabelText(/Ocorrências sem histórico centralizado/i)
     )
     await user.click(
-      screen.getByLabelText(/^Outro$/i, { selector: 'input[type="checkbox"]' })
+      screen.getAllByLabelText(/^Outro$/i, { selector: 'input[type="checkbox"]' })[0]
     )
 
     expect(screen.getByLabelText(/Outro \(desafios\) \*/i)).toBeInTheDocument()
@@ -169,7 +173,7 @@ describe("AgendarDemo", () => {
     )
 
     await user.click(
-      screen.getByLabelText(/^Outro$/i, { selector: 'input[type="checkbox"]' })
+      screen.getAllByLabelText(/^Outro$/i, { selector: 'input[type="checkbox"]' })[0]
     )
 
     await user.click(

@@ -5,7 +5,7 @@ import { useIsMobile } from "../../hooks/useIsMobile"
 
 import BottomNav from "./BottomNav"
 import { AgentModal } from "../Agent/AgentModal"
-import { useAgent } from "../../contexts/AgentContext"
+import { useAgent } from "../../contexts/useAgent"
 import logo from "../../assets/logo.png"
 import SubscriptionGuard from "../SubscriptionGuard"
 

@@ -243,9 +243,6 @@ export default function AgendarDemo() {
 
   const [consent, setConsent] = useState(false)
 
-  // TODO: remover após deploy de validação
-  console.log("[AgendarDemo] storesRange:", storesRange, "isMultiStore:", true)
-
   const hasOtherGoal = goals.includes("other")
   const needsSourceDetail = howHeard === "other" || howHeard === "referral"
 
@@ -431,10 +428,18 @@ export default function AgendarDemo() {
       setTimeout(() => {
         window.location.href = calendlyUrl.toString()
       }, 1200)
-    } catch (err: any) {
-      console.error(err)
-      if (err?.response?.status === 400 && err?.response?.data && typeof err.response.data === "object") {
-        const data = err.response.data as Record<string, unknown>
+    } catch (err) {
+      const error = err as {
+        response?: { status?: number; data?: unknown }
+        message?: string
+      }
+      console.error(error)
+      if (
+        error?.response?.status === 400 &&
+        error?.response?.data &&
+        typeof error.response.data === "object"
+      ) {
+        const data = error.response.data as Record<string, unknown>
         const nextErrors: Record<string, string> = {}
         for (const [key, value] of Object.entries(data)) {
           const message = Array.isArray(value)
@@ -449,9 +454,9 @@ export default function AgendarDemo() {
         return
       }
       const msg =
-        err?.response?.data?.detail ||
-        err?.response?.data?.message ||
-        err?.message ||
+        (error?.response?.data as { detail?: string; message?: string } | undefined)?.detail ||
+        (error?.response?.data as { detail?: string; message?: string } | undefined)?.message ||
+        error?.message ||
         "Erro ao enviar dados. Tente novamente."
       setSubmitError(msg)
       toast.error(msg)

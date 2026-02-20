@@ -31,12 +31,38 @@ const isPrivateIp = (ip: string) => {
 
 const isPrivateHost = (host: string) => isPrivateIp(host) || host === "localhost"
 
+const FIELD_LABELS: Record<string, string> = {
+  name: "Nome",
+  ip: "IP",
+  username: "Usuário",
+  password: "Senha",
+  rtsp_url: "RTSP URL",
+  brand: "Marca",
+  model: "Modelo",
+  external_id: "ID externo",
+  active: "Ativo",
+}
+
 const Cameras = () => {
-  const [selectedStore, setSelectedStore] = useState("")
-  const [edgeSetupOpen, setEdgeSetupOpen] = useState(false)
+  const location = useLocation()
+  const initialParams = new URLSearchParams(location.search)
+  const initialStoreFromQuery =
+    initialParams.get("store_id") || initialParams.get("store") || ""
+  const initialOpenEdgeSetup =
+    initialParams.get("openEdgeSetup") === "1" || initialParams.get("edgeSetup") === "1"
+  const initialOnboardingMode = initialParams.get("onboarding") === "true"
+
+  const [selectedStoreOverride, setSelectedStoreOverride] = useState<string | null>(
+    initialStoreFromQuery ? initialStoreFromQuery : null
+  )
+  const [edgeSetupOpen, setEdgeSetupOpen] = useState(initialOpenEdgeSetup)
   const [cameraModalOpen, setCameraModalOpen] = useState(false)
   const [editingCamera, setEditingCamera] = useState<Camera | null>(null)
   const [createErrorMessage, setCreateErrorMessage] = useState<string | null>(null)
+  const [createErrorDetails, setCreateErrorDetails] = useState<string[]>([])
+  const [createErrorFields, setCreateErrorFields] = useState<Record<string, string[]>>(
+    {}
+  )
   const [connectionHelpOpen, setConnectionHelpOpen] = useState(false)
   const [roiCamera, setRoiCamera] = useState<Camera | null>(null)
   const [testingCameraId, setTestingCameraId] = useState<string | null>(null)
@@ -44,42 +70,41 @@ const Cameras = () => {
   const [testError, setTestError] = useState<string | null>(null)
   const testTimerRef = useRef<ReturnType<typeof setInterval> | null>(null)
   const testStartedAtRef = useRef<number | null>(null)
-  const [onboardingMode, setOnboardingMode] = useState(false)
+  const onboardingMode = initialOnboardingMode
   const [showAdvancedHelp, setShowAdvancedHelp] = useState(false)
   const isMobile = useIsMobile(768)
-  const [origin, setOrigin] = useState("")
-  const location = useLocation()
+  const origin = typeof window !== "undefined" ? window.location.origin : ""
   const queryClient = useQueryClient()
   const diagnoseUrl = "/app/edge-help"
-
-  useEffect(() => {
-    if (typeof window !== "undefined") {
-      setOrigin(window.location.origin)
-    }
-  }, [])
 
   useEffect(() => {
     const params = new URLSearchParams(location.search)
     const openEdgeSetup =
       params.get("openEdgeSetup") === "1" || params.get("edgeSetup") === "1"
-    const storeFromQuery = params.get("store_id") || params.get("store") || ""
-    const onboardingFromQuery = params.get("onboarding") === "true"
-    if (storeFromQuery) {
-      setSelectedStore(storeFromQuery)
-    }
-    setOnboardingMode(onboardingFromQuery)
-    if (openEdgeSetup) {
-      setEdgeSetupOpen(true)
-      params.delete("openEdgeSetup")
-      params.delete("edgeSetup")
-      params.delete("store")
-      const next = params.toString()
-      const newUrl = `${location.pathname}${next ? `?${next}` : ""}`
-      if (typeof window !== "undefined") {
-        window.history.replaceState({}, "", newUrl)
-      }
+    if (!openEdgeSetup) return
+    params.delete("openEdgeSetup")
+    params.delete("edgeSetup")
+    params.delete("store")
+    const next = params.toString()
+    const newUrl = `${location.pathname}${next ? `?${next}` : ""}`
+    if (typeof window !== "undefined") {
+      window.history.replaceState({}, "", newUrl)
     }
   }, [location.pathname, location.search])
+
+  const { data: stores, isLoading: storesLoading } = useQuery<Store[]>({
+    queryKey: ["stores"],
+    queryFn: storesService.getStores,
+    staleTime: 60000,
+  })
+
+  const selectedStore = useMemo(() => {
+    if (selectedStoreOverride !== null) return selectedStoreOverride
+    if ((stores ?? []).length === 1) {
+      return stores?.[0]?.id ?? ""
+    }
+    return ""
+  }, [selectedStoreOverride, stores])
 
   const edgeSetupLink = useMemo(() => {
     if (!origin) return ""
@@ -96,19 +121,6 @@ const Cameras = () => {
         edgeSetupLink
       )}`
     : ""
-
-  const { data: stores, isLoading: storesLoading } = useQuery<Store[]>({
-    queryKey: ["stores"],
-    queryFn: storesService.getStores,
-    staleTime: 60000,
-  })
-
-  useEffect(() => {
-    if (selectedStore) return
-    if ((stores ?? []).length === 1) {
-      setSelectedStore((stores ?? [])[0].id)
-    }
-  }, [stores, selectedStore])
 
   const {
     data: edgeStatus,
@@ -156,6 +168,9 @@ const Cameras = () => {
       toast.success("Câmera criada")
       setCameraModalOpen(false)
       setEditingCamera(null)
+      setCreateErrorMessage(null)
+      setCreateErrorDetails([])
+      setCreateErrorFields({})
     },
     onError: (err: unknown) => {
       const payload = (err as { response?: { data?: { code?: string } } })?.response?.data
@@ -189,25 +204,69 @@ const Cameras = () => {
       }
       const status = (err as { response?: { status?: number } })?.response?.status
       if (status === 400) {
+        const responseData = (err as { response?: { data?: unknown } })?.response?.data
+        const fieldErrors =
+          responseData && typeof responseData === "object" && !Array.isArray(responseData)
+            ? Object.entries(responseData as Record<string, unknown>)
+                .filter(([key]) => key !== "detail" && key !== "message" && key !== "code")
+                .flatMap(([field, value]) => {
+                  if (Array.isArray(value)) {
+                    return value.map((entry) => `${field}: ${String(entry)}`)
+                  }
+                  if (typeof value === "string") {
+                    return [`${field}: ${value}`]
+                  }
+                  return []
+                })
+            : []
         const detail =
-          (err as { response?: { data?: { detail?: string; message?: string } } })
-            ?.response?.data?.detail ||
-          (err as { response?: { data?: { detail?: string; message?: string } } })
-            ?.response?.data?.message
-        setCreateErrorMessage(
-          detail ||
-            "Você está fora da rede da loja ou faltam campos (ex.: canal)."
-        )
-        setConnectionHelpOpen(true)
+          (responseData as { detail?: string; message?: string } | undefined)?.detail ||
+          (responseData as { detail?: string; message?: string } | undefined)?.message
+        const fieldMap: Record<string, string[]> = {}
+        if (responseData && typeof responseData === "object" && !Array.isArray(responseData)) {
+          Object.entries(responseData as Record<string, unknown>)
+            .filter(([key]) => key !== "detail" && key !== "message" && key !== "code")
+            .forEach(([field, value]) => {
+              if (Array.isArray(value)) {
+                fieldMap[field] = value.map((entry) => String(entry))
+              } else if (typeof value === "string") {
+                fieldMap[field] = [value]
+              }
+            })
+        }
+        const detailsWithLabels =
+          Object.keys(fieldMap).length > 0
+            ? Object.entries(fieldMap).flatMap(([field, messages]) => {
+                const label = FIELD_LABELS[field] || field
+                return messages.map((msg) => `${label}: ${msg}`)
+              })
+            : fieldErrors
+        setCreateErrorMessage(detail || "Verifique os campos obrigatórios.")
+        setCreateErrorDetails(detailsWithLabels)
+        setCreateErrorFields(fieldMap)
         if (import.meta.env.DEV) {
           console.warn("[Cameras] create camera 400", err)
         }
         return
       }
+      if (status === 403) {
+        setCreateErrorMessage("Você não tem permissão para cadastrar câmera nesta loja.")
+        setCreateErrorDetails([])
+        setCreateErrorFields({})
+        return
+      }
+      if (status === 404) {
+        setCreateErrorMessage("Loja não encontrada.")
+        setCreateErrorDetails([])
+        setCreateErrorFields({})
+        return
+      }
       if (import.meta.env.DEV) {
         console.warn("[Cameras] create camera failed", err)
       }
-      toast.error("Falha ao criar câmera.")
+      setCreateErrorMessage("Falha ao criar câmera.")
+      setCreateErrorDetails([])
+      setCreateErrorFields({})
     },
   })
 
@@ -245,6 +304,8 @@ const Cameras = () => {
     setEditingCamera(null)
     setCameraModalOpen(true)
     setCreateErrorMessage(null)
+    setCreateErrorDetails([])
+    setCreateErrorFields({})
     setConnectionHelpOpen(false)
   }, [])
 
@@ -252,6 +313,8 @@ const Cameras = () => {
     setEditingCamera(camera)
     setCameraModalOpen(true)
     setCreateErrorMessage(null)
+    setCreateErrorDetails([])
+    setCreateErrorFields({})
     setConnectionHelpOpen(false)
   }, [])
 
@@ -379,13 +442,13 @@ const Cameras = () => {
             </label>
 
             <div className="flex items-center gap-2">
-              <select
-                id="store-select"
-                value={selectedStore}
-                onChange={(e) => setSelectedStore(e.target.value)}
-                className="w-full sm:w-[320px] border border-gray-300 rounded-lg px-4 py-2 focus:ring-2 focus:ring-blue-500 focus:border-transparent"
-                disabled={storesLoading}
-                aria-label="Selecionar loja para visualizar câmeras"
+                <select
+                  id="store-select"
+                  value={selectedStore}
+                  onChange={(e) => setSelectedStoreOverride(e.target.value)}
+                  className="w-full sm:w-[320px] border border-gray-300 rounded-lg px-4 py-2 focus:ring-2 focus:ring-blue-500 focus:border-transparent"
+                  disabled={storesLoading}
+                  aria-label="Selecionar loja para visualizar câmeras"
               >
                 <option value="">Selecione uma loja</option>
                 <option value="all">Todas as lojas</option>
@@ -841,18 +904,23 @@ const Cameras = () => {
       />
 
       <CameraModal
+        key={`${cameraModalOpen ? "open" : "closed"}-${editingCamera?.id ?? "new"}`}
         open={cameraModalOpen}
         camera={editingCamera}
         testing={testingCameraId === editingCamera?.id}
         testMessage={testMessage}
         testError={testError}
         createErrorMessage={createErrorMessage}
+        createErrorDetails={createErrorDetails}
+        createErrorFields={createErrorFields}
         onClose={() => {
           setCameraModalOpen(false)
           setEditingCamera(null)
           setTestMessage(null)
           setTestError(null)
           setCreateErrorMessage(null)
+          setCreateErrorDetails([])
+          setCreateErrorFields({})
         }}
         onSave={handleSaveCamera}
         onTest={handleTestConnection}
@@ -862,6 +930,7 @@ const Cameras = () => {
       />
 
       <CameraRoiEditor
+        key={`${roiCamera?.id ?? "none"}-${roiCamera ? "open" : "closed"}`}
         open={Boolean(roiCamera)}
         camera={roiCamera}
         onClose={() => setRoiCamera(null)}
@@ -883,6 +952,8 @@ type CameraModalProps = {
   testMessage: string | null
   testError: string | null
   createErrorMessage: string | null
+  createErrorDetails: string[]
+  createErrorFields: Record<string, string[]>
   isSaving: boolean
   onClose: () => void
   onSave: (payload: CreateCameraPayload) => void
@@ -898,6 +969,8 @@ const CameraModal = ({
   testMessage,
   testError,
   createErrorMessage,
+  createErrorDetails,
+  createErrorFields,
   isSaving,
   onClose,
   onSave,
@@ -905,44 +978,27 @@ const CameraModal = ({
   edgeOnline,
   onOpenHelp,
 }: CameraModalProps) => {
-  const [form, setForm] = useState({
-    name: "",
-    ip: "",
+  const [form, setForm] = useState(() => ({
+    name: camera?.name ?? "",
+    ip: camera?.ip ?? "",
     username: "",
     password: "",
-    brand: "intelbras",
+    brand: camera?.brand ?? "intelbras",
     channel: 1,
     subtype: 1,
-    externalId: "",
-    active: true,
-  })
-  const [saving, setSaving] = useState(false)
+    externalId: camera?.external_id ?? "",
+    active: camera?.active ?? true,
+  }))
   const [connectionType, setConnectionType] = useState<"ip_camera" | "nvr">(
     "ip_camera"
   )
   const [rtspUrl, setRtspUrl] = useState("")
   const [showRtsp, setShowRtsp] = useState(false)
 
-  useEffect(() => {
-    setForm({
-      name: camera?.name ?? "",
-      ip: camera?.ip ?? "",
-      username: "",
-      password: "",
-      brand: camera?.brand ?? "intelbras",
-      channel: 1,
-      subtype: 1,
-      externalId: camera?.external_id ?? "",
-      active: camera?.active ?? true,
-    })
-    setConnectionType("ip_camera")
-    setRtspUrl("")
-    setShowRtsp(false)
-  }, [camera, open])
-
-  useEffect(() => {
-    setSaving(Boolean(isSaving))
-  }, [isSaving])
+  const hasFieldError = useCallback(
+    (field: string) => Boolean(createErrorFields[field]?.length),
+    [createErrorFields]
+  )
 
   const brandNormalized = form.brand.trim().toLowerCase()
   const isIntelbras = brandNormalized.includes("intelbras")
@@ -983,12 +1039,19 @@ const CameraModal = ({
                 value={form.name}
                 onChange={(e) => setForm((prev) => ({ ...prev, name: e.target.value }))}
                 placeholder="Ex: Entrada"
-                className="mt-1 w-full rounded-lg border border-gray-200 px-3 py-2 text-sm"
+                className={`mt-1 w-full rounded-lg border px-3 py-2 text-sm ${
+                  hasFieldError("name")
+                    ? "border-red-300 focus:border-red-400 focus:ring-red-300"
+                    : "border-gray-200"
+                }`}
               />
             </div>
             <div>
-              <label className="text-sm font-medium text-gray-700">Tipo de conexão</label>
+              <label htmlFor="connection-type" className="text-sm font-medium text-gray-700">
+                Tipo de conexão
+              </label>
               <select
+                id="connection-type"
                 value={connectionType}
                 onChange={(e) =>
                   setConnectionType(e.target.value as "ip_camera" | "nvr")
@@ -1005,7 +1068,11 @@ const CameraModal = ({
                 value={form.ip}
                 onChange={(e) => setForm((prev) => ({ ...prev, ip: e.target.value }))}
                 placeholder="192.168.0.10"
-                className="mt-1 w-full rounded-lg border border-gray-200 px-3 py-2 text-sm"
+                className={`mt-1 w-full rounded-lg border px-3 py-2 text-sm ${
+                  hasFieldError("ip")
+                    ? "border-red-300 focus:border-red-400 focus:ring-red-300"
+                    : "border-gray-200"
+                }`}
               />
               <p className="text-xs text-gray-500 mt-1">
                 Não sabe o IP? Normalmente começa com 192.168… Confira no app da câmera ou no roteador.
@@ -1017,7 +1084,11 @@ const CameraModal = ({
                 value={form.username}
                 onChange={(e) => setForm((prev) => ({ ...prev, username: e.target.value }))}
                 placeholder="admin"
-                className="mt-1 w-full rounded-lg border border-gray-200 px-3 py-2 text-sm"
+                className={`mt-1 w-full rounded-lg border px-3 py-2 text-sm ${
+                  hasFieldError("username")
+                    ? "border-red-300 focus:border-red-400 focus:ring-red-300"
+                    : "border-gray-200"
+                }`}
               />
             </div>
             <div>
@@ -1027,15 +1098,20 @@ const CameraModal = ({
                 value={form.password}
                 onChange={(e) => setForm((prev) => ({ ...prev, password: e.target.value }))}
                 placeholder="••••••••"
-                className="mt-1 w-full rounded-lg border border-gray-200 px-3 py-2 text-sm"
+                className={`mt-1 w-full rounded-lg border px-3 py-2 text-sm ${
+                  hasFieldError("password")
+                    ? "border-red-300 focus:border-red-400 focus:ring-red-300"
+                    : "border-gray-200"
+                }`}
               />
             </div>
             {connectionType === "nvr" && (
               <div>
-                <label className="text-sm font-medium text-gray-700">
+                <label htmlFor="nvr-channel" className="text-sm font-medium text-gray-700">
                   Canal (NVR)
                 </label>
                 <input
+                  id="nvr-channel"
                   type="number"
                   min={1}
                   value={form.channel}
@@ -1053,10 +1129,11 @@ const CameraModal = ({
             )}
             {showIntelbrasFields && (
               <div>
-                <label className="text-sm font-medium text-gray-700">
+                <label htmlFor="intelbras-subtype" className="text-sm font-medium text-gray-700">
                   Subtipo (Intelbras)
                 </label>
                 <select
+                  id="intelbras-subtype"
                   value={form.subtype}
                   onChange={(e) => {
                     const next = Number(e.target.value)
@@ -1080,7 +1157,11 @@ const CameraModal = ({
                 value={form.brand}
                 onChange={(e) => setForm((prev) => ({ ...prev, brand: e.target.value }))}
                 placeholder="Intelbras"
-                className="mt-1 w-full rounded-lg border border-gray-200 px-3 py-2 text-sm"
+                className={`mt-1 w-full rounded-lg border px-3 py-2 text-sm ${
+                  hasFieldError("brand")
+                    ? "border-red-300 focus:border-red-400 focus:ring-red-300"
+                    : "border-gray-200"
+                }`}
               />
             </div>
             {connectionType === "ip_camera" && (
@@ -1104,7 +1185,11 @@ const CameraModal = ({
                   value={rtspUrl}
                   onChange={(e) => setRtspUrl(e.target.value)}
                   placeholder="rtsp://usuario:senha@host/stream"
-                  className="mt-1 w-full rounded-lg border border-gray-200 px-3 py-2 text-sm"
+                  className={`mt-1 w-full rounded-lg border px-3 py-2 text-sm ${
+                    hasFieldError("rtsp_url")
+                      ? "border-red-300 focus:border-red-400 focus:ring-red-300"
+                      : "border-gray-200"
+                  }`}
                 />
                 {camera?.rtsp_url_masked && (
                   <p className="text-xs text-gray-400 mt-1">
@@ -1121,7 +1206,11 @@ const CameraModal = ({
                 value={form.externalId}
                 onChange={(e) => setForm((prev) => ({ ...prev, externalId: e.target.value }))}
                 placeholder="cam-001"
-                className="mt-1 w-full rounded-lg border border-gray-200 px-3 py-2 text-sm"
+                className={`mt-1 w-full rounded-lg border px-3 py-2 text-sm ${
+                  hasFieldError("external_id")
+                    ? "border-red-300 focus:border-red-400 focus:ring-red-300"
+                    : "border-gray-200"
+                }`}
               />
             </div>
             <label className="flex items-center gap-2 text-sm text-gray-700">
@@ -1146,6 +1235,13 @@ const CameraModal = ({
             <div className="mt-4 rounded-lg border border-red-200 bg-red-50 px-3 py-2 text-xs text-red-700">
               <div className="font-semibold">Não foi possível cadastrar</div>
               <p className="mt-1">{createErrorMessage}</p>
+              {createErrorDetails.length > 0 && (
+                <div className="mt-2 space-y-1">
+                  {createErrorDetails.map((item) => (
+                    <div key={item}>{item}</div>
+                  ))}
+                </div>
+              )}
               <button
                 type="button"
                 onClick={onOpenHelp}
@@ -1190,40 +1286,49 @@ const CameraModal = ({
           )}
           <button
             type="button"
-            disabled={saving || !form.name?.trim()}
+            disabled={isSaving || !form.name?.trim()}
             onClick={() => {
-              const payload = {
+              const cleanedIp = form.ip.trim()
+              const cleanedUsername = form.username.trim()
+              const cleanedPassword = form.password
+              const cleanedBrand = form.brand.trim()
+              const cleanedRtsp = rtspUrl.trim()
+              const inferredRtsp =
+                cleanedRtsp ||
+                buildRtspUrl({
+                  connectionType,
+                  ip: cleanedIp,
+                  username: cleanedUsername,
+                  password: cleanedPassword,
+                  channel: String(form.channel),
+                  brand: cleanedBrand,
+                  subtype: String(form.subtype),
+                }) ||
+                undefined
+              const inferredExternalId =
+                form.externalId ||
+                (connectionType === "nvr" && form.channel
+                  ? `ch${form.channel}-sub${form.subtype}`
+                  : null)
+              const payload: CreateCameraPayload = {
                 name: form.name,
-                ip: form.ip,
-                username: form.username,
-                password: form.password,
-                brand: form.brand,
-                channel: form.channel,
-                subtype: form.subtype,
-                external_id: form.externalId || null,
+                ip: cleanedIp || undefined,
+                username: cleanedUsername || undefined,
+                password: cleanedPassword || undefined,
+                brand: cleanedBrand || undefined,
+                external_id: inferredExternalId,
                 active: form.active,
-                rtsp_url:
-                  rtspUrl.trim() ||
-                  buildRtspUrl({
-                    connectionType,
-                    ip: form.ip.trim(),
-                    username: form.username.trim(),
-                    password: form.password,
-                    channel: String(form.channel),
-                    brand: form.brand.trim(),
-                    subtype: String(form.subtype),
-                  }) ||
-                  undefined,
+                rtsp_url: inferredRtsp,
               }
-              onSave(payload as CreateCameraPayload)
+              onSave(payload)
             }}
             className={`rounded-lg px-4 py-2 text-sm font-semibold text-white ${
-              saving || !form.name?.trim()
+              isSaving || !form.name?.trim()
                 ? "bg-gray-300 cursor-not-allowed"
                 : "bg-blue-600 hover:bg-blue-700"
             }`}
           >
-            {saving ? "Salvando..." : "Salvar"}
+            {isSaving ? "Salvando..." : "Salvar"}
           </button>
         </div>
       </div>

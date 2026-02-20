@@ -5,7 +5,7 @@ import toast from "react-hot-toast"
 import { supabase } from "../../lib/supabase"
 import { API_BASE_URL } from "../../lib/api"
 import { authService } from "../../services/auth"
-import { useAuth } from "../../contexts/AuthContext"
+import { useAuth } from "../../contexts/useAuth"
 
 type SetupState = {
   ok?: boolean

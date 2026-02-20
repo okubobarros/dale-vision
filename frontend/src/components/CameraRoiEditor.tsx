@@ -25,12 +25,23 @@ type CameraRoiEditorProps = {
 const CANVAS_WIDTH = 960
 const CANVAS_HEIGHT = 540
 
+const extractShapesFromConfig = (configJson: unknown): RoiShape[] => {
+  if (!configJson) return []
+  if (Array.isArray(configJson)) return configJson as RoiShape[]
+  if (typeof configJson === "object" && configJson !== null) {
+    const zones = (configJson as { zones?: unknown }).zones
+    return Array.isArray(zones) ? (zones as RoiShape[]) : []
+  }
+  return []
+}
+
 const CameraRoiEditor = ({ open, camera, onClose }: CameraRoiEditorProps) => {
   const canvasRef = useRef<HTMLCanvasElement | null>(null)
   const queryClient = useQueryClient()
   const [mode, setMode] = useState<"rect" | "poly">("rect")
   const [zoneName, setZoneName] = useState("")
-  const [shapes, setShapes] = useState<RoiShape[]>([])
+  const [addedShapes, setAddedShapes] = useState<RoiShape[]>([])
+  const [removedShapeIds, setRemovedShapeIds] = useState<string[]>([])
   const [draftPoints, setDraftPoints] = useState<RoiPoint[]>([])
   const [isDrawing, setIsDrawing] = useState(false)
   const [error, setError] = useState<string | null>(null)
@@ -66,23 +77,21 @@ const CameraRoiEditor = ({ open, camera, onClose }: CameraRoiEditorProps) => {
   const roiVersionLabel = latestConfig?.roi_version ?? 0
   const roiStatus = latestConfig?.status ?? "draft"
 
-  useEffect(() => {
-    if (!open) return
-    if (!roiConfig?.config_json) {
-      setShapes([])
-      setDraftPoints([])
-      return
+  const baseShapes = useMemo(
+    () => extractShapesFromConfig(roiConfig?.config_json),
+    [roiConfig?.config_json]
+  )
+
+  const effectiveShapes = useMemo(() => {
+    if (removedShapeIds.length === 0) {
+      return [...baseShapes, ...addedShapes]
     }
-    const config = roiConfig.config_json as { zones?: RoiShape[] } | RoiShape[]
-    if (Array.isArray(config)) {
-      setShapes(config)
-    } else if (Array.isArray(config?.zones)) {
-      setShapes(config.zones)
-    } else {
-      setShapes([])
-    }
-    setDraftPoints([])
-  }, [open, roiConfig?.version])
+    const removed = new Set(removedShapeIds)
+    return [
+      ...baseShapes.filter((shape) => !removed.has(shape.id)),
+      ...addedShapes,
+    ]
+  }, [addedShapes, baseShapes, removedShapeIds])
 
   useEffect(() => {
     if (!open) return
@@ -94,7 +103,7 @@ const CameraRoiEditor = ({ open, camera, onClose }: CameraRoiEditorProps) => {
     ctx.clearRect(0, 0, CANVAS_WIDTH, CANVAS_HEIGHT)
     drawBackground(ctx)
 
-    shapes.forEach((shape) => drawShape(ctx, shape, "#2563eb"))
+    effectiveShapes.forEach((shape) => drawShape(ctx, shape, "#2563eb"))
     if (draftPoints.length > 0) {
       drawShape(
         ctx,
@@ -102,7 +111,7 @@ const CameraRoiEditor = ({ open, camera, onClose }: CameraRoiEditorProps) => {
         "#f59e0b"
       )
     }
-  }, [open, shapes, draftPoints, mode, zoneName])
+  }, [open, effectiveShapes, draftPoints, mode, zoneName])
 
   const handlePointerDown = useCallback(
     (event: PointerEvent<HTMLCanvasElement>) => {
@@ -147,7 +156,7 @@ const CameraRoiEditor = ({ open, camera, onClose }: CameraRoiEditorProps) => {
       setDraftPoints([])
       return
     }
-    setShapes((prev) => [
+    setAddedShapes((prev) => [
       ...prev,
       {
         id: `roi-${Date.now()}`,
@@ -165,7 +174,7 @@ const CameraRoiEditor = ({ open, camera, onClose }: CameraRoiEditorProps) => {
 
   const finalizePolygon = useCallback(() => {
     if (mode !== "poly" || draftPoints.length < 3) return
-    setShapes((prev) => [
+    setAddedShapes((prev) => [
       ...prev,
       {
         id: `roi-${Date.now()}`,
@@ -189,7 +198,8 @@ const CameraRoiEditor = ({ open, camera, onClose }: CameraRoiEditorProps) => {
   }, [])
 
   const removeShape = useCallback((shapeId: string) => {
-    setShapes((prev) => prev.filter((shape) => shape.id !== shapeId))
+    setAddedShapes((prev) => prev.filter((shape) => shape.id !== shapeId))
+    setRemovedShapeIds((prev) => (prev.includes(shapeId) ? prev : [...prev, shapeId]))
   }, [])
 
   const handleSave = useCallback(() => {
@@ -198,10 +208,10 @@ const CameraRoiEditor = ({ open, camera, onClose }: CameraRoiEditorProps) => {
       roi_version: roiVersionLabel,
       status: "draft",
       image: { width: CANVAS_WIDTH, height: CANVAS_HEIGHT },
-      zones: shapes,
+      zones: effectiveShapes,
       metrics_enabled: Boolean(latestConfig?.metrics_enabled),
     })
-  }, [cameraId, latestConfig?.metrics_enabled, roiVersionLabel, shapes, updateRoiMutation])
+  }, [cameraId, effectiveShapes, latestConfig?.metrics_enabled, roiVersionLabel, updateRoiMutation])
 
   const handlePublish = useCallback(() => {
     if (!cameraId) return
@@ -209,10 +219,10 @@ const CameraRoiEditor = ({ open, camera, onClose }: CameraRoiEditorProps) => {
       roi_version: roiVersionLabel,
       status: "published",
       image: { width: CANVAS_WIDTH, height: CANVAS_HEIGHT },
-      zones: shapes,
+      zones: effectiveShapes,
       metrics_enabled: Boolean(latestConfig?.metrics_enabled),
     })
-  }, [cameraId, latestConfig?.metrics_enabled, roiVersionLabel, shapes, updateRoiMutation])
+  }, [cameraId, effectiveShapes, latestConfig?.metrics_enabled, roiVersionLabel, updateRoiMutation])
 
   const handleStartMonitoring = useCallback(async () => {
     if (!cameraId || !camera?.store) return
@@ -226,7 +236,7 @@ const CameraRoiEditor = ({ open, camera, onClose }: CameraRoiEditorProps) => {
     } catch {
       toast.error("Falha ao iniciar monitoramento.")
     }
-  }, [camera?.store, cameraId, roiVersionLabel])
+  }, [camera, cameraId, roiVersionLabel])
 
   const displayUpdatedAt = useMemo(() => {
     if (!latestUpdatedAt) return "—"
@@ -237,11 +247,22 @@ const CameraRoiEditor = ({ open, camera, onClose }: CameraRoiEditorProps) => {
     }
   }, [latestUpdatedAt])
 
+  const handleClose = useCallback(() => {
+    setAddedShapes([])
+    setRemovedShapeIds([])
+    setDraftPoints([])
+    setIsDrawing(false)
+    setError(null)
+    setZoneName("")
+    setMode("rect")
+    onClose()
+  }, [onClose])
+
   if (!open || !camera) return null
 
   return (
     <div className="fixed inset-0 z-50 flex items-center justify-center px-4">
-      <div className="absolute inset-0 bg-black/40" onClick={onClose} />
+      <div className="absolute inset-0 bg-black/40" onClick={handleClose} />
       <div className="relative w-full max-w-6xl rounded-2xl bg-white p-6 shadow-xl">
           <div className="flex flex-col lg:flex-row lg:items-center lg:justify-between gap-3">
             <div>
@@ -275,9 +296,9 @@ const CameraRoiEditor = ({ open, camera, onClose }: CameraRoiEditorProps) => {
             <button
               type="button"
               onClick={handlePublish}
-              disabled={updateRoiMutation.isPending || shapes.length === 0}
+              disabled={updateRoiMutation.isPending || effectiveShapes.length === 0}
               className={`rounded-lg px-4 py-2 text-sm font-semibold text-white ${
-                updateRoiMutation.isPending || shapes.length === 0
+                updateRoiMutation.isPending || effectiveShapes.length === 0
                   ? "bg-gray-300 cursor-not-allowed"
                   : "bg-emerald-600 hover:bg-emerald-700"
               }`}
@@ -295,7 +316,7 @@ const CameraRoiEditor = ({ open, camera, onClose }: CameraRoiEditorProps) => {
             )}
             <button
               type="button"
-              onClick={onClose}
+              onClick={handleClose}
               className="rounded-lg border border-gray-200 px-4 py-2 text-sm font-semibold text-gray-700 hover:bg-gray-50"
             >
               Fechar
@@ -368,15 +389,15 @@ const CameraRoiEditor = ({ open, camera, onClose }: CameraRoiEditorProps) => {
 
             <div className="rounded-xl border border-gray-200 p-4">
               <h4 className="text-sm font-semibold text-gray-700">
-                Zonas ({shapes.length})
+                Zonas ({effectiveShapes.length})
               </h4>
-              {shapes.length === 0 ? (
+              {effectiveShapes.length === 0 ? (
                 <p className="text-xs text-gray-500 mt-2">
                   Nenhuma zona criada ainda.
                 </p>
               ) : (
                 <div className="mt-3 space-y-2">
-                  {shapes.map((shape) => (
+                  {effectiveShapes.map((shape) => (
                     <div
                       key={shape.id}
                       className="flex items-center justify-between gap-2 rounded-lg border border-gray-100 px-3 py-2"

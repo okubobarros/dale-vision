@@ -1,6 +1,6 @@
 import { Link, useNavigate } from "react-router-dom"
 import React, { useEffect, useMemo, useState } from "react"
-import { useAuth } from "../../contexts/AuthContext"
+import { useAuth } from "../../contexts/useAuth"
 import { Helmet } from "@vuer-ai/react-helmet-async"
 import logo from "../../assets/logo.png"
 import { useRevealOnScroll } from "../../hooks/useRevealOnScroll"

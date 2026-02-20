@@ -25,7 +25,23 @@ export interface AuthResponse {
 
 // ============ AGORA A authService ============
 
-const buildUserFromSupabase = (sbUser: any, fallbackEmail: string): User => {
+type SupabaseUser = {
+  id?: string
+  email?: string
+  user_metadata?: {
+    full_name?: string
+    first_name?: string
+    last_name?: string
+    username?: string
+  }
+}
+
+type SupabaseSession = {
+  access_token: string
+  expires_at?: number
+}
+
+const buildUserFromSupabase = (sbUser: SupabaseUser, fallbackEmail: string): User => {
   const email = sbUser?.email || fallbackEmail
   const fullName = sbUser?.user_metadata?.full_name as string | undefined
   const first = (sbUser?.user_metadata?.first_name as string) || (fullName ? fullName.split(" ")[0] : "")
@@ -39,7 +55,7 @@ const buildUserFromSupabase = (sbUser: any, fallbackEmail: string): User => {
   }
 }
 
-const saveSupabaseSession = (session: any, sbUser: any, fallbackEmail: string) => {
+const saveSupabaseSession = (session: SupabaseSession, sbUser: SupabaseUser, fallbackEmail: string) => {
   const user = buildUserFromSupabase(sbUser, fallbackEmail)
   localStorage.setItem("authToken", session.access_token)
   localStorage.setItem("userData", JSON.stringify(user))
@@ -66,7 +82,7 @@ export const authService = {
     // Bootstrap é melhor esforço; não deve bloquear o login em caso de timeout.
     void api
       .post("/accounts/supabase/", {}, { timeout: 5000 })
-      .catch((error) => {
+      .catch((error: unknown) => {
         if (import.meta.env.DEV) {
           console.warn("[auth] supabase bootstrap failed", error)
         }
@@ -78,7 +94,7 @@ export const authService = {
   async logout(): Promise<void> {
     try {
       await supabase.auth.signOut()
-    } catch (error) {
+    } catch (error: unknown) {
       console.warn("Erro no logout do Supabase:", error)
     } finally {
       // Sempre limpa o localStorage

@@ -24,13 +24,12 @@ export interface Camera {
 export type CreateCameraPayload = {
   name: string
   brand?: string
+  model?: string
   ip?: string
   username?: string
   password?: string
   rtsp_url?: string
   external_id?: string | null
-  channel?: number
-  subtype?: number
   active?: boolean
 }
 
@@ -65,15 +64,32 @@ type ApiErrorLike = {
 
 const normalizeApiError = (error: unknown, fallbackMessage: string) => {
   const err = (error || {}) as ApiErrorLike
+  const rawData = err.response?.data
   const detail =
     err.response?.data?.message ||
     err.response?.data?.detail ||
     err.message ||
     fallbackMessage
+  const normalizedData =
+    rawData && typeof rawData === "object" && !Array.isArray(rawData)
+      ? {
+          ...(rawData as Record<string, unknown>),
+          detail:
+            (rawData as { detail?: string; message?: string }).detail ||
+            (rawData as { detail?: string; message?: string }).message ||
+            detail,
+          code: (rawData as { code?: string }).code,
+          upgrade_url: (rawData as { upgrade_url?: string }).upgrade_url,
+        }
+      : {
+          detail,
+          code: err.response?.data?.code,
+          upgrade_url: err.response?.data?.upgrade_url,
+        }
   const normalized = new Error(detail)
   ;(normalized as ApiErrorLike).response = {
     status: err.response?.status,
-    data: { detail, code: err.response?.data?.code, upgrade_url: err.response?.data?.upgrade_url },
+    data: normalizedData,
   }
   ;(normalized as ApiErrorLike).code = err.response?.data?.code || err.code
   return normalized

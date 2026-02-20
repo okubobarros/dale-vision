@@ -4,6 +4,7 @@ from django.utils.dateparse import parse_datetime
 from rest_framework import viewsets, permissions, status
 from rest_framework.decorators import action
 from rest_framework.response import Response
+from rest_framework.exceptions import NotFound, ValidationError
 
 from apps.core.models import Camera, CameraHealthLog, OrgMember, Store
 from apps.edge.models import EdgeToken
@@ -57,6 +58,15 @@ class CameraViewSet(viewsets.ModelViewSet):
     serializer_class = CameraSerializer
     permission_classes = [permissions.IsAuthenticated]
 
+    def _resolve_store_for_create(self):
+        store_id = self.kwargs.get("store_id") or self.kwargs.get("store_pk")
+        if not store_id:
+            store_id = self.request.data.get("store_id") or self.request.data.get("store")
+        if not store_id:
+            return None, None
+        store = Store.objects.filter(id=store_id).first()
+        return store_id, store
+
     def _require_subscription_for_org_ids(self, org_ids, action: str):
         if getattr(self.request.user, "is_superuser", False) or getattr(
             self.request.user, "is_staff", False
@@ -87,34 +97,35 @@ class CameraViewSet(viewsets.ModelViewSet):
         return qs
 
     def create(self, request, *args, **kwargs):
+        store_id, store = self._resolve_store_for_create()
+        if store_id and not store:
+            raise NotFound("Store not found")
+        if not store:
+            raise ValidationError({"store_id": ["This field is required."]})
+        require_store_role(request.user, str(store.id), ALLOWED_MANAGE_ROLES)
+        actor_user_id = None
+        try:
+            actor_user_id = ensure_user_uuid(request.user)
+        except Exception:
+            actor_user_id = None
+        enforce_can_use_product(
+            org_id=getattr(store, "org_id", None),
+            actor_user_id=actor_user_id,
+            action="create_camera",
+            endpoint=request.path,
+        )
         serializer = self.get_serializer(data=request.data)
         serializer.is_valid(raise_exception=True)
-        store = serializer.validated_data.get("store")
-        store_id = getattr(store, "id", None) or serializer.validated_data.get("store_id")
-        if store_id:
-            require_store_role(request.user, str(store_id), ALLOWED_MANAGE_ROLES)
-            actor_user_id = None
-            try:
-                actor_user_id = ensure_user_uuid(request.user)
-            except Exception:
-                actor_user_id = None
-            enforce_can_use_product(
-                org_id=getattr(store, "org_id", None),
-                actor_user_id=actor_user_id,
-                action="create_camera",
-                endpoint=request.path,
-            )
         try:
-            self.perform_create(serializer)
+            self.perform_create(serializer, store=store)
         except PaywallError as exc:
             return _camera_limit_response(exc)
 
         headers = self.get_success_headers(serializer.data)
         return Response(serializer.data, status=status.HTTP_201_CREATED, headers=headers)
 
-    def perform_create(self, serializer):
-        store = serializer.validated_data.get("store")
-        store_id = getattr(store, "id", None) or serializer.validated_data.get("store_id")
+    def perform_create(self, serializer, store=None):
+        store_id = getattr(store, "id", None)
         requested_active = serializer.validated_data.get("active", True)
         if store_id:
             try:
@@ -124,14 +135,14 @@ class CameraViewSet(viewsets.ModelViewSet):
                 except Exception:
                     actor_user_id = None
                 enforce_trial_camera_limit(
-                    store_id,
+                    str(store_id),
                     requested_active=requested_active,
                     actor_user_id=actor_user_id,
                 )
             except PaywallError as exc:
                 raise exc
         now = timezone.now()
-        serializer.save(created_at=now, updated_at=now)
+        serializer.save(store=store, created_at=now, updated_at=now)
 
     def perform_update(self, serializer):
         require_store_role(self.request.user, str(serializer.instance.store_id), ALLOWED_MANAGE_ROLES)

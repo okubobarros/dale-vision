@@ -1,20 +1,7 @@
-import { createContext, useContext, useState } from "react"
+import { useState } from "react"
 import type { ReactNode } from "react"
-
-
-type Message = {
-  id: string
-  role: "user" | "assistant"
-  content: string
-}
-
-type AgentContextType = {
-  messages: Message[]
-  addMessage: (msg: Message) => void
-  clearChat: () => void
-}
-
-const AgentContext = createContext<AgentContextType | undefined>(undefined)
+import type { Message } from "./agentContextBase"
+import { AgentContext } from "./agentContextBase"
 
 export function AgentProvider({ children }: { children: ReactNode }) {
   const [messages, setMessages] = useState<Message[]>([
@@ -37,10 +24,4 @@ export function AgentProvider({ children }: { children: ReactNode }) {
       {children}
     </AgentContext.Provider>
   )
-}
-
-export function useAgent() {
-  const ctx = useContext(AgentContext)
-  if (!ctx) throw new Error("useAgent must be used inside AgentProvider")
-  return ctx
 }

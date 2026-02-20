@@ -438,7 +438,7 @@ export default function Setup() {
               </div>
             </div>
 
-            {!!state.trial_started_at ? (
+            {state.trial_started_at ? (
               <div className="rounded-xl border border-green-200 bg-green-50 p-4 text-sm text-green-900">
                 ✅ Trial iniciado em:{" "}
                 <span className="font-mono">{new Date(state.trial_started_at).toLocaleString("pt-BR")}</span>

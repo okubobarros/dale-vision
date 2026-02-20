@@ -14,6 +14,33 @@ vi.mock("../../services/stores", () => ({
         owner_email: "owner@dale.com",
       },
     ]),
+    getStoreDashboard: vi.fn().mockResolvedValue({
+      store: {
+        id: "store-1",
+        name: "Loja 1",
+        owner_email: "owner@dale.com",
+        plan: "trial",
+        status: "active",
+      },
+      metrics: {
+        health_score: 0,
+        productivity: 0,
+        idle_time: 0,
+        visitor_flow: 0,
+        conversion_rate: 0,
+        avg_cart_value: 0,
+      },
+      insights: {
+        peak_hour: "-",
+        best_selling_zone: "-",
+        employee_performance: {
+          best: "-",
+          needs_attention: "-",
+        },
+      },
+      recommendations: [],
+      alerts: [],
+    }),
     getStoreEdgeStatus: vi.fn().mockResolvedValue({
       online: false,
       cameras_total: 0,
@@ -62,7 +89,8 @@ describe("Dashboard empty state", () => {
     await waitFor(() => {
       expect(screen.queryByText(/Invalid Date/i)).not.toBeInTheDocument()
     })
-    expect(screen.getAllByText(/Sem dados ainda/i).length).toBeGreaterThan(0)
+    const emptyStates = await screen.findAllByText(/Sem dados ainda/i)
+    expect(emptyStates.length).toBeGreaterThan(0)
   })
 })
 

@@ -2,8 +2,9 @@ import { useEffect, useMemo, useState } from "react"
 import { useQuery } from "@tanstack/react-query"
 import { Link, useLocation } from "react-router-dom"
 import toast from "react-hot-toast"
-import { useAuth } from "../../contexts/AuthContext"
+import { useAuth } from "../../contexts/useAuth"
 import { storesService, type Store, type StoreEdgeStatus } from "../../services/stores"
+import type { StoreDashboard } from "../../types/dashboard"
 import { camerasService } from "../../services/cameras"
 import { formatReason, formatTimestamp } from "../../utils/edgeReasons"
 import EdgeSetupModal from "../../components/EdgeSetupModal"
@@ -12,7 +13,6 @@ import {
   useIgnoreEvent,
   useResolveEvent,
 } from "../../queries/alerts.queries"
-import type { StoreDashboard } from "../../types/dashboard"
 import SetupProgress from "../Onboarding/components/SetupProgress"
 import { useIsMobile } from "../../hooks/useIsMobile"
 import { onboardingService, type OnboardingStep } from "../../services/onboarding"
@@ -118,24 +118,60 @@ const ALL_STORES_VALUE = "all"
 
 const Dashboard = () => {
   const { user } = useAuth()
-  const [selectedStore, setSelectedStore] = useState<string>(ALL_STORES_VALUE)
-  const [dashboard, setDashboard] = useState<StoreDashboard | null>(null)
-  const [dashboardError, setDashboardError] = useState<string | null>(null)
-  const [isLoadingDashboard, setIsLoadingDashboard] = useState(false)
+  const location = useLocation()
+  const initialParams = new URLSearchParams(location.search)
+  const initialStoreFromQuery = initialParams.get("store") || ""
+  const initialOpenEdgeSetup = initialParams.get("openEdgeSetup") === "1"
+  const initialFromOnboarding = (() => {
+    if (typeof window === "undefined") return false
+    try {
+      return localStorage.getItem("dv_from_onboarding") === "1"
+    } catch {
+      // ignore storage access issues
+      return false
+    }
+  })()
+  const [selectedStoreOverride, setSelectedStoreOverride] = useState<string>(
+    initialStoreFromQuery || ALL_STORES_VALUE
+  )
   const [resolvingEventId, setResolvingEventId] = useState<string | null>(null)
   const [ignoringEventId, setIgnoringEventId] = useState<string | null>(null)
-  const [edgeSetupOpen, setEdgeSetupOpen] = useState(false)
-  const [showActivationProgress, setShowActivationProgress] = useState(false)
+  const [edgeSetupOpen, setEdgeSetupOpen] = useState(initialOpenEdgeSetup)
+  const [showActivationProgress, setShowActivationProgress] = useState(
+    initialOpenEdgeSetup || initialFromOnboarding
+  )
   const [activationBannerDismissed, setActivationBannerDismissed] = useState(false)
-  const [origin, setOrigin] = useState("")
+  const origin = typeof window !== "undefined" ? window.location.origin : ""
   const isMobile = useIsMobile(768)
-  const location = useLocation()
 
   const { data: stores, isLoading: storesLoading } = useQuery<Store[]>({
     queryKey: ["stores"],
     queryFn: storesService.getStores,
     staleTime: 60000,
   })
+
+  const selectedStore = useMemo(() => {
+    if (selectedStoreOverride && selectedStoreOverride !== ALL_STORES_VALUE) {
+      return selectedStoreOverride
+    }
+    if ((stores ?? []).length === 1) {
+      return stores?.[0]?.id ?? ALL_STORES_VALUE
+    }
+    return selectedStoreOverride || ALL_STORES_VALUE
+  }, [selectedStoreOverride, stores])
+
+  const {
+    data: dashboard,
+    isLoading: isLoadingDashboard,
+    error: dashboardErrorRaw,
+  } = useQuery<StoreDashboard>({
+    queryKey: ["store-dashboard", selectedStore],
+    queryFn: () => storesService.getStoreDashboard(selectedStore),
+    enabled: selectedStore !== ALL_STORES_VALUE,
+    staleTime: 30000,
+  })
+  const dashboardError =
+    dashboardErrorRaw instanceof Error ? dashboardErrorRaw.message : null
 
   const trialBlockedStore = useMemo(() => {
     return (stores ?? []).find(
@@ -217,21 +253,8 @@ const Dashboard = () => {
   })
 
   useEffect(() => {
-    if (typeof window !== "undefined") {
-      setOrigin(window.location.origin)
-    }
-  }, [])
-
-  useEffect(() => {
     const params = new URLSearchParams(location.search)
-    const storeFromQuery = params.get("store") || ""
-    if (storeFromQuery) {
-      setSelectedStore(storeFromQuery)
-    }
     if (params.get("openEdgeSetup") === "1") {
-      setEdgeSetupOpen(true)
-      setShowActivationProgress(true)
-      setActivationBannerDismissed(false)
       params.delete("openEdgeSetup")
       params.delete("store")
       const next = params.toString()
@@ -243,36 +266,36 @@ const Dashboard = () => {
   }, [location.pathname, location.search])
 
   useEffect(() => {
-    if (selectedStore !== ALL_STORES_VALUE) return
-    if ((stores ?? []).length === 1) {
-      setSelectedStore((stores ?? [])[0].id)
-    }
-  }, [stores, selectedStore])
-
-  useEffect(() => {
-    if (typeof window === "undefined") return
+    if (selectedStore === ALL_STORES_VALUE) return
+    if (!isEdgeOnlineByLastSeen) return
     try {
-      if (localStorage.getItem("dv_from_onboarding") === "1") {
-        setShowActivationProgress(true)
-      }
-    } catch {}
-  }, [])
+      localStorage.removeItem("dv_from_onboarding")
+    } catch {
+      // ignore storage access issues
+    }
+  }, [selectedStore, isEdgeOnlineByLastSeen])
 
   useEffect(() => {
     if (!showActivationProgress) return
-    if (selectedStore !== ALL_STORES_VALUE && isEdgeOnlineByLastSeen) {
-      try {
-        localStorage.removeItem("dv_from_onboarding")
-      } catch {}
-      setShowActivationProgress(false)
-      setActivationBannerDismissed(true)
+    if (selectedStore === ALL_STORES_VALUE) return
+    if (!edgeStatus) return
+    const lastSeen = getLastSeenAt(edgeStatus)
+    if (!isRecentTimestamp(lastSeen, ONLINE_MAX_AGE_SEC)) return
+    try {
+      localStorage.removeItem("dv_from_onboarding")
+    } catch {
+      // ignore storage access issues
     }
-  }, [showActivationProgress, selectedStore, isEdgeOnlineByLastSeen])
+    setShowActivationProgress(false)
+    setActivationBannerDismissed(true)
+  }, [edgeStatus, selectedStore, showActivationProgress])
 
   const dismissActivationProgress = () => {
     try {
       localStorage.removeItem("dv_from_onboarding")
-    } catch {}
+    } catch {
+      // ignore storage access issues
+    }
     setShowActivationProgress(false)
     setActivationBannerDismissed(true)
   }
@@ -516,19 +539,6 @@ const Dashboard = () => {
     </div>
   ) : null
 
-  useEffect(() => {
-    if (!stores || stores.length === 0) {
-      setDashboard(null)
-      setIsLoadingDashboard(false)
-      return
-    }
-
-    // TODO: alimentar dashboard via Supabase:
-    // traffic_metrics, conversion_metrics, sales_metrics, detection_events, camera_health
-    setDashboard(null)
-    setDashboardError(null)
-    setIsLoadingDashboard(false)
-  }, [selectedStore, stores])
 
   const icons = {
     health: (
@@ -823,12 +833,12 @@ const Dashboard = () => {
             </label>
 
             <div className="flex items-center gap-2">
-              <select
-                id="store-select"
-                value={selectedStore}
-                onChange={(e) => setSelectedStore(e.target.value)}
-                className="w-full sm:w-[320px] border border-gray-300 rounded-lg px-4 py-2 focus:ring-2 focus:ring-blue-500 focus:border-transparent"
-                disabled={isLoadingDashboard}
+                <select
+                  id="store-select"
+                  value={selectedStore}
+                  onChange={(e) => setSelectedStoreOverride(e.target.value)}
+                  className="w-full sm:w-[320px] border border-gray-300 rounded-lg px-4 py-2 focus:ring-2 focus:ring-blue-500 focus:border-transparent"
+                  disabled={isLoadingDashboard}
                 aria-label="Selecionar loja para visualizar dashboard"
               >
                 <option value={ALL_STORES_VALUE}>Todas as lojas</option>

@@ -3,8 +3,9 @@ import logging
 import os
 from rest_framework import viewsets, status, permissions
 from rest_framework.decorators import action
-from rest_framework.exceptions import PermissionDenied, ValidationError
+from rest_framework.exceptions import PermissionDenied, ValidationError, NotFound
 from rest_framework.response import Response
+from django.http import Http404
 from django.core.exceptions import ObjectDoesNotExist
 from django.db.utils import ProgrammingError, OperationalError
 from django.db import connection
@@ -428,7 +429,10 @@ class StoreViewSet(viewsets.ModelViewSet):
 
     @action(detail=True, methods=["get", "post"], url_path="cameras")
     def cameras(self, request, pk=None):
-        store = self.get_object()
+        try:
+            store = self.get_object()
+        except Http404:
+            raise NotFound("Store not found")
         if request.method == "GET":
             require_store_role(request.user, str(store.id), ALLOWED_READ_ROLES)
             cameras_qs = Camera.objects.filter(store_id=store.id).order_by("-updated_at")
@@ -473,7 +477,7 @@ class StoreViewSet(viewsets.ModelViewSet):
             )
 
         now = timezone.now()
-        camera = serializer.save(store_id=store.id, created_at=now, updated_at=now)
+        camera = serializer.save(store=store, created_at=now, updated_at=now)
         try:
             OnboardingProgressService(str(store.org_id)).complete_step(
                 "camera_added",

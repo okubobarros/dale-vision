@@ -30,6 +30,7 @@ class CameraSerializer(serializers.ModelSerializer):
         )
         read_only_fields = (
             "id",
+            "store",
             "created_at",
             "updated_at",
             "last_seen_at",

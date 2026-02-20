@@ -1,6 +1,6 @@
 import { useState } from "react"
 import logo from "../../assets/logo.png"
-import { useAgent } from "../../contexts/AgentContext"
+import { useAgent } from "../../contexts/useAgent"
 
 export function AgentModal({
   open,

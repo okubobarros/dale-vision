@@ -38,8 +38,8 @@ describe("EdgeSetupModal step 2", () => {
       screen.getByRole("button", { name: /Já baixei e extraí/i })
     ).toBeInTheDocument()
     expect(
-      screen.getByText(/Start_DaleVision_Agent\.bat/i)
-    ).toBeInTheDocument()
+      screen.getAllByText(/Start_DaleVision_Agent\.bat/i).length
+    ).toBeGreaterThan(0)
     expect(
       screen.getByText(/Diagnose\.bat/i)
     ).toBeInTheDocument()

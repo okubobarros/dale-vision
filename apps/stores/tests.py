@@ -1,5 +1,7 @@
 import uuid
 from django.test import SimpleTestCase
+from django.http import Http404
+from django.core.exceptions import PermissionDenied
 from django.utils import timezone
 from unittest.mock import MagicMock, patch
 
@@ -9,7 +11,7 @@ from apps.stores.views import StoreViewSet
 from apps.stores import views_edge_status
 from apps.edge import views as edge_views
 from apps.edge.views import EdgeEventsIngestView
-from rest_framework.test import APIRequestFactory
+from rest_framework.test import APIRequestFactory, force_authenticate
 
 
 class TrialStoreLimitTests(SimpleTestCase):
@@ -43,6 +45,123 @@ class TrialStoreLimitTests(SimpleTestCase):
         store_mock.objects.filter.return_value = qs
 
         enforce_trial_store_limit(org_id="org-id")
+
+
+class StoreCamerasEndpointTests(SimpleTestCase):
+    def setUp(self):
+        self.factory = APIRequestFactory()
+        self.user = MagicMock(is_authenticated=True, is_staff=False, is_superuser=False)
+
+    def _mock_store(self, store_id):
+        store = MagicMock()
+        store.id = store_id
+        store.org_id = "org-1"
+        return store
+
+    @patch("apps.stores.views.OnboardingProgressService")
+    @patch("apps.stores.views.enforce_trial_camera_limit")
+    @patch("apps.stores.views.enforce_can_use_product")
+    @patch("apps.stores.views.require_store_role")
+    @patch("apps.stores.views.CameraSerializer")
+    def test_post_cameras_uses_store_from_url(
+        self,
+        camera_serializer_mock,
+        _require_role,
+        _enforce_can_use,
+        _enforce_trial,
+        _onboarding,
+    ):
+        store = self._mock_store("11111111-1111-1111-1111-111111111111")
+        serializer_in = MagicMock()
+        serializer_in.is_valid.return_value = True
+        serializer_in.validated_data = {"active": True}
+        camera = MagicMock()
+        camera.id = "cam-1"
+        serializer_in.save.return_value = camera
+        serializer_out = MagicMock()
+        serializer_out.data = {"id": "cam-1"}
+        camera_serializer_mock.side_effect = [serializer_in, serializer_out]
+
+        view = StoreViewSet.as_view({"post": "cameras"})
+        request = self.factory.post(
+            f"/api/v1/stores/{store.id}/cameras/",
+            {"store": "other-store", "name": "Cam 1"},
+            format="json",
+        )
+        force_authenticate(request, user=self.user)
+
+        with patch.object(StoreViewSet, "get_object", return_value=store):
+            response = view(request, pk=store.id)
+
+        self.assertEqual(response.status_code, 201)
+        serializer_in.save.assert_called_once()
+        _, kwargs = serializer_in.save.call_args
+        self.assertEqual(kwargs.get("store"), store)
+
+    def test_post_cameras_invalid_store_returns_404(self):
+        view = StoreViewSet.as_view({"post": "cameras"})
+        request = self.factory.post("/api/v1/stores/bad/cameras/", {"name": "Cam"}, format="json")
+        force_authenticate(request, user=self.user)
+
+        with patch.object(StoreViewSet, "get_object", side_effect=Http404()):
+            response = view(request, pk="bad")
+
+        self.assertEqual(response.status_code, 404)
+        self.assertEqual(response.data.get("detail"), "Store not found")
+
+    @patch("apps.stores.views.require_store_role", side_effect=PermissionDenied("nope"))
+    def test_post_cameras_no_permission_returns_403(self, _require_role):
+        store = self._mock_store("11111111-1111-1111-1111-111111111111")
+        view = StoreViewSet.as_view({"post": "cameras"})
+        request = self.factory.post(
+            f"/api/v1/stores/{store.id}/cameras/",
+            {"name": "Cam"},
+            format="json",
+        )
+        force_authenticate(request, user=self.user)
+
+        with patch.object(StoreViewSet, "get_object", return_value=store):
+            response = view(request, pk=store.id)
+
+        self.assertEqual(response.status_code, 403)
+
+    @patch("apps.stores.views.OnboardingProgressService")
+    @patch("apps.stores.views.enforce_trial_camera_limit")
+    @patch("apps.stores.views.enforce_can_use_product")
+    @patch("apps.stores.views.require_store_role")
+    @patch("apps.stores.views.CameraSerializer")
+    def test_post_cameras_returns_camera_id(
+        self,
+        camera_serializer_mock,
+        _require_role,
+        _enforce_can_use,
+        _enforce_trial,
+        _onboarding,
+    ):
+        store = self._mock_store("11111111-1111-1111-1111-111111111111")
+        serializer_in = MagicMock()
+        serializer_in.is_valid.return_value = True
+        serializer_in.validated_data = {}
+        camera = MagicMock()
+        camera.id = "cam-2"
+        serializer_in.save.return_value = camera
+        serializer_out = MagicMock()
+        serializer_out.data = {"id": "cam-2"}
+        camera_serializer_mock.side_effect = [serializer_in, serializer_out]
+
+        view = StoreViewSet.as_view({"post": "cameras"})
+        request = self.factory.post(
+            f"/api/v1/stores/{store.id}/cameras/",
+            {"name": "Cam 2"},
+            format="json",
+        )
+        force_authenticate(request, user=self.user)
+
+        with patch.object(StoreViewSet, "get_object", return_value=store):
+            response = view(request, pk=store.id)
+
+        self.assertEqual(response.status_code, 201)
+        self.assertEqual(response.data.get("id"), "cam-2")
 
 
 class EdgeStatusNoCamerasTests(SimpleTestCase):

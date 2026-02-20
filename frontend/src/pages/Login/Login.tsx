@@ -2,7 +2,7 @@
 import { useEffect, useState } from "react"
 import { Link, useLocation, useNavigate } from "react-router-dom"
 import logo from "../../assets/logo.png"
-import { useAuth } from "../../contexts/AuthContext"
+import { useAuth } from "../../contexts/useAuth"
 import { supabase } from "../../lib/supabase"
 import { getAuthCallbackUrl } from "../../lib/siteUrl"
 
@@ -40,9 +40,14 @@ const Login = () => {
     try {
       await login({ username, password })
       navigate("/app/dashboard")
-    } catch (err: any) {
-      const errMessage = err?.message || ""
-      const errCode = String(err?.code || "").toLowerCase()
+    } catch (err: unknown) {
+      const error = err as {
+        message?: string
+        code?: string
+        response?: { data?: { detail?: string; non_field_errors?: string[] } }
+      }
+      const errMessage = error?.message || ""
+      const errCode = String(error?.code || "").toLowerCase()
       const isEmailNotConfirmed =
         errCode === "email_not_confirmed" ||
         errMessage.toLowerCase().includes("email not confirmed") ||
@@ -54,9 +59,9 @@ const Login = () => {
         setShowResend(true)
       } else {
         const errorMessage =
-          err.response?.data?.detail ||
-          err.response?.data?.non_field_errors?.[0] ||
-          err.message ||
+          error.response?.data?.detail ||
+          error.response?.data?.non_field_errors?.[0] ||
+          error.message ||
           "Usuário ou senha incorretos"
         setError(errorMessage)
       }

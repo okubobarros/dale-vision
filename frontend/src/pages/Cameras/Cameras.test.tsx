@@ -26,7 +26,7 @@ vi.mock("../../services/cameras", () => ({
       limits: { cameras: 3, stores: 1 },
       usage: { cameras: 0, stores: 1 },
     }),
-    createStoreCamera: vi.fn().mockRejectedValue({ response: { status: 400 } }),
+    createStoreCamera: vi.fn(),
     updateCamera: vi.fn(),
     deleteCamera: vi.fn(),
     getCamera: vi.fn(),
@@ -34,8 +34,9 @@ vi.mock("../../services/cameras", () => ({
   },
 }))
 
-describe("Cameras 400 error guidance", () => {
+describe("Cameras create camera", () => {
   beforeEach(() => {
+    vi.clearAllMocks()
     localStorage.setItem(
       "userData",
       JSON.stringify({ id: "u1", username: "tester", email: "t@x.com" })
@@ -43,7 +44,44 @@ describe("Cameras 400 error guidance", () => {
     localStorage.setItem("authToken", "token")
   })
 
-  it("shows friendly message and instructions CTA on 400", async () => {
+  it("submits successfully and closes modal", async () => {
+    const { camerasService } = await import("../../services/cameras")
+    vi.mocked(camerasService.createStoreCamera).mockResolvedValueOnce({
+      id: "cam-1",
+      store: "store-1",
+      name: "Entrada",
+    })
+    renderWithProviders(<Cameras />)
+    const user = userEvent.setup()
+
+    const addButton = await screen.findByRole("button", {
+      name: /Adicionar primeira câmera/i,
+    })
+    await user.click(addButton)
+
+    const nameInput = await screen.findByPlaceholderText(/Ex: Entrada/i)
+    await user.type(nameInput, "Entrada")
+
+    const saveButton = screen.getByRole("button", { name: /Salvar/i })
+    await user.click(saveButton)
+
+    await waitFor(() => {
+      expect(camerasService.createStoreCamera).toHaveBeenCalled()
+    })
+
+    await waitFor(() => {
+      expect(screen.queryByText(/Nova câmera/i)).not.toBeInTheDocument()
+    })
+  })
+
+  it("shows backend field errors when API returns 400", async () => {
+    const { camerasService } = await import("../../services/cameras")
+    vi.mocked(camerasService.createStoreCamera).mockRejectedValueOnce({
+      response: {
+        status: 400,
+        data: { rtsp_url: ["Campo obrigatório."] },
+      },
+    })
     renderWithProviders(<Cameras />)
     const user = userEvent.setup()
 
@@ -60,12 +98,92 @@ describe("Cameras 400 error guidance", () => {
 
     await waitFor(() => {
       expect(
-        screen.getByText(/Você está fora da rede da loja/i)
+        screen.getByText(/RTSP URL: Campo obrigatório\./i)
       ).toBeInTheDocument()
     })
 
     expect(
-      screen.getByRole("button", { name: /Abrir instruções de conexão/i })
+      screen.getByRole("button", { name: /Rodar Diagnose/i })
     ).toBeInTheDocument()
+  })
+
+  it("shows permission message when API returns 403", async () => {
+    const { camerasService } = await import("../../services/cameras")
+    vi.mocked(camerasService.createStoreCamera).mockRejectedValueOnce({
+      response: {
+        status: 403,
+        data: { detail: "Forbidden" },
+      },
+    })
+    renderWithProviders(<Cameras />)
+    const user = userEvent.setup()
+
+    const addButton = await screen.findByRole("button", {
+      name: /Adicionar primeira câmera/i,
+    })
+    await user.click(addButton)
+
+    const nameInput = await screen.findByPlaceholderText(/Ex: Entrada/i)
+    await user.type(nameInput, "Entrada")
+
+    const saveButton = screen.getByRole("button", { name: /Salvar/i })
+    await user.click(saveButton)
+
+    await waitFor(() => {
+      expect(
+        screen.getByText(/não tem permissão/i)
+      ).toBeInTheDocument()
+    })
+  })
+
+  it("builds Intelbras NVR rtsp_url when manual RTSP is empty", async () => {
+    const { camerasService } = await import("../../services/cameras")
+    vi.mocked(camerasService.createStoreCamera).mockResolvedValueOnce({
+      id: "cam-1",
+      store: "store-1",
+      name: "Entrada",
+    })
+    renderWithProviders(<Cameras />)
+    const user = userEvent.setup()
+
+    const addButton = await screen.findByRole("button", {
+      name: /Adicionar primeira câmera/i,
+    })
+    await user.click(addButton)
+
+    await user.type(await screen.findByPlaceholderText(/Ex: Entrada/i), "Entrada")
+    await user.selectOptions(
+      screen.getByRole("combobox", { name: /Tipo de conexão/i }),
+      "nvr"
+    )
+    await user.type(screen.getByPlaceholderText("192.168.0.10"), "192.168.1.50")
+    await user.type(screen.getByPlaceholderText("admin"), "admin")
+    await user.type(screen.getByPlaceholderText("••••••••"), "123456")
+
+    const channelInput = screen.getByLabelText(/Canal \(NVR\)/i)
+    await user.clear(channelInput)
+    await user.type(channelInput, "3")
+
+    const subtypeSelect = screen.getByLabelText(/Subtipo \(Intelbras\)/i)
+    await user.selectOptions(subtypeSelect, "0")
+
+    await user.click(screen.getByRole("button", { name: /Salvar/i }))
+
+    await waitFor(() => {
+      expect(camerasService.createStoreCamera).toHaveBeenCalled()
+    })
+
+    const [, payload] = vi.mocked(camerasService.createStoreCamera).mock.calls[0]
+    expect(payload).toMatchObject({
+      ip: "192.168.1.50",
+      username: "admin",
+      password: "123456",
+      brand: "intelbras",
+      external_id: "ch3-sub0",
+      rtsp_url:
+        "rtsp://admin:123456@192.168.1.50:554/cam/realmonitor?channel=3&subtype=0",
+    })
+    expect(payload).not.toHaveProperty("channel")
+    expect(payload).not.toHaveProperty("subtype")
   })
 })

@@ -5,11 +5,9 @@ export const getSiteUrl = (): string => {
 
   if (import.meta.env.PROD) {
     if (origin && origin.includes("localhost")) {
-      // eslint-disable-next-line no-console
       console.warn("[siteUrl] PROD com origin localhost. Verifique VITE_SITE_URL.")
     }
     if (!envUrl) {
-      // eslint-disable-next-line no-console
       console.warn("[siteUrl] VITE_SITE_URL não configurado. Usando window.location.origin.")
     }
   }
@@ -30,7 +28,6 @@ export const getAuthCallbackUrl = (): string => {
 
   if (!base) {
     if (import.meta.env.PROD) {
-      // eslint-disable-next-line no-console
       console.warn("[siteUrl] VITE_SITE_URL/VITE_AUTH_CALLBACK_URL não configurado.")
     }
     return "/auth/callback"

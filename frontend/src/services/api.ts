@@ -1,5 +1,10 @@
 // src/services/api.ts
-import axios from "axios"
+import axios, {
+  AxiosError,
+  AxiosHeaders,
+  type AxiosHeaderValue,
+  type AxiosRequestConfig,
+} from "axios"
 import { createElement } from "react"
 import toast from "react-hot-toast"
 import { API_BASE_URL } from "../lib/api"
@@ -34,7 +39,49 @@ if (import.meta.env.DEV) {
   console.log("[API] API_BASE_URL =", API_BASE_URL)
 }
 
-const showTimeoutRetryToast = (config: any) => {
+type RetriableConfig = AxiosRequestConfig & { _retryCount?: number }
+
+const isAxiosHeaders = (
+  headers: AxiosRequestConfig["headers"]
+): headers is AxiosHeaders => headers instanceof AxiosHeaders
+
+const setAuthHeader = (config: AxiosRequestConfig, token: string | null) => {
+  const headers = config.headers
+  if (token) {
+    if (isAxiosHeaders(headers)) {
+      headers.set("Authorization", `Bearer ${token}`)
+    } else {
+      const headerRecord = (headers ?? {}) as Record<string, AxiosHeaderValue>
+      config.headers = { ...headerRecord, Authorization: `Bearer ${token}` }
+    }
+    return
+  }
+
+  if (isAxiosHeaders(headers)) {
+    headers.delete("Authorization")
+    return
+  }
+  if (headers && typeof headers === "object") {
+    const nextHeaders = { ...(headers as Record<string, AxiosHeaderValue>) }
+    delete nextHeaders.Authorization
+    config.headers = nextHeaders
+  }
+}
+
+const getAuthHeaderValue = (config: AxiosRequestConfig): string | null => {
+  const headers = config.headers
+  if (isAxiosHeaders(headers)) {
+    const value = headers.get("Authorization")
+    return typeof value === "string" ? value : null
+  }
+  if (headers && typeof headers === "object") {
+    const value = (headers as Record<string, unknown>).Authorization
+    return typeof value === "string" ? value : null
+  }
+  return null
+}
+
+const showTimeoutRetryToast = (config?: RetriableConfig) => {
   const id = "api-timeout-retry"
   toast.custom(
     (t) =>
@@ -89,31 +136,14 @@ api.interceptors.request.use(
     const token = getTokenFromStorage()
 
     // ✅ Axios v1: headers pode ser AxiosHeaders (tem .set)
-    if (token) {
-      if (config.headers && typeof (config.headers as any).set === "function") {
-        ;(config.headers as any).set("Authorization", `Bearer ${token}`)
-      } else {
-        config.headers = config.headers ?? {}
-        ;(config.headers as any)["Authorization"] = `Bearer ${token}`
-      }
-    } else {
-      // remove Authorization se não tiver token
-      if (config.headers && typeof (config.headers as any).delete === "function") {
-        ;(config.headers as any).delete("Authorization")
-      } else if (config.headers) {
-        delete (config.headers as any)["Authorization"]
-      }
-    }
+    setAuthHeader(config, token)
 
     // ✅ DEBUG depois de setar token (agora é real)
     console.log("🔵 API Request:", {
       url: `${config.baseURL}${config.url}`,
       method: config.method,
       auth: (() => {
-        const headerValue =
-          config.headers && typeof (config.headers as any).get === "function"
-            ? (config.headers as any).get("Authorization")
-            : (config.headers as any)?.Authorization
+        const headerValue = getAuthHeaderValue(config)
         const scheme = typeof headerValue === "string" ? headerValue.split(" ")[0] : null
         return { present: !!headerValue, scheme }
       })(),
@@ -137,24 +167,36 @@ api.interceptors.response.use(
     })
     return response
   },
-  (error) => {
+  (error: unknown) => {
+    if (!axios.isAxiosError(error)) {
+      console.error("🔴 API Error:", error)
+      return Promise.reject(error)
+    }
+    const axiosError = error as AxiosError<unknown>
     const isTimeout =
-      error.code === "ECONNABORTED" ||
-      String(error.message || "").toLowerCase().includes("timeout")
-    const status = error.response?.status
-    const paywall = error.response?.data
-    const method = String(error.config?.method || "get").toLowerCase()
+      axiosError.code === "ECONNABORTED" ||
+      String(axiosError.message || "").toLowerCase().includes("timeout")
+    const status = axiosError.response?.status
+    const paywall = axiosError.response?.data as
+      | { code?: string; meta?: { entity?: string } }
+      | undefined
+    const method = String(axiosError.config?.method || "get").toLowerCase()
     const isGet = method === "get"
-    const shouldRetry = isGet && (isTimeout || [502, 503, 504].includes(status))
+    const shouldRetry =
+      isGet &&
+      (isTimeout || (status !== undefined && [502, 503, 504].includes(status)))
 
-    const config = error.config as any
-    const retryCount = (config?._retryCount as number) || 0
+    const config = axiosError.config as RetriableConfig | undefined
+    const retryCount = config?._retryCount ?? 0
 
     if (shouldRetry && config && retryCount < RETRY_BACKOFF_MS.length) {
       config._retryCount = retryCount + 1
-      const delay = RETRY_BACKOFF_MS[retryCount]
+      const delay =
+        RETRY_BACKOFF_MS[retryCount] ??
+        RETRY_BACKOFF_MS[RETRY_BACKOFF_MS.length - 1]
+      const delayMs: number = delay ?? 0
 
-      return new Promise((resolve) => setTimeout(resolve, delay)).then(() =>
+      return new Promise((resolve) => setTimeout(resolve, delayMs)).then(() =>
         api.request(config)
       )
     }
@@ -177,25 +219,25 @@ api.interceptors.response.use(
 
     if (isTimeout) {
       console.warn("🟠 API Timeout:", {
-        url: error.config?.url,
-        timeoutMs: error.config?.timeout,
-        message: error.message,
+        url: axiosError.config?.url,
+        timeoutMs: axiosError.config?.timeout,
+        message: axiosError.message,
       })
-    } else if (error.response) {
+    } else if (axiosError.response) {
       console.error("🔴 API HTTP Error:", {
-        url: error.config?.url,
-        status: error.response?.status,
-        data: error.response?.data,
-        message: error.message,
+        url: axiosError.config?.url,
+        status: axiosError.response?.status,
+        data: axiosError.response?.data,
+        message: axiosError.message,
       })
     } else {
       console.error("🔴 API Network Error:", {
-        url: error.config?.url,
-        code: error.code,
-        message: error.message,
+        url: axiosError.config?.url,
+        code: axiosError.code,
+        message: axiosError.message,
       })
     }
-    return Promise.reject(error)
+    return Promise.reject(axiosError)
   }
 )
 

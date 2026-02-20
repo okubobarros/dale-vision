@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useState } from "react"
+import { useMemo, useState } from "react"
 import { useQuery } from "@tanstack/react-query"
 
 import { storesService, type Store } from "../../services/stores"
@@ -12,7 +12,7 @@ function formatDateBR(value?: string) {
 }
 
 export default function NotificationLogs() {
-  const [selectedStoreId, setSelectedStoreId] = useState<string>("")
+  const [selectedStoreOverride, setSelectedStoreOverride] = useState<string | null>(null)
   const [eventIdFilter, setEventIdFilter] = useState<string>("")
 
   // Stores
@@ -25,11 +25,11 @@ export default function NotificationLogs() {
     queryFn: storesService.getStores,
   })
 
-  useEffect(() => {
-    if (!selectedStoreId && stores && stores.length > 0) {
-      setSelectedStoreId(String(stores[0].id))
-    }
-  }, [stores, selectedStoreId])
+  const selectedStoreId = useMemo(() => {
+    if (selectedStoreOverride !== null) return selectedStoreOverride
+    const firstStoreId = stores?.[0]?.id
+    return firstStoreId ? String(firstStoreId) : ""
+  }, [selectedStoreOverride, stores])
 
   const selectedStore = useMemo(() => {
     if (!stores || !selectedStoreId) return null
@@ -100,7 +100,7 @@ export default function NotificationLogs() {
                 name="storeLogsSelect"
                 className="mt-2 w-full px-3 py-2 rounded-lg border border-gray-200 bg-white"
                 value={selectedStoreId}
-                onChange={(e) => setSelectedStoreId(e.target.value)}
+                onChange={(e) => setSelectedStoreOverride(e.target.value)}
                 disabled={storesLoading}
                 aria-label="Selecionar loja para logs"
                 title="Selecionar loja"

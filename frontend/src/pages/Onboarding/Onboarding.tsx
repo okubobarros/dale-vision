@@ -2,7 +2,7 @@
 import { useEffect, useState } from "react"
 import { useNavigate } from "react-router-dom"
 
-import { useAuth } from "../../contexts/AuthContext"
+import { useAuth } from "../../contexts/useAuth"
 import { storesService } from "../../services/stores"
 import { employeesService, type EmployeeRole } from "../../services/employees"
 import OnboardingProgress from "./components/OnboardingProgress"

@@ -1,28 +1,10 @@
-// src/contexts/AuthContext.tsx
-import { createContext, useContext, useState, useEffect, useCallback } from "react"
+// src/contexts/useAuth.tsx
+import { useState, useEffect, useCallback } from "react"
 import type { ReactNode } from "react"
 import { authService } from "../services/auth"
 import type { User, LoginCredentials } from "../services/auth"
-
-interface AuthContextType {
-  user: User | null
-  token: string | null
-  isAuthenticated: boolean
-  isLoading: boolean
-  login: (credentials: LoginCredentials) => Promise<void>
-  logout: () => Promise<void>
-  refreshAuth: () => void
-}
-
-const AuthContext = createContext<AuthContextType | undefined>(undefined)
-
-export const useAuth = () => {
-  const context = useContext(AuthContext)
-  if (!context) {
-    throw new Error("useAuth must be used within an AuthProvider")
-  }
-  return context
-}
+import type { AuthContextType } from "./authContextBase"
+import { AuthContext } from "./authContextBase"
 
 interface AuthProviderProps {
   children: ReactNode

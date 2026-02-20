@@ -1,5 +1,5 @@
 // src/pages/Alerts/Alerts.tsx
-import { useMemo, useState, useEffect } from "react"
+import { useMemo, useState } from "react"
 import { useQuery } from "@tanstack/react-query"
 import { useSearchParams } from "react-router-dom"
 
@@ -10,11 +10,35 @@ import {
   useResolveEvent,
   useIngestAlert,
 } from "../../queries/alerts.queries"
-import { alertsService } from "../../services/alerts"
+import { alertsService, type AlertIngestPayload } from "../../services/alerts"
 import toast from "react-hot-toast"
 
 type FilterSeverity = "all" | "critical" | "warning" | "info"
 type FilterStatus = "all" | "open" | "resolved" | "ignored"
+type StoreOption = { id: string | number; name?: string }
+type AlertMedia = { id?: string | number; media_type?: string; url?: string }
+type AlertMetadata = { receipt_id?: string }
+type AlertEvent = {
+  id?: string | number
+  title?: string
+  description?: string
+  type?: string
+  store_id?: string | number
+  severity?: string
+  status?: string
+  occurred_at?: string
+  created_at?: string
+  media?: AlertMedia[]
+  metadata?: AlertMetadata
+}
+type AlertLog = {
+  id?: string | number
+  channel?: string
+  status?: string
+  sent_at?: string
+  destination?: string
+  error?: string
+}
 
 const severityStyles: Record<string, string> = {
   critical: "border-red-200 bg-red-50 text-red-700",
@@ -36,11 +60,15 @@ function formatHHMM(iso?: string) {
 }
 
 // ✅ Normaliza respostas do backend (array direto, {data:[...]}, {results:[...]})
-function normalizeArray<T = any>(input: any): T[] {
+function normalizeArray<T>(input: unknown): T[] {
   if (!input) return []
   if (Array.isArray(input)) return input
-  if (Array.isArray(input.data)) return input.data
-  if (Array.isArray(input.results)) return input.results
+  if (typeof input === "object" && input) {
+    const data = (input as { data?: unknown }).data
+    const results = (input as { results?: unknown }).results
+    if (Array.isArray(data)) return data as T[]
+    if (Array.isArray(results)) return results as T[]
+  }
   return []
 }
 
@@ -50,7 +78,9 @@ export default function Alerts() {
   const [severityFilter, setSeverityFilter] = useState<FilterSeverity>("all")
   const [statusFilter, setStatusFilter] = useState<FilterStatus>("open")
   const [storeId, setStoreId] = useState<string>("")
-  const [selectedEventId, setSelectedEventId] = useState<string | null>(null)
+  const [selectedEventId, setSelectedEventId] = useState<string | null>(() =>
+    searchParams.get("event_id")
+  )
   const [dateFrom, setDateFrom] = useState<string>("")
   const [dateTo, setDateTo] = useState<string>("")
 
@@ -59,7 +89,7 @@ export default function Alerts() {
     queryKey: ["alerts", "coreStores"],
     queryFn: alertsService.listCoreStores,
   })
-  const stores = normalizeArray<any>(storesRaw)
+  const stores = normalizeArray<StoreOption>(storesRaw)
 
   // eventos
   const occurredFrom = useMemo(() => {
@@ -82,7 +112,7 @@ export default function Alerts() {
 
   // ✅ evita crash: garante array
   const events = useMemo(
-    () => normalizeArray<any>(eventsQuery.data),
+    () => normalizeArray<AlertEvent>(eventsQuery.data),
     [eventsQuery.data]
   )
 
@@ -105,7 +135,7 @@ export default function Alerts() {
     }
 
     const now = new Date()
-    const payload = {
+    const payload: AlertIngestPayload = {
       store_id: storeId,
       event_type: "queue_long",
       severity: "warning",
@@ -119,17 +149,17 @@ export default function Alerts() {
       receipt_id: `ui-dev-${Date.now()}`,
     }
 
-    ingestMut.mutate(payload as any, {
-      onSuccess: (res: any) => {
+    ingestMut.mutate(payload, {
+      onSuccess: (res: unknown) => {
         toast.success("Evento simulado com sucesso ✅")
         // abre o drawer automaticamente
-        const createdId = res?.event?.id
+        const createdId = (res as { event?: { id?: string | number } })?.event?.id
         if (createdId) setSelectedEventId(String(createdId))
 
         // garante refresh do feed
         eventsQuery.refetch()
       },
-      onError: (err: any) => {
+      onError: (err: unknown) => {
         console.error(err)
         toast.error("Falha ao simular evento. Veja console / backend.")
       },
@@ -139,7 +169,7 @@ export default function Alerts() {
   const filtered = useMemo(() => {
     const q = query.trim().toLowerCase()
 
-    return events.filter((e: any) => {
+    return events.filter((e) => {
       const matchQuery =
         !q ||
         (e.title || "").toLowerCase().includes(q) ||
@@ -157,16 +187,9 @@ export default function Alerts() {
   const selectedEvent = useMemo(() => {
     if (!selectedEventId) return null
     return (
-      events.find((e: any) => String(e.id) === String(selectedEventId)) || null
+      events.find((e) => String(e.id) === String(selectedEventId)) || null
     )
   }, [events, selectedEventId])
-
-  useEffect(() => {
-    const eventIdFromUrl = searchParams.get("event_id")
-    if (eventIdFromUrl) {
-      setSelectedEventId(eventIdFromUrl)
-    }
-  }, [searchParams])
 
   return (
     <div className="space-y-5">
@@ -213,7 +236,7 @@ export default function Alerts() {
               disabled={storesLoading}
             >
               <option value="">Todas as lojas</option>
-              {stores.map((s: any) => (
+              {stores.map((s) => (
                 <option key={String(s.id)} value={String(s.id)}>
                   {s.name}
                 </option>
@@ -245,7 +268,7 @@ export default function Alerts() {
               aria-label="Filtrar por severidade"
               title="Filtrar por severidade"
               value={severityFilter}
-              onChange={(e) => setSeverityFilter(e.target.value as any)}
+              onChange={(e) => setSeverityFilter(e.target.value as FilterSeverity)}
               className="w-full sm:w-auto rounded-lg border border-gray-300 px-4 py-2"
             >
               <option value="all">Severidade: todas</option>
@@ -262,7 +285,7 @@ export default function Alerts() {
               aria-label="Filtrar por status"
               title="Filtrar por status"
               value={statusFilter}
-              onChange={(e) => setStatusFilter(e.target.value as any)}
+              onChange={(e) => setStatusFilter(e.target.value as FilterStatus)}
               className="w-full sm:w-auto rounded-lg border border-gray-300 px-4 py-2"
             >
               <option value="open">Status: abertos</option>
@@ -318,7 +341,7 @@ export default function Alerts() {
       {/* Lista */}
       {!eventsQuery.isLoading && !eventsQuery.isError && (
         <div className="space-y-4">
-          {filtered.map((e: any) => {
+          {filtered.map((e) => {
             const sev = e.severity || "info"
             const hhmm = formatHHMM(e.occurred_at)
             const receiptId = e?.metadata?.receipt_id
@@ -498,7 +521,7 @@ export default function Alerts() {
                     <span>Nenhuma mídia anexada ainda.</span>
                   ) : (
                     <ul className="list-disc pl-5">
-                      {selectedEvent.media.map((m: any) => (
+                      {(selectedEvent.media ?? []).map((m) => (
                         <li key={String(m.id)}>
                           <span className="font-medium">{m.media_type}:</span>{" "}
                           <a
@@ -564,12 +587,12 @@ export default function Alerts() {
 
                 {!logsQuery.isLoading && !logsQuery.isError && (
                   <div className="mt-2 space-y-2">
-                    {normalizeArray<any>(logsQuery.data).length === 0 ? (
+                    {normalizeArray<AlertLog>(logsQuery.data).length === 0 ? (
                       <div className="text-sm text-gray-600">
                         Nenhum log encontrado para este evento.
                       </div>
                     ) : (
-                      normalizeArray<any>(logsQuery.data).map((l: any) => (
+                      normalizeArray<AlertLog>(logsQuery.data).map((l) => (
                         <div
                           key={String(l.id)}
                           className="rounded-lg border border-gray-200 bg-white p-3"

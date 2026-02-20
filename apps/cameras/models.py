@@ -19,6 +19,7 @@ class CameraROIConfig(models.Model):
 
     class Meta:
         db_table = "camera_roi_configs"
+        managed = False
         constraints = [
             models.UniqueConstraint(
                 fields=["camera", "version"],
@@ -44,6 +45,7 @@ class CameraHealth(models.Model):
 
     class Meta:
         db_table = "camera_health"
+        managed = False
         constraints = [
             models.UniqueConstraint(
                 fields=["camera"],
@@ -68,3 +70,4 @@ class CameraSnapshot(models.Model):
 
     class Meta:
         db_table = "camera_snapshots"
+        managed = False
