@@ -8,10 +8,8 @@ import axios, {
 import { createElement } from "react"
 import toast from "react-hot-toast"
 import { API_BASE_URL } from "../lib/api"
-
-const getTokenFromStorage = (): string | null => {
-  return localStorage.getItem("authToken")
-}
+import { clearAuthStorage, getAccessToken } from "./authStorage"
+import { refreshSupabaseSession } from "./authSession"
 
 const DEFAULT_TIMEOUT_MS = import.meta.env.PROD ? 60000 : 30000
 const LONG_TIMEOUT_MS = 60000
@@ -40,10 +38,37 @@ if (import.meta.env.DEV) {
 }
 
 type RetriableConfig = AxiosRequestConfig & { _retryCount?: number }
+type AuthRetryConfig = RetriableConfig & { _retryAuth?: boolean }
 
 const isAxiosHeaders = (
   headers: AxiosRequestConfig["headers"]
 ): headers is AxiosHeaders => headers instanceof AxiosHeaders
+
+let hasLoggedAuthHeader = false
+
+const setDefaultsAuthHeader = (token: string | null) => {
+  const commonHeaders = api.defaults.headers.common as Record<
+    string,
+    AxiosHeaderValue
+  >
+  if (token) {
+    commonHeaders.Authorization = `Bearer ${token}`
+  } else {
+    delete commonHeaders.Authorization
+  }
+}
+
+export const syncApiAuthHeader = () => {
+  const token = getAccessToken()
+  setDefaultsAuthHeader(token)
+  if (token && !hasLoggedAuthHeader) {
+    console.log("axios auth header set")
+    hasLoggedAuthHeader = true
+  } else if (!token && hasLoggedAuthHeader) {
+    console.log("axios auth header cleared")
+    hasLoggedAuthHeader = false
+  }
+}
 
 const setAuthHeader = (config: AxiosRequestConfig, token: string | null) => {
   const headers = config.headers
@@ -133,7 +158,7 @@ api.interceptors.request.use(
     const timeout = isLongTimeoutPath(config.url) ? LONG_TIMEOUT_MS : DEFAULT_TIMEOUT_MS
     config.timeout = Math.max(Number(config.timeout || 0), timeout)
 
-    const token = getTokenFromStorage()
+    const token = getAccessToken()
 
     // ✅ Axios v1: headers pode ser AxiosHeaders (tem .set)
     setAuthHeader(config, token)
@@ -167,7 +192,7 @@ api.interceptors.response.use(
     })
     return response
   },
-  (error: unknown) => {
+  async (error: unknown) => {
     if (!axios.isAxiosError(error)) {
       console.error("🔴 API Error:", error)
       return Promise.reject(error)
@@ -186,7 +211,7 @@ api.interceptors.response.use(
       isGet &&
       (isTimeout || (status !== undefined && [502, 503, 504].includes(status)))
 
-    const config = axiosError.config as RetriableConfig | undefined
+    const config = axiosError.config as AuthRetryConfig | undefined
     const retryCount = config?._retryCount ?? 0
 
     if (shouldRetry && config && retryCount < RETRY_BACKOFF_MS.length) {
@@ -199,6 +224,17 @@ api.interceptors.response.use(
       return new Promise((resolve) => setTimeout(resolve, delayMs)).then(() =>
         api.request(config)
       )
+    }
+
+    if (status === 401 && config && !config._retryAuth) {
+      config._retryAuth = true
+      const refreshed = await refreshSupabaseSession()
+      if (refreshed?.token) {
+        syncApiAuthHeader()
+        return api.request(config)
+      }
+      clearAuthStorage()
+      syncApiAuthHeader()
     }
 
     if (isTimeout && isGet) {

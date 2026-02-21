@@ -117,7 +117,7 @@ const ALL_STORES_VALUE = "all"
 
 
 const Dashboard = () => {
-  const { user } = useAuth()
+  const { user, authReady, isAuthenticated } = useAuth()
   const location = useLocation()
   const initialParams = new URLSearchParams(location.search)
   const initialStoreFromQuery = initialParams.get("store") || ""
@@ -144,10 +144,13 @@ const Dashboard = () => {
   const origin = typeof window !== "undefined" ? window.location.origin : ""
   const isMobile = useIsMobile(768)
 
+  const canFetchAuth = authReady && isAuthenticated
+
   const { data: stores, isLoading: storesLoading } = useQuery<Store[]>({
     queryKey: ["stores"],
     queryFn: storesService.getStores,
     staleTime: 60000,
+    enabled: canFetchAuth,
   })
 
   const selectedStore = useMemo(() => {
@@ -167,7 +170,7 @@ const Dashboard = () => {
   } = useQuery<StoreDashboard>({
     queryKey: ["store-dashboard", selectedStore],
     queryFn: () => storesService.getStoreDashboard(selectedStore),
-    enabled: selectedStore !== ALL_STORES_VALUE,
+    enabled: canFetchAuth && selectedStore !== ALL_STORES_VALUE,
     staleTime: 30000,
   })
   const dashboardError =
@@ -196,7 +199,7 @@ const Dashboard = () => {
   } = useQuery<StoreEdgeStatus>({
     queryKey: ["store-edge-status", selectedStore],
     queryFn: () => storesService.getStoreEdgeStatus(selectedStore),
-    enabled: selectedStore !== ALL_STORES_VALUE,
+    enabled: canFetchAuth && selectedStore !== ALL_STORES_VALUE,
     refetchInterval: (query) => {
       if (typeof document !== "undefined" && document.visibilityState === "hidden") {
         return false
@@ -228,7 +231,7 @@ const Dashboard = () => {
   const { data: storeLimits } = useQuery({
     queryKey: ["store-limits", selectedStore],
     queryFn: () => camerasService.getStoreLimits(selectedStore),
-    enabled: Boolean(selectedStore && selectedStore !== ALL_STORES_VALUE),
+    enabled: canFetchAuth && Boolean(selectedStore && selectedStore !== ALL_STORES_VALUE),
   })
 
   const {
@@ -239,7 +242,7 @@ const Dashboard = () => {
     store_id: selectedStore === ALL_STORES_VALUE ? undefined : selectedStore,
     status: "open",
   }, {
-    enabled: Boolean(selectedStore && selectedStore !== ALL_STORES_VALUE),
+    enabled: canFetchAuth && Boolean(selectedStore && selectedStore !== ALL_STORES_VALUE),
   })
 
   const resolveEvent = useResolveEvent()
@@ -251,7 +254,7 @@ const Dashboard = () => {
       onboardingService.getProgress(
         selectedStore !== ALL_STORES_VALUE ? selectedStore : undefined
       ),
-    enabled: Boolean(selectedStore && selectedStore !== ALL_STORES_VALUE),
+    enabled: canFetchAuth && Boolean(selectedStore && selectedStore !== ALL_STORES_VALUE),
     staleTime: 30000,
     retry: 1,
   })

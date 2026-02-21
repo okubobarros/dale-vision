@@ -197,7 +197,7 @@ const normalizeEdgeStatus = (
 export const storesService = {
   // Listar todas as lojas do usuário
   async getStores(): Promise<Store[]> {
-    console.log('🔄 Buscando lojas...');
+    console.log("🔄 Buscando lojas... (fetching stores)")
     try {
       const response = await api.get('/v1/stores/');
       console.log('📦 Resposta completa:', response);

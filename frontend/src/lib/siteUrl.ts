@@ -35,3 +35,13 @@ export const getAuthCallbackUrl = (): string => {
 
   return `${base}/auth/callback`
 }
+
+export const getResetPasswordUrl = (): string => {
+  const explicit = import.meta.env.VITE_RESET_PASSWORD_URL
+  if (explicit) {
+    return explicit.replace(/\/$/, "")
+  }
+
+  const base = getSiteUrl().replace(/\/$/, "")
+  return `${base}/auth/reset-password`
+}

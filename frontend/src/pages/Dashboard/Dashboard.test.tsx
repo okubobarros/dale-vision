@@ -78,6 +78,7 @@ vi.mock("../../services/onboarding", () => ({
 
 describe("Dashboard empty state", () => {
   beforeEach(() => {
+    vi.clearAllMocks()
     localStorage.setItem(
       "userData",
       JSON.stringify({ id: "u1", username: "tester", email: "t@x.com" })
@@ -97,6 +98,7 @@ describe("Dashboard empty state", () => {
 
 describe("Dashboard trial upgrade CTA", () => {
   beforeEach(() => {
+    vi.clearAllMocks()
     localStorage.setItem(
       "userData",
       JSON.stringify({ id: "u1", username: "tester", email: "t@x.com" })
@@ -119,5 +121,22 @@ describe("Dashboard trial upgrade CTA", () => {
     renderWithProviders(<Dashboard />)
     const link = await screen.findByRole("link", { name: /Assinar agora/i })
     expect(link).toHaveAttribute("href", "/app/upgrade")
+  })
+})
+
+describe("Dashboard auth gating", () => {
+  beforeEach(() => {
+    vi.clearAllMocks()
+    localStorage.removeItem("userData")
+    localStorage.removeItem("authToken")
+  })
+
+  it("does not fetch stores without token", async () => {
+    const { storesService } = await import("../../services/stores")
+    renderWithProviders(<Dashboard />)
+
+    await waitFor(() => {
+      expect(storesService.getStores).not.toHaveBeenCalled()
+    })
   })
 })

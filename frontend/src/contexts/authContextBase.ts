@@ -6,6 +6,7 @@ export interface AuthContextType {
   token: string | null
   isAuthenticated: boolean
   isLoading: boolean
+  authReady: boolean
   login: (credentials: LoginCredentials) => Promise<void>
   logout: () => Promise<void>
   refreshAuth: () => void

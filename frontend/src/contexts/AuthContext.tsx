@@ -2,6 +2,7 @@
 import { useState, useEffect, useCallback } from "react"
 import type { ReactNode } from "react"
 import { authService } from "../services/auth"
+import { subscribeAuthChanges } from "../services/authStorage"
 import type { User, LoginCredentials } from "../services/auth"
 import type { AuthContextType } from "./authContextBase"
 import { AuthContext } from "./authContextBase"
@@ -14,29 +15,25 @@ export const AuthProvider: React.FC<AuthProviderProps> = ({ children }) => {
   const [user, setUser] = useState<User | null>(null)
   const [token, setToken] = useState<string | null>(null)
   const [isLoading, setIsLoading] = useState(true)
+  const [authReady, setAuthReady] = useState(false)
 
   useEffect(() => {
-    // 1) Configurar token no axios (IMPORTANTE)
-    authService.setupToken()
-
-    // 2) Carregar dados do localStorage
-    const currentUser = authService.getCurrentUser()
-    const currentToken = authService.getToken()
+    const { user: currentUser, token: currentToken } = authService.rehydrate()
 
     setUser(currentUser)
     setToken(currentToken)
     setIsLoading(false)
+    setAuthReady(true)
 
-    // Debug
     console.log("AuthProvider - Usuário carregado:", currentUser)
     console.log("AuthProvider - Token existe:", !!currentToken)
   }, [])
 
   const refreshAuth = useCallback(() => {
-    const currentUser = authService.getCurrentUser()
-    const currentToken = authService.getToken()
+    const { user: currentUser, token: currentToken } = authService.rehydrate()
     setUser(currentUser)
     setToken(currentToken)
+    setAuthReady(true)
   }, [])
 
   const login = async (credentials: LoginCredentials) => {
@@ -50,6 +47,7 @@ export const AuthProvider: React.FC<AuthProviderProps> = ({ children }) => {
       // authService.login() já salvou no localStorage
       setUser(response.user)
       setToken(authService.getToken())
+      setAuthReady(true)
 
       // Debug
       console.log("AuthContext - Token salvo:", authService.getToken())
@@ -70,6 +68,7 @@ export const AuthProvider: React.FC<AuthProviderProps> = ({ children }) => {
       await authService.logout()
       setUser(null)
       setToken(null)
+      setAuthReady(true)
       console.log("AuthContext - Logout completo")
     } catch (error) {
       console.error("AuthContext - Erro no logout:", error)
@@ -86,6 +85,7 @@ export const AuthProvider: React.FC<AuthProviderProps> = ({ children }) => {
     token,
     isAuthenticated,
     isLoading,
+    authReady,
     login,
     logout,
     refreshAuth,
@@ -96,6 +96,16 @@ export const AuthProvider: React.FC<AuthProviderProps> = ({ children }) => {
     isAuthenticated,
     isLoading,
   })
+
+  useEffect(() => {
+    const unsubscribe = subscribeAuthChanges(() => {
+      const { user: nextUser, token: nextToken } = authService.rehydrate()
+      setUser(nextUser)
+      setToken(nextToken)
+      setAuthReady(true)
+    })
+    return () => unsubscribe()
+  }, [])
 
   return <AuthContext.Provider value={value}>{children}</AuthContext.Provider>
 }

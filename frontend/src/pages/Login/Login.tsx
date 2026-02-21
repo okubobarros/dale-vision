@@ -15,6 +15,7 @@ const Login = () => {
   const [resendMessage, setResendMessage] = useState("")
   const [resendLoading, setResendLoading] = useState(false)
   const [isLoading, setIsLoading] = useState(false)
+  const [notice, setNotice] = useState("")
 
   const { login } = useAuth()
   const navigate = useNavigate()
@@ -27,6 +28,11 @@ const Login = () => {
     const params = new URLSearchParams(location.search)
     if (params.get("verified") === "1") {
       setError("E-mail verificado. Agora faça login.")
+      setNotice("")
+    }
+    if (params.get("reset") === "1") {
+      setNotice("Senha redefinida. Faça login.")
+      setError("")
     }
   }, [location.search])
 
@@ -155,6 +161,11 @@ const Login = () => {
                 )}
               </div>
             )}
+            {notice && !error && (
+              <div className="mb-4 p-3 bg-emerald-50 border border-emerald-200 text-emerald-700 rounded-2xl text-sm">
+                {notice}
+              </div>
+            )}
 
             <div className="space-y-5">
               <div>
@@ -267,6 +278,12 @@ const Login = () => {
                   )}
                 </span>
               </button>
+
+              <div className="text-center text-sm text-slate-600">
+                <Link to="/forgot-password" className="underline underline-offset-4 hover:text-slate-900">
+                  Esqueci minha senha
+                </Link>
+              </div>
 
               {/* Política */}
               <p className="text-xs text-slate-500 text-center leading-relaxed">

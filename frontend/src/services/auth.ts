@@ -1,6 +1,16 @@
 // src/services/auth.ts
-import api from "./api"
+import api, { syncApiAuthHeader } from "./api"
 import { supabase } from "../lib/supabase"
+import {
+  clearAuthStorage,
+  getAccessToken,
+  getStoredUser,
+} from "./authStorage"
+import {
+  type AuthResponse,
+  buildUserFromSupabase,
+  saveSupabaseSession,
+} from "./authSession"
 
 // ============ DEFINIR OS TYPES PRIMEIRO ============
 
@@ -17,50 +27,7 @@ export interface User {
   last_name?: string
 }
 
-export interface AuthResponse {
-  token: string
-  user: User
-  expiry?: string
-}
-
 // ============ AGORA A authService ============
-
-type SupabaseUser = {
-  id?: string
-  email?: string
-  user_metadata?: {
-    full_name?: string
-    first_name?: string
-    last_name?: string
-    username?: string
-  }
-}
-
-type SupabaseSession = {
-  access_token: string
-  expires_at?: number
-}
-
-const buildUserFromSupabase = (sbUser: SupabaseUser, fallbackEmail: string): User => {
-  const email = sbUser?.email || fallbackEmail
-  const fullName = sbUser?.user_metadata?.full_name as string | undefined
-  const first = (sbUser?.user_metadata?.first_name as string) || (fullName ? fullName.split(" ")[0] : "")
-  const last = (sbUser?.user_metadata?.last_name as string) || (fullName ? fullName.split(" ").slice(1).join(" ") : "")
-  return {
-    id: sbUser?.id || "",
-    email: email || "",
-    username: (sbUser?.user_metadata?.username as string) || (email ? email.split("@")[0] : sbUser?.id || ""),
-    first_name: first,
-    last_name: last,
-  }
-}
-
-const saveSupabaseSession = (session: SupabaseSession, sbUser: SupabaseUser, fallbackEmail: string) => {
-  const user = buildUserFromSupabase(sbUser, fallbackEmail)
-  localStorage.setItem("authToken", session.access_token)
-  localStorage.setItem("userData", JSON.stringify(user))
-  return { token: session.access_token, user, expiry: session.expires_at?.toString() }
-}
 
 export const authService = {
   async login(credentials: LoginCredentials): Promise<AuthResponse> {
@@ -78,6 +45,7 @@ export const authService = {
     }
 
     const saved = saveSupabaseSession(data.session, data.user, email)
+    syncApiAuthHeader()
 
     // Bootstrap é melhor esforço; não deve bloquear o login em caso de timeout.
     void api
@@ -98,24 +66,27 @@ export const authService = {
       console.warn("Erro no logout do Supabase:", error)
     } finally {
       // Sempre limpa o localStorage
-      localStorage.removeItem("authToken")
-      localStorage.removeItem("userData")
+      clearAuthStorage()
+      syncApiAuthHeader()
     }
   },
 
   getCurrentUser(): User | null {
-    const userData = localStorage.getItem("userData")
-    return userData ? JSON.parse(userData) : null
+    return getStoredUser<User>()
   },
 
   getToken(): string | null {
-    return localStorage.getItem("authToken")
+    return getAccessToken()
   },
 
-  // setupToken não é mais necessário - o interceptor cuida disso
-  setupToken(): void {
-    console.log("setupToken chamado - interceptor já cuida disso")
+  rehydrate(): { user: User | null; token: string | null } {
+    const user = getStoredUser<User>()
+    const token = getAccessToken()
+    syncApiAuthHeader()
+    console.log("auth rehydrated", { hasUser: !!user, hasToken: !!token })
+    return { user, token }
   },
+
   saveSupabaseSession,
   buildUserFromSupabase,
 }

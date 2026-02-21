@@ -4,8 +4,10 @@ import Layout from "./components/Layout/Layout"
 
 import HomePage from "./pages/Home/Home"
 import Login from "./pages/Login/Login"
+import ForgotPassword from "./pages/ForgotPassword/ForgotPassword"
 import AgendarDemo from "./pages/AgendarDemo/AgendarDemo"
 import AuthCallback from "./pages/AuthCallback/AuthCallback"
+import ResetPassword from "./pages/ResetPassword/ResetPassword"
 import Privacy from "./pages/Privacy/Privacy"
 import Terms from "./pages/Terms/Terms"
 
@@ -36,7 +38,9 @@ function App() {
       {/* Rotas públicas */}
       <Route path="/" element={<HomePage />} />
       <Route path="/login" element={<Login />} />
+      <Route path="/forgot-password" element={<ForgotPassword />} />
       <Route path="/auth/callback" element={<AuthCallback />} />
+      <Route path="/auth/reset-password" element={<ResetPassword />} />
       <Route path="/agendar-demo" element={<AgendarDemo />} />
       <Route path="/privacy" element={<Privacy />} />
       <Route path="/terms" element={<Terms />} />
