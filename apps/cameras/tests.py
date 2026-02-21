@@ -1,6 +1,7 @@
 from django.test import SimpleTestCase
 from django.test import override_settings
 from rest_framework.test import APIRequestFactory, force_authenticate
+from rest_framework.exceptions import ValidationError
 from django.core.exceptions import PermissionDenied
 from apps.billing.utils import PaywallError
 from unittest.mock import MagicMock, patch
@@ -210,14 +211,72 @@ class CameraRoiLatestEndpointTests(SimpleTestCase):
 
 class SubscriptionRequiredCameraCreateTests(SimpleTestCase):
     @patch("apps.cameras.views.enforce_can_use_product", side_effect=TrialExpiredError())
-    def test_blocks_create_camera_when_trial_expired(self, _enforce):
-        view = CameraViewSet()
-        request = APIRequestFactory().post("/api/v1/cameras/", {}, format="json")
-        request.user = MagicMock()
-        view.request = request
+    @patch("apps.cameras.views.require_store_role")
+    def test_blocks_create_camera_when_trial_expired(self, _require_role, _enforce):
+        store = MagicMock()
+        store.id = "store-1"
+        store.org_id = "org-1"
         serializer = MagicMock()
-        serializer.validated_data = {"store_id": "store-1"}
+        serializer.validated_data = {"active": True}
         serializer.is_valid.return_value = True
-        view.get_serializer = MagicMock(return_value=serializer)
-        with self.assertRaises(TrialExpiredError):
-            view.create(request)
+        serializer.data = {"id": "cam-1"}
+
+        view = CameraViewSet.as_view({"post": "create"})
+        request = APIRequestFactory().post("/api/v1/cameras/", {"name": "Cam"}, format="json")
+        force_authenticate(request, user=MagicMock())
+
+        with patch.object(CameraViewSet, "_resolve_store_for_create", return_value=("store-1", store)):
+            with patch.object(CameraViewSet, "get_serializer", return_value=serializer):
+                response = view(request)
+
+        self.assertEqual(response.status_code, 402)
+        self.assertEqual(response.data.get("code"), "PAYWALL_TRIAL_LIMIT")
+        self.assertIn("message", response.data)
+
+
+class CameraCreateValidationTests(SimpleTestCase):
+    @patch("apps.cameras.views.enforce_can_use_product")
+    @patch("apps.cameras.views.require_store_role")
+    def test_create_camera_validation_error_returns_standard_format(self, _require_role, _enforce):
+        store = MagicMock()
+        store.id = "store-1"
+        store.org_id = "org-1"
+        serializer = MagicMock()
+        serializer.is_valid.side_effect = ValidationError({"name": ["This field is required."]})
+
+        view = CameraViewSet.as_view({"post": "create"})
+        request = APIRequestFactory().post("/api/v1/cameras/", {}, format="json")
+        force_authenticate(request, user=MagicMock())
+
+        with patch.object(CameraViewSet, "_resolve_store_for_create", return_value=("store-1", store)):
+            with patch.object(CameraViewSet, "get_serializer", return_value=serializer):
+                response = view(request)
+
+        self.assertEqual(response.status_code, 400)
+        self.assertEqual(response.data.get("code"), "CAMERA_VALIDATION_ERROR")
+        self.assertIn("details", response.data)
+
+
+class CameraCreateLimitTests(SimpleTestCase):
+    @patch("apps.cameras.views.enforce_trial_camera_limit", side_effect=PaywallError())
+    @patch("apps.cameras.views.enforce_can_use_product")
+    @patch("apps.cameras.views.require_store_role")
+    def test_create_camera_limit_returns_standard_format(self, _require_role, _enforce, _limit):
+        store = MagicMock()
+        store.id = "store-1"
+        store.org_id = "org-1"
+        serializer = MagicMock()
+        serializer.validated_data = {"active": True}
+        serializer.is_valid.return_value = True
+        serializer.data = {"id": "cam-1"}
+
+        view = CameraViewSet.as_view({"post": "create"})
+        request = APIRequestFactory().post("/api/v1/cameras/", {"name": "Cam"}, format="json")
+        force_authenticate(request, user=MagicMock())
+
+        with patch.object(CameraViewSet, "_resolve_store_for_create", return_value=("store-1", store)):
+            with patch.object(CameraViewSet, "get_serializer", return_value=serializer):
+                response = view(request)
+
+        self.assertEqual(response.status_code, 409)
+        self.assertEqual(response.data.get("code"), "LIMIT_CAMERAS_REACHED")

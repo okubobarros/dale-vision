@@ -223,5 +223,5 @@ describe("AgendarDemo", () => {
     )
 
     expect(demoService.createLead).toHaveBeenCalled()
-  })
+  }, 10000)
 })

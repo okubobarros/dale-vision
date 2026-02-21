@@ -68,7 +68,7 @@ const Upgrade = () => {
           {[
             {
               name: "Starter",
-              price: "R$ 499/mês",
+              price: "R$ 249,90/mês",
               description: "1 loja • até 3 câmeras",
               features: [
                 "Alertas WhatsApp",
@@ -79,7 +79,7 @@ const Upgrade = () => {
             },
             {
               name: "Pro",
-              price: "R$ 1.290/mês",
+              price: "R$ 597,90/mês",
               description: "até 3 lojas • até 12 câmeras",
               highlight: true,
               features: [

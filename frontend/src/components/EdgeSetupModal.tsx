@@ -120,6 +120,9 @@ const EdgeSetupModal = ({ open, onClose, defaultStoreId }: EdgeSetupModalProps) 
   const primaryCtaClass =
     "inline-flex w-full sm:w-auto items-center justify-center rounded-lg px-4 py-2.5 text-sm font-semibold text-white " +
     "bg-gradient-to-r from-blue-500 to-purple-600 shadow-sm hover:opacity-95 transition disabled:opacity-60"
+  const secondaryCtaClass =
+    "inline-flex w-full sm:w-auto items-center justify-center rounded-lg border border-gray-200 bg-white px-4 py-2.5 " +
+    "text-sm font-semibold text-gray-700 hover:bg-gray-50 disabled:opacity-60"
   const downloadUrl = (import.meta.env.VITE_EDGE_AGENT_DOWNLOAD_URL || "").trim()
   const siteUrl = (import.meta.env.VITE_SITE_URL || "").trim()
   const docsUrl = siteUrl ? `${siteUrl.replace(/\/$/, "")}/docs/edge-agent` : "/docs/edge-agent"
@@ -338,7 +341,7 @@ const EdgeSetupModal = ({ open, onClose, defaultStoreId }: EdgeSetupModalProps) 
       if (lastAgeSeconds !== null) {
         const ageMinutes = Math.floor(lastAgeSeconds / 60)
       setPollError(
-        `Último sinal recebido há ${ageMinutes} min. Verifique token, .env, Start_DaleVision_Agent.bat e logs.`
+        `Último sinal recebido há ${ageMinutes} min. Verifique token, .env, Start_Agent e logs.`
       )
       }
       setShowTroubleshoot(true)
@@ -607,7 +610,7 @@ const EdgeSetupModal = ({ open, onClose, defaultStoreId }: EdgeSetupModalProps) 
           </button>
         </div>
 
-        <div className="flex-1 overflow-y-auto p-5 space-y-4">
+        <div className="flex-1 min-h-0 overflow-y-auto p-5 space-y-4">
           <div className="rounded-xl border border-gray-200 bg-white px-4 py-3">
             <label className="block text-xs font-semibold text-gray-600 mb-1">
               1. Selecionar loja
@@ -747,30 +750,25 @@ const EdgeSetupModal = ({ open, onClose, defaultStoreId }: EdgeSetupModalProps) 
                 )}
                 <div>
                   Abra a pasta extraída e confirme que existem{" "}
-                  <span className="font-mono">Start_DaleVision_Agent.bat</span> e{" "}
-                  <span className="font-mono">README.txt</span>.
+                  <span className="font-mono">Configure_Agent</span>,{" "}
+                  <span className="font-mono">Start_Agent</span> e{" "}
+                  <span className="font-mono">Diagnose_Agent</span>.
+                </div>
+                <div>
+                  Opcional (admin):{" "}
+                  <span className="font-mono">Install_Agent_Service</span>.
                 </div>
               </div>
-              <button
-                type="button"
-                onClick={handleConfirmDownload}
-                disabled={!isStoreSelected}
-                className={`mt-3 ${primaryCtaClass}`}
-              >
-                Já baixei e extraí
-              </button>
-              {downloadConfirmed && (
-                <div className="mt-2 text-xs text-green-600 font-semibold">
-                  Download confirmado
-                </div>
-              )}
             </div>
 
             <div className={step3Enabled ? "rounded-xl border border-gray-200 bg-gray-50 p-4" : "rounded-xl border border-gray-200 bg-gray-50 p-4 opacity-60 pointer-events-none"}>
               <div className="text-sm font-semibold text-gray-700 mb-2">3. Copiar .env</div>
               <div className="text-xs text-gray-500 mb-3 space-y-1">
-                <div>1) Clique no botão Copiar.env ou selecione o conteúdo abaixo</div>
-
+                <div>1) Clique no botão Copiar.env ou selecione o conteúdo abaixo.</div>
+                <div>
+                  2) Use o <span className="font-mono">Configure_Agent</span> (ou edite manualmente o arquivo{" "}
+                  <span className="font-mono">.env</span>).
+                </div>
               </div>
               <textarea
                 value={envContent}
@@ -782,18 +780,20 @@ const EdgeSetupModal = ({ open, onClose, defaultStoreId }: EdgeSetupModalProps) 
                 type="button"
                 onClick={handleCopyEnv}
                 disabled={!canCopyEnv}
-                className={`mt-3 ${primaryCtaClass} text-xs`}
+                className={`mt-3 ${secondaryCtaClass} text-xs`}
               >
                 {rotatingToken ? "Gerando token..." : "Copiar .env"}
               </button>
               <div className="text-xs text-gray-500 mb-3 space-y-1">
-                <div>2) Procure o arquivo .env na pasta extraída, abra ele, e substitua o conteúdo atual por toda a informação copiada</div>
-                <div> 3) Edite somente o arquivo <span className="font-mono">.env</span> (tipo "Arquivo
-                  ENV"). Ignore <span className="font-mono">.env.example</span> se ele aparecer.
+                <div>
+                  3) Procure o arquivo <span className="font-mono">.env</span> na pasta extraída e substitua o conteúdo
+                  pelo texto copiado.
                 </div>
                 <div>
-                  4) Salve o arquivo antes de fechar.
+                  4) Edite somente o arquivo <span className="font-mono">.env</span> (tipo "Arquivo ENV"). Ignore{" "}
+                  <span className="font-mono">.env.example</span> se ele aparecer.
                 </div>
+                <div>5) Salve o arquivo antes de fechar.</div>
               </div>
                
               {!downloadConfirmed && (
@@ -832,26 +832,19 @@ const EdgeSetupModal = ({ open, onClose, defaultStoreId }: EdgeSetupModalProps) 
               <div className="text-sm text-gray-700 font-semibold">4. Iniciar Agent</div>
               <div className="mt-1 text-xs text-gray-500 space-y-1">
                 <div>
-                  Clique em{" "}
-                  <span className="font-mono">Start_DaleVision_Agent.bat</span> e mantenha a
+                  Clique em <span className="font-mono">Start_Agent</span> e mantenha a
                   janela aberta.
                 </div>
                 <div>
                   Se der erro ou você estiver remoto: clique em{" "}
-                  <span className="font-mono">Diagnose.bat</span> e envie o ZIP.
+                  <span className="font-mono">Diagnose_Agent</span> e envie o ZIP.
                 </div>
                 <div>
-                  Opcional: <span className="font-mono">install-service.ps1</span> (apenas administrador).
+                  Opcional: <span className="font-mono">Install_Agent_Service</span> (apenas administrador).
                 </div>
               </div>
               <div className="mt-2 rounded-lg border border-gray-200 bg-white px-3 py-2 text-xs text-gray-600">
                 Se o Windows bloquear: “Mais informações” → “Executar assim mesmo”.
-                <div className="mt-1">
-                  Arquivos avançados (evite se não solicitado):{" "}
-                  <span className="font-mono">run.bat</span>,{" "}
-                  <span className="font-mono">run_once.bat</span>,{" "}
-                  <span className="font-mono">dalevision-edge-agent.exe</span>.
-                </div>
               </div>
               <div className="mt-2 flex flex-col sm:flex-row sm:items-center gap-3">
                 <div>Feito o processo anterior, clique em “Já iniciei o agent”.</div>
@@ -859,7 +852,7 @@ const EdgeSetupModal = ({ open, onClose, defaultStoreId }: EdgeSetupModalProps) 
                   type="button"
                   onClick={handleConfirmRunning}
                   disabled={!canStartAgent}
-                  className={primaryCtaClass}
+                  className={secondaryCtaClass}
                 >
                   Já iniciei o agent
                 </button>
@@ -882,12 +875,12 @@ const EdgeSetupModal = ({ open, onClose, defaultStoreId }: EdgeSetupModalProps) 
                   type="button"
                   onClick={handleValidate}
                   disabled={validating || polling || !canStartVerification}
-                  className={`w-full sm:w-auto rounded-lg px-4 py-2.5 text-sm font-semibold ${
+                  className={`w-full sm:w-auto rounded-lg border border-blue-200 bg-white px-4 py-2.5 text-sm font-semibold ${
                     heartbeatOk
-                      ? "bg-green-600 text-white"
+                      ? "border-green-200 bg-green-50 text-green-700"
                       : isActiveStep("Online")
-                      ? "bg-blue-600 text-white hover:bg-blue-700"
-                      : "bg-blue-600 text-white hover:bg-blue-700"
+                      ? "border-blue-200 bg-blue-50 text-blue-700 hover:bg-blue-100"
+                      : "border-blue-200 bg-blue-50 text-blue-700 hover:bg-blue-100"
                   } disabled:opacity-60`}
                 >
                   {heartbeatOk
@@ -1023,7 +1016,7 @@ const EdgeSetupModal = ({ open, onClose, defaultStoreId }: EdgeSetupModalProps) 
                     <div>1. Confirme que você editou o arquivo .env (não .env.example).</div>
                     <div>2. Verifique se STORE_ID e EDGE_TOKEN estão corretos.</div>
                     <div>
-                      3. Abra a pasta e dê duplo clique em Start_DaleVision_Agent.bat.
+                      3. Abra a pasta e dê duplo clique em Start_Agent.
                     </div>
                     <div>4. Verifique rede/firewall/antivírus que possam bloquear o acesso.</div>
                     <div>5. Execute o agent como administrador (Windows) se necessário.</div>
@@ -1032,6 +1025,27 @@ const EdgeSetupModal = ({ open, onClose, defaultStoreId }: EdgeSetupModalProps) 
               </div>
             )}
           </div>
+        </div>
+
+        <div className="border-t bg-white px-5 py-4">
+          <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3">
+            <div className="text-xs text-gray-500">
+              Confirme o download e extração para liberar o restante do passo a passo.
+            </div>
+            <button
+              type="button"
+              onClick={handleConfirmDownload}
+              disabled={!isStoreSelected}
+              className={primaryCtaClass}
+            >
+              Já baixei e extraí
+            </button>
+          </div>
+          {downloadConfirmed && (
+            <div className="mt-2 text-xs text-green-600 font-semibold">
+              Download confirmado
+            </div>
+          )}
         </div>
       </div>
     </div>

@@ -72,6 +72,8 @@ describe("Cameras create camera", () => {
     await waitFor(() => {
       expect(screen.queryByText(/Nova câmera/i)).not.toBeInTheDocument()
     })
+
+    expect(vi.mocked(camerasService.getStoreCameras).mock.calls.length).toBeGreaterThan(1)
   })
 
   it("shows backend field errors when API returns 400", async () => {
@@ -79,7 +81,11 @@ describe("Cameras create camera", () => {
     vi.mocked(camerasService.createStoreCamera).mockRejectedValueOnce({
       response: {
         status: 400,
-        data: { rtsp_url: ["Campo obrigatório."] },
+        data: {
+          code: "CAMERA_VALIDATION_ERROR",
+          message: "Dados inválidos para câmera.",
+          details: { name: ["Campo obrigatório."] },
+        },
       },
     })
     renderWithProviders(<Cameras />)
@@ -97,14 +103,14 @@ describe("Cameras create camera", () => {
     await user.click(saveButton)
 
     await waitFor(() => {
-      expect(
-        screen.getByText(/RTSP URL: Campo obrigatório\./i)
-      ).toBeInTheDocument()
+      expect(screen.getByText(/Dados inválidos para câmera\./i)).toBeInTheDocument()
+      expect(screen.getByText(/Nome: Campo obrigatório\./i)).toBeInTheDocument()
     })
 
     expect(
       screen.getByRole("button", { name: /Rodar Diagnose/i })
     ).toBeInTheDocument()
+    expect(screen.getByPlaceholderText(/Ex: Entrada/i)).toHaveClass("border-red-300")
   })
 
   it("shows permission message when API returns 403", async () => {
@@ -112,7 +118,7 @@ describe("Cameras create camera", () => {
     vi.mocked(camerasService.createStoreCamera).mockRejectedValueOnce({
       response: {
         status: 403,
-        data: { detail: "Forbidden" },
+        data: { code: "PERMISSION_DENIED", message: "Forbidden" },
       },
     })
     renderWithProviders(<Cameras />)
@@ -130,8 +136,33 @@ describe("Cameras create camera", () => {
     await user.click(saveButton)
 
     await waitFor(() => {
+      expect(screen.getByText(/Forbidden/i)).toBeInTheDocument()
+    })
+  })
+
+  it("shows upgrade CTA when API returns 402", async () => {
+    const { camerasService } = await import("../../services/cameras")
+    vi.mocked(camerasService.createStoreCamera).mockRejectedValueOnce({
+      response: {
+        status: 402,
+        data: { code: "PAYWALL_TRIAL_LIMIT", message: "Trial expirado." },
+      },
+    })
+    renderWithProviders(<Cameras />)
+    const user = userEvent.setup()
+
+    const addButton = await screen.findByRole("button", {
+      name: /Adicionar primeira câmera/i,
+    })
+    await user.click(addButton)
+
+    await user.type(await screen.findByPlaceholderText(/Ex: Entrada/i), "Entrada")
+    await user.click(screen.getByRole("button", { name: /Salvar/i }))
+
+    await waitFor(() => {
+      expect(screen.getByText(/Trial expirado/i)).toBeInTheDocument()
       expect(
-        screen.getByText(/não tem permissão/i)
+        screen.getByRole("button", { name: /Ir para billing/i })
       ).toBeInTheDocument()
     })
   })

@@ -63,6 +63,7 @@ const Cameras = () => {
   const [createErrorFields, setCreateErrorFields] = useState<Record<string, string[]>>(
     {}
   )
+  const [showUpgradeCta, setShowUpgradeCta] = useState(false)
   const [connectionHelpOpen, setConnectionHelpOpen] = useState(false)
   const [roiCamera, setRoiCamera] = useState<Camera | null>(null)
   const [testingCameraId, setTestingCameraId] = useState<string | null>(null)
@@ -171,68 +172,62 @@ const Cameras = () => {
       setCreateErrorMessage(null)
       setCreateErrorDetails([])
       setCreateErrorFields({})
+      setShowUpgradeCta(false)
     },
     onError: (err: unknown) => {
-      const payload = (err as { response?: { data?: { code?: string } } })?.response?.data
-      if (
-        payload?.code === "TRIAL_EXPIRED" ||
-        payload?.code === "SUBSCRIPTION_REQUIRED"
-      ) {
-        toast.custom((t) => (
-          <div className="flex items-center gap-3 rounded-xl border border-gray-200 bg-white px-4 py-3 shadow-lg">
-            <div className="text-sm text-gray-700">
-              Trial expirado. Assine para continuar.
+      const response = (err as { response?: { status?: number; data?: unknown } })?.response
+      const status = response?.status
+      const data = response?.data as
+        | {
+            code?: string
+            message?: string
+            detail?: string
+            details?: Record<string, unknown>
+          }
+        | undefined
+      const code = data?.code || (err as { code?: string })?.code
+      const message =
+        data?.message ||
+        data?.detail ||
+        (err as { message?: string })?.message ||
+        "Falha ao criar câmera."
+      const details = data?.details
+
+      const isPaywall =
+        code === "PAYWALL_TRIAL_LIMIT" || code === "LIMIT_CAMERAS_REACHED"
+
+      if (status === 400 || status === 402 || status === 409) {
+        if (isPaywall) {
+          toast.custom((t) => (
+            <div className="flex items-center gap-3 rounded-xl border border-gray-200 bg-white px-4 py-3 shadow-lg">
+              <div className="text-sm text-gray-700">{message}</div>
+              <button
+                type="button"
+                className="rounded-lg bg-blue-600 px-3 py-1.5 text-xs font-semibold text-white hover:bg-blue-700"
+                onClick={() => {
+                  toast.dismiss(t.id)
+                  window.location.href = "/app/billing"
+                }}
+              >
+                Ir para billing
+              </button>
             </div>
-            <button
-              type="button"
-              className="rounded-lg bg-blue-600 px-3 py-1.5 text-xs font-semibold text-white hover:bg-blue-700"
-              onClick={() => {
-                toast.dismiss(t.id)
-                window.location.href = "/app/upgrade"
-              }}
-            >
-              Ver planos
-            </button>
-          </div>
-        ))
-        return
+          ))
+        } else {
+          toast.error(message)
+        }
       }
-      const code = (err as { code?: string })?.code
-      if (code === "LIMIT_CAMERAS_REACHED") {
-        toast.error("Limite de câmeras do trial atingido.")
-        return
-      }
-      const status = (err as { response?: { status?: number } })?.response?.status
+
       if (status === 400) {
-        const responseData = (err as { response?: { data?: unknown } })?.response?.data
-        const fieldErrors =
-          responseData && typeof responseData === "object" && !Array.isArray(responseData)
-            ? Object.entries(responseData as Record<string, unknown>)
-                .filter(([key]) => key !== "detail" && key !== "message" && key !== "code")
-                .flatMap(([field, value]) => {
-                  if (Array.isArray(value)) {
-                    return value.map((entry) => `${field}: ${String(entry)}`)
-                  }
-                  if (typeof value === "string") {
-                    return [`${field}: ${value}`]
-                  }
-                  return []
-                })
-            : []
-        const detail =
-          (responseData as { detail?: string; message?: string } | undefined)?.detail ||
-          (responseData as { detail?: string; message?: string } | undefined)?.message
         const fieldMap: Record<string, string[]> = {}
-        if (responseData && typeof responseData === "object" && !Array.isArray(responseData)) {
-          Object.entries(responseData as Record<string, unknown>)
-            .filter(([key]) => key !== "detail" && key !== "message" && key !== "code")
-            .forEach(([field, value]) => {
-              if (Array.isArray(value)) {
-                fieldMap[field] = value.map((entry) => String(entry))
-              } else if (typeof value === "string") {
-                fieldMap[field] = [value]
-              }
-            })
+        if (details && typeof details === "object" && !Array.isArray(details)) {
+          Object.entries(details).forEach(([field, value]) => {
+            if (Array.isArray(value)) {
+              fieldMap[field] = value.map((entry) => String(entry))
+            } else if (typeof value === "string") {
+              fieldMap[field] = [value]
+            }
+          })
         }
         const detailsWithLabels =
           Object.keys(fieldMap).length > 0
@@ -240,33 +235,45 @@ const Cameras = () => {
                 const label = FIELD_LABELS[field] || field
                 return messages.map((msg) => `${label}: ${msg}`)
               })
-            : fieldErrors
-        setCreateErrorMessage(detail || "Verifique os campos obrigatórios.")
+            : []
+        setCreateErrorMessage(message || "Verifique os campos obrigatórios.")
         setCreateErrorDetails(detailsWithLabels)
         setCreateErrorFields(fieldMap)
+        setShowUpgradeCta(false)
         if (import.meta.env.DEV) {
           console.warn("[Cameras] create camera 400", err)
         }
         return
       }
+
       if (status === 403) {
-        setCreateErrorMessage("Você não tem permissão para cadastrar câmera nesta loja.")
+        setCreateErrorMessage(message || "Você não tem permissão para cadastrar câmera nesta loja.")
         setCreateErrorDetails([])
         setCreateErrorFields({})
+        setShowUpgradeCta(false)
         return
       }
       if (status === 404) {
-        setCreateErrorMessage("Loja não encontrada.")
+        setCreateErrorMessage(message || "Loja não encontrada.")
         setCreateErrorDetails([])
         setCreateErrorFields({})
+        setShowUpgradeCta(false)
+        return
+      }
+      if (status === 402 || status === 409) {
+        setCreateErrorMessage(message)
+        setCreateErrorDetails([])
+        setCreateErrorFields({})
+        setShowUpgradeCta(isPaywall)
         return
       }
       if (import.meta.env.DEV) {
         console.warn("[Cameras] create camera failed", err)
       }
-      setCreateErrorMessage("Falha ao criar câmera.")
+      setCreateErrorMessage(message)
       setCreateErrorDetails([])
       setCreateErrorFields({})
+      setShowUpgradeCta(false)
     },
   })
 
@@ -306,6 +313,7 @@ const Cameras = () => {
     setCreateErrorMessage(null)
     setCreateErrorDetails([])
     setCreateErrorFields({})
+    setShowUpgradeCta(false)
     setConnectionHelpOpen(false)
   }, [])
 
@@ -315,6 +323,7 @@ const Cameras = () => {
     setCreateErrorMessage(null)
     setCreateErrorDetails([])
     setCreateErrorFields({})
+    setShowUpgradeCta(false)
     setConnectionHelpOpen(false)
   }, [])
 
@@ -913,6 +922,7 @@ const Cameras = () => {
         createErrorMessage={createErrorMessage}
         createErrorDetails={createErrorDetails}
         createErrorFields={createErrorFields}
+        showUpgradeCta={showUpgradeCta}
         onClose={() => {
           setCameraModalOpen(false)
           setEditingCamera(null)
@@ -921,6 +931,7 @@ const Cameras = () => {
           setCreateErrorMessage(null)
           setCreateErrorDetails([])
           setCreateErrorFields({})
+          setShowUpgradeCta(false)
         }}
         onSave={handleSaveCamera}
         onTest={handleTestConnection}
@@ -954,6 +965,7 @@ type CameraModalProps = {
   createErrorMessage: string | null
   createErrorDetails: string[]
   createErrorFields: Record<string, string[]>
+  showUpgradeCta: boolean
   isSaving: boolean
   onClose: () => void
   onSave: (payload: CreateCameraPayload) => void
@@ -971,6 +983,7 @@ const CameraModal = ({
   createErrorMessage,
   createErrorDetails,
   createErrorFields,
+  showUpgradeCta,
   isSaving,
   onClose,
   onSave,
@@ -1241,6 +1254,17 @@ const CameraModal = ({
                     <div key={item}>{item}</div>
                   ))}
                 </div>
+              )}
+              {showUpgradeCta && (
+                <button
+                  type="button"
+                  onClick={() => {
+                    window.location.href = "/app/billing"
+                  }}
+                  className="mt-2 inline-flex items-center justify-center rounded-lg border border-red-200 bg-white px-3 py-1.5 text-xs font-semibold text-red-700 hover:bg-red-50"
+                >
+                  Ir para billing
+                </button>
               )}
               <button
                 type="button"

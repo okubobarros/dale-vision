@@ -1,7 +1,7 @@
 import uuid
 from django.test import SimpleTestCase
 from django.http import Http404
-from django.core.exceptions import PermissionDenied
+from django.core.exceptions import PermissionDenied, ValidationError
 from django.utils import timezone
 from unittest.mock import MagicMock, patch
 
@@ -107,7 +107,8 @@ class StoreCamerasEndpointTests(SimpleTestCase):
             response = view(request, pk="bad")
 
         self.assertEqual(response.status_code, 404)
-        self.assertEqual(response.data.get("detail"), "Store not found")
+        self.assertEqual(response.data.get("code"), "STORE_NOT_FOUND")
+        self.assertEqual(response.data.get("message"), "Store not found.")
 
     @patch("apps.stores.views.require_store_role", side_effect=PermissionDenied("nope"))
     def test_post_cameras_no_permission_returns_403(self, _require_role):
@@ -124,6 +125,130 @@ class StoreCamerasEndpointTests(SimpleTestCase):
             response = view(request, pk=store.id)
 
         self.assertEqual(response.status_code, 403)
+        self.assertEqual(response.data.get("code"), "PERMISSION_DENIED")
+
+    @patch("apps.stores.views.CameraSerializer")
+    @patch("apps.stores.views.require_store_role")
+    def test_post_cameras_invalid_payload_returns_400(self, _require_role, serializer_mock):
+        store = self._mock_store("11111111-1111-1111-1111-111111111111")
+        serializer_in = MagicMock()
+        serializer_in.is_valid.side_effect = ValidationError({"name": ["This field is required."]})
+        serializer_mock.return_value = serializer_in
+
+        view = StoreViewSet.as_view({"post": "cameras"})
+        request = self.factory.post(
+            f"/api/v1/stores/{store.id}/cameras/",
+            {"brand": "Intelbras"},
+            format="json",
+        )
+        force_authenticate(request, user=self.user)
+
+        with patch.object(StoreViewSet, "get_object", return_value=store):
+            response = view(request, pk=store.id)
+
+        self.assertEqual(response.status_code, 400)
+        self.assertEqual(response.data.get("code"), "CAMERA_VALIDATION_ERROR")
+        self.assertIn("details", response.data)
+
+    @patch("apps.stores.views.enforce_trial_camera_limit", side_effect=PaywallError())
+    @patch("apps.stores.views.enforce_can_use_product")
+    @patch("apps.stores.views.require_store_role")
+    @patch("apps.stores.views.CameraSerializer")
+    def test_post_cameras_limit_returns_409(
+        self,
+        camera_serializer_mock,
+        _require_role,
+        _enforce_can_use,
+        _enforce_trial,
+    ):
+        store = self._mock_store("11111111-1111-1111-1111-111111111111")
+        serializer_in = MagicMock()
+        serializer_in.is_valid.return_value = True
+        serializer_in.validated_data = {"active": True}
+        camera = MagicMock()
+        camera.id = "cam-9"
+        serializer_in.save.return_value = camera
+        serializer_out = MagicMock()
+        serializer_out.data = {"id": "cam-9"}
+        camera_serializer_mock.side_effect = [serializer_in, serializer_out]
+
+        view = StoreViewSet.as_view({"post": "cameras"})
+        request = self.factory.post(
+            f"/api/v1/stores/{store.id}/cameras/",
+            {"name": "Cam 9"},
+            format="json",
+        )
+        force_authenticate(request, user=self.user)
+
+        with patch.object(StoreViewSet, "get_object", return_value=store):
+            response = view(request, pk=store.id)
+
+        self.assertEqual(response.status_code, 409)
+        self.assertEqual(response.data.get("code"), "LIMIT_CAMERAS_REACHED")
+
+    @patch("apps.stores.views.OnboardingProgressService")
+    @patch("apps.stores.views.enforce_trial_camera_limit")
+    @patch("apps.stores.views.enforce_can_use_product")
+    @patch("apps.stores.views.require_store_role")
+    @patch("apps.stores.views.CameraSerializer")
+    def test_post_cameras_minimal_payload_returns_201(
+        self,
+        camera_serializer_mock,
+        _require_role,
+        _enforce_can_use,
+        _enforce_trial,
+        _onboarding,
+    ):
+        store = self._mock_store("11111111-1111-1111-1111-111111111111")
+        serializer_in = MagicMock()
+        serializer_in.is_valid.return_value = True
+        serializer_in.validated_data = {"active": True}
+        camera = MagicMock()
+        camera.id = "cam-3"
+        serializer_in.save.return_value = camera
+        serializer_out = MagicMock()
+        serializer_out.data = {"id": "cam-3"}
+        camera_serializer_mock.side_effect = [serializer_in, serializer_out]
+
+        view = StoreViewSet.as_view({"post": "cameras"})
+        request = self.factory.post(
+            f"/api/v1/stores/{store.id}/cameras/",
+            {
+                "name": "Cam 3",
+                "brand": "Intelbras",
+                "model": "NVR",
+                "ip": "192.168.15.4",
+                "username": "admin",
+                "password": "123456",
+                "rtsp_url": "rtsp://admin:123456@192.168.15.4:554/cam/realmonitor?channel=1&subtype=1",
+            },
+            format="json",
+        )
+        force_authenticate(request, user=self.user)
+
+        with patch.object(StoreViewSet, "get_object", return_value=store):
+            response = view(request, pk=store.id)
+
+        self.assertEqual(response.status_code, 201)
+        self.assertEqual(response.data.get("id"), "cam-3")
+
+    @patch("apps.stores.views.enforce_can_use_product", side_effect=TrialExpiredError())
+    @patch("apps.stores.views.require_store_role")
+    def test_post_cameras_trial_expired_returns_402(self, _require_role, _enforce):
+        store = self._mock_store("11111111-1111-1111-1111-111111111111")
+        view = StoreViewSet.as_view({"post": "cameras"})
+        request = self.factory.post(
+            f"/api/v1/stores/{store.id}/cameras/",
+            {"name": "Cam"},
+            format="json",
+        )
+        force_authenticate(request, user=self.user)
+
+        with patch.object(StoreViewSet, "get_object", return_value=store):
+            response = view(request, pk=store.id)
+
+        self.assertEqual(response.status_code, 402)
+        self.assertEqual(response.data.get("code"), "PAYWALL_TRIAL_LIMIT")
 
     @patch("apps.stores.views.OnboardingProgressService")
     @patch("apps.stores.views.enforce_trial_camera_limit")

@@ -14,6 +14,7 @@ class CameraSerializer(serializers.ModelSerializer):
             "name",
             "external_id",
             "brand",
+            "model",
             "ip",
             "username",
             "password",
@@ -45,6 +46,9 @@ class CameraSerializer(serializers.ModelSerializer):
             "password": {"write_only": True, "required": False, "allow_null": True, "allow_blank": True},
             "username": {"write_only": True, "required": False, "allow_null": True, "allow_blank": True},
             "external_id": {"required": False, "allow_null": True, "allow_blank": True},
+            "model": {"required": False, "allow_null": True, "allow_blank": True},
+            "brand": {"required": False, "allow_null": True, "allow_blank": True},
+            "ip": {"required": False, "allow_null": True, "allow_blank": True},
             "active": {"required": False},
         }
 

@@ -1,10 +1,12 @@
 import hashlib
+import logging
 from django.utils import timezone
 from django.utils.dateparse import parse_datetime
 from rest_framework import viewsets, permissions, status
 from rest_framework.decorators import action
 from rest_framework.response import Response
-from rest_framework.exceptions import NotFound, ValidationError
+from rest_framework.exceptions import NotFound, ValidationError, PermissionDenied
+from django.core.exceptions import PermissionDenied as DjangoPermissionDenied
 
 from apps.core.models import Camera, CameraHealthLog, OrgMember, Store
 from apps.edge.models import EdgeToken
@@ -23,20 +25,64 @@ from .permissions import (
     ALLOWED_READ_ROLES,
 )
 from apps.billing.utils import PaywallError
-from backend.utils.entitlements import enforce_can_use_product, require_trial_active
+from backend.utils.entitlements import enforce_can_use_product, require_trial_active, TrialExpiredError
 from apps.stores.services.user_uuid import ensure_user_uuid
 from apps.core.services.onboarding_progress import OnboardingProgressService
 
+logger = logging.getLogger(__name__)
+
+
+def _error_response(code: str, message: str, status_code: int, *, details=None, deprecated_detail=None):
+    payload = {
+        "code": code,
+        "message": message,
+    }
+    if details is not None:
+        payload["details"] = details
+    if deprecated_detail:
+        payload["detail"] = deprecated_detail
+    return Response(payload, status=status_code)
+
+def _mask_rtsp(value: str) -> str:
+    if not value:
+        return ""
+    if "://" in value:
+        scheme, _rest = value.split("://", 1)
+        return f"{scheme}://***"
+    if len(value) <= 8:
+        return "***"
+    return f"{value[:4]}***{value[-3:]}"
+
+
+def _sanitize_camera_payload(payload):
+    if not isinstance(payload, dict):
+        return {}
+    data = dict(payload)
+    if "password" in data:
+        data["password"] = "***"
+    if "rtsp_url" in data and isinstance(data["rtsp_url"], str):
+        data["rtsp_url"] = _mask_rtsp(data["rtsp_url"])
+    return data
+
 
 def _camera_limit_response(exc: PaywallError):
-    return Response(
-        {
-            "ok": False,
-            "code": "LIMIT_CAMERAS_REACHED",
-            "message": "Limite de câmeras do trial atingido.",
-            "meta": exc.detail.get("meta", {}) if isinstance(exc.detail, dict) else {},
-        },
-        status=status.HTTP_409_CONFLICT,
+    details = exc.detail.get("meta", {}) if isinstance(exc.detail, dict) else {}
+    return _error_response(
+        "LIMIT_CAMERAS_REACHED",
+        "Limite de câmeras do trial atingido.",
+        status.HTTP_409_CONFLICT,
+        details=details,
+        deprecated_detail="Limite de câmeras do trial atingido.",
+    )
+
+
+def _paywall_trial_response(message: str, *, details=None):
+    return _error_response(
+        "PAYWALL_TRIAL_LIMIT",
+        message,
+        status.HTTP_402_PAYMENT_REQUIRED,
+        details=details,
+        deprecated_detail=message,
     )
 
 
@@ -99,23 +145,80 @@ class CameraViewSet(viewsets.ModelViewSet):
     def create(self, request, *args, **kwargs):
         store_id, store = self._resolve_store_for_create()
         if store_id and not store:
-            raise NotFound("Store not found")
+            logger.warning(
+                "[CAMERA] create failed store not found store_id=%s user_id=%s payload=%s",
+                store_id,
+                getattr(request.user, "id", None),
+                _sanitize_camera_payload(request.data),
+            )
+            return _error_response(
+                "STORE_NOT_FOUND",
+                "Store not found.",
+                status.HTTP_404_NOT_FOUND,
+                deprecated_detail="Store not found",
+            )
         if not store:
-            raise ValidationError({"store_id": ["This field is required."]})
-        require_store_role(request.user, str(store.id), ALLOWED_MANAGE_ROLES)
+            logger.warning(
+                "[CAMERA] create failed missing store_id user_id=%s payload=%s",
+                getattr(request.user, "id", None),
+                _sanitize_camera_payload(request.data),
+            )
+            return _error_response(
+                "CAMERA_VALIDATION_ERROR",
+                "store_id é obrigatório.",
+                status.HTTP_400_BAD_REQUEST,
+                details={"store_id": ["This field is required."]},
+                deprecated_detail="This field is required.",
+            )
+        try:
+            require_store_role(request.user, str(store.id), ALLOWED_MANAGE_ROLES)
+        except (PermissionDenied, DjangoPermissionDenied) as exc:
+            return _error_response(
+                "PERMISSION_DENIED",
+                str(exc) or "Sem permissão.",
+                status.HTTP_403_FORBIDDEN,
+                deprecated_detail=str(exc) or "Sem permissão.",
+            )
         actor_user_id = None
         try:
             actor_user_id = ensure_user_uuid(request.user)
         except Exception:
             actor_user_id = None
-        enforce_can_use_product(
-            org_id=getattr(store, "org_id", None),
-            actor_user_id=actor_user_id,
-            action="create_camera",
-            endpoint=request.path,
-        )
+        try:
+            enforce_can_use_product(
+                org_id=getattr(store, "org_id", None),
+                actor_user_id=actor_user_id,
+                action="create_camera",
+                endpoint=request.path,
+            )
+        except TrialExpiredError as exc:
+            details = getattr(exc, "detail", None)
+            message = None
+            if isinstance(details, dict):
+                message = details.get("message")
+            return _paywall_trial_response(
+                message or "Trial expirado. Assinatura necessária.",
+                details=details,
+            )
         serializer = self.get_serializer(data=request.data)
-        serializer.is_valid(raise_exception=True)
+        try:
+            serializer.is_valid(raise_exception=True)
+        except ValidationError as exc:
+            logger.warning(
+                "[CAMERA] create validation error store_id=%s org_id=%s user_id=%s errors=%s payload=%s",
+                str(store.id),
+                str(getattr(store, "org_id", None)),
+                getattr(request.user, "id", None),
+                exc.detail,
+                _sanitize_camera_payload(request.data),
+            )
+            return _error_response(
+                "CAMERA_VALIDATION_ERROR",
+                "Dados inválidos para câmera.",
+                status.HTTP_400_BAD_REQUEST,
+                details=exc.detail,
+                deprecated_detail="Dados inválidos para câmera.",
+            )
         try:
             self.perform_create(serializer, store=store)
         except PaywallError as exc:
