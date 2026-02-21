@@ -20,6 +20,7 @@ from .auth_supabase import (
     SupabaseJWTAuthentication,
     SupabaseConfigError,
     SupabaseProvisioningError,
+    consume_org_fallback_used,
     ensure_org_membership,
 )
 from apps.core.models import OrgMember, Store, Camera
@@ -292,6 +293,11 @@ class SetupStateView(APIView):
             supa_result = supa_auth.authenticate(request)
             if supa_result:
                 user = supa_result[0]
+                if consume_org_fallback_used():
+                    logger.warning(
+                        "[SETUP_STATE] request_id=%s org_fallback_used missing_trial_ends_at",
+                        request_id,
+                    )
         except SupabaseConfigError:
             return missing_config()
         except SupabaseProvisioningError:

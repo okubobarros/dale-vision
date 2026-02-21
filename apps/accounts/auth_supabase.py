@@ -2,6 +2,7 @@ import logging
 import os
 from typing import Optional, Tuple
 from uuid import uuid4
+from contextvars import ContextVar
 
 import requests
 from django.conf import settings
@@ -14,6 +15,21 @@ from apps.core.models import Organization, OrgMember
 from apps.stores.services.user_uuid import upsert_user_id_map
 
 logger = logging.getLogger(__name__)
+_org_fallback_used = ContextVar("org_fallback_used", default=False)
+
+
+def _reset_org_fallback_flag() -> None:
+    _org_fallback_used.set(False)
+
+
+def _mark_org_fallback_used() -> None:
+    _org_fallback_used.set(True)
+
+
+def consume_org_fallback_used() -> bool:
+    value = _org_fallback_used.get()
+    _org_fallback_used.set(False)
+    return value
 
 class SupabaseConfigError(APIException):
     status_code = 500
@@ -138,11 +154,24 @@ def ensure_org_membership(user: User, *, user_uuid: Optional[str] = None) -> Non
         return
 
     name = user.email.split("@")[0] if user.email else user.username or "Minha organização"
-    org = Organization.objects.create(
-        name=name,
-        created_at=timezone.now(),
-        trial_ends_at=timezone.now() + timezone.timedelta(hours=72),
-    )
+    created_at = timezone.now()
+    trial_ends_at = created_at + timezone.timedelta(hours=72)
+    try:
+        org = Organization.objects.create(
+            name=name,
+            created_at=created_at,
+            trial_ends_at=trial_ends_at,
+        )
+    except DatabaseError:
+        _mark_org_fallback_used()
+        logger.warning(
+            "[SUPABASE] org create missing trial_ends_at column, retrying without trial",
+            exc_info=True,
+        )
+        org = Organization.objects.create(
+            name=name,
+            created_at=created_at,
+        )
     OrgMember.objects.create(
         org=org,
         user_id=user_uuid,
@@ -194,6 +223,7 @@ class SupabaseJWTAuthentication:
         from rest_framework.authentication import get_authorization_header
         from rest_framework.exceptions import AuthenticationFailed
 
+        _reset_org_fallback_flag()
         auth = get_authorization_header(request).split()
         if not auth or auth[0].lower() != b"bearer":
             return None
