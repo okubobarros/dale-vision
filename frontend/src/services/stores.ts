@@ -39,7 +39,6 @@ export interface Store {
 }
 
 type StoreWriteFields = {
-  name: string;
   description?: string;
   address?: string;
   city?: string;
@@ -56,8 +55,10 @@ type StoreWriteFields = {
   cameras_count?: number;
 };
 
-export type CreateStorePayload = StoreWriteFields;
-export type UpdateStorePayload = StoreWriteFields;
+export type CreateStorePayload = StoreWriteFields & {
+  name: string;
+};
+export type UpdateStorePayload = Partial<StoreWriteFields & { name: string }>;
 
 export interface StoreMetrics {
   total_cameras: number;

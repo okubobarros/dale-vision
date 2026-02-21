@@ -63,7 +63,34 @@ export default function StoresSetup({
   }
 
   return (
+    
+
     <div className="space-y-8">
+      
+      {/* Summary */}
+      <div className="rounded-3xl border border-slate-200 bg-white/70 p-6 space-y-4 shadow-[0_18px_50px_rgba(15,23,42,0.06)]">
+        <div className="text-sm text-slate-500">Resumo do fluxo</div>
+
+        <div className="rounded-2xl border border-slate-200 bg-white p-4">
+          <div className="text-sm text-slate-500">Etapa 2</div>
+          <div className="text-lg font-bold text-slate-900">Loja</div>
+        </div>
+
+        <div className="rounded-2xl border border-slate-200 bg-white p-4">
+          <div className="text-sm text-slate-500">Etapa 3</div>
+          <div className="text-lg font-bold text-slate-900">Equipe</div>
+          <div className="text-xs text-slate-500 mt-1">Opcional</div>
+        </div>
+
+        <div className="rounded-2xl border border-slate-200 bg-white p-4">
+          <div className="text-sm text-slate-500">Etapa 4</div>
+          <div className="text-lg font-bold text-slate-900">Ativação (Edge)</div>
+          <div className="text-xs text-slate-500 mt-1">
+            Vamos conectar o Edge Agent à sua loja.
+          </div>
+        </div>
+      </div>
+
       <div>
         <h3 className="text-xl sm:text-2xl font-extrabold text-slate-900">Loja (obrigatório)</h3>
         <p className="text-slate-500 mt-1">
@@ -171,7 +198,7 @@ export default function StoresSetup({
           </div>
 
           <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
-            <Field label="Quantidade de câmeras (opcional)" error={touched ? errors.camerasCount : ""}>
+            <Field label="Quantidade total de câmeras na loja (opcional)" error={touched ? errors.camerasCount : ""}>
               <input
                 className="w-full rounded-2xl border border-slate-200 bg-white px-4 py-3 outline-none text-slate-900 placeholder:text-slate-400
                            focus:ring-4 focus:ring-cyan-100 focus:border-cyan-300 transition"
@@ -207,29 +234,6 @@ export default function StoresSetup({
           </div>
         </div>
 
-        {/* Summary */}
-        <div className="rounded-3xl border border-slate-200 bg-white/70 p-6 space-y-4 shadow-[0_18px_50px_rgba(15,23,42,0.06)]">
-          <div className="text-sm text-slate-500">Resumo do fluxo</div>
-
-          <div className="rounded-2xl border border-slate-200 bg-white p-4">
-            <div className="text-sm text-slate-500">Etapa 2</div>
-            <div className="text-lg font-bold text-slate-900">Loja</div>
-          </div>
-
-          <div className="rounded-2xl border border-slate-200 bg-white p-4">
-            <div className="text-sm text-slate-500">Etapa 3</div>
-            <div className="text-lg font-bold text-slate-900">Equipe</div>
-            <div className="text-xs text-slate-500 mt-1">Opcional</div>
-          </div>
-
-          <div className="rounded-2xl border border-slate-200 bg-white p-4">
-            <div className="text-sm text-slate-500">Etapa 4</div>
-            <div className="text-lg font-bold text-slate-900">Ativação (Edge)</div>
-            <div className="text-xs text-slate-500 mt-1">
-              Vamos conectar o Edge Agent à sua loja.
-            </div>
-          </div>
-        </div>
       </div>
     </div>
   )
