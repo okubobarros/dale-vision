@@ -17,6 +17,7 @@
 - Câmeras: leitura para Viewer; escrita para Admin/Manager (escopo de loja).
 - Teste de conexão: Admin/Manager (assíncrono).
 - ROI: criar/editar/publicar para Admin/Manager; Viewer somente leitura.
+- Snapshot (upload/visualização): upload para Admin/Manager; visualização para Viewer.
 - Alertas: Admin/Manager configura; Viewer apenas leitura.
 - Equipe: Owner/Admin convida e define papel; Manager só leitura.
 - Billing: somente Owner/Admin (viewer e manager sem acesso).
@@ -26,6 +27,8 @@
 - Pode estender trial, liberar limites temporários e marcar conta como pilot.
 - Acesso a logs avançados e auditoria.
 - Acesso via Admin Console interno (não no app do cliente).
+ - Pode acessar lojas para assistência de onboarding (ex.: configurar ROI em trials).
+ - Quando staff publica ROI, deve registrar metadados de assistência (created_by_staff, created_by_user_id, created_at).
 
 ## Observações
 - Tokens e secrets nunca no frontend.

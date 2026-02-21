@@ -39,6 +39,8 @@
 - `GET|PUT|PATCH|DELETE /api/v1/cameras/{camera_id}/`
 - `POST /api/v1/cameras/{camera_id}/test-snapshot/`
 - `POST /api/v1/cameras/{camera_id}/test-connection/`
+- `POST /api/v1/cameras/{camera_id}/snapshot/upload/`
+- `GET /api/v1/cameras/{camera_id}/snapshot/`
 - `GET|PUT /api/v1/cameras/{camera_id}/roi/`
 - `GET /api/v1/cameras/{camera_id}/roi/latest/`
 - `POST /api/v1/cameras/{camera_id}/health/` (edge)

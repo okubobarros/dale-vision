@@ -20,12 +20,15 @@ Guiar o usuário na instalação do Edge e validação de heartbeat.
 - error
 
 ## Payloads
-- `GET /api/v1/stores/{store_id}/edge-setup/` -> `{ store_id, edge_token, agent_id_suggested, cloud_base_url, has_active_token, token_created_at, token_last_used_at }`
-- `POST /api/v1/stores/{store_id}/edge-token/rotate/` -> `{ store_id, edge_token, rotated, has_active_token, ... }`
+- `GET /api/v1/stores/{store_id}/edge-setup/` -> `{ supported, edge_token, cloud_base_url, agent_id_default, agent_id_suggested }`
+- `POST /api/v1/stores/{store_id}/edge-token/rotate/` -> `{ supported, edge_token, cloud_base_url, agent_id_suggested }`
 
 ## Erros
 - 403 sem permissão
 - 404 store inexistente
+- 500 JSON padronizado:
+  - `{ code: "EDGE_SETUP_ERROR", message, details }`
+  - `{ code: "EDGE_TOKEN_ROTATE_FAILED", message, details }`
 
 ## DOR
 - Fluxo de permissão definido

@@ -10,7 +10,7 @@ Cadastrar câmeras com store inferida pela URL e sem validação de rede no back
 1. Usuário abre modal de câmera
 2. Preenche campos mínimos
 3. Backend cria câmera
-4. Edge-agent valida conectividade (health)
+4. Edge-agent valida conectividade (health) de forma assíncrona
 
 ## Estados
 - draft
@@ -21,6 +21,12 @@ Cadastrar câmeras com store inferida pela URL e sem validação de rede no back
 ## Payloads
 - `POST /api/v1/stores/{store_id}/cameras/`
 - Campos suportados: `name`, `external_id`, `brand`, `ip`, `username`, `password`, `rtsp_url`, `active`
+- Comportamento:
+  - Não validar RTSP/snapshot no POST.
+  - `status` inicial: `unknown` ou `pending_validation`
+  - Label UX sugerido: "Aguardando validação"
+  - `last_error_code`, `last_error_details`: `null`
+  - `validate_now=false` (default). Se `true`, enfileira validação sem bloquear o POST.
 
 ## Erros
 - 404 Store not found

@@ -50,6 +50,21 @@ Compatibilidade temporária:
 - HTTP: 403
 - Mensagem UX sugerida: "Você não tem permissão para essa ação."
 
+### EDGE_SETUP_ERROR
+- Quando: falha inesperada ao obter credenciais do edge.
+- HTTP: 500
+- Mensagem UX sugerida: "Erro inesperado no servidor. Tente novamente."
+
+### EDGE_TOKEN_ROTATE_FAILED
+- Quando: falha ao rotacionar/gerar token do edge.
+- HTTP: 500
+- Mensagem UX sugerida: "Não foi possível gerar o token do Edge."
+
+### SNAPSHOT_UPLOAD_FAILED
+- Quando: falha ao subir snapshot (storage indisponível ou erro de upload).
+- HTTP: 500
+- Mensagem UX sugerida: "Falha ao enviar snapshot. Tente novamente."
+
 ## Observações
 - Não inventar endpoints novos para suportar erros; quando necessário, usar `details` com o contexto.
 - Para validações de campo, `details` deve conter o mapa de erros por campo no padrão DRF.
