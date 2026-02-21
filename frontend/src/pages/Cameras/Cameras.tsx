@@ -12,7 +12,7 @@ import {
   type Camera,
   type CreateCameraPayload,
 } from "../../services/cameras"
-import { formatAge, formatReason, formatTimestamp } from "../../utils/edgeReasons"
+import { formatAge, formatReason, formatStatusLabel, formatTimestamp } from "../../utils/edgeReasons"
 import EdgeSetupModal from "../../components/EdgeSetupModal"
 import CameraRoiEditor from "../../components/CameraRoiEditor"
 import { useIsMobile } from "../../hooks/useIsMobile"
@@ -671,7 +671,7 @@ const Cameras = () => {
                             : "bg-yellow-100 text-yellow-800"
                         }`}
                       >
-                        {camera.status ?? "unknown"}
+                        {formatStatusLabel(camera.status ?? "unknown")}
                       </span>
                     </div>
                     <p className="text-xs text-gray-500 mt-1">
@@ -730,18 +730,15 @@ const Cameras = () => {
                     >
                       Testar conexão
                     </button>
-                    <button
-                      type="button"
-                      onClick={() => setRoiCamera(camera)}
-                      disabled={!canManageStore}
-                      className={`rounded-lg border px-3 py-1.5 text-xs font-semibold ${
-                        !canManageStore
-                          ? "border-blue-100 text-blue-300 cursor-not-allowed"
-                          : "border-blue-200 text-blue-700 hover:bg-blue-50"
-                      }`}
-                    >
-                      ROI
-                    </button>
+                    {canManageStore && (
+                      <button
+                        type="button"
+                        onClick={() => setRoiCamera(camera)}
+                        className="rounded-lg border border-blue-200 px-3 py-1.5 text-xs font-semibold text-blue-700 hover:bg-blue-50"
+                      >
+                        ROI
+                      </button>
+                    )}
                     <button
                       type="button"
                       onClick={() => handleDelete(camera.id)}

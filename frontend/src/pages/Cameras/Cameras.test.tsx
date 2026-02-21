@@ -1,5 +1,5 @@
 import { describe, it, expect, vi, beforeEach } from "vitest"
-import { screen, waitFor } from "@testing-library/react"
+import { screen, waitFor, fireEvent } from "@testing-library/react"
 import userEvent from "@testing-library/user-event"
 import Cameras from "./Cameras"
 import { renderWithProviders } from "../../test/test-utils"
@@ -66,7 +66,7 @@ describe("Cameras create camera", () => {
     await user.click(addButton)
 
     const nameInput = await screen.findByPlaceholderText(/Ex: Entrada/i)
-    await user.type(nameInput, "Entrada")
+    fireEvent.change(nameInput, { target: { value: "Entrada" } })
 
     const saveButton = screen.getByRole("button", { name: /Salvar/i })
     await user.click(saveButton)
@@ -103,7 +103,7 @@ describe("Cameras create camera", () => {
     await user.click(addButton)
 
     const nameInput = await screen.findByPlaceholderText(/Ex: Entrada/i)
-    await user.type(nameInput, "Entrada")
+    fireEvent.change(nameInput, { target: { value: "Entrada" } })
 
     const saveButton = screen.getByRole("button", { name: /Salvar/i })
     await user.click(saveButton)
@@ -136,7 +136,7 @@ describe("Cameras create camera", () => {
     await user.click(addButton)
 
     const nameInput = await screen.findByPlaceholderText(/Ex: Entrada/i)
-    await user.type(nameInput, "Entrada")
+    fireEvent.change(nameInput, { target: { value: "Entrada" } })
 
     const saveButton = screen.getByRole("button", { name: /Salvar/i })
     await user.click(saveButton)
@@ -162,7 +162,9 @@ describe("Cameras create camera", () => {
     })
     await user.click(addButton)
 
-    await user.type(await screen.findByPlaceholderText(/Ex: Entrada/i), "Entrada")
+    fireEvent.change(await screen.findByPlaceholderText(/Ex: Entrada/i), {
+      target: { value: "Entrada" },
+    })
     await user.click(screen.getByRole("button", { name: /Salvar/i }))
 
     await waitFor(() => {
@@ -188,18 +190,25 @@ describe("Cameras create camera", () => {
     })
     await user.click(addButton)
 
-    await user.type(await screen.findByPlaceholderText(/Ex: Entrada/i), "Entrada")
+    fireEvent.change(await screen.findByPlaceholderText(/Ex: Entrada/i), {
+      target: { value: "Entrada" },
+    })
     await user.selectOptions(
       screen.getByRole("combobox", { name: /Tipo de conexão/i }),
       "nvr"
     )
-    await user.type(screen.getByPlaceholderText("192.168.0.10"), "192.168.1.50")
-    await user.type(screen.getByPlaceholderText("admin"), "admin")
-    await user.type(screen.getByPlaceholderText("••••••••"), "123456")
+    fireEvent.change(screen.getByPlaceholderText("192.168.0.10"), {
+      target: { value: "192.168.1.50" },
+    })
+    fireEvent.change(screen.getByPlaceholderText("admin"), {
+      target: { value: "admin" },
+    })
+    fireEvent.change(screen.getByPlaceholderText("••••••••"), {
+      target: { value: "123456" },
+    })
 
     const channelInput = screen.getByLabelText(/Canal \(NVR\)/i)
-    await user.clear(channelInput)
-    await user.type(channelInput, "3")
+    fireEvent.change(channelInput, { target: { value: "3" } })
 
     const subtypeSelect = screen.getByLabelText(/Subtipo \(Intelbras\)/i)
     await user.selectOptions(subtypeSelect, "0")

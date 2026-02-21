@@ -43,6 +43,14 @@ export interface CameraROIConfig {
   updated_by?: string | null
 }
 
+export interface CameraSnapshotResponse {
+  camera_id: string
+  snapshot_id: string
+  storage_key: string
+  signed_url: string | null
+  expires_in?: number
+}
+
 export interface StoreLimits {
   store_id: string
   plan: "trial" | "paid"
@@ -185,6 +193,31 @@ export const camerasService = {
       }
     } catch (error) {
       throw normalizeApiError(error, "Falha ao testar conexão.")
+    }
+  },
+
+  async uploadSnapshot(
+    cameraId: string,
+    file: File
+  ): Promise<CameraSnapshotResponse> {
+    try {
+      const formData = new FormData()
+      formData.append("file", file)
+      const response = await api.post(`/v1/cameras/${cameraId}/snapshot/upload/`, formData, {
+        headers: { "Content-Type": "multipart/form-data" },
+      })
+      return response.data
+    } catch (error) {
+      throw normalizeApiError(error, "Falha ao enviar snapshot.")
+    }
+  },
+
+  async getSnapshotUrl(cameraId: string): Promise<CameraSnapshotResponse> {
+    try {
+      const response = await api.get(`/v1/cameras/${cameraId}/snapshot/`)
+      return response.data
+    } catch (error) {
+      throw normalizeApiError(error, "Falha ao carregar snapshot.")
     }
   },
 }

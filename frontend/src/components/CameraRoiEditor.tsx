@@ -1,4 +1,12 @@
-import { useCallback, useEffect, useMemo, useRef, useState, type PointerEvent } from "react"
+import {
+  useCallback,
+  useEffect,
+  useMemo,
+  useRef,
+  useState,
+  type PointerEvent,
+  type ChangeEvent,
+} from "react"
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query"
 import toast from "react-hot-toast"
 import { camerasService, type Camera, type CameraROIConfig } from "../services/cameras"
@@ -45,6 +53,9 @@ const CameraRoiEditor = ({ open, camera, onClose }: CameraRoiEditorProps) => {
   const [draftPoints, setDraftPoints] = useState<RoiPoint[]>([])
   const [isDrawing, setIsDrawing] = useState(false)
   const [error, setError] = useState<string | null>(null)
+  const [snapshotUrl, setSnapshotUrl] = useState<string | null>(null)
+  const [backgroundImage, setBackgroundImage] = useState<HTMLImageElement | null>(null)
+  const fileInputRef = useRef<HTMLInputElement | null>(null)
 
   const cameraId = camera?.id
 
@@ -52,6 +63,17 @@ const CameraRoiEditor = ({ open, camera, onClose }: CameraRoiEditorProps) => {
     queryKey: ["camera-roi", cameraId],
     queryFn: () => camerasService.getRoi(cameraId || ""),
     enabled: Boolean(cameraId),
+  })
+
+  const { data: snapshotData } = useQuery({
+    queryKey: ["camera-snapshot", cameraId],
+    queryFn: () => camerasService.getSnapshotUrl(cameraId || ""),
+    enabled: Boolean(cameraId),
+    retry: (count, error) => {
+      const status = (error as { response?: { status?: number } })?.response?.status
+      if (status === 404) return false
+      return count < 2
+    },
   })
 
   const updateRoiMutation = useMutation({
@@ -62,6 +84,18 @@ const CameraRoiEditor = ({ open, camera, onClose }: CameraRoiEditorProps) => {
       toast.success(`ROI salvo (v${data.version})`)
     },
     onError: () => toast.error("Falha ao salvar ROI."),
+  })
+
+  const uploadSnapshotMutation = useMutation({
+    mutationFn: (file: File) => camerasService.uploadSnapshot(cameraId || "", file),
+    onSuccess: (data) => {
+      if (data.signed_url) {
+        setSnapshotUrl(data.signed_url)
+      }
+      queryClient.invalidateQueries({ queryKey: ["camera-snapshot", cameraId] })
+      toast.success("Snapshot atualizado")
+    },
+    onError: () => toast.error("Falha ao enviar snapshot."),
   })
 
   const latestUpdatedAt = roiConfig?.updated_at ?? null
@@ -101,7 +135,7 @@ const CameraRoiEditor = ({ open, camera, onClose }: CameraRoiEditorProps) => {
     if (!ctx) return
 
     ctx.clearRect(0, 0, CANVAS_WIDTH, CANVAS_HEIGHT)
-    drawBackground(ctx)
+    drawBackground(ctx, backgroundImage)
 
     effectiveShapes.forEach((shape) => drawShape(ctx, shape, "#2563eb"))
     if (draftPoints.length > 0) {
@@ -112,6 +146,23 @@ const CameraRoiEditor = ({ open, camera, onClose }: CameraRoiEditorProps) => {
       )
     }
   }, [open, effectiveShapes, draftPoints, mode, zoneName])
+
+  useEffect(() => {
+    if (snapshotData && snapshotData.signed_url) {
+      setSnapshotUrl(snapshotData.signed_url)
+    }
+  }, [snapshotData])
+
+  useEffect(() => {
+    if (!snapshotUrl) {
+      setBackgroundImage(null)
+      return
+    }
+    const img = new Image()
+    img.onload = () => setBackgroundImage(img)
+    img.onerror = () => setBackgroundImage(null)
+    img.src = snapshotUrl
+  }, [snapshotUrl])
 
   const handlePointerDown = useCallback(
     (event: PointerEvent<HTMLCanvasElement>) => {
@@ -258,6 +309,20 @@ const CameraRoiEditor = ({ open, camera, onClose }: CameraRoiEditorProps) => {
     onClose()
   }, [onClose])
 
+  const handleSelectSnapshot = useCallback(() => {
+    fileInputRef.current?.click()
+  }, [])
+
+  const handleSnapshotChange = useCallback(
+    (event: ChangeEvent<HTMLInputElement>) => {
+      const file = event.target.files?.[0]
+      if (!file || !cameraId) return
+      uploadSnapshotMutation.mutate(file)
+      event.target.value = ""
+    },
+    [cameraId, uploadSnapshotMutation]
+  )
+
   if (!open || !camera) return null
 
   return (
@@ -387,6 +452,47 @@ const CameraRoiEditor = ({ open, camera, onClose }: CameraRoiEditorProps) => {
               )}
             </div>
 
+            <div className="rounded-xl border border-gray-200 p-4 space-y-3">
+              <h4 className="text-sm font-semibold text-gray-700">Snapshot</h4>
+              <p className="text-xs text-gray-500">
+                Use um snapshot para desenhar o ROI (a validação da câmera pode
+                acontecer depois).
+              </p>
+              {snapshotUrl ? (
+                <img
+                  src={snapshotUrl}
+                  alt="Snapshot atual"
+                  className="w-full rounded-lg border border-gray-200"
+                />
+              ) : (
+                <div className="text-xs text-gray-500">Nenhum snapshot disponível.</div>
+              )}
+              <div className="flex items-center gap-2">
+                <button
+                  type="button"
+                  onClick={handleSelectSnapshot}
+                  disabled={uploadSnapshotMutation.isPending}
+                  className={`rounded-lg px-3 py-2 text-xs font-semibold ${
+                    uploadSnapshotMutation.isPending
+                      ? "bg-gray-200 text-gray-400 cursor-not-allowed"
+                      : "bg-blue-600 text-white hover:bg-blue-700"
+                  }`}
+                >
+                  {uploadSnapshotMutation.isPending ? "Enviando..." : "Enviar snapshot"}
+                </button>
+                <input
+                  ref={fileInputRef}
+                  type="file"
+                  accept="image/*"
+                  onChange={handleSnapshotChange}
+                  className="hidden"
+                />
+              </div>
+              <div className="text-[11px] text-gray-500">
+                Snapshot para configuração (ainda não validado).
+              </div>
+            </div>
+
             <div className="rounded-xl border border-gray-200 p-4">
               <h4 className="text-sm font-semibold text-gray-700">
                 Zonas ({effectiveShapes.length})
@@ -448,9 +554,15 @@ const denormalizePoint = (point: RoiPoint) => ({
   y: point.y * CANVAS_HEIGHT,
 })
 
-const drawBackground = (ctx: CanvasRenderingContext2D) => {
+const drawBackground = (
+  ctx: CanvasRenderingContext2D,
+  image?: HTMLImageElement | null
+) => {
   ctx.fillStyle = "#f8fafc"
   ctx.fillRect(0, 0, CANVAS_WIDTH, CANVAS_HEIGHT)
+  if (image) {
+    ctx.drawImage(image, 0, 0, CANVAS_WIDTH, CANVAS_HEIGHT)
+  }
   ctx.strokeStyle = "#e2e8f0"
   ctx.lineWidth = 1
   const step = 40

@@ -20,6 +20,7 @@ from .auth_supabase import (
     SupabaseJWTAuthentication,
     SupabaseConfigError,
     SupabaseProvisioningError,
+    ensure_org_membership,
 )
 from apps.core.models import OrgMember, Store, Camera
 from apps.stores.services.user_uuid import upsert_user_id_map
@@ -35,6 +36,10 @@ class RegisterView(APIView):
         serializer = RegisterSerializer(data=request.data)
         serializer.is_valid(raise_exception=True)
         user = serializer.save()
+        try:
+            ensure_org_membership(user)
+        except Exception:
+            logger.exception("[REGISTER] failed to ensure org membership user_id=%s", user.id)
         token = AuthToken.objects.create(user)[1]
 
         return Response(
@@ -61,6 +66,11 @@ class LoginView(APIView):
         serializer.is_valid(raise_exception=True)
 
         user = serializer.validated_data["user"]
+        if not (getattr(user, "is_staff", False) or getattr(user, "is_superuser", False)):
+            try:
+                ensure_org_membership(user)
+            except Exception:
+                logger.exception("[LOGIN] failed to ensure org membership user_id=%s", user.id)
         token = AuthToken.objects.create(user)[1]
 
         return Response(

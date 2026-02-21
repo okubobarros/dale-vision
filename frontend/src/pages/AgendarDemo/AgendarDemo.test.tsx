@@ -1,5 +1,5 @@
 import { describe, it, expect, vi, beforeEach, afterEach } from "vitest"
-import { screen, waitFor } from "@testing-library/react"
+import { screen, waitFor, fireEvent } from "@testing-library/react"
 import userEvent from "@testing-library/user-event"
 import AgendarDemo from "./AgendarDemo"
 import { renderWithProviders } from "../../test/test-utils"
@@ -24,9 +24,15 @@ const fillBaseRequired = async (
   user: ReturnType<typeof userEvent.setup>,
   options?: { skipOperators?: boolean }
 ) => {
-  await user.type(screen.getByLabelText(/Seu nome \*/i), "Joao Silva")
-  await user.type(screen.getByLabelText(/WhatsApp com DDD \*/i), "11999999999")
-  await user.type(screen.getByLabelText(/E-mail \*/i), "joao@empresa.com")
+  fireEvent.change(screen.getByLabelText(/Seu nome \*/i), {
+    target: { value: "Joao Silva" },
+  })
+  fireEvent.change(screen.getByLabelText(/WhatsApp com DDD \*/i), {
+    target: { value: "11999999999" },
+  })
+  fireEvent.change(screen.getByLabelText(/E-mail \*/i), {
+    target: { value: "joao@empresa.com" },
+  })
 
   await user.selectOptions(
     screen.getByLabelText(/Quantas lojas você opera hoje\? \*/i),
@@ -115,7 +121,9 @@ describe("AgendarDemo", () => {
       screen.getByLabelText(/Segmento \/ tipo de operação \*/i),
       "other"
     )
-    await user.type(screen.getByLabelText(/Qual\? \*/i), "Bazar")
+    fireEvent.change(screen.getByLabelText(/Qual\? \*/i), {
+      target: { value: "Bazar" },
+    })
 
     await fillBaseRequired(user)
 

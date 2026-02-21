@@ -43,7 +43,7 @@ export function formatStatusLabel(status?: string | null): string {
     case "offline":
       return "Offline"
     case "unknown":
-      return "Desconhecido"
+      return "Aguardando validação"
     default:
       return status ? String(status) : "-"
   }

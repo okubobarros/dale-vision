@@ -1,5 +1,8 @@
 import hashlib
 import logging
+import os
+import requests
+from uuid import uuid4
 from django.utils import timezone
 from django.utils.dateparse import parse_datetime
 from rest_framework import viewsets, permissions, status
@@ -7,6 +10,8 @@ from rest_framework.decorators import action
 from rest_framework.response import Response
 from rest_framework.exceptions import NotFound, ValidationError, PermissionDenied
 from django.core.exceptions import PermissionDenied as DjangoPermissionDenied
+from rest_framework.parsers import MultiPartParser, FormParser
+from django.conf import settings
 
 from django.db.models import Q
 from apps.core.models import Camera, CameraHealthLog, OrgMember, Store, StoreManager
@@ -16,6 +21,7 @@ from .serializers import (
     CameraHealthLogSerializer,
     CameraROIConfigSerializer,
 )
+from .models import CameraSnapshot
 from .services import rtsp_snapshot
 from .limits import enforce_trial_camera_limit
 from .roi import get_latest_roi_config, get_latest_published_roi_config, create_roi_config
@@ -100,6 +106,52 @@ def _validate_edge_token_for_store(store_id: str, provided: str) -> bool:
         EdgeToken.objects.filter(id=edge_token.id).update(last_used_at=timezone.now())
         return True
     return False
+
+
+def _get_supabase_storage_config():
+    url = os.getenv("SUPABASE_URL") or getattr(settings, "SUPABASE_URL", None)
+    key = os.getenv("SUPABASE_KEY") or getattr(settings, "SUPABASE_KEY", None)
+    if not url or not key:
+        return None, None
+    return url.rstrip("/"), key
+
+
+def _build_snapshot_path(org_id: str, store_id: str, camera_id: str, ext: str) -> str:
+    now = timezone.now()
+    ts = now.strftime("%Y%m%dT%H%M%S%f")
+    return (
+        f"org/{org_id}/stores/{store_id}/cameras/{camera_id}/"
+        f"{now:%Y}/{now:%m}/{now:%d}/{ts}.{ext}"
+    )
+
+
+def _guess_ext(content_type: str, filename: str) -> str:
+    if filename and "." in filename:
+        return filename.rsplit(".", 1)[-1].lower()
+    if content_type == "image/png":
+        return "png"
+    if content_type == "image/webp":
+        return "webp"
+    return "jpg"
+
+
+def _sign_storage_url(supabase_url: str, api_key: str, bucket: str, path: str, expires_in: int = 900) -> str:
+    endpoint = f"{supabase_url}/storage/v1/object/sign/{bucket}/{path}"
+    resp = requests.post(
+        endpoint,
+        json={"expiresIn": expires_in},
+        headers={"Authorization": f"Bearer {api_key}", "apikey": api_key},
+        timeout=10,
+    )
+    if resp.status_code not in (200, 201):
+        raise ValueError(f"Failed to sign snapshot url: {resp.status_code}")
+    payload = resp.json() if resp.content else {}
+    signed_url = payload.get("signedURL") or payload.get("signedUrl") or payload.get("signed_url")
+    if not signed_url:
+        raise ValueError("signedURL missing")
+    if signed_url.startswith("http"):
+        return signed_url
+    return f"{supabase_url}/storage/v1{signed_url}"
 
 class CameraViewSet(viewsets.ModelViewSet):
     serializer_class = CameraSerializer
@@ -286,7 +338,15 @@ class CameraViewSet(viewsets.ModelViewSet):
     @action(detail=True, methods=["post"], url_path="test-snapshot")
     def test_snapshot(self, request, pk=None):
         cam = self.get_object()
-        require_store_role(request.user, str(cam.store_id), ALLOWED_MANAGE_ROLES)
+        try:
+            require_store_role(request.user, str(cam.store_id), ALLOWED_MANAGE_ROLES)
+        except (PermissionDenied, DjangoPermissionDenied) as exc:
+            return _error_response(
+                "PERMISSION_DENIED",
+                str(exc) or "Sem permissão.",
+                status.HTTP_403_FORBIDDEN,
+                deprecated_detail=str(exc) or "Sem permissão.",
+            )
 
         if not cam.rtsp_url:
             return Response({"detail": "Camera sem rtsp_url"}, status=status.HTTP_400_BAD_REQUEST)
@@ -331,7 +391,15 @@ class CameraViewSet(viewsets.ModelViewSet):
     def roi(self, request, pk=None):
         cam = self.get_object()
         if request.method == "GET":
-            require_store_role(request.user, str(cam.store_id), ALLOWED_READ_ROLES)
+            try:
+                require_store_role(request.user, str(cam.store_id), ALLOWED_READ_ROLES)
+            except (PermissionDenied, DjangoPermissionDenied) as exc:
+                return _error_response(
+                    "PERMISSION_DENIED",
+                    str(exc) or "Sem permissão.",
+                    status.HTTP_403_FORBIDDEN,
+                    deprecated_detail=str(exc) or "Sem permissão.",
+                )
             latest = get_latest_roi_config(str(cam.id))
             if not latest:
                 return Response(
@@ -345,7 +413,15 @@ class CameraViewSet(viewsets.ModelViewSet):
                 )
             return Response(CameraROIConfigSerializer(latest).data)
 
-        require_store_role(request.user, str(cam.store_id), ALLOWED_MANAGE_ROLES)
+        try:
+            require_store_role(request.user, str(cam.store_id), ALLOWED_MANAGE_ROLES)
+        except (PermissionDenied, DjangoPermissionDenied) as exc:
+            return _error_response(
+                "PERMISSION_DENIED",
+                str(exc) or "Sem permissão.",
+                status.HTTP_403_FORBIDDEN,
+                deprecated_detail=str(exc) or "Sem permissão.",
+            )
         config_json = request.data.get("config_json")
         if isinstance(config_json, list):
             config_json = {"zones": config_json}
@@ -376,14 +452,24 @@ class CameraViewSet(viewsets.ModelViewSet):
         else:
             config_json.setdefault("roi_version", last_published_version)
 
-        config_json.setdefault("metrics_enabled", False)
-        config_json.setdefault("image", config_json.get("image") or {})
-
         updated_by = None
         try:
             updated_by = ensure_user_uuid(request.user)
         except Exception:
             updated_by = None
+        config_json.setdefault("metrics_enabled", False)
+        config_json.setdefault("image", config_json.get("image") or {})
+        meta = config_json.get("meta")
+        if not isinstance(meta, dict):
+            meta = {}
+        is_staff_user = bool(getattr(request.user, "is_staff", False) or getattr(request.user, "is_superuser", False))
+        if is_staff_user:
+            meta.setdefault("created_by_staff", True)
+            meta.setdefault("created_by_user_id", str(updated_by) if updated_by else None)
+            meta.setdefault("created_at", timezone.now().isoformat())
+            if status_value == "published":
+                meta.setdefault("note", "ROI publicado pela equipe DaleVision")
+        config_json["meta"] = meta
 
         created = create_roi_config(
             camera_id=str(cam.id),
@@ -512,7 +598,15 @@ class CameraViewSet(viewsets.ModelViewSet):
     @action(detail=True, methods=["post"], url_path="test-connection")
     def test_connection(self, request, pk=None):
         cam = self.get_object()
-        require_store_role(request.user, str(cam.store_id), ALLOWED_MANAGE_ROLES)
+        try:
+            require_store_role(request.user, str(cam.store_id), ALLOWED_MANAGE_ROLES)
+        except (PermissionDenied, DjangoPermissionDenied) as exc:
+            return _error_response(
+                "PERMISSION_DENIED",
+                str(exc) or "Sem permissão.",
+                status.HTTP_403_FORBIDDEN,
+                deprecated_detail=str(exc) or "Sem permissão.",
+            )
 
         return Response(
             {
@@ -522,6 +616,184 @@ class CameraViewSet(viewsets.ModelViewSet):
                 "queued": True,
             },
             status=status.HTTP_202_ACCEPTED,
+        )
+
+    @action(
+        detail=True,
+        methods=["post"],
+        url_path="snapshot/upload",
+        parser_classes=[MultiPartParser, FormParser],
+    )
+    def snapshot_upload(self, request, pk=None):
+        cam = self.get_object()
+        try:
+            require_store_role(request.user, str(cam.store_id), ALLOWED_MANAGE_ROLES)
+        except (PermissionDenied, DjangoPermissionDenied) as exc:
+            return _error_response(
+                "PERMISSION_DENIED",
+                str(exc) or "Sem permissão.",
+                status.HTTP_403_FORBIDDEN,
+                deprecated_detail=str(exc) or "Sem permissão.",
+            )
+
+        file = request.FILES.get("file") or request.FILES.get("snapshot")
+        if not file:
+            return _error_response(
+                "SNAPSHOT_MISSING",
+                "Envie o arquivo em 'file'.",
+                status.HTTP_400_BAD_REQUEST,
+                deprecated_detail="Envie o arquivo em 'file'.",
+            )
+
+        supabase_url, supabase_key = _get_supabase_storage_config()
+        if not supabase_url or not supabase_key:
+            return _error_response(
+                "SUPABASE_MISSING_CONFIG",
+                "Storage não configurado.",
+                status.HTTP_500_INTERNAL_SERVER_ERROR,
+                deprecated_detail="Storage não configurado.",
+            )
+
+        bucket = "snapshots"
+        org_id = getattr(cam.store, "org_id", None)
+        if not org_id:
+            return _error_response(
+                "ORG_NOT_FOUND",
+                "Org não encontrada para esta câmera.",
+                status.HTTP_400_BAD_REQUEST,
+                deprecated_detail="Org não encontrada para esta câmera.",
+            )
+
+        content_type = getattr(file, "content_type", None) or "image/jpeg"
+        ext = _guess_ext(content_type, getattr(file, "name", ""))
+        storage_key = _build_snapshot_path(str(org_id), str(cam.store_id), str(cam.id), ext)
+
+        upload_url = f"{supabase_url}/storage/v1/object/{bucket}/{storage_key}"
+        try:
+            resp = requests.post(
+                upload_url,
+                data=file,
+                headers={
+                    "Authorization": f"Bearer {supabase_key}",
+                    "apikey": supabase_key,
+                    "Content-Type": content_type,
+                    "x-upsert": "true",
+                },
+                timeout=20,
+            )
+        except requests.RequestException:
+            logger.exception("[SNAPSHOT] upload failed camera_id=%s", str(cam.id))
+            return _error_response(
+                "SNAPSHOT_UPLOAD_FAILED",
+                "Falha ao enviar snapshot.",
+                status.HTTP_502_BAD_GATEWAY,
+                deprecated_detail="Falha ao enviar snapshot.",
+            )
+
+        if resp.status_code not in (200, 201):
+            logger.error(
+                "[SNAPSHOT] upload error camera_id=%s status=%s body=%s",
+                str(cam.id),
+                resp.status_code,
+                resp.text[:200],
+            )
+            return _error_response(
+                "SNAPSHOT_UPLOAD_FAILED",
+                "Falha ao enviar snapshot.",
+                status.HTTP_502_BAD_GATEWAY,
+                details={"status": resp.status_code},
+                deprecated_detail="Falha ao enviar snapshot.",
+            )
+
+        try:
+            signed_url = _sign_storage_url(supabase_url, supabase_key, bucket, storage_key, expires_in=900)
+        except Exception as exc:
+            logger.exception("[SNAPSHOT] sign failed camera_id=%s error=%s", str(cam.id), exc)
+            signed_url = None
+
+        snapshot = CameraSnapshot.objects.create(
+            id=uuid4(),
+            camera_id=cam.id,
+            snapshot_url=signed_url,
+            storage_key=storage_key,
+            captured_at=timezone.now(),
+            metadata={
+                "source": "backend",
+                "content_type": content_type,
+            },
+        )
+
+        if signed_url:
+            cam.last_snapshot_url = signed_url
+            cam.updated_at = timezone.now()
+            cam.save(update_fields=["last_snapshot_url", "updated_at"])
+
+        return Response(
+            {
+                "camera_id": str(cam.id),
+                "snapshot_id": str(snapshot.id),
+                "storage_key": storage_key,
+                "signed_url": signed_url,
+                "expires_in": 900,
+            },
+            status=status.HTTP_201_CREATED,
+        )
+
+    @action(detail=True, methods=["get"], url_path="snapshot")
+    def snapshot_url(self, request, pk=None):
+        cam = self.get_object()
+        try:
+            require_store_role(request.user, str(cam.store_id), ALLOWED_READ_ROLES)
+        except (PermissionDenied, DjangoPermissionDenied) as exc:
+            return _error_response(
+                "PERMISSION_DENIED",
+                str(exc) or "Sem permissão.",
+                status.HTTP_403_FORBIDDEN,
+                deprecated_detail=str(exc) or "Sem permissão.",
+            )
+
+        supabase_url, supabase_key = _get_supabase_storage_config()
+        if not supabase_url or not supabase_key:
+            return _error_response(
+                "SUPABASE_MISSING_CONFIG",
+                "Storage não configurado.",
+                status.HTTP_500_INTERNAL_SERVER_ERROR,
+                deprecated_detail="Storage não configurado.",
+            )
+
+        snapshot = (
+            CameraSnapshot.objects.filter(camera_id=cam.id)
+            .order_by("-captured_at", "-created_at")
+            .first()
+        )
+        if not snapshot or not snapshot.storage_key:
+            return _error_response(
+                "SNAPSHOT_NOT_FOUND",
+                "Snapshot não encontrado.",
+                status.HTTP_404_NOT_FOUND,
+                deprecated_detail="Snapshot não encontrado.",
+            )
+
+        try:
+            signed_url = _sign_storage_url(supabase_url, supabase_key, "snapshots", snapshot.storage_key, expires_in=900)
+        except Exception as exc:
+            logger.exception("[SNAPSHOT] sign failed camera_id=%s error=%s", str(cam.id), exc)
+            return _error_response(
+                "SNAPSHOT_SIGN_FAILED",
+                "Falha ao gerar URL assinada.",
+                status.HTTP_502_BAD_GATEWAY,
+                deprecated_detail="Falha ao gerar URL assinada.",
+            )
+
+        return Response(
+            {
+                "camera_id": str(cam.id),
+                "snapshot_id": str(snapshot.id),
+                "storage_key": snapshot.storage_key,
+                "signed_url": signed_url,
+                "expires_in": 900,
+            },
+            status=status.HTTP_200_OK,
         )
 
 class CameraHealthLogViewSet(viewsets.ReadOnlyModelViewSet):
