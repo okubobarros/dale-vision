@@ -3,10 +3,12 @@ import uuid
 from types import SimpleNamespace
 from unittest.mock import MagicMock, patch
 from django.test import TestCase
+from django.http import Http404
 from django.test import override_settings
 from django.db import connection
 from django.contrib.auth import get_user_model
 from rest_framework.test import APIClient
+from rest_framework.exceptions import PermissionDenied
 from knox.models import AuthToken
 from apps.edge.models import EdgeToken
 
@@ -314,6 +316,58 @@ class EdgeSetupTokenTests(TestCase):
         active_token.refresh_from_db()
         self.assertIsNotNone(active_token.last_used_at)
 
+    def test_edge_setup_store_not_found_returns_json(self):
+        self._skip_if_not_pg()
+        user = self._create_staff_user()
+        self.client.force_authenticate(user=user)
+        with patch("apps.stores.views.StoreViewSet.get_object", side_effect=Http404()):
+            resp = self.client.get("/api/v1/stores/00000000-0000-0000-0000-000000000000/edge-setup/")
+        self.assertEqual(resp.status_code, 404)
+        self.assertEqual(resp.data.get("code"), "STORE_NOT_FOUND")
+        self.assertTrue(resp.data.get("message"))
+        self.assertIsNotNone(resp.data.get("details"))
+
+    def test_edge_setup_forbidden_returns_json(self):
+        self._skip_if_not_pg()
+        user = self._create_staff_user()
+        store = self._store_stub()
+        self.client.force_authenticate(user=user)
+        with patch("apps.stores.views.StoreViewSet.get_object", return_value=store), patch(
+            "apps.stores.views._require_store_owner_or_admin",
+            side_effect=PermissionDenied("Sem permissão."),
+        ):
+            resp = self.client.get(f"/api/v1/stores/{store.id}/edge-setup/")
+        self.assertEqual(resp.status_code, 403)
+        self.assertEqual(resp.data.get("code"), "FORBIDDEN")
+        self.assertTrue(resp.data.get("message"))
+        self.assertIsNotNone(resp.data.get("details"))
+
+    def test_edge_token_rotate_store_not_found_returns_json(self):
+        self._skip_if_not_pg()
+        user = self._create_staff_user()
+        self.client.force_authenticate(user=user)
+        with patch("apps.stores.views.StoreViewSet.get_object", side_effect=Http404()):
+            resp = self.client.post("/api/v1/stores/00000000-0000-0000-0000-000000000000/edge-token/rotate/")
+        self.assertEqual(resp.status_code, 404)
+        self.assertEqual(resp.data.get("code"), "STORE_NOT_FOUND")
+        self.assertTrue(resp.data.get("message"))
+        self.assertIsNotNone(resp.data.get("details"))
+
+    def test_edge_token_rotate_forbidden_returns_json(self):
+        self._skip_if_not_pg()
+        user = self._create_staff_user()
+        store = self._store_stub()
+        self.client.force_authenticate(user=user)
+        with patch("apps.stores.views.StoreViewSet.get_object", return_value=store), patch(
+            "apps.stores.views._require_store_owner_or_admin",
+            side_effect=PermissionDenied("Sem permissão."),
+        ):
+            resp = self.client.post(f"/api/v1/stores/{store.id}/edge-token/rotate/")
+        self.assertEqual(resp.status_code, 403)
+        self.assertEqual(resp.data.get("code"), "FORBIDDEN")
+        self.assertTrue(resp.data.get("message"))
+        self.assertIsNotNone(resp.data.get("details"))
+
     def test_edge_setup_get_does_not_invalidate_ingest_token(self):
         self._skip_if_not_pg()
         store = self._store_stub()
@@ -342,3 +396,17 @@ class EdgeSetupTokenTests(TestCase):
         token_obj = EdgeToken.objects.filter(store_id=store.id, active=True).first()
         self.assertIsNotNone(token_obj)
         self.assertIsNotNone(token_obj.last_used_at)
+
+    def test_edge_token_rotate_creates_token_when_missing(self):
+        self._skip_if_not_pg()
+        user = self._create_staff_user()
+        store = self._store_stub()
+        self.client.force_authenticate(user=user)
+        EdgeToken.objects.filter(store_id=store.id).delete()
+
+        with patch("apps.stores.views.StoreViewSet.get_object", return_value=store):
+            resp = self.client.post(f"/api/v1/stores/{store.id}/edge-token/rotate/")
+        self.assertEqual(resp.status_code, 200)
+        self.assertTrue(resp.data.get("edge_token"))
+        active_tokens = EdgeToken.objects.filter(store_id=store.id, active=True)
+        self.assertEqual(active_tokens.count(), 1)

@@ -61,6 +61,19 @@ INSTALLED_APPS = [
     "apps.edge",
 ]
 
+# Disable migrations for unmanaged/internal apps when bootstrapping test DB.
+if os.getenv("DISABLE_APP_MIGRATIONS", "0") in ("1", "true", "True"):
+    MIGRATION_MODULES = {
+        "accounts": None,
+        "core": None,
+        "stores": None,
+        "cameras": None,
+        "analytics": None,
+        "alerts": None,
+        "billing": None,
+        "edge": None,
+    }
+
 MIDDLEWARE = [
     'corsheaders.middleware.CorsMiddleware',
     'django.middleware.security.SecurityMiddleware',

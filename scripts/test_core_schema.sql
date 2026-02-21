@@ -39,113 +39,6 @@ BEGIN
     END IF;
 END$$;
 
--- Django auth + system tables
-CREATE TABLE IF NOT EXISTS public.auth_group (
-  id integer GENERATED ALWAYS AS IDENTITY NOT NULL,
-  name character varying NOT NULL UNIQUE,
-  CONSTRAINT auth_group_pkey PRIMARY KEY (id)
-);
-
-CREATE TABLE IF NOT EXISTS public.auth_permission (
-  id integer GENERATED ALWAYS AS IDENTITY NOT NULL,
-  name character varying NOT NULL,
-  content_type_id integer NOT NULL,
-  codename character varying NOT NULL,
-  CONSTRAINT auth_permission_pkey PRIMARY KEY (id)
-);
-
-CREATE TABLE IF NOT EXISTS public.django_content_type (
-  id integer GENERATED ALWAYS AS IDENTITY NOT NULL,
-  app_label character varying NOT NULL,
-  model character varying NOT NULL,
-  CONSTRAINT django_content_type_pkey PRIMARY KEY (id)
-);
-
-ALTER TABLE public.auth_permission
-  ADD CONSTRAINT auth_permission_content_type_id_2f476e4b_fk_django_co
-  FOREIGN KEY (content_type_id) REFERENCES public.django_content_type(id);
-
-CREATE TABLE IF NOT EXISTS public.auth_user (
-  id integer GENERATED ALWAYS AS IDENTITY NOT NULL,
-  password character varying NOT NULL,
-  last_login timestamp with time zone,
-  is_superuser boolean NOT NULL,
-  username character varying NOT NULL UNIQUE,
-  first_name character varying NOT NULL,
-  last_name character varying NOT NULL,
-  email character varying NOT NULL,
-  is_staff boolean NOT NULL,
-  is_active boolean NOT NULL,
-  date_joined timestamp with time zone NOT NULL,
-  CONSTRAINT auth_user_pkey PRIMARY KEY (id)
-);
-
-CREATE TABLE IF NOT EXISTS public.auth_group_permissions (
-  id bigint GENERATED ALWAYS AS IDENTITY NOT NULL,
-  group_id integer NOT NULL,
-  permission_id integer NOT NULL,
-  CONSTRAINT auth_group_permissions_pkey PRIMARY KEY (id),
-  CONSTRAINT auth_group_permissions_group_id_b120cbf9_fk_auth_group_id FOREIGN KEY (group_id) REFERENCES public.auth_group(id),
-  CONSTRAINT auth_group_permissio_permission_id_84c5c92e_fk_auth_perm FOREIGN KEY (permission_id) REFERENCES public.auth_permission(id)
-);
-
-CREATE TABLE IF NOT EXISTS public.auth_user_groups (
-  id bigint GENERATED ALWAYS AS IDENTITY NOT NULL,
-  user_id integer NOT NULL,
-  group_id integer NOT NULL,
-  CONSTRAINT auth_user_groups_pkey PRIMARY KEY (id),
-  CONSTRAINT auth_user_groups_user_id_6a12ed8b_fk_auth_user_id FOREIGN KEY (user_id) REFERENCES public.auth_user(id),
-  CONSTRAINT auth_user_groups_group_id_97559544_fk_auth_group_id FOREIGN KEY (group_id) REFERENCES public.auth_group(id)
-);
-
-CREATE TABLE IF NOT EXISTS public.auth_user_user_permissions (
-  id bigint GENERATED ALWAYS AS IDENTITY NOT NULL,
-  user_id integer NOT NULL,
-  permission_id integer NOT NULL,
-  CONSTRAINT auth_user_user_permissions_pkey PRIMARY KEY (id),
-  CONSTRAINT auth_user_user_permissions_user_id_a95ead1b_fk_auth_user_id FOREIGN KEY (user_id) REFERENCES public.auth_user(id),
-  CONSTRAINT auth_user_user_permi_permission_id_1fbb5f2c_fk_auth_perm FOREIGN KEY (permission_id) REFERENCES public.auth_permission(id)
-);
-
-CREATE TABLE IF NOT EXISTS public.django_admin_log (
-  id integer GENERATED ALWAYS AS IDENTITY NOT NULL,
-  action_time timestamp with time zone NOT NULL,
-  object_id text,
-  object_repr character varying NOT NULL,
-  action_flag smallint NOT NULL CHECK (action_flag >= 0),
-  change_message text NOT NULL,
-  content_type_id integer,
-  user_id integer NOT NULL,
-  CONSTRAINT django_admin_log_pkey PRIMARY KEY (id),
-  CONSTRAINT django_admin_log_content_type_id_c4bce8eb_fk_django_co FOREIGN KEY (content_type_id) REFERENCES public.django_content_type(id),
-  CONSTRAINT django_admin_log_user_id_c564eba6_fk_auth_user_id FOREIGN KEY (user_id) REFERENCES public.auth_user(id)
-);
-
-CREATE TABLE IF NOT EXISTS public.django_migrations (
-  id bigint GENERATED ALWAYS AS IDENTITY NOT NULL,
-  app character varying NOT NULL,
-  name character varying NOT NULL,
-  applied timestamp with time zone NOT NULL,
-  CONSTRAINT django_migrations_pkey PRIMARY KEY (id)
-);
-
-CREATE TABLE IF NOT EXISTS public.django_session (
-  session_key character varying NOT NULL,
-  session_data text NOT NULL,
-  expire_date timestamp with time zone NOT NULL,
-  CONSTRAINT django_session_pkey PRIMARY KEY (session_key)
-);
-
-CREATE TABLE IF NOT EXISTS public.knox_authtoken (
-  digest character varying NOT NULL,
-  created timestamp with time zone NOT NULL,
-  user_id integer NOT NULL,
-  expiry timestamp with time zone,
-  token_key character varying NOT NULL,
-  CONSTRAINT knox_authtoken_pkey PRIMARY KEY (digest),
-  CONSTRAINT knox_authtoken_user_id_fkey FOREIGN KEY (user_id) REFERENCES public.auth_user(id)
-);
-
 -- Core business tables
 CREATE TABLE IF NOT EXISTS public.organizations (
   id uuid NOT NULL DEFAULT uuid_generate_v4(),
@@ -341,26 +234,6 @@ CREATE TABLE IF NOT EXISTS public.alert_rules (
   CONSTRAINT alert_rules_zone_id_fkey FOREIGN KEY (zone_id) REFERENCES public.store_zones(id)
 );
 
-CREATE TABLE IF NOT EXISTS public.notification_logs (
-  id uuid NOT NULL DEFAULT uuid_generate_v4(),
-  org_id uuid NOT NULL,
-  store_id uuid NOT NULL,
-  event_id uuid,
-  rule_id uuid,
-  channel notification_channel NOT NULL,
-  destination text,
-  provider text,
-  status text NOT NULL,
-  provider_message_id text,
-  error text,
-  sent_at timestamp with time zone NOT NULL DEFAULT now(),
-  CONSTRAINT notification_logs_pkey PRIMARY KEY (id),
-  CONSTRAINT notification_logs_org_id_fkey FOREIGN KEY (org_id) REFERENCES public.organizations(id),
-  CONSTRAINT notification_logs_store_id_fkey FOREIGN KEY (store_id) REFERENCES public.stores(id),
-  CONSTRAINT notification_logs_event_id_fkey FOREIGN KEY (event_id) REFERENCES public.detection_events(id),
-  CONSTRAINT notification_logs_rule_id_fkey FOREIGN KEY (rule_id) REFERENCES public.alert_rules(id)
-);
-
 CREATE TABLE IF NOT EXISTS public.detection_events (
   id uuid NOT NULL DEFAULT uuid_generate_v4(),
   org_id uuid NOT NULL,
@@ -384,6 +257,26 @@ CREATE TABLE IF NOT EXISTS public.detection_events (
   CONSTRAINT detection_events_store_id_fkey FOREIGN KEY (store_id) REFERENCES public.stores(id),
   CONSTRAINT detection_events_camera_id_fkey FOREIGN KEY (camera_id) REFERENCES public.cameras(id),
   CONSTRAINT detection_events_zone_id_fkey FOREIGN KEY (zone_id) REFERENCES public.store_zones(id)
+);
+
+CREATE TABLE IF NOT EXISTS public.notification_logs (
+  id uuid NOT NULL DEFAULT uuid_generate_v4(),
+  org_id uuid NOT NULL,
+  store_id uuid NOT NULL,
+  event_id uuid,
+  rule_id uuid,
+  channel notification_channel NOT NULL,
+  destination text,
+  provider text,
+  status text NOT NULL,
+  provider_message_id text,
+  error text,
+  sent_at timestamp with time zone NOT NULL DEFAULT now(),
+  CONSTRAINT notification_logs_pkey PRIMARY KEY (id),
+  CONSTRAINT notification_logs_org_id_fkey FOREIGN KEY (org_id) REFERENCES public.organizations(id),
+  CONSTRAINT notification_logs_store_id_fkey FOREIGN KEY (store_id) REFERENCES public.stores(id),
+  CONSTRAINT notification_logs_event_id_fkey FOREIGN KEY (event_id) REFERENCES public.detection_events(id),
+  CONSTRAINT notification_logs_rule_id_fkey FOREIGN KEY (rule_id) REFERENCES public.alert_rules(id)
 );
 
 CREATE TABLE IF NOT EXISTS public.event_media (
@@ -594,8 +487,7 @@ CREATE TABLE IF NOT EXISTS public.user_id_map (
   django_user_id integer NOT NULL UNIQUE,
   user_uuid uuid NOT NULL DEFAULT gen_random_uuid() UNIQUE,
   created_at timestamp with time zone NOT NULL DEFAULT now(),
-  CONSTRAINT user_id_map_pkey PRIMARY KEY (id),
-  CONSTRAINT user_id_map_django_user_id_fkey FOREIGN KEY (django_user_id) REFERENCES public.auth_user(id)
+  CONSTRAINT user_id_map_pkey PRIMARY KEY (id)
 );
 
 CREATE TABLE IF NOT EXISTS public.store_managers (
@@ -607,17 +499,4 @@ CREATE TABLE IF NOT EXISTS public.store_managers (
   updated_at timestamp with time zone,
   CONSTRAINT store_managers_pkey PRIMARY KEY (id),
   CONSTRAINT store_managers_store_id_fkey FOREIGN KEY (store_id) REFERENCES public.stores(id)
-);
-
-CREATE TABLE IF NOT EXISTS public.camera_health (
-  id uuid NOT NULL,
-  last_seen_at timestamp with time zone,
-  fps double precision,
-  lag_ms integer,
-  reconnects integer,
-  error text,
-  updated_at timestamp with time zone NOT NULL,
-  camera_id uuid NOT NULL UNIQUE,
-  CONSTRAINT camera_health_pkey PRIMARY KEY (id),
-  CONSTRAINT camera_health_camera_id_a9c2bc43_fk_cameras_id FOREIGN KEY (camera_id) REFERENCES public.cameras(id)
 );

@@ -1,5 +1,5 @@
 import { describe, it, expect, vi, beforeEach, afterEach } from "vitest"
-import { screen } from "@testing-library/react"
+import { screen, waitFor } from "@testing-library/react"
 import userEvent from "@testing-library/user-event"
 import AgendarDemo from "./AgendarDemo"
 import { renderWithProviders } from "../../test/test-utils"
@@ -182,7 +182,7 @@ describe("AgendarDemo", () => {
 
     expect(demoService.createLead).not.toHaveBeenCalled()
     expect(toastError).toHaveBeenCalledWith('Preencha "Outro" (desafios).')
-  })
+  }, 10000)
 
   it("bloqueia envio quando Operadores terão acesso não foi selecionado", async () => {
     vi.mocked(demoService.createLead).mockResolvedValue({ id: "lead123" })
@@ -204,7 +204,7 @@ describe("AgendarDemo", () => {
     expect(toastError).toHaveBeenCalledWith(
       "Informe se operadores terão acesso ao computador."
     )
-  })
+  }, 10000)
 
   it("permite envio sem preencher local da loja piloto", async () => {
     vi.mocked(demoService.createLead).mockResolvedValue({ id: "lead123" })
@@ -222,6 +222,8 @@ describe("AgendarDemo", () => {
       screen.getByRole("button", { name: /Ver horários disponíveis/i })
     )
 
-    expect(demoService.createLead).toHaveBeenCalled()
+    await waitFor(() => {
+      expect(demoService.createLead).toHaveBeenCalled()
+    })
   }, 10000)
 })

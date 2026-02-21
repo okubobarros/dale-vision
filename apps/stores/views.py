@@ -322,24 +322,63 @@ class StoreViewSet(viewsets.ModelViewSet):
         Retorna credenciais do edge para setup (idempotente; não rotaciona se já existir).
         Apenas owner/admin da store pode acessar.
         """
-        store = self.get_object()
-        _require_store_owner_or_admin(request.user, store)
-        actor_user_id = None
         try:
-            actor_user_id = ensure_user_uuid(request.user)
-        except Exception:
-            actor_user_id = None
-        enforce_can_use_product(
-            org_id=store.org_id,
-            actor_user_id=actor_user_id,
-            action="edge_setup",
-            endpoint=request.path,
-        )
+            store = self.get_object()
+        except Http404:
+            return _error_response(
+                "STORE_NOT_FOUND",
+                "Store not found.",
+                status.HTTP_404_NOT_FOUND,
+                details={"store_id": str(pk)},
+                deprecated_detail="Store not found",
+            )
+        except Exception as exc:
+            trace_id = request.META.get("HTTP_X_REQUEST_ID") or request.META.get("HTTP_X_TRACE_ID")
+            logger.exception("[EDGE_SETUP] failed to resolve store store_id=%s error=%s", str(pk), exc)
+            return _error_response(
+                "INTERNAL_ERROR",
+                "Erro inesperado no servidor. Tente novamente.",
+                status.HTTP_500_INTERNAL_SERVER_ERROR,
+                details={"trace_id": trace_id or "n/a"},
+                deprecated_detail="Erro inesperado no servidor.",
+            )
 
-        edge_token = _get_active_edge_token(store.id)
-        raw_token = edge_token.token_plaintext if edge_token else None
-        if not edge_token:
-            edge_token, raw_token = _issue_edge_token(store.id)
+        try:
+            _require_store_owner_or_admin(request.user, store)
+        except (PermissionDenied, DjangoPermissionDenied) as exc:
+            return _error_response(
+                "FORBIDDEN",
+                str(exc) or "Sem permissão.",
+                status.HTTP_403_FORBIDDEN,
+                details={"store_id": str(store.id)},
+                deprecated_detail=str(exc) or "Sem permissão.",
+            )
+
+        try:
+            edge_token = _get_active_edge_token(store.id)
+            raw_token = edge_token.token_plaintext if edge_token else None
+            if not edge_token or not raw_token:
+                edge_token, raw_token = _issue_edge_token(store.id)
+        except (ProgrammingError, OperationalError) as exc:
+            trace_id = request.META.get("HTTP_X_REQUEST_ID") or request.META.get("HTTP_X_TRACE_ID")
+            logger.exception("[EDGE_SETUP] token error store_id=%s error=%s", str(store.id), exc)
+            return _error_response(
+                "EDGE_TOKEN_ERROR",
+                "Falha ao obter token do Edge.",
+                status.HTTP_500_INTERNAL_SERVER_ERROR,
+                details={"trace_id": trace_id or "n/a"},
+                deprecated_detail="Falha ao obter token do Edge.",
+            )
+        except Exception as exc:
+            trace_id = request.META.get("HTTP_X_REQUEST_ID") or request.META.get("HTTP_X_TRACE_ID")
+            logger.exception("[EDGE_SETUP] unexpected error store_id=%s error=%s", str(store.id), exc)
+            return _error_response(
+                "INTERNAL_ERROR",
+                "Erro inesperado no servidor. Tente novamente.",
+                status.HTTP_500_INTERNAL_SERVER_ERROR,
+                details={"trace_id": trace_id or "n/a"},
+                deprecated_detail="Erro inesperado no servidor.",
+            )
 
         return Response(
             {
@@ -356,26 +395,76 @@ class StoreViewSet(viewsets.ModelViewSet):
         """
         Rotaciona o token do edge explicitamente (desativa tokens ativos anteriores).
         """
-        store = self.get_object()
-        _require_store_owner_or_admin(request.user, store)
-        actor_user_id = None
         try:
-            actor_user_id = ensure_user_uuid(request.user)
-        except Exception:
-            actor_user_id = None
-        enforce_can_use_product(
-            org_id=store.org_id,
-            actor_user_id=actor_user_id,
-            action="edge_token_rotate",
-            endpoint=request.path,
-        )
+            store = self.get_object()
+        except Http404:
+            return _error_response(
+                "STORE_NOT_FOUND",
+                "Store not found.",
+                status.HTTP_404_NOT_FOUND,
+                details={"store_id": str(pk)},
+                deprecated_detail="Store not found",
+            )
+        except Exception as exc:
+            trace_id = request.META.get("HTTP_X_REQUEST_ID") or request.META.get("HTTP_X_TRACE_ID")
+            logger.exception("[EDGE_TOKEN_ROTATE] failed to resolve store store_id=%s error=%s", str(pk), exc)
+            return _error_response(
+                "INTERNAL_ERROR",
+                "Erro inesperado no servidor. Tente novamente.",
+                status.HTTP_500_INTERNAL_SERVER_ERROR,
+                details={"trace_id": trace_id or "n/a"},
+                deprecated_detail="Erro inesperado no servidor.",
+            )
 
-        edge_token, raw_token = _rotate_edge_token(store.id)
+        try:
+            _require_store_owner_or_admin(request.user, store)
+        except (PermissionDenied, DjangoPermissionDenied) as exc:
+            return _error_response(
+                "FORBIDDEN",
+                str(exc) or "Sem permissão.",
+                status.HTTP_403_FORBIDDEN,
+                details={"store_id": str(store.id)},
+                deprecated_detail=str(exc) or "Sem permissão.",
+            )
+
+        try:
+            edge_token, raw_token = _rotate_edge_token(store.id)
+        except (ProgrammingError, OperationalError) as exc:
+            trace_id = request.META.get("HTTP_X_REQUEST_ID") or request.META.get("HTTP_X_TRACE_ID")
+            logger.exception("[EDGE_TOKEN_ROTATE] token error store_id=%s error=%s", str(store.id), exc)
+            return _error_response(
+                "EDGE_TOKEN_ERROR",
+                "Falha ao gerar novo token do Edge.",
+                status.HTTP_500_INTERNAL_SERVER_ERROR,
+                details={"trace_id": trace_id or "n/a"},
+                deprecated_detail="Falha ao gerar novo token do Edge.",
+            )
+        except Exception as exc:
+            trace_id = request.META.get("HTTP_X_REQUEST_ID") or request.META.get("HTTP_X_TRACE_ID")
+            logger.exception("[EDGE_TOKEN_ROTATE] unexpected error store_id=%s error=%s", str(store.id), exc)
+            return _error_response(
+                "INTERNAL_ERROR",
+                "Erro inesperado no servidor. Tente novamente.",
+                status.HTTP_500_INTERNAL_SERVER_ERROR,
+                details={"trace_id": trace_id or "n/a"},
+                deprecated_detail="Erro inesperado no servidor.",
+            )
+
+        if not raw_token:
+            trace_id = request.META.get("HTTP_X_REQUEST_ID") or request.META.get("HTTP_X_TRACE_ID")
+            return _error_response(
+                "EDGE_TOKEN_ERROR",
+                "Falha ao gerar novo token do Edge.",
+                status.HTTP_500_INTERNAL_SERVER_ERROR,
+                details={"trace_id": trace_id or "n/a"},
+                deprecated_detail="Falha ao gerar novo token do Edge.",
+            )
+
         return Response(
             {
                 "store_id": str(store.id),
                 "edge_token": raw_token,
-                "rotated": True,
+                "rotated_at": timezone.now().isoformat(),
                 **_edge_token_meta(edge_token),
             }
         )

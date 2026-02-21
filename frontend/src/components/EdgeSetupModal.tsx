@@ -25,7 +25,7 @@ type EdgeStatusPayload = {
 }
 
 type ApiErrorLike = {
-  response?: { status?: number; data?: { detail?: string } }
+  response?: { status?: number; data?: unknown }
   message?: string
   code?: string
 }
@@ -42,6 +42,44 @@ const getApiError = (err: unknown): ApiErrorLike => {
     return err as ApiErrorLike
   }
   return {}
+}
+
+const formatApiError = (err: unknown) => {
+  const apiErr = getApiError(err)
+  const data = apiErr.response?.data
+  if (data && typeof data === "object" && !Array.isArray(data)) {
+    const payload = data as {
+      message?: string
+      detail?: string
+      details?: Record<string, unknown>
+    }
+    const message = payload.message || payload.detail
+    const details = payload.details
+    const detailSummary =
+      details && typeof details === "object" && !Array.isArray(details)
+        ? Object.entries(details)
+            .map(([key, value]) => {
+              if (Array.isArray(value)) {
+                return `${key}: ${value.join(", ")}`
+              }
+              if (typeof value === "string") {
+                return `${key}: ${value}`
+              }
+              return key
+            })
+            .join(" | ")
+        : ""
+    return {
+      message,
+      detailSummary,
+      isJson: true,
+    }
+  }
+  return {
+    message: apiErr.message,
+    detailSummary: "",
+    isJson: false,
+  }
 }
 
 const formatRelativeTime = (iso?: string | null) => {
@@ -223,14 +261,21 @@ const EdgeSetupModal = ({ open, onClose, defaultStoreId }: EdgeSetupModalProps) 
         }
       } catch (err) {
         const apiErr = getApiError(err)
+        const formatted = formatApiError(err)
         setEdgeToken("")
         setAgentId(DEFAULT_AGENT_ID)
         setCloudBaseUrl(DEFAULT_CLOUD_BASE_URL)
-        setSetupError(
-          apiErr.response?.data?.detail ||
-            apiErr.message ||
-            "Falha ao obter credenciais do edge."
-        )
+        if (!formatted.isJson && apiErr.response?.data) {
+          if (import.meta.env.DEV) {
+            console.warn("[EdgeSetup] HTML error body", apiErr.response.data)
+          }
+          setSetupError("Erro inesperado no servidor. Tente novamente.")
+          return
+        }
+        const message =
+          formatted.message || "Falha ao obter credenciais do edge."
+        const details = formatted.detailSummary
+        setSetupError(details ? `${message} (${details})` : message)
       } finally {
         setLoadingCreds(false)
       }
@@ -409,11 +454,17 @@ const EdgeSetupModal = ({ open, onClose, defaultStoreId }: EdgeSetupModalProps) 
       return nextToken
     } catch (err) {
       const apiErr = getApiError(err)
-      setSetupError(
-        apiErr.response?.data?.detail ||
-          apiErr.message ||
-          "Falha ao gerar novo token."
-      )
+      const formatted = formatApiError(err)
+      if (!formatted.isJson && apiErr.response?.data) {
+        if (import.meta.env.DEV) {
+          console.warn("[EdgeSetup] HTML error body", apiErr.response.data)
+        }
+        setSetupError("Erro inesperado no servidor. Tente novamente.")
+        return null
+      }
+      const message = formatted.message || "Falha ao gerar novo token."
+      const details = formatted.detailSummary
+      setSetupError(details ? `${message} (${details})` : message)
       return null
     } finally {
       setRotatingToken(false)
@@ -488,6 +539,7 @@ const EdgeSetupModal = ({ open, onClose, defaultStoreId }: EdgeSetupModalProps) 
       startPolling()
     } catch (err) {
       const apiErr = getApiError(err)
+      const formatted = formatApiError(err)
       const status = apiErr.response?.status
       const msg = String(apiErr.message || "").toLowerCase()
       const isTimeout = apiErr.code === "ECONNABORTED" || msg.includes("timeout")
@@ -499,11 +551,12 @@ const EdgeSetupModal = ({ open, onClose, defaultStoreId }: EdgeSetupModalProps) 
       } else if (isTimeout) {
         setValidationError("Timeout ao validar conexão. Tente novamente.")
       } else {
-        setValidationError(
-          apiErr.response?.data?.detail ||
-            apiErr.message ||
-            "Falha ao validar. Verifique a loja e a API."
-        )
+        const message =
+          formatted.message ||
+          apiErr.message ||
+          "Falha ao validar. Verifique a loja e a API."
+        const details = formatted.detailSummary
+        setValidationError(details ? `${message} (${details})` : message)
       }
     } finally {
       setValidating(false)
@@ -724,15 +777,13 @@ const EdgeSetupModal = ({ open, onClose, defaultStoreId }: EdgeSetupModalProps) 
               <div className="mt-3 space-y-2 text-xs text-gray-600">
                 {canDownload ? (
                   <div>
-                    Download:{" "}
-                    <a
-                      href={downloadUrl}
-                      target="_blank"
-                      rel="noreferrer"
-                      className="text-blue-700 hover:underline"
+                    <button
+                      type="button"
+                      onClick={() => window.open(downloadUrl, "_blank", "noopener,noreferrer")}
+                      className="inline-flex items-center justify-center rounded-lg bg-blue-600 px-3 py-1.5 text-xs font-semibold text-white hover:bg-blue-700"
                     >
                       Baixar Edge Agent
-                    </a>
+                    </button>
                   </div>
                 ) : (
                   <div className="text-amber-700">
@@ -759,6 +810,19 @@ const EdgeSetupModal = ({ open, onClose, defaultStoreId }: EdgeSetupModalProps) 
                   <span className="font-mono">Install_Agent_Service</span>.
                 </div>
               </div>
+              <button
+                type="button"
+                onClick={handleConfirmDownload}
+                disabled={!isStoreSelected}
+                className={`mt-3 ${primaryCtaClass}`}
+              >
+                Já baixei e extraí
+              </button>
+              {downloadConfirmed && (
+                <div className="mt-2 text-xs text-green-600 font-semibold">
+                  Download confirmado
+                </div>
+              )}
             </div>
 
             <div className={step3Enabled ? "rounded-xl border border-gray-200 bg-gray-50 p-4" : "rounded-xl border border-gray-200 bg-gray-50 p-4 opacity-60 pointer-events-none"}>
@@ -1027,26 +1091,6 @@ const EdgeSetupModal = ({ open, onClose, defaultStoreId }: EdgeSetupModalProps) 
           </div>
         </div>
 
-        <div className="border-t bg-white px-5 py-4">
-          <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3">
-            <div className="text-xs text-gray-500">
-              Confirme o download e extração para liberar o restante do passo a passo.
-            </div>
-            <button
-              type="button"
-              onClick={handleConfirmDownload}
-              disabled={!isStoreSelected}
-              className={primaryCtaClass}
-            >
-              Já baixei e extraí
-            </button>
-          </div>
-          {downloadConfirmed && (
-            <div className="mt-2 text-xs text-green-600 font-semibold">
-              Download confirmado
-            </div>
-          )}
-        </div>
       </div>
     </div>
   )

@@ -125,7 +125,7 @@ const omitEmpty = <T extends Record<string, unknown>>(payload: T): Partial<T> =>
 };
 
 type ApiErrorLike = {
-  response?: { status?: number; data?: { detail?: string; code?: string; message?: string; upgrade_url?: string } };
+  response?: { status?: number; data?: { detail?: string; code?: string; message?: string; details?: unknown; upgrade_url?: string } };
   message?: string;
   code?: string;
 };
@@ -141,7 +141,9 @@ const normalizeApiError = (error: unknown, fallbackMessage: string) => {
   (normalized as ApiErrorLike).response = {
     status: err.response?.status,
     data: {
+      message: err.response?.data?.message,
       detail,
+      details: err.response?.data?.details,
       code: err.response?.data?.code,
       upgrade_url: err.response?.data?.upgrade_url,
     },
