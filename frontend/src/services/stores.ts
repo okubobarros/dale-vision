@@ -390,7 +390,7 @@ export const storesService = {
       employees_count,
       cameras_count,
     });
-    const response = await api.put(`/v1/stores/${storeId}/`, payload);
+    const response = await api.patch(`/v1/stores/${storeId}/`, payload);
     return response.data;
   },
 

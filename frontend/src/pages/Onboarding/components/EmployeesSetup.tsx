@@ -9,7 +9,7 @@ export type EmployeeDraft = {
   email: string
 }
 
-const ROLES = ["Gerente", "Caixa", "Vendedor", "Segurança", "Estoque", "Outro"]
+const ROLES = ["Proprietário", "Gerente", "Caixa", "Vendedor", "Segurança", "Estoque", "Outro"]
 
 function isValidEmail(email: string) {
   return /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email.trim())

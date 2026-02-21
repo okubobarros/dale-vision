@@ -66,30 +66,7 @@ export default function StoresSetup({
     
 
     <div className="space-y-8">
-      
-      {/* Summary */}
-      <div className="rounded-3xl border border-slate-200 bg-white/70 p-6 space-y-4 shadow-[0_18px_50px_rgba(15,23,42,0.06)]">
-        <div className="text-sm text-slate-500">Resumo do fluxo</div>
 
-        <div className="rounded-2xl border border-slate-200 bg-white p-4">
-          <div className="text-sm text-slate-500">Etapa 2</div>
-          <div className="text-lg font-bold text-slate-900">Loja</div>
-        </div>
-
-        <div className="rounded-2xl border border-slate-200 bg-white p-4">
-          <div className="text-sm text-slate-500">Etapa 3</div>
-          <div className="text-lg font-bold text-slate-900">Equipe</div>
-          <div className="text-xs text-slate-500 mt-1">Opcional</div>
-        </div>
-
-        <div className="rounded-2xl border border-slate-200 bg-white p-4">
-          <div className="text-sm text-slate-500">Etapa 4</div>
-          <div className="text-lg font-bold text-slate-900">Ativação (Edge)</div>
-          <div className="text-xs text-slate-500 mt-1">
-            Vamos conectar o Edge Agent à sua loja.
-          </div>
-        </div>
-      </div>
 
       <div>
         <h3 className="text-xl sm:text-2xl font-extrabold text-slate-900">Loja (obrigatório)</h3>
@@ -98,9 +75,9 @@ export default function StoresSetup({
         </p>
       </div>
 
-      <div className="grid grid-cols-1 lg:grid-cols-3 gap-8">
+      <div className="grid grid-cols-1 gap-8">
         {/* Form */}
-        <div className="lg:col-span-2 space-y-5 rounded-3xl border border-slate-200 bg-white/70 p-6 shadow-[0_18px_50px_rgba(15,23,42,0.08)]">
+        <div className="space-y-5 rounded-3xl border border-slate-200 bg-white/70 p-6 shadow-[0_18px_50px_rgba(15,23,42,0.08)]">
           <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
             <Field label="Nome da Loja *" error={touched ? errors.name : ""}>
               <input

@@ -286,6 +286,7 @@ class StoreViewSet(viewsets.ModelViewSet):
                 status.HTTP_403_FORBIDDEN,
                 deprecated_detail=str(exc) or "Sem permissão.",
             )
+        kwargs["partial"] = True
         return super().update(request, *args, **kwargs)
 
     def partial_update(self, request, *args, **kwargs):

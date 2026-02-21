@@ -1,4 +1,4 @@
-type Step = 1 | 2 | 3 | 4
+type Step = 1 | 2 | 3 | 4 | 5
 
 export default function SetupProgress({
   step,
@@ -13,10 +13,11 @@ export default function SetupProgress({
     { n: 1, label: "Conta" },
     { n: 2, label: "Loja" },
     { n: 3, label: "Equipe" },
-    { n: 4, label: "Ativação (Edge)" },
+    { n: 4, label: "Ativação da Loja" },
+    { n: 5, label: "Conexão Câmeras" },
   ] as const
 
-  const pct = Math.round((step / 4) * 100)
+  const pct = Math.round((step / 5) * 100)
 
   const isDone = (n: number) => n < step
   const isActive = (n: number) => n === step
@@ -24,7 +25,7 @@ export default function SetupProgress({
   return (
     <div className={className}>
       <div className="flex items-center justify-between text-[11px] text-slate-500">
-        <span className="font-medium text-slate-700">Etapa {step} de 4</span>
+        <span className="font-medium text-slate-700">Etapa {step} de 5</span>
         <span>{titleRight || steps[step - 1].label}</span>
       </div>
 
@@ -35,7 +36,7 @@ export default function SetupProgress({
         />
       </div>
 
-      <div className="mt-3 grid grid-cols-4 gap-2 text-[11px]">
+      <div className="mt-3 grid grid-cols-5 gap-2 text-[11px]">
         {steps.map((s) => (
           <div key={s.n} className="flex items-center gap-2">
             <span

@@ -122,7 +122,14 @@ export default function Onboarding() {
       if (employeesTotal.trim()) {
         const totalNumber = Number(employeesTotal)
         if (!Number.isNaN(totalNumber)) {
-          await storesService.updateStore(storeId, { employees_count: totalNumber })
+          try {
+            await storesService.updateStore(storeId, { employees_count: totalNumber })
+          } catch (error) {
+            console.error("[Onboarding] update store employees_count failed", error)
+            setEmployeesError(
+              "Não foi possível salvar o total de funcionários agora. Você pode atualizar depois."
+            )
+          }
         }
       }
 
