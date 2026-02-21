@@ -20,6 +20,8 @@ export default function EmployeesSetup({
   onChange,
   onPrev,
   onNext,
+  employeesTotal,
+  onEmployeesTotalChange,
   isSubmitting = false,
   submitError = "",
 }: {
@@ -27,6 +29,8 @@ export default function EmployeesSetup({
   onChange: (v: EmployeeDraft[]) => void
   onPrev: () => void
   onNext: (employees: EmployeeDraft[]) => Promise<void>
+  employeesTotal: string
+  onEmployeesTotalChange: (value: string) => void
   isSubmitting?: boolean
   submitError?: string
 }) {
@@ -35,6 +39,7 @@ export default function EmployeesSetup({
   const [roleOther, setRoleOther] = useState("")
   const [email, setEmail] = useState("")
   const [touched, setTouched] = useState(false)
+  const [totalTouched, setTotalTouched] = useState(false)
 
   const errors = useMemo(() => {
     const e: Record<string, string> = {}
@@ -47,6 +52,13 @@ export default function EmployeesSetup({
 
     return e
   }, [name, role, roleOther, email])
+
+  const totalError = useMemo(() => {
+    if (!employeesTotal.trim()) return ""
+    if (Number.isNaN(Number(employeesTotal))) return "Informe um número válido."
+    if (Number(employeesTotal) < 0) return "Informe um número positivo."
+    return ""
+  }, [employeesTotal])
 
   // ✅ Pode adicionar mesmo sem email
   const canAdd = Object.keys(errors).length === 0
@@ -78,6 +90,10 @@ export default function EmployeesSetup({
 
   async function handleNext() {
     if (isSubmitting) return
+    if (totalError) {
+      setTotalTouched(true)
+      return
+    }
     await onNext(employees)
   }
 
@@ -88,6 +104,24 @@ export default function EmployeesSetup({
         <p className="text-slate-500 mt-1">
           Adicionar funcionários ajuda nos relatórios — mas você pode fazer isso depois.
         </p>
+      </div>
+
+      <div className="rounded-3xl border border-slate-200 bg-white/70 p-6 space-y-3 shadow-[0_18px_50px_rgba(15,23,42,0.08)]">
+        <h4 className="font-semibold text-slate-900">Quantidade total de funcionários na loja</h4>
+        <div>
+          <label className="text-sm font-medium text-slate-700">Funcionários (total)</label>
+          <input
+            className="mt-2 w-full rounded-2xl border border-slate-200 bg-white px-4 py-3 outline-none text-slate-900 placeholder:text-slate-400
+                       focus:ring-4 focus:ring-cyan-100 focus:border-cyan-300 transition"
+            placeholder="Ex: 12"
+            value={employeesTotal}
+            onChange={(e) => onEmployeesTotalChange(e.target.value)}
+            onBlur={() => setTotalTouched(true)}
+            disabled={isSubmitting}
+            inputMode="numeric"
+          />
+          {totalTouched && totalError && <p className="mt-2 text-xs text-red-600">{totalError}</p>}
+        </div>
       </div>
 
       <div className="rounded-3xl border border-slate-200 bg-white/70 p-6 space-y-4 shadow-[0_18px_50px_rgba(15,23,42,0.08)]">

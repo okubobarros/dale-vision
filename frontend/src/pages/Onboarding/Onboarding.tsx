@@ -20,6 +20,7 @@ export default function Onboarding() {
   const [storeId, setStoreId] = useState<string | null>(null)
   const [storeSaving, setStoreSaving] = useState(false)
   const [storeError, setStoreError] = useState("")
+  const [employeesTotal, setEmployeesTotal] = useState("")
   const [employeesSaving, setEmployeesSaving] = useState(false)
   const [employeesError, setEmployeesError] = useState("")
 
@@ -53,13 +54,10 @@ export default function Onboarding() {
         city: draft.city,
         state: draft.state,
         business_type: draft.businessType || undefined,
-        business_type_other: draft.businessTypeOther || undefined,
         pos_system: draft.posSystem || undefined,
-        pos_other: draft.posOther || undefined,
         hours_weekdays: draft.hoursWeekdays || undefined,
         hours_saturday: draft.hoursSaturday || undefined,
         hours_sunday_holiday: draft.hoursSundayHoliday || undefined,
-        employees_count: draft.employeesCount ? Number(draft.employeesCount) : undefined,
         cameras_count: draft.camerasCount ? Number(draft.camerasCount) : undefined,
       })
       if (!created?.id) {
@@ -100,23 +98,39 @@ export default function Onboarding() {
           Outro: "other",
         }
 
-        const payload = list.map((e) => ({
-          store_id: storeId,
-          full_name: e.name.trim(),
-          email: e.email?.trim() || undefined,
-          role: roleMap[e.role] ?? "other",
-          role_other:
-            e.role === "Outro" ? (e.roleOther.trim() || undefined) : undefined,
-        }))
+        const payload = list
+          .map((e) => ({
+            store_id: storeId,
+            full_name: e.name.trim(),
+            email: e.email?.trim() || undefined,
+            role: roleMap[e.role] ?? undefined,
+            role_other:
+              e.role === "Outro" ? (e.roleOther.trim() || undefined) : undefined,
+          }))
+          .filter((e) => e.full_name && e.role)
 
-        await employeesService.createEmployees(payload)
+        try {
+          await employeesService.createEmployees(payload)
+        } catch (error) {
+          console.error("[Onboarding] create employees failed", error)
+          setEmployeesError(
+            "Alguns funcionários não puderam ser salvos. Você pode tentar novamente depois."
+          )
+        }
+      }
+
+      if (employeesTotal.trim()) {
+        const totalNumber = Number(employeesTotal)
+        if (!Number.isNaN(totalNumber)) {
+          await storesService.updateStore(storeId, { employees_count: totalNumber })
+        }
       }
 
       localStorage.setItem("demo_onboarding", JSON.stringify({ store, storeId, employees: list }))
       navigate("/app/dashboard?openEdgeSetup=1", { replace: true })
     } catch (error) {
-      console.error("[Onboarding] create employees failed", error)
-      setEmployeesError("Não foi possível salvar a equipe. Tente novamente.")
+      console.error("[Onboarding] onboarding completion failed", error)
+      setEmployeesError("Não foi possível concluir o onboarding. Tente novamente.")
     } finally {
       setEmployeesSaving(false)
     }
@@ -147,14 +161,16 @@ export default function Onboarding() {
             )}
 
             {step === 2 && (
-              <EmployeesSetup
-                employees={employees}
-                onChange={setEmployees}
-                onPrev={handlePrev}
-                onNext={handleComplete}
-                isSubmitting={employeesSaving}
-                submitError={employeesError}
-              />
+      <EmployeesSetup
+        employees={employees}
+        onChange={setEmployees}
+        onPrev={handlePrev}
+        onNext={handleComplete}
+        isSubmitting={employeesSaving}
+        submitError={employeesError}
+        employeesTotal={employeesTotal}
+        onEmployeesTotalChange={setEmployeesTotal}
+      />
             )}
           </div>
         </div>

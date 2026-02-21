@@ -14,6 +14,9 @@ export type EmployeeCreatePayload = {
 
 export const employeesService = {
   async createEmployees(payload: EmployeeCreatePayload[]): Promise<EmployeeCreatePayload[]> {
+    if (!payload.length) {
+      return []
+    }
     const response = await api.post("/v1/employees/", payload)
     return response.data
   },
