@@ -599,7 +599,20 @@ class StoreViewSet(viewsets.ModelViewSet):
                     details=details,
                     deprecated_detail=message or "Trial expirado. Assinatura necessária.",
                 )
-            raise
+            logger.exception(
+                "[STORE] cameras create entitlement error store_id=%s org_id=%s user_id=%s payload=%s",
+                str(store.id),
+                str(getattr(store, "org_id", None)),
+                getattr(request.user, "id", None),
+                _sanitize_camera_payload(request.data),
+            )
+            return _error_response(
+                "INTERNAL_ERROR",
+                "Erro inesperado ao validar assinatura.",
+                status.HTTP_500_INTERNAL_SERVER_ERROR,
+                details={"reason": str(exc)[:200]},
+                deprecated_detail="Erro inesperado ao validar assinatura.",
+            )
         serializer = CameraSerializer(data=request.data)
         try:
             serializer.is_valid(raise_exception=True)
@@ -641,7 +654,29 @@ class StoreViewSet(viewsets.ModelViewSet):
             )
 
         now = timezone.now()
-        camera = serializer.save(store=store, created_at=now, updated_at=now)
+        try:
+            camera = serializer.save(
+                store=store,
+                created_at=now,
+                updated_at=now,
+                status="unknown",
+                last_error=None,
+            )
+        except Exception as exc:
+            logger.exception(
+                "[STORE] cameras create failed store_id=%s org_id=%s user_id=%s payload=%s",
+                str(store.id),
+                str(getattr(store, "org_id", None)),
+                getattr(request.user, "id", None),
+                _sanitize_camera_payload(request.data),
+            )
+            return _error_response(
+                "CAMERA_CREATE_FAILED",
+                "Não foi possível cadastrar a câmera.",
+                status.HTTP_500_INTERNAL_SERVER_ERROR,
+                details={"reason": str(exc)[:200]},
+                deprecated_detail="Não foi possível cadastrar a câmera.",
+            )
         try:
             OnboardingProgressService(str(store.org_id)).complete_step(
                 "camera_added",
