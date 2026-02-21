@@ -198,9 +198,14 @@ const AuthCallback: React.FC = () => {
                 setupError.code === "ECONNABORTED" ||
                 String(setupError.message || "").toLowerCase().includes("timeout")
               ) {
-                throw new Error("Não foi possível confirmar seu acesso a tempo.")
+                console.warn("[AuthCallback] setup-state timeout, continuing with onboarding fallback")
+                setupState = { state: "no_store" }
+              } else if (!statusCode) {
+                console.warn("[AuthCallback] setup-state network error, continuing with onboarding fallback")
+                setupState = { state: "no_store" }
+              } else {
+                throw new Error("Não foi possível verificar seu acesso.")
               }
-              throw new Error("Não foi possível verificar seu acesso.")
             }
           } else {
             throw setupError
