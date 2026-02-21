@@ -8,6 +8,7 @@ from rest_framework.response import Response
 from rest_framework.views import APIView
 
 from apps.core.models import Camera, CameraHealthLog, Store, OrgMember
+from apps.cameras.permissions import get_user_role_for_store, ALLOWED_READ_ROLES
 from apps.edge.models import EdgeEventReceipt
 from apps.core.services.onboarding_progress import OnboardingProgressService
 
@@ -20,27 +21,8 @@ _CAMERA_ACTIVE_COLUMN_EXISTS = None
 def _user_has_store_access(user, store_id) -> bool:
     if getattr(user, "is_superuser", False) or getattr(user, "is_staff", False):
         return True
-    store_row = Store.objects.filter(id=store_id).values("org_id").first()
-    if not store_row:
-        return False
-    with connection.cursor() as cursor:
-        cursor.execute(
-            "SELECT user_uuid FROM public.user_id_map WHERE django_user_id = %s",
-            [user.id],
-        )
-        row = cursor.fetchone()
-        if row and row[0]:
-            user_uuid = row[0]
-        else:
-            cursor.execute(
-                "INSERT INTO public.user_id_map (django_user_id) VALUES (%s) RETURNING user_uuid",
-                [user.id],
-            )
-            user_uuid = cursor.fetchone()[0]
-    return OrgMember.objects.filter(
-        org_id=store_row["org_id"],
-        user_id=user_uuid,
-    ).exists()
+    role = get_user_role_for_store(user, str(store_id))
+    return role in ALLOWED_READ_ROLES
 
 
 def classify_age(dt):
@@ -181,19 +163,15 @@ def compute_store_edge_status_snapshot(store_id):
         last_heartbeat = _get_last_heartbeat(store_id)
         hb_status, hb_age_seconds, hb_reason = classify_age(last_heartbeat)
 
-        edge_heartbeat_at = None
-        edge_agent_id = None
-        edge_version = None
-        edge_online = None
+        edge_heartbeat_at, edge_agent_id, edge_version = _get_edge_heartbeat_fallback(store_id)
+        edge_online = False
+        edge_age_seconds = None
+        if edge_heartbeat_at:
+            edge_age_seconds = int((timezone.now() - edge_heartbeat_at).total_seconds())
+            edge_online = edge_age_seconds <= EDGE_ONLINE_THRESHOLD_SECONDS
 
         if cameras_total == 0:
-            edge_heartbeat_at, edge_agent_id, edge_version = _get_edge_heartbeat_fallback(store_id)
-            edge_online = False
-            edge_age_seconds = None
             last_heartbeat = edge_heartbeat_at
-            if edge_heartbeat_at:
-                edge_age_seconds = int((timezone.now() - edge_heartbeat_at).total_seconds())
-                edge_online = edge_age_seconds <= EDGE_ONLINE_THRESHOLD_SECONDS
             store_status = "online_no_cameras" if edge_online else "offline"
             store_status_reason = "no_cameras"
             store_status_age_seconds = edge_age_seconds
@@ -205,8 +183,14 @@ def compute_store_edge_status_snapshot(store_id):
                 store_status = "online"
                 store_status_reason = "all_cameras_online"
         else:
-            store_status = hb_status
-            store_status_reason = hb_reason
+            if edge_online:
+                store_status = "online"
+                store_status_reason = "edge_heartbeat_only"
+                last_heartbeat = edge_heartbeat_at
+                store_status_age_seconds = edge_age_seconds
+            else:
+                store_status = hb_status
+                store_status_reason = hb_reason
 
         if cameras_total != 0:
             if last_heartbeat:

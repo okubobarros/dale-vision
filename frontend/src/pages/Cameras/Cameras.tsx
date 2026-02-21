@@ -107,6 +107,15 @@ const Cameras = () => {
     return ""
   }, [selectedStoreOverride, stores])
 
+  const selectedStoreItem = useMemo(
+    () => (stores ?? []).find((s) => s.id === selectedStore) ?? null,
+    [stores, selectedStore]
+  )
+  const selectedStoreRole = selectedStoreItem?.role ?? null
+  const canManageStore = selectedStoreRole
+    ? ["owner", "admin", "manager"].includes(selectedStoreRole)
+    : true
+
   const edgeSetupLink = useMemo(() => {
     if (!origin) return ""
     const params = new URLSearchParams()
@@ -294,6 +303,12 @@ const Cameras = () => {
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ["store-cameras", selectedStore] })
       queryClient.invalidateQueries({ queryKey: ["store-limits", selectedStore] })
+      if (testingCameraId) {
+        stopTestPolling()
+        setTestingCameraId(null)
+        setTestMessage(null)
+        setTestError(null)
+      }
       toast.success("Câmera removida")
     },
     onError: () => toast.error("Falha ao remover câmera."),
@@ -308,6 +323,10 @@ const Cameras = () => {
       : false
 
   const openCreateModal = useCallback(() => {
+    if (!canManageStore) {
+      toast.error("Você não tem permissão para adicionar câmeras nesta loja.")
+      return
+    }
     setEditingCamera(null)
     setCameraModalOpen(true)
     setCreateErrorMessage(null)
@@ -315,9 +334,14 @@ const Cameras = () => {
     setCreateErrorFields({})
     setShowUpgradeCta(false)
     setConnectionHelpOpen(false)
-  }, [])
+  }, [canManageStore])
 
-  const openEditModal = useCallback((camera: Camera) => {
+  const openEditModal = useCallback(
+    (camera: Camera) => {
+      if (!canManageStore) {
+        toast.error("Você não tem permissão para editar câmeras nesta loja.")
+        return
+      }
     setEditingCamera(camera)
     setCameraModalOpen(true)
     setCreateErrorMessage(null)
@@ -325,7 +349,9 @@ const Cameras = () => {
     setCreateErrorFields({})
     setShowUpgradeCta(false)
     setConnectionHelpOpen(false)
-  }, [])
+    },
+    [canManageStore]
+  )
 
   const handleDelete = useCallback(
     (cameraId: string) => {
@@ -402,8 +428,13 @@ const Cameras = () => {
             setTestError(latest.last_error || "Falha ao conectar na câmera.")
             return
           }
-        } catch {
-          // ignore errors during polling
+        } catch (err) {
+          const status = (err as { response?: { status?: number } })?.response?.status
+          if (status === 404) {
+            stopTestPolling()
+            setTestingCameraId(null)
+            setTestError("Câmera não encontrada. Atualize a lista.")
+          }
         }
       }, 5000)
     },
@@ -415,7 +446,11 @@ const Cameras = () => {
       setTestError(null)
       setTestMessage(null)
       try {
-        await camerasService.testConnection(cameraId)
+        const result = await camerasService.testConnection(cameraId)
+        if (result.queued || result.status === 202) {
+          toast.success("Teste iniciado. Aguardando resposta do Edge...")
+          setTestMessage("Teste iniciado. Aguardando resposta do Edge...")
+        }
         startTestPolling(cameraId)
       } catch (err) {
         const detail = (err as { message?: string })?.message
@@ -519,7 +554,12 @@ const Cameras = () => {
                 <button
                   type="button"
                   onClick={() => setEdgeSetupOpen(true)}
-                  className="inline-flex w-full sm:w-auto items-center justify-center rounded-lg bg-blue-600 px-4 py-2 text-sm font-semibold text-white hover:bg-blue-700"
+                  disabled={!canManageStore}
+                  className={`inline-flex w-full sm:w-auto items-center justify-center rounded-lg px-4 py-2 text-sm font-semibold text-white ${
+                    !canManageStore
+                      ? "bg-gray-300 cursor-not-allowed"
+                      : "bg-blue-600 hover:bg-blue-700"
+                  }`}
                 >
                   Abrir Edge Setup
                 </button>
@@ -533,9 +573,9 @@ const Cameras = () => {
                   <button
                     type="button"
                     onClick={openCreateModal}
-                    disabled={limitReached}
+                    disabled={limitReached || !canManageStore}
                     className={`inline-flex items-center justify-center rounded-lg px-4 py-2 text-sm font-semibold text-white ${
-                      limitReached
+                      limitReached || !canManageStore
                         ? "bg-gray-300 cursor-not-allowed"
                         : "bg-blue-600 hover:bg-blue-700"
                     }`}
@@ -575,18 +615,25 @@ const Cameras = () => {
                     }`
                   : `${camerasUsed} câmeras cadastradas`}
               </p>
+              {!canManageStore && (
+                <p className="text-xs text-amber-700 mt-2">
+                  Acesso somente leitura. Você não pode editar ou testar câmeras nesta loja.
+                </p>
+              )}
             </div>
             <button
               type="button"
               onClick={openCreateModal}
-              disabled={limitReached}
+              disabled={limitReached || !canManageStore}
               title={
                 limitReached
                   ? "Limite de câmeras do trial atingido."
+                  : !canManageStore
+                  ? "Sem permissão para adicionar câmera."
                   : "Adicionar câmera"
               }
               className={`inline-flex w-full sm:w-auto items-center justify-center rounded-lg px-4 py-2 text-sm font-semibold text-white ${
-                limitReached
+                limitReached || !canManageStore
                   ? "bg-gray-300 cursor-not-allowed"
                   : "bg-blue-600 hover:bg-blue-700"
               }`}
@@ -662,28 +709,48 @@ const Cameras = () => {
                     <button
                       type="button"
                       onClick={() => openEditModal(camera)}
-                      className="rounded-lg border border-gray-200 px-3 py-1.5 text-xs font-semibold text-gray-700 hover:bg-gray-50"
+                      disabled={!canManageStore}
+                      className={`rounded-lg border px-3 py-1.5 text-xs font-semibold ${
+                        !canManageStore
+                          ? "border-gray-200 text-gray-400 cursor-not-allowed"
+                          : "border-gray-200 text-gray-700 hover:bg-gray-50"
+                      }`}
                     >
                       Editar
                     </button>
                     <button
                       type="button"
                       onClick={() => handleTestConnection(camera.id)}
-                      className="rounded-lg border border-emerald-200 px-3 py-1.5 text-xs font-semibold text-emerald-700 hover:bg-emerald-50"
+                      disabled={!canManageStore}
+                      className={`rounded-lg border px-3 py-1.5 text-xs font-semibold ${
+                        !canManageStore
+                          ? "border-emerald-100 text-emerald-300 cursor-not-allowed"
+                          : "border-emerald-200 text-emerald-700 hover:bg-emerald-50"
+                      }`}
                     >
                       Testar conexão
                     </button>
                     <button
                       type="button"
                       onClick={() => setRoiCamera(camera)}
-                      className="rounded-lg border border-blue-200 px-3 py-1.5 text-xs font-semibold text-blue-700 hover:bg-blue-50"
+                      disabled={!canManageStore}
+                      className={`rounded-lg border px-3 py-1.5 text-xs font-semibold ${
+                        !canManageStore
+                          ? "border-blue-100 text-blue-300 cursor-not-allowed"
+                          : "border-blue-200 text-blue-700 hover:bg-blue-50"
+                      }`}
                     >
                       ROI
                     </button>
                     <button
                       type="button"
                       onClick={() => handleDelete(camera.id)}
-                      className="rounded-lg border border-red-200 px-3 py-1.5 text-xs font-semibold text-red-700 hover:bg-red-50"
+                      disabled={!canManageStore}
+                      className={`rounded-lg border px-3 py-1.5 text-xs font-semibold ${
+                        !canManageStore
+                          ? "border-red-100 text-red-300 cursor-not-allowed"
+                          : "border-red-200 text-red-700 hover:bg-red-50"
+                      }`}
                     >
                       Remover
                     </button>
@@ -715,7 +782,12 @@ const Cameras = () => {
               <button
                 type="button"
                 onClick={() => setEdgeSetupOpen(true)}
-                className="inline-flex w-full sm:w-auto items-center justify-center rounded-lg bg-blue-600 px-4 py-2 text-sm font-semibold text-white hover:bg-blue-700"
+                disabled={!canManageStore}
+                className={`inline-flex w-full sm:w-auto items-center justify-center rounded-lg px-4 py-2 text-sm font-semibold text-white ${
+                  !canManageStore
+                    ? "bg-gray-300 cursor-not-allowed"
+                    : "bg-blue-600 hover:bg-blue-700"
+                }`}
               >
                 Abrir Edge Setup
               </button>
@@ -974,12 +1046,12 @@ type CameraModalProps = {
   onOpenHelp: () => void
 }
 
-const CameraModal = ({
-  open,
-  camera,
-  testing,
-  testMessage,
-  testError,
+  const CameraModal = ({
+    open,
+    camera,
+    testing,
+    testMessage,
+    testError,
   createErrorMessage,
   createErrorDetails,
   createErrorFields,
@@ -989,19 +1061,20 @@ const CameraModal = ({
   onSave,
   onTest,
   edgeOnline,
-  onOpenHelp,
-}: CameraModalProps) => {
-  const [form, setForm] = useState(() => ({
-    name: camera?.name ?? "",
-    ip: camera?.ip ?? "",
-    username: "",
-    password: "",
-    brand: camera?.brand ?? "intelbras",
-    channel: 1,
-    subtype: 1,
-    externalId: camera?.external_id ?? "",
-    active: camera?.active ?? true,
-  }))
+    onOpenHelp,
+  }: CameraModalProps) => {
+    const [form, setForm] = useState(() => ({
+      name: camera?.name ?? "",
+      ip: camera?.ip ?? "",
+      username: "",
+      password: "",
+      brand: camera?.brand ?? "intelbras",
+      channel: 1,
+      subtype: 1,
+      externalId: camera?.external_id ?? "",
+      active: camera?.active ?? true,
+    }))
+    const [showPassword, setShowPassword] = useState(false)
   const [connectionType, setConnectionType] = useState<"ip_camera" | "nvr">(
     "ip_camera"
   )
@@ -1104,20 +1177,31 @@ const CameraModal = ({
                 }`}
               />
             </div>
-            <div>
-              <label className="text-sm font-medium text-gray-700">Senha</label>
-              <input
-                type="password"
-                value={form.password}
-                onChange={(e) => setForm((prev) => ({ ...prev, password: e.target.value }))}
-                placeholder="••••••••"
-                className={`mt-1 w-full rounded-lg border px-3 py-2 text-sm ${
-                  hasFieldError("password")
-                    ? "border-red-300 focus:border-red-400 focus:ring-red-300"
-                    : "border-gray-200"
-                }`}
-              />
-            </div>
+              <div>
+                <label className="text-sm font-medium text-gray-700">Senha</label>
+                <div className="relative mt-1">
+                  <input
+                    type={showPassword ? "text" : "password"}
+                    value={form.password}
+                    onChange={(e) =>
+                      setForm((prev) => ({ ...prev, password: e.target.value }))
+                    }
+                    placeholder="••••••••"
+                    className={`w-full rounded-lg border px-3 py-2 pr-20 text-sm ${
+                      hasFieldError("password")
+                        ? "border-red-300 focus:border-red-400 focus:ring-red-300"
+                        : "border-gray-200"
+                    }`}
+                  />
+                  <button
+                    type="button"
+                    onClick={() => setShowPassword((prev) => !prev)}
+                    className="absolute right-2 top-1/2 -translate-y-1/2 text-xs font-semibold text-gray-500 hover:text-gray-700"
+                  >
+                    {showPassword ? "Ocultar" : "Mostrar"}
+                  </button>
+                </div>
+              </div>
             {connectionType === "nvr" && (
               <div>
                 <label htmlFor="nvr-channel" className="text-sm font-medium text-gray-700">

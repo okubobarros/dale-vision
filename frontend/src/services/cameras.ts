@@ -169,10 +169,20 @@ export const camerasService = {
     }
   },
 
-  async testConnection(cameraId: string): Promise<{ ok: boolean; queued: boolean }> {
+  async testConnection(
+    cameraId: string
+  ): Promise<{ ok: boolean; queued: boolean; status: number }> {
     try {
       const response = await api.post(`/v1/cameras/${cameraId}/test-connection/`)
-      return response.data
+      const payload =
+        response.data && typeof response.data === "object"
+          ? (response.data as { ok?: boolean; queued?: boolean })
+          : {}
+      return {
+        ok: payload.ok ?? true,
+        queued: payload.queued ?? response.status === 202,
+        status: response.status,
+      }
     } catch (error) {
       throw normalizeApiError(error, "Falha ao testar conexão.")
     }

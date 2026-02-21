@@ -26,6 +26,7 @@ export interface Store {
   created_at: string;
   updated_at: string;
   owner_email: string;
+  role?: "owner" | "admin" | "manager" | "viewer" | null;
 }
 
 type StoreWriteFields = {

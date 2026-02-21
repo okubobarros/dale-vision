@@ -7,7 +7,13 @@ import { renderWithProviders } from "../../test/test-utils"
 vi.mock("../../services/stores", () => ({
   storesService: {
     getStores: vi.fn().mockResolvedValue([
-      { id: "store-1", name: "Loja 1", status: "active", plan: "trial" },
+      {
+        id: "store-1",
+        name: "Loja 1",
+        status: "active",
+        plan: "trial",
+        role: "admin",
+      },
     ]),
     getStoreEdgeStatus: vi.fn().mockResolvedValue({
       online: true,

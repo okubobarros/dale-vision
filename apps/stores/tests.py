@@ -289,6 +289,28 @@ class StoreCamerasEndpointTests(SimpleTestCase):
         self.assertEqual(response.data.get("id"), "cam-2")
 
 
+class StoreCameraActiveTests(SimpleTestCase):
+    def setUp(self):
+        self.factory = APIRequestFactory()
+        self.user = MagicMock(is_authenticated=True, is_staff=False, is_superuser=False)
+
+    @patch("apps.stores.views.require_store_role", side_effect=PermissionDenied("nope"))
+    def test_set_camera_active_denied_returns_403(self, _require_role):
+        view = StoreViewSet.as_view({"patch": "set_camera_active"})
+        request = self.factory.patch(
+            "/api/v1/stores/store-1/cameras/cam-1/",
+            {"active": True},
+            format="json",
+        )
+        force_authenticate(request, user=self.user)
+        store = MagicMock()
+        store.id = "store-1"
+        with patch.object(StoreViewSet, "get_object", return_value=store):
+            response = view(request, pk="store-1", camera_id="cam-1")
+        self.assertEqual(response.status_code, 403)
+        self.assertEqual(response.data.get("code"), "PERMISSION_DENIED")
+
+
 class EdgeStatusNoCamerasTests(SimpleTestCase):
     def _mock_store(self, store_id):
         store = MagicMock()
@@ -404,7 +426,7 @@ class EdgeStatusNoCamerasTests(SimpleTestCase):
 
         self.assertEqual(payload.get("store_status"), "online")
         self.assertEqual(payload.get("store_status_reason"), "all_cameras_online")
-        last_edge_receipt_mock.assert_not_called()
+        last_edge_receipt_mock.assert_called_once_with(store_id)
 
     @patch("apps.stores.views_edge_status._get_last_edge_heartbeat_receipt")
     @patch("apps.stores.views_edge_status._get_last_heartbeat")
@@ -435,7 +457,7 @@ class EdgeStatusNoCamerasTests(SimpleTestCase):
         self.assertEqual(payload.get("store_status"), "offline")
         self.assertEqual(payload.get("store_status_reason"), "heartbeat_expired")
         self.assertFalse(payload.get("online"))
-        last_edge_receipt_mock.assert_not_called()
+        last_edge_receipt_mock.assert_called_once_with(store_id)
 
 
 class EdgeHeartbeatIngestTests(SimpleTestCase):
@@ -498,8 +520,9 @@ class SubscriptionRequiredEnforcementTests(SimpleTestCase):
         with self.assertRaises(TrialExpiredError):
             view.destroy(request, pk="store-1")
 
+    @patch("apps.stores.views.require_store_role")
     @patch("apps.stores.views.StoreViewSet._require_subscription_for_store", side_effect=TrialExpiredError())
-    def test_dashboard_returns_402_when_subscription_required(self, _enforce):
+    def test_dashboard_returns_402_when_subscription_required(self, _enforce, _require_role):
         view = StoreViewSet.as_view({"get": "dashboard"})
         request = APIRequestFactory().get("/api/v1/stores/store-1/dashboard/")
         user = MagicMock(is_authenticated=True)
@@ -510,3 +533,17 @@ class SubscriptionRequiredEnforcementTests(SimpleTestCase):
         with patch.object(StoreViewSet, "get_object", return_value=store):
             response = view(request, pk="store-1")
         self.assertEqual(response.status_code, 402)
+
+    @patch("apps.stores.views.require_store_role", side_effect=PermissionDenied("nope"))
+    def test_dashboard_returns_403_when_role_denied(self, _require_role):
+        view = StoreViewSet.as_view({"get": "dashboard"})
+        request = APIRequestFactory().get("/api/v1/stores/store-1/dashboard/")
+        user = MagicMock(is_authenticated=True)
+        force_authenticate(request, user=user)
+        store = MagicMock()
+        store.id = "store-1"
+        store.org_id = "org-1"
+        with patch.object(StoreViewSet, "get_object", return_value=store):
+            response = view(request, pk="store-1")
+        self.assertEqual(response.status_code, 403)
+        self.assertEqual(response.data.get("code"), "PERMISSION_DENIED")

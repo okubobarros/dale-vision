@@ -8,7 +8,8 @@ from rest_framework.response import Response
 from rest_framework.exceptions import NotFound, ValidationError, PermissionDenied
 from django.core.exceptions import PermissionDenied as DjangoPermissionDenied
 
-from apps.core.models import Camera, CameraHealthLog, OrgMember, Store
+from django.db.models import Q
+from apps.core.models import Camera, CameraHealthLog, OrgMember, Store, StoreManager
 from apps.edge.models import EdgeToken
 from .serializers import (
     CameraSerializer,
@@ -141,6 +142,33 @@ class CameraViewSet(viewsets.ModelViewSet):
         if store_id:
             qs = qs.filter(store_id=store_id)
         return qs
+
+    def list(self, request, *args, **kwargs):
+        store_id = request.query_params.get("store_id")
+        if store_id:
+            try:
+                require_store_role(request.user, str(store_id), ALLOWED_READ_ROLES)
+            except (PermissionDenied, DjangoPermissionDenied) as exc:
+                return _error_response(
+                    "PERMISSION_DENIED",
+                    str(exc) or "Sem permissão.",
+                    status.HTTP_403_FORBIDDEN,
+                    deprecated_detail=str(exc) or "Sem permissão.",
+                )
+        return super().list(request, *args, **kwargs)
+
+    def retrieve(self, request, *args, **kwargs):
+        cam = self.get_object()
+        try:
+            require_store_role(request.user, str(cam.store_id), ALLOWED_READ_ROLES)
+        except (PermissionDenied, DjangoPermissionDenied) as exc:
+            return _error_response(
+                "PERMISSION_DENIED",
+                str(exc) or "Sem permissão.",
+                status.HTTP_403_FORBIDDEN,
+                deprecated_detail=str(exc) or "Sem permissão.",
+            )
+        return super().retrieve(request, *args, **kwargs)
 
     def create(self, request, *args, **kwargs):
         store_id, store = self._resolve_store_for_create()
@@ -509,9 +537,21 @@ class CameraHealthLogViewSet(viewsets.ReadOnlyModelViewSet):
                 org_ids = list(
                     OrgMember.objects.filter(user_id=user_uuid).values_list("org_id", flat=True)
                 )
-                if not org_ids:
+                store_ids = list(
+                    StoreManager.objects.filter(user_id=self.request.user.id)
+                    .values_list("store_id", flat=True)
+                )
+                if not org_ids and not store_ids:
                     return qs.none()
-                qs = qs.filter(camera__store__org_id__in=org_ids)
+                if org_ids and store_ids:
+                    qs = qs.filter(
+                        Q(camera__store__org_id__in=org_ids)
+                        | Q(camera__store_id__in=store_ids)
+                    )
+                elif org_ids:
+                    qs = qs.filter(camera__store__org_id__in=org_ids)
+                else:
+                    qs = qs.filter(camera__store_id__in=store_ids)
         if camera_id:
             qs = qs.filter(camera_id=camera_id)
         return qs

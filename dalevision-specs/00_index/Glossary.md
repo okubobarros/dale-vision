@@ -14,3 +14,8 @@ Termos oficiais do produto. Atualize sempre que introduzir novo conceito.
 - NVR: gravador de vídeo em rede.
 - Health: estado de conectividade/funcionamento do Edge e câmeras.
 - Paywall: bloqueio por limites de plano.
+- Owner: dono da organização (billing, limites, times e lojas).
+- Admin: administrador da organização (gestão quase total, sem ações internas de staff).
+- Manager: gestor de loja (opera câmeras/ROI/alertas na(s) loja(s) permitida(s)).
+- Viewer: leitura apenas (dashboard/relatórios/alertas sem ações destrutivas).
+- Staff: usuário interno da DaleVision (suporte/ops, poderes fora do app do cliente).

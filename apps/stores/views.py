@@ -22,6 +22,7 @@ from apps.cameras.limits import (
 from apps.core.services.onboarding_progress import OnboardingProgressService
 from apps.cameras.permissions import (
     require_store_role,
+    get_user_role_for_store,
     ALLOWED_MANAGE_ROLES,
     ALLOWED_READ_ROLES,
 )
@@ -109,17 +110,7 @@ def filter_stores_for_user(qs, user):
     return qs.filter(org_id__in=org_ids)
 
 def _require_store_owner_or_admin(user, store):
-    if getattr(user, "is_superuser", False) or getattr(user, "is_staff", False):
-        return
-    user_uuid = ensure_user_uuid(user)
-    allowed_roles = ("owner", "admin")
-    is_allowed = OrgMember.objects.filter(
-        org_id=store.org_id,
-        user_id=user_uuid,
-        role__in=allowed_roles,
-    ).exists()
-    if not is_allowed:
-        raise PermissionDenied("Você não tem permissão para acessar as credenciais do edge.")
+    require_store_role(user, str(store.id), ALLOWED_MANAGE_ROLES)
 
 def _camera_active_column_exists():
     try:
@@ -232,15 +223,32 @@ class StoreViewSet(viewsets.ModelViewSet):
         """Sobrescreve list para retornar formato personalizado - MANTENHA ESTE!"""
         stores = self.get_queryset()
         serializer = self.get_serializer(stores, many=True)
+        data = list(serializer.data)
+        if request.user and request.user.is_authenticated:
+            for idx, store in enumerate(stores):
+                if idx >= len(data):
+                    break
+                role = "owner" if (request.user.is_staff or request.user.is_superuser) else get_user_role_for_store(request.user, str(store.id))
+                if role:
+                    data[idx]["role"] = role
         return Response({
             'status': 'success',
             'count': stores.count(),
-            'data': serializer.data,
+            'data': data,
             'timestamp': timezone.now().isoformat()
         })
 
     def destroy(self, request, *args, **kwargs):
         store = self.get_object()
+        try:
+            require_store_role(request.user, str(store.id), ALLOWED_MANAGE_ROLES)
+        except (PermissionDenied, DjangoPermissionDenied) as exc:
+            return _error_response(
+                "PERMISSION_DENIED",
+                str(exc) or "Sem permissão.",
+                status.HTTP_403_FORBIDDEN,
+                deprecated_detail=str(exc) or "Sem permissão.",
+            )
         actor_user_id = None
         try:
             actor_user_id = ensure_user_uuid(request.user)
@@ -254,12 +262,52 @@ class StoreViewSet(viewsets.ModelViewSet):
         )
         return super().destroy(request, *args, **kwargs)
 
+    def retrieve(self, request, *args, **kwargs):
+        store = self.get_object()
+        try:
+            require_store_role(request.user, str(store.id), ALLOWED_READ_ROLES)
+        except (PermissionDenied, DjangoPermissionDenied) as exc:
+            return _error_response(
+                "PERMISSION_DENIED",
+                str(exc) or "Sem permissão.",
+                status.HTTP_403_FORBIDDEN,
+                deprecated_detail=str(exc) or "Sem permissão.",
+            )
+        return super().retrieve(request, *args, **kwargs)
+
+    def update(self, request, *args, **kwargs):
+        store = self.get_object()
+        try:
+            require_store_role(request.user, str(store.id), ALLOWED_MANAGE_ROLES)
+        except (PermissionDenied, DjangoPermissionDenied) as exc:
+            return _error_response(
+                "PERMISSION_DENIED",
+                str(exc) or "Sem permissão.",
+                status.HTTP_403_FORBIDDEN,
+                deprecated_detail=str(exc) or "Sem permissão.",
+            )
+        return super().update(request, *args, **kwargs)
+
+    def partial_update(self, request, *args, **kwargs):
+        store = self.get_object()
+        try:
+            require_store_role(request.user, str(store.id), ALLOWED_MANAGE_ROLES)
+        except (PermissionDenied, DjangoPermissionDenied) as exc:
+            return _error_response(
+                "PERMISSION_DENIED",
+                str(exc) or "Sem permissão.",
+                status.HTTP_403_FORBIDDEN,
+                deprecated_detail=str(exc) or "Sem permissão.",
+            )
+        return super().partial_update(request, *args, **kwargs)
+
     @action(detail=True, methods=['get'])
     def edge_token(self, request, pk=None):
         """
         Retorna um token do edge para a store (não rotaciona se já existir).
         """
         store = self.get_object()
+        _require_store_owner_or_admin(request.user, store)
         actor_user_id = None
         try:
             actor_user_id = ensure_user_uuid(request.user)
@@ -285,7 +333,7 @@ class StoreViewSet(viewsets.ModelViewSet):
     def edge_credentials(self, request, pk=None):
         """
         Retorna credenciais do edge (não rotaciona se já existir).
-        Apenas owner/admin da store pode acessar.
+        Apenas owner/admin/manager da store pode acessar.
         """
         store = self.get_object()
         _require_store_owner_or_admin(request.user, store)
@@ -320,7 +368,7 @@ class StoreViewSet(viewsets.ModelViewSet):
     def edge_setup(self, request, pk=None):
         """
         Retorna credenciais do edge para setup (idempotente; não rotaciona se já existir).
-        Apenas owner/admin da store pode acessar.
+        Apenas owner/admin/manager da store pode acessar.
         """
         try:
             store = self.get_object()
@@ -472,6 +520,15 @@ class StoreViewSet(viewsets.ModelViewSet):
     @action(detail=True, methods=["patch"], url_path=r"cameras/(?P<camera_id>[^/.]+)")
     def set_camera_active(self, request, pk=None, camera_id=None):
         store = self.get_object()
+        try:
+            require_store_role(request.user, str(store.id), ALLOWED_MANAGE_ROLES)
+        except (PermissionDenied, DjangoPermissionDenied) as exc:
+            return _error_response(
+                "PERMISSION_DENIED",
+                str(exc) or "Sem permissão.",
+                status.HTTP_403_FORBIDDEN,
+                deprecated_detail=str(exc) or "Sem permissão.",
+            )
 
         if "active" not in request.data:
             return Response({"detail": "Campo 'active' obrigatório."}, status=status.HTTP_400_BAD_REQUEST)
@@ -808,6 +865,7 @@ class StoreViewSet(viewsets.ModelViewSet):
         """Dashboard específico da loja (como no seu design)"""
         try:
             store = self.get_object()
+            require_store_role(request.user, str(store.id), ALLOWED_READ_ROLES)
             self._require_subscription_for_store(store, "store_dashboard")
             store_status = getattr(store, "status", None)
             status_ui = "active" if store_status in ("active", "trial") else "inactive"
@@ -829,6 +887,13 @@ class StoreViewSet(viewsets.ModelViewSet):
             }
 
             return Response(dashboard_data)
+        except (PermissionDenied, DjangoPermissionDenied) as exc:
+            return _error_response(
+                "PERMISSION_DENIED",
+                str(exc) or "Sem permissão.",
+                status.HTTP_403_FORBIDDEN,
+                deprecated_detail=str(exc) or "Sem permissão.",
+            )
         except (ProgrammingError, ObjectDoesNotExist) as exc:
             print(f"[WARN] dashboard fallback for store {pk}: {exc}")
             fallback_status = "inactive"
@@ -851,6 +916,7 @@ class StoreViewSet(viewsets.ModelViewSet):
     def live_monitor(self, request, pk=None):
         """Dados para monitoramento em tempo real"""
         store = self.get_object()
+        require_store_role(request.user, str(store.id), ALLOWED_READ_ROLES)
         
         # ⭐ MOCK - depois vem do processamento de vídeo
         monitor_data = {

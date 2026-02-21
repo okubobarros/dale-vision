@@ -12,6 +12,7 @@ vi.mock("../../services/stores", () => ({
         status: "active",
         plan: "trial",
         owner_email: "owner@dale.com",
+        role: "admin",
       },
     ]),
     getStoreDashboard: vi.fn().mockResolvedValue({
@@ -112,6 +113,7 @@ describe("Dashboard trial upgrade CTA", () => {
         status: "blocked",
         blocked_reason: "trial_expired",
         plan: "trial",
+        role: "admin",
       },
     ])
     renderWithProviders(<Dashboard />)

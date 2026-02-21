@@ -490,6 +490,18 @@ CREATE TABLE IF NOT EXISTS public.user_id_map (
   CONSTRAINT user_id_map_pkey PRIMARY KEY (id)
 );
 
+-- Knox tokens (required for auth tests when migrations are disabled)
+CREATE TABLE IF NOT EXISTS public.knox_authtoken (
+  digest character varying(128) NOT NULL,
+  token_key character varying(64) NOT NULL,
+  user_id integer NOT NULL,
+  created timestamp with time zone NOT NULL DEFAULT now(),
+  expiry timestamp with time zone,
+  CONSTRAINT knox_authtoken_pkey PRIMARY KEY (digest)
+);
+CREATE INDEX IF NOT EXISTS knox_authtoken_token_key_idx
+  ON public.knox_authtoken (token_key);
+
 CREATE TABLE IF NOT EXISTS public.store_managers (
   id uuid NOT NULL DEFAULT uuid_generate_v4(),
   store_id uuid NOT NULL,

@@ -211,6 +211,10 @@ const Dashboard = () => {
     () => (stores ?? []).find((s) => s.id === selectedStore) ?? null,
     [stores, selectedStore]
   )
+  const selectedStoreRole = selectedStoreItem?.role ?? null
+  const canManageStore = selectedStoreRole
+    ? ["owner", "admin", "manager"].includes(selectedStoreRole)
+    : true
   const storeLastSeenAt = selectedStoreItem?.last_seen_at ?? null
   const lastSeenAt = storeLastSeenAt ?? getLastSeenAt(edgeStatus)
   const isEdgeOnlineByLastSeen = isRecentTimestamp(lastSeenAt, ONLINE_MAX_AGE_SEC)
@@ -321,6 +325,7 @@ const Dashboard = () => {
 
   const nextStep = (onboardingProgress?.next_step || null) as OnboardingStep | null
   const nextStepCta = useMemo(() => {
+    if (!canManageStore) return null
     if (!nextStep) return null
     switch (nextStep) {
       case "edge_connected":
@@ -356,9 +361,10 @@ const Dashboard = () => {
       default:
         return null
     }
-  }, [nextStep, selectedStore, edgeSetupLink])
+  }, [canManageStore, nextStep, selectedStore, edgeSetupLink])
 
   const showNextStepBanner =
+    canManageStore &&
     Boolean(nextStepCta) &&
     selectedStore !== ALL_STORES_VALUE &&
     nextStep !== "first_insight"
@@ -382,16 +388,22 @@ const Dashboard = () => {
       )}
 
       <div className="mt-4 flex flex-col sm:flex-row gap-3">
-        <button
-          type="button"
-          onClick={() => {
-            setEdgeSetupOpen(true)
-            dismissActivationProgress()
-          }}
-          className="inline-flex items-center justify-center rounded-lg bg-blue-600 px-4 py-2 text-sm font-semibold text-white hover:bg-blue-700"
-        >
-          Abrir Assistente de Conexão
-        </button>
+        {canManageStore ? (
+          <button
+            type="button"
+            onClick={() => {
+              setEdgeSetupOpen(true)
+              dismissActivationProgress()
+            }}
+            className="inline-flex items-center justify-center rounded-lg bg-blue-600 px-4 py-2 text-sm font-semibold text-white hover:bg-blue-700"
+          >
+            Abrir Assistente de Conexão
+          </button>
+        ) : (
+          <div className="text-sm text-gray-500">
+            Ação restrita: peça ao admin da loja para concluir o Edge Setup.
+          </div>
+        )}
 
       </div>
 
@@ -469,10 +481,14 @@ const Dashboard = () => {
         />
         <MetricCard
           title="Próximo passo"
-          value={nextStepCta?.label || "—"}
+          value={canManageStore ? nextStepCta?.label || "—" : "Somente leitura"}
           icon={<span>✅</span>}
           color="bg-amber-100 text-amber-800"
-          subtitle="Continue a configuração guiada"
+          subtitle={
+            canManageStore
+              ? "Continue a configuração guiada"
+              : "Peça ao admin para avançar"
+          }
         />
       </div>
     ) : null
@@ -496,12 +512,18 @@ const Dashboard = () => {
         <p className="text-gray-600 text-sm mb-3">
           Leva menos de 2 minutos com IP + usuário + senha do NVR.
         </p>
-        <Link
-          to={`/app/cameras?store_id=${selectedStore}&onboarding=true`}
-          className="inline-flex items-center justify-center rounded-lg bg-blue-600 px-4 py-2 text-sm font-semibold text-white hover:bg-blue-700"
-        >
-          Adicionar primeira câmera
-        </Link>
+        {canManageStore ? (
+          <Link
+            to={`/app/cameras?store_id=${selectedStore}&onboarding=true`}
+            className="inline-flex items-center justify-center rounded-lg bg-blue-600 px-4 py-2 text-sm font-semibold text-white hover:bg-blue-700"
+          >
+            Adicionar primeira câmera
+          </Link>
+        ) : (
+          <div className="text-sm text-gray-500">
+            Ação restrita: peça ao admin para adicionar câmeras.
+          </div>
+        )}
       </div>
       <div className="bg-white rounded-xl shadow-sm border border-gray-100 p-4 sm:p-6">
         <div className="flex items-start justify-between gap-3 mb-3 sm:mb-4">
@@ -1206,7 +1228,7 @@ const Dashboard = () => {
             </div>
           </div>
       <EdgeSetupModal
-        open={edgeSetupOpen}
+        open={edgeSetupOpen && canManageStore}
         onClose={() => setEdgeSetupOpen(false)}
         defaultStoreId={selectedStore !== ALL_STORES_VALUE ? selectedStore : ""}
       />

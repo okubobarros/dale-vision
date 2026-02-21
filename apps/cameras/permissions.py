@@ -1,6 +1,7 @@
 from typing import Iterable, Optional
 from django.core.exceptions import PermissionDenied
 from django.db.utils import OperationalError, ProgrammingError
+from django.db.models import Q
 
 from apps.core.models import OrgMember, Store, StoreManager
 from apps.stores.services.user_uuid import ensure_user_uuid
@@ -59,6 +60,13 @@ def filter_cameras_for_user(qs, user):
     org_ids = list(
         OrgMember.objects.filter(user_id=user_uuid).values_list("org_id", flat=True)
     )
-    if not org_ids:
+    store_ids = list(
+        StoreManager.objects.filter(user_id=user.id).values_list("store_id", flat=True)
+    )
+    if not org_ids and not store_ids:
         return qs.none()
-    return qs.filter(store__org_id__in=org_ids)
+    if org_ids and store_ids:
+        return qs.filter(Q(store__org_id__in=org_ids) | Q(store_id__in=store_ids))
+    if org_ids:
+        return qs.filter(store__org_id__in=org_ids)
+    return qs.filter(store_id__in=store_ids)
