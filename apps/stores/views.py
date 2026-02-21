@@ -8,7 +8,7 @@ from rest_framework.response import Response
 from django.http import Http404
 from django.core.exceptions import ObjectDoesNotExist, PermissionDenied as DjangoPermissionDenied, ValidationError as DjangoValidationError
 from django.db.utils import ProgrammingError, OperationalError
-from django.db import connection
+from django.db import connection, DatabaseError
 from django.utils import timezone
 from django.conf import settings
 from datetime import timedelta
@@ -826,14 +826,29 @@ class StoreViewSet(viewsets.ModelViewSet):
         # Sem org: cria uma org default e adiciona o usuário como owner.
         try:
             user_uuid = ensure_user_uuid(user)
-            org = Organization.objects.create(
-                name="Default",
-                segment=None,
-                country="BR",
-                timezone="America/Sao_Paulo",
-                created_at=timezone.now(),
-                trial_ends_at=timezone.now() + timedelta(hours=72),
-            )
+            created_at = timezone.now()
+            trial_ends_at = created_at + timedelta(hours=72)
+            try:
+                org = Organization.objects.create(
+                    name="Default",
+                    segment=None,
+                    country="BR",
+                    timezone="America/Sao_Paulo",
+                    created_at=created_at,
+                    trial_ends_at=trial_ends_at,
+                )
+            except DatabaseError:
+                logger.warning(
+                    "[ORG] missing trial_ends_at column on organizations, creating without trial",
+                    exc_info=True,
+                )
+                org = Organization.objects.create(
+                    name="Default",
+                    segment=None,
+                    country="BR",
+                    timezone="America/Sao_Paulo",
+                    created_at=created_at,
+                )
             OrgMember.objects.create(
                 org=org,
                 user_id=user_uuid,
