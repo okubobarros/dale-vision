@@ -15,7 +15,7 @@ Resumo por **Store** com foco em operação.
 - Período padrão: últimos 7 dias (segunda‑domingo).
 - Seções:
   - Health do **Agent** e das **Cameras** (uptime e falhas relevantes).
-  - Eventos e **Alerts** críticos (por tipo e severidade).
+  - Events e **Alerts** críticos (por tipo e severidade).
   - Indicadores de performance de loja (quando disponíveis).
 
 ### 2) Mensal Multi‑loja
@@ -23,7 +23,7 @@ Resumo por **Org** com comparação entre lojas.
 - Período padrão: último mês fechado.
 - Seções:
   - Ranking de lojas (top/bottom) por métricas principais.
-  - Evolução de **Events** críticos e **Alerts** por loja.
+  - Evolução de Events críticos e **Alerts** por loja.
   - Tendências de ROI e impactos operacionais.
 
 ### 3) ROI Dashboard (v1)
@@ -34,7 +34,7 @@ Painel simples com ROI explicado, transparente e rastreável.
 ## Fontes de dados
 
 ### v1 (confirmadas por Data Model)
-- **Store**, **Organization**, **OrgMember**
+- **Store**, **Org** (Organization), **OrgMember**
 - **Camera**, **CameraHealthLog**
 - **DetectionEvent**, **EventMedia**
 - **AlertRule**, **NotificationLog**

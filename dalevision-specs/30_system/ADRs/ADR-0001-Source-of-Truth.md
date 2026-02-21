@@ -1,13 +1,13 @@
 # ADR-0001 - Source of Truth
 
 ## Contexto
-O produto usa Backend (Django), Supabase (dados auxiliares) e Edge Agent (estado local).
+O produto usa Backend (Django), Supabase (dados auxiliares) e Agent (estado local no Edge).
 Há risco de divergência entre regras de negócio, dados e validações.
 
 ## Decisão
 - **Backend** é a fonte única para regras de negócio, limites, permissões e contratos de API.
 - **Supabase** é fonte para dados auxiliares e históricos (não determina regras).
-- **Edge Agent** é fonte para estado operacional local (health, snapshots e conectividade), reportado ao Backend.
+- **Agent** é fonte para estado operacional local (Health, Snapshots e conectividade), reportado ao Backend.
 
 ## Consequências
 - Qualquer regra crítica deve estar no Backend e documentada na SSOT.

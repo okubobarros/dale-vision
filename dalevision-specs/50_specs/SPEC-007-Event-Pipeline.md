@@ -1,7 +1,7 @@
 # SPEC-007 Event Pipeline
 
 ## Objetivo e Escopo v1
-Estabelecer um pipeline confiável de eventos do **Edge Agent** até **Backend**, com armazenamento e agregações básicas para relatórios. O foco v1 é garantir entrega, idempotência e rastreabilidade dos eventos essenciais.
+Estabelecer um pipeline confiável de eventos do **Agent** no **Edge** até **Backend**, com armazenamento e agregações básicas para relatórios. O foco v1 é garantir entrega, idempotência e rastreabilidade dos eventos essenciais.
 
 ## Não‑objetivos
 - Não criar novos endpoints sem atualizar `30_system/API_Contracts.md` (marcar `TBD`).
@@ -36,7 +36,7 @@ Campos opcionais:
 - Eventos duplicados são ignorados ou reprocessados sem efeitos colaterais.
 
 ## Fluxo v1
-1. **Edge Agent** captura evento e gera `receipt_id`.
+1. **Agent** captura evento e gera `receipt_id`.
 2. **Backend** recebe, valida e persiste recibo do evento.
 3. **Storage** armazena evento e mídia associada (quando aplicável).
 4. **Métricas** agregam eventos por buckets de tempo.
@@ -73,7 +73,7 @@ Observação: armazenamento de buckets pode usar tabelas existentes ou views int
 
 ## DOD (Definition of Done)
 - Recebimento e deduplicação por `receipt_id` funcionando.
-- Eventos essenciais v1 gerados pelo Edge e persistidos no Backend.
+- Eventos essenciais v1 gerados pelo **Agent** e persistidos no Backend.
 - Agregações por bucket funcionando com dados consistentes.
 - Relatórios v1 consomem agregações.
 - Testes automatizados cobrindo unit/api/integração.

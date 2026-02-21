@@ -56,5 +56,30 @@
 
 - `POST /api/edge/events/` (edge events)
 
+## Contrato de eventos (v1)
+Aplicável a `POST /api/edge/events/`.
+
+Campos obrigatórios:
+- `receipt_id` (string, idempotência)
+- `event_name` (string, ver SPEC-007)
+- `ts` (timestamp ISO8601)
+- `store_id` (uuid)
+- `org_id` (uuid, quando aplicável)
+- `source` (string: `edge` | `backend` | `system`)
+
+Campos opcionais:
+- `camera_id` (uuid)
+- `zone_id` (uuid)
+- `payload` (json)
+- `meta` (json)
+
+Observação: detalhes de validação e regras de ingestão devem referenciar `SPEC-007-Event-Pipeline.md`.
+
+## Endpoints TBD (não implementar sem definição)
+- Relatórios semanais por Store (SPEC-005)
+- Relatórios mensais por Org (SPEC-005)
+- ROI Dashboard (SPEC-005)
+- Exportação de relatórios (SPEC-005)
+
 ## Perguntas abertas
 - Existe OpenAPI oficial atualizado além do Swagger gerado?
