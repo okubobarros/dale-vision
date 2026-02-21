@@ -52,6 +52,15 @@ export default function Onboarding() {
         name: draft.name,
         city: draft.city,
         state: draft.state,
+        business_type: draft.businessType || undefined,
+        business_type_other: draft.businessTypeOther || undefined,
+        pos_system: draft.posSystem || undefined,
+        pos_other: draft.posOther || undefined,
+        hours_weekdays: draft.hoursWeekdays || undefined,
+        hours_saturday: draft.hoursSaturday || undefined,
+        hours_sunday_holiday: draft.hoursSundayHoliday || undefined,
+        employees_count: draft.employeesCount ? Number(draft.employeesCount) : undefined,
+        cameras_count: draft.camerasCount ? Number(draft.camerasCount) : undefined,
       })
       if (!created?.id) {
         throw new Error("Falha ao criar a loja.")
@@ -96,7 +105,8 @@ export default function Onboarding() {
           full_name: e.name.trim(),
           email: e.email?.trim() || undefined,
           role: roleMap[e.role] ?? "other",
-          role_other: e.role === "Outro" ? e.roleOther.trim() : undefined,
+          role_other:
+            e.role === "Outro" ? (e.roleOther.trim() || undefined) : undefined,
         }))
 
         await employeesService.createEmployees(payload)

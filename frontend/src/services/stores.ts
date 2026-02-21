@@ -14,6 +14,15 @@ export interface Store {
   state?: string;
   phone?: string;
   email?: string;
+  business_type?: string | null;
+  business_type_other?: string | null;
+  pos_system?: string | null;
+  pos_other?: string | null;
+  hours_weekdays?: string | null;
+  hours_saturday?: string | null;
+  hours_sunday_holiday?: string | null;
+  employees_count?: number | null;
+  cameras_count?: number | null;
   plan: StorePlan;
   status: StoreStatus;
   last_seen_at?: string | null;
@@ -36,6 +45,15 @@ type StoreWriteFields = {
   city?: string;
   state?: string;
   status?: StoreStatus;
+  business_type?: string;
+  business_type_other?: string;
+  pos_system?: string;
+  pos_other?: string;
+  hours_weekdays?: string;
+  hours_saturday?: string;
+  hours_sunday_holiday?: string;
+  employees_count?: number;
+  cameras_count?: number;
 };
 
 export type CreateStorePayload = StoreWriteFields;
@@ -304,6 +322,15 @@ export const storesService = {
       city,
       state,
       status,
+      business_type,
+      business_type_other,
+      pos_system,
+      pos_other,
+      hours_weekdays,
+      hours_saturday,
+      hours_sunday_holiday,
+      employees_count,
+      cameras_count,
     } = storeData;
     const payload = omitEmpty({
       name,
@@ -312,6 +339,15 @@ export const storesService = {
       city,
       state,
       status,
+      business_type,
+      business_type_other,
+      pos_system,
+      pos_other,
+      hours_weekdays,
+      hours_saturday,
+      hours_sunday_holiday,
+      employees_count,
+      cameras_count,
     });
     const response = await api.post('/v1/stores/', payload);
     return response.data;
@@ -326,6 +362,15 @@ export const storesService = {
       city,
       state,
       status,
+      business_type,
+      business_type_other,
+      pos_system,
+      pos_other,
+      hours_weekdays,
+      hours_saturday,
+      hours_sunday_holiday,
+      employees_count,
+      cameras_count,
     } = storeData;
     const payload = omitEmpty({
       name,
@@ -334,6 +379,15 @@ export const storesService = {
       city,
       state,
       status,
+      business_type,
+      business_type_other,
+      pos_system,
+      pos_other,
+      hours_weekdays,
+      hours_saturday,
+      hours_sunday_holiday,
+      employees_count,
+      cameras_count,
     });
     const response = await api.put(`/v1/stores/${storeId}/`, payload);
     return response.data;

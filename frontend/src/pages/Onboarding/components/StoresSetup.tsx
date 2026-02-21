@@ -4,6 +4,15 @@ export type StoreDraft = {
   name: string
   city: string
   state: string
+  businessType: string
+  businessTypeOther: string
+  posSystem: string
+  posOther: string
+  hoursWeekdays: string
+  hoursSaturday: string
+  hoursSundayHoliday: string
+  employeesCount: string
+  camerasCount: string
 }
 
 export default function StoresSetup({
@@ -25,14 +34,29 @@ export default function StoresSetup({
     name: "",
     city: "",
     state: "",
+    businessType: "",
+    businessTypeOther: "",
+    posSystem: "",
+    posOther: "",
+    hoursWeekdays: "",
+    hoursSaturday: "",
+    hoursSundayHoliday: "",
+    employeesCount: "",
+    camerasCount: "",
   }
 
   const errors = useMemo(() => {
     const e: Record<string, string> = {}
     if (!form.name.trim()) e.name = "Informe o nome da loja."
     if (form.state.trim() && form.state.trim().length !== 2) e.state = "UF com 2 letras."
+    if (form.employeesCount && Number.isNaN(Number(form.employeesCount))) {
+      e.employeesCount = "Informe um número válido."
+    }
+    if (form.camerasCount && Number.isNaN(Number(form.camerasCount))) {
+      e.camerasCount = "Informe um número válido."
+    }
     return e
-  }, [form.name, form.state])
+  }, [form.name, form.state, form.employeesCount, form.camerasCount])
 
   const canNext = Object.keys(errors).length === 0
 
@@ -92,6 +116,113 @@ export default function StoresSetup({
                 value={form.state}
                 onChange={(e) => set("state", e.target.value.toUpperCase())}
                 disabled={isSubmitting}
+              />
+            </Field>
+          </div>
+
+          <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+            <Field label="Tipo de negócio (opcional)">
+              <input
+                className="w-full rounded-2xl border border-slate-200 bg-white px-4 py-3 outline-none text-slate-900 placeholder:text-slate-400
+                           focus:ring-4 focus:ring-cyan-100 focus:border-cyan-300 transition"
+                placeholder="Ex: Moda, Alimentação, Farmácia"
+                value={form.businessType}
+                onChange={(e) => set("businessType", e.target.value)}
+                disabled={isSubmitting}
+              />
+            </Field>
+
+            <Field label="Tipo de negócio (outro)">
+              <input
+                className="w-full rounded-2xl border border-slate-200 bg-white px-4 py-3 outline-none text-slate-900 placeholder:text-slate-400
+                           focus:ring-4 focus:ring-cyan-100 focus:border-cyan-300 transition"
+                placeholder="Descreva se necessário"
+                value={form.businessTypeOther}
+                onChange={(e) => set("businessTypeOther", e.target.value)}
+                disabled={isSubmitting}
+              />
+            </Field>
+
+            <Field label="Sistema de PDV (opcional)">
+              <input
+                className="w-full rounded-2xl border border-slate-200 bg-white px-4 py-3 outline-none text-slate-900 placeholder:text-slate-400
+                           focus:ring-4 focus:ring-cyan-100 focus:border-cyan-300 transition"
+                placeholder="Ex: Linx, TOTVS, ERP"
+                value={form.posSystem}
+                onChange={(e) => set("posSystem", e.target.value)}
+                disabled={isSubmitting}
+              />
+            </Field>
+
+            <Field label="Sistema de PDV (outro)">
+              <input
+                className="w-full rounded-2xl border border-slate-200 bg-white px-4 py-3 outline-none text-slate-900 placeholder:text-slate-400
+                           focus:ring-4 focus:ring-cyan-100 focus:border-cyan-300 transition"
+                placeholder="Descreva se necessário"
+                value={form.posOther}
+                onChange={(e) => set("posOther", e.target.value)}
+                disabled={isSubmitting}
+              />
+            </Field>
+          </div>
+
+          <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
+            <Field label="Horário (dias úteis)">
+              <input
+                className="w-full rounded-2xl border border-slate-200 bg-white px-4 py-3 outline-none text-slate-900 placeholder:text-slate-400
+                           focus:ring-4 focus:ring-cyan-100 focus:border-cyan-300 transition"
+                placeholder="Ex: 09:00 - 18:00"
+                value={form.hoursWeekdays}
+                onChange={(e) => set("hoursWeekdays", e.target.value)}
+                disabled={isSubmitting}
+              />
+            </Field>
+
+            <Field label="Horário (sábado)">
+              <input
+                className="w-full rounded-2xl border border-slate-200 bg-white px-4 py-3 outline-none text-slate-900 placeholder:text-slate-400
+                           focus:ring-4 focus:ring-cyan-100 focus:border-cyan-300 transition"
+                placeholder="Ex: 10:00 - 16:00"
+                value={form.hoursSaturday}
+                onChange={(e) => set("hoursSaturday", e.target.value)}
+                disabled={isSubmitting}
+              />
+            </Field>
+
+            <Field label="Horário (domingo/feriado)">
+              <input
+                className="w-full rounded-2xl border border-slate-200 bg-white px-4 py-3 outline-none text-slate-900 placeholder:text-slate-400
+                           focus:ring-4 focus:ring-cyan-100 focus:border-cyan-300 transition"
+                placeholder="Ex: 12:00 - 18:00"
+                value={form.hoursSundayHoliday}
+                onChange={(e) => set("hoursSundayHoliday", e.target.value)}
+                disabled={isSubmitting}
+              />
+            </Field>
+          </div>
+
+          <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+            <Field label="Quantidade de funcionários (opcional)" error={touched ? errors.employeesCount : ""}>
+              <input
+                className="w-full rounded-2xl border border-slate-200 bg-white px-4 py-3 outline-none text-slate-900 placeholder:text-slate-400
+                           focus:ring-4 focus:ring-cyan-100 focus:border-cyan-300 transition"
+                placeholder="Ex: 12"
+                value={form.employeesCount}
+                onChange={(e) => set("employeesCount", e.target.value)}
+                disabled={isSubmitting}
+                inputMode="numeric"
+              />
+            </Field>
+
+            <Field label="Quantidade de câmeras (opcional)" error={touched ? errors.camerasCount : ""}>
+              <input
+                className="w-full rounded-2xl border border-slate-200 bg-white px-4 py-3 outline-none text-slate-900 placeholder:text-slate-400
+                           focus:ring-4 focus:ring-cyan-100 focus:border-cyan-300 transition"
+                placeholder="Ex: 6"
+                value={form.camerasCount}
+                onChange={(e) => set("camerasCount", e.target.value)}
+                disabled={isSubmitting}
+                inputMode="numeric"
               />
             </Field>
           </div>

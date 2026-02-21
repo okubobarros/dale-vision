@@ -48,6 +48,8 @@ class StoreSerializer(serializers.ModelSerializer):
 
 class EmployeeSerializer(serializers.ModelSerializer):
     store_id = serializers.UUIDField(write_only=True, required=True)
+    email = serializers.CharField(required=False, allow_blank=True, allow_null=True)
+    role_other = serializers.CharField(required=False, allow_blank=True, allow_null=True)
 
     def validate(self, attrs):
         store_id = attrs.pop("store_id", None)

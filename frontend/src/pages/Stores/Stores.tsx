@@ -135,6 +135,15 @@ const CreateStoreModal = ({ isOpen, onClose }: { isOpen: boolean; onClose: () =>
     city: '',
     state: '',
     status: 'active',
+    business_type: '',
+    business_type_other: '',
+    pos_system: '',
+    pos_other: '',
+    hours_weekdays: '',
+    hours_saturday: '',
+    hours_sunday_holiday: '',
+    employees_count: undefined,
+    cameras_count: undefined,
   });
 
   const createMutation = useMutation({
@@ -150,6 +159,15 @@ const CreateStoreModal = ({ isOpen, onClose }: { isOpen: boolean; onClose: () =>
         city: '',
         state: '',
         status: 'active',
+        business_type: '',
+        business_type_other: '',
+        pos_system: '',
+        pos_other: '',
+        hours_weekdays: '',
+        hours_saturday: '',
+        hours_sunday_holiday: '',
+        employees_count: undefined,
+        cameras_count: undefined,
       });
     },
     onError: (error: unknown) => {
@@ -276,6 +294,154 @@ const CreateStoreModal = ({ isOpen, onClose }: { isOpen: boolean; onClose: () =>
                 </div>
               </div>
 
+              <div className="grid grid-cols-2 gap-4">
+                <div>
+                  <label className="block text-sm font-medium text-gray-700 mb-1">
+                    Tipo de negócio
+                  </label>
+                  <input
+                    type="text"
+                    value={formData.business_type || ''}
+                    onChange={(e) => setFormData({ ...formData, business_type: e.target.value })}
+                    className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent"
+                    placeholder="Ex: Moda, Alimentação"
+                    disabled={createMutation.isPending}
+                    aria-label="Tipo de negócio"
+                  />
+                </div>
+                <div>
+                  <label className="block text-sm font-medium text-gray-700 mb-1">
+                    Tipo de negócio (outro)
+                  </label>
+                  <input
+                    type="text"
+                    value={formData.business_type_other || ''}
+                    onChange={(e) => setFormData({ ...formData, business_type_other: e.target.value })}
+                    className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent"
+                    placeholder="Descreva se necessário"
+                    disabled={createMutation.isPending}
+                    aria-label="Tipo de negócio (outro)"
+                  />
+                </div>
+              </div>
+
+              <div className="grid grid-cols-2 gap-4">
+                <div>
+                  <label className="block text-sm font-medium text-gray-700 mb-1">
+                    Sistema de PDV
+                  </label>
+                  <input
+                    type="text"
+                    value={formData.pos_system || ''}
+                    onChange={(e) => setFormData({ ...formData, pos_system: e.target.value })}
+                    className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent"
+                    placeholder="Ex: Linx, TOTVS"
+                    disabled={createMutation.isPending}
+                    aria-label="Sistema de PDV"
+                  />
+                </div>
+                <div>
+                  <label className="block text-sm font-medium text-gray-700 mb-1">
+                    Sistema de PDV (outro)
+                  </label>
+                  <input
+                    type="text"
+                    value={formData.pos_other || ''}
+                    onChange={(e) => setFormData({ ...formData, pos_other: e.target.value })}
+                    className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent"
+                    placeholder="Descreva se necessário"
+                    disabled={createMutation.isPending}
+                    aria-label="Sistema de PDV (outro)"
+                  />
+                </div>
+              </div>
+
+              <div className="grid grid-cols-1 gap-4">
+                <div>
+                  <label className="block text-sm font-medium text-gray-700 mb-1">
+                    Horário (dias úteis)
+                  </label>
+                  <input
+                    type="text"
+                    value={formData.hours_weekdays || ''}
+                    onChange={(e) => setFormData({ ...formData, hours_weekdays: e.target.value })}
+                    className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent"
+                    placeholder="Ex: 09:00 - 18:00"
+                    disabled={createMutation.isPending}
+                    aria-label="Horário dias úteis"
+                  />
+                </div>
+                <div className="grid grid-cols-2 gap-4">
+                  <div>
+                    <label className="block text-sm font-medium text-gray-700 mb-1">
+                      Horário (sábado)
+                    </label>
+                    <input
+                      type="text"
+                      value={formData.hours_saturday || ''}
+                      onChange={(e) => setFormData({ ...formData, hours_saturday: e.target.value })}
+                      className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent"
+                      placeholder="Ex: 10:00 - 16:00"
+                      disabled={createMutation.isPending}
+                      aria-label="Horário sábado"
+                    />
+                  </div>
+                  <div>
+                    <label className="block text-sm font-medium text-gray-700 mb-1">
+                      Horário (domingo/feriado)
+                    </label>
+                    <input
+                      type="text"
+                      value={formData.hours_sunday_holiday || ''}
+                      onChange={(e) => setFormData({ ...formData, hours_sunday_holiday: e.target.value })}
+                      className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent"
+                      placeholder="Ex: 12:00 - 18:00"
+                      disabled={createMutation.isPending}
+                      aria-label="Horário domingo/feriado"
+                    />
+                  </div>
+                </div>
+              </div>
+
+              <div className="grid grid-cols-2 gap-4">
+                <div>
+                  <label className="block text-sm font-medium text-gray-700 mb-1">
+                    Funcionários (estimado)
+                  </label>
+                  <input
+                    type="number"
+                    min={0}
+                    value={formData.employees_count ?? ''}
+                    onChange={(e) => setFormData({
+                      ...formData,
+                      employees_count: e.target.value === '' ? undefined : Number(e.target.value),
+                    })}
+                    className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent"
+                    placeholder="Ex: 12"
+                    disabled={createMutation.isPending}
+                    aria-label="Quantidade de funcionários"
+                  />
+                </div>
+                <div>
+                  <label className="block text-sm font-medium text-gray-700 mb-1">
+                    Câmeras (estimado)
+                  </label>
+                  <input
+                    type="number"
+                    min={0}
+                    value={formData.cameras_count ?? ''}
+                    onChange={(e) => setFormData({
+                      ...formData,
+                      cameras_count: e.target.value === '' ? undefined : Number(e.target.value),
+                    })}
+                    className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent"
+                    placeholder="Ex: 6"
+                    disabled={createMutation.isPending}
+                    aria-label="Quantidade de câmeras"
+                  />
+                </div>
+              </div>
+
               <div>
                 <label className="block text-sm font-medium text-gray-700 mb-1">
                   Status
@@ -362,6 +528,15 @@ const EditStoreModal = ({
     city: store?.city || '',
     state: store?.state || '',
     status: store?.status || 'active',
+    business_type: store?.business_type || '',
+    business_type_other: store?.business_type_other || '',
+    pos_system: store?.pos_system || '',
+    pos_other: store?.pos_other || '',
+    hours_weekdays: store?.hours_weekdays || '',
+    hours_saturday: store?.hours_saturday || '',
+    hours_sunday_holiday: store?.hours_sunday_holiday || '',
+    employees_count: store?.employees_count ?? undefined,
+    cameras_count: store?.cameras_count ?? undefined,
   }));
 
   const updateMutation = useMutation({
@@ -506,6 +681,154 @@ const EditStoreModal = ({
                   <option value="active">Ativa</option>
                   <option value="inactive">Inativa</option>
                 </select>
+              </div>
+
+              <div className="grid grid-cols-2 gap-4">
+                <div>
+                  <label className="block text-sm font-medium text-gray-700 mb-1">
+                    Tipo de negócio
+                  </label>
+                  <input
+                    type="text"
+                    value={formData.business_type || ''}
+                    onChange={(e) => setFormData({ ...formData, business_type: e.target.value })}
+                    className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent"
+                    placeholder="Ex: Moda, Alimentação"
+                    disabled={updateMutation.isPending}
+                    aria-label="Tipo de negócio"
+                  />
+                </div>
+                <div>
+                  <label className="block text-sm font-medium text-gray-700 mb-1">
+                    Tipo de negócio (outro)
+                  </label>
+                  <input
+                    type="text"
+                    value={formData.business_type_other || ''}
+                    onChange={(e) => setFormData({ ...formData, business_type_other: e.target.value })}
+                    className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent"
+                    placeholder="Descreva se necessário"
+                    disabled={updateMutation.isPending}
+                    aria-label="Tipo de negócio (outro)"
+                  />
+                </div>
+              </div>
+
+              <div className="grid grid-cols-2 gap-4">
+                <div>
+                  <label className="block text-sm font-medium text-gray-700 mb-1">
+                    Sistema de PDV
+                  </label>
+                  <input
+                    type="text"
+                    value={formData.pos_system || ''}
+                    onChange={(e) => setFormData({ ...formData, pos_system: e.target.value })}
+                    className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent"
+                    placeholder="Ex: Linx, TOTVS"
+                    disabled={updateMutation.isPending}
+                    aria-label="Sistema de PDV"
+                  />
+                </div>
+                <div>
+                  <label className="block text-sm font-medium text-gray-700 mb-1">
+                    Sistema de PDV (outro)
+                  </label>
+                  <input
+                    type="text"
+                    value={formData.pos_other || ''}
+                    onChange={(e) => setFormData({ ...formData, pos_other: e.target.value })}
+                    className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent"
+                    placeholder="Descreva se necessário"
+                    disabled={updateMutation.isPending}
+                    aria-label="Sistema de PDV (outro)"
+                  />
+                </div>
+              </div>
+
+              <div className="grid grid-cols-1 gap-4">
+                <div>
+                  <label className="block text-sm font-medium text-gray-700 mb-1">
+                    Horário (dias úteis)
+                  </label>
+                  <input
+                    type="text"
+                    value={formData.hours_weekdays || ''}
+                    onChange={(e) => setFormData({ ...formData, hours_weekdays: e.target.value })}
+                    className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent"
+                    placeholder="Ex: 09:00 - 18:00"
+                    disabled={updateMutation.isPending}
+                    aria-label="Horário dias úteis"
+                  />
+                </div>
+                <div className="grid grid-cols-2 gap-4">
+                  <div>
+                    <label className="block text-sm font-medium text-gray-700 mb-1">
+                      Horário (sábado)
+                    </label>
+                    <input
+                      type="text"
+                      value={formData.hours_saturday || ''}
+                      onChange={(e) => setFormData({ ...formData, hours_saturday: e.target.value })}
+                      className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent"
+                      placeholder="Ex: 10:00 - 16:00"
+                      disabled={updateMutation.isPending}
+                      aria-label="Horário sábado"
+                    />
+                  </div>
+                  <div>
+                    <label className="block text-sm font-medium text-gray-700 mb-1">
+                      Horário (domingo/feriado)
+                    </label>
+                    <input
+                      type="text"
+                      value={formData.hours_sunday_holiday || ''}
+                      onChange={(e) => setFormData({ ...formData, hours_sunday_holiday: e.target.value })}
+                      className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent"
+                      placeholder="Ex: 12:00 - 18:00"
+                      disabled={updateMutation.isPending}
+                      aria-label="Horário domingo/feriado"
+                    />
+                  </div>
+                </div>
+              </div>
+
+              <div className="grid grid-cols-2 gap-4">
+                <div>
+                  <label className="block text-sm font-medium text-gray-700 mb-1">
+                    Funcionários (estimado)
+                  </label>
+                  <input
+                    type="number"
+                    min={0}
+                    value={formData.employees_count ?? ''}
+                    onChange={(e) => setFormData({
+                      ...formData,
+                      employees_count: e.target.value === '' ? undefined : Number(e.target.value),
+                    })}
+                    className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent"
+                    placeholder="Ex: 12"
+                    disabled={updateMutation.isPending}
+                    aria-label="Quantidade de funcionários"
+                  />
+                </div>
+                <div>
+                  <label className="block text-sm font-medium text-gray-700 mb-1">
+                    Câmeras (estimado)
+                  </label>
+                  <input
+                    type="number"
+                    min={0}
+                    value={formData.cameras_count ?? ''}
+                    onChange={(e) => setFormData({
+                      ...formData,
+                      cameras_count: e.target.value === '' ? undefined : Number(e.target.value),
+                    })}
+                    className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent"
+                    placeholder="Ex: 6"
+                    disabled={updateMutation.isPending}
+                    aria-label="Quantidade de câmeras"
+                  />
+                </div>
               </div>
             </div>
 
@@ -723,6 +1046,63 @@ const StoreCard = ({ store, onEdit, trialExpired }: StoreCardProps) => {
       )}
       
       <div className="space-y-2 text-sm">
+        {(store.business_type || store.business_type_other) && (
+          <div className="flex items-center text-gray-500">
+            <svg className="w-4 h-4 mr-2 flex-shrink-0" fill="currentColor" viewBox="0 0 20 20">
+              <path d="M4 3h12a1 1 0 011 1v12a1 1 0 01-1 1H4a1 1 0 01-1-1V4a1 1 0 011-1z" />
+            </svg>
+            <span>
+              Tipo: {store.business_type || store.business_type_other}
+            </span>
+          </div>
+        )}
+
+        {(store.pos_system || store.pos_other) && (
+          <div className="flex items-center text-gray-500">
+            <svg className="w-4 h-4 mr-2 flex-shrink-0" fill="currentColor" viewBox="0 0 20 20">
+              <path d="M4 4h12v3H4z" />
+              <path d="M4 9h12v7H4z" />
+            </svg>
+            <span>
+              PDV: {store.pos_system || store.pos_other}
+            </span>
+          </div>
+        )}
+
+        {(store.hours_weekdays || store.hours_saturday || store.hours_sunday_holiday) && (
+          <div className="flex items-center text-gray-500">
+            <svg className="w-4 h-4 mr-2 flex-shrink-0" fill="currentColor" viewBox="0 0 20 20">
+              <path
+                fillRule="evenodd"
+                d="M6 2a1 1 0 00-1 1v1H4a2 2 0 00-2 2v9a2 2 0 002 2h12a2 2 0 002-2V6a2 2 0 00-2-2h-1V3a1 1 0 10-2 0v1H7V3a1 1 0 00-1-1z"
+                clipRule="evenodd"
+              />
+            </svg>
+            <span>
+              Horários: {store.hours_weekdays || "—"} · {store.hours_saturday || "—"} · {store.hours_sunday_holiday || "—"}
+            </span>
+          </div>
+        )}
+
+        {(store.employees_count !== null && store.employees_count !== undefined) && (
+          <div className="flex items-center text-gray-500">
+            <svg className="w-4 h-4 mr-2 flex-shrink-0" fill="currentColor" viewBox="0 0 20 20">
+              <path d="M6 6a2 2 0 114 0 2 2 0 01-4 0zM2 14a4 4 0 018 0v2H2v-2zM12 7a2 2 0 110-4 2 2 0 010 4zm1 1a4 4 0 014 4v4h-4v-4a4 4 0 010-4z" />
+            </svg>
+            <span>Funcionários: {store.employees_count}</span>
+          </div>
+        )}
+
+        {(store.cameras_count !== null && store.cameras_count !== undefined) && (
+          <div className="flex items-center text-gray-500">
+            <svg className="w-4 h-4 mr-2 flex-shrink-0" fill="currentColor" viewBox="0 0 20 20">
+              <path d="M4 6h12a2 2 0 012 2v6a2 2 0 01-2 2H4a2 2 0 01-2-2V8a2 2 0 012-2z" />
+              <path d="M8 6V4h4v2" />
+            </svg>
+            <span>Câmeras: {store.cameras_count}</span>
+          </div>
+        )}
+
         {store.city && store.state && (
           <div className="flex items-center text-gray-500">
             <svg className="w-4 h-4 mr-2 flex-shrink-0" fill="currentColor" viewBox="0 0 20 20">

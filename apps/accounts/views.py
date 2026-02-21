@@ -247,10 +247,15 @@ class SetupStateView(APIView):
 
     def get(self, request):
         request_id = (request.headers.get("X-Request-ID") or uuid4().hex)[:12]
+        org_fallback_used = False
 
         def respond(payload: dict, status_code: int):
             payload["request_id"] = request_id
-            return Response(payload, status=status_code)
+            headers = {}
+            if org_fallback_used:
+                payload["warnings"] = ["ORG_SCHEMA_OUTDATED"]
+                headers["X-Schema-Warnings"] = "ORG_SCHEMA_OUTDATED"
+            return Response(payload, status=status_code, headers=headers)
 
         def not_authenticated(reason: str):
             logger.info("[SETUP_STATE] request_id=%s not_authenticated reason=%s", request_id, reason)
@@ -294,6 +299,7 @@ class SetupStateView(APIView):
             if supa_result:
                 user = supa_result[0]
                 if consume_org_fallback_used():
+                    org_fallback_used = True
                     logger.warning(
                         "[SETUP_STATE] request_id=%s org_fallback_used missing_trial_ends_at",
                         request_id,
