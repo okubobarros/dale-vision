@@ -187,6 +187,9 @@ class SupabaseJWTAuthentication:
     Accepts Supabase access tokens in Authorization: Bearer <jwt>.
     """
 
+    def authenticate_header(self, request):
+        return "Bearer"
+
     def authenticate(self, request):
         from rest_framework.authentication import get_authorization_header
         from rest_framework.exceptions import AuthenticationFailed

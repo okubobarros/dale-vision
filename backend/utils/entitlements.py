@@ -2,7 +2,9 @@ from __future__ import annotations
 
 import logging
 from typing import Optional
+import uuid
 
+from django.db import connection
 from django.db.models import Max
 from django.utils import timezone
 from rest_framework import status
@@ -13,6 +15,19 @@ from apps.core.models import AuditLog, Organization, Store, Subscription
 logger = logging.getLogger(__name__)
 
 TRIAL_EXPIRED_CODE = "TRIAL_EXPIRED"
+_ORG_TRIAL_COLUMN_EXISTS: Optional[bool] = None
+
+
+def _is_uuid(value: Optional[str]) -> bool:
+    if not value:
+        return False
+    if isinstance(value, uuid.UUID):
+        return True
+    try:
+        uuid.UUID(str(value))
+        return True
+    except (TypeError, ValueError):
+        return False
 
 
 class TrialExpiredError(APIException):
@@ -31,10 +46,17 @@ class TrialExpiredError(APIException):
 def _get_org_trial_ends_at(org_id: Optional[str]):
     if not org_id:
         return None
-    org_row = Organization.objects.filter(id=org_id).values("trial_ends_at").first()
-    if not org_row:
+    if not _is_uuid(org_id):
+        logger.warning("[ENTITLEMENTS] invalid org_id for trial lookup org_id=%s", org_id)
         return None
-    if org_row.get("trial_ends_at"):
+    org_row = None
+    if _org_trial_column_exists():
+        try:
+            org_row = Organization.objects.filter(id=org_id).values("trial_ends_at").first()
+        except Exception:
+            logger.exception("[ENTITLEMENTS] failed to read organizations.trial_ends_at org_id=%s", org_id)
+            org_row = None
+    if org_row and org_row.get("trial_ends_at"):
         return org_row["trial_ends_at"]
     derived = (
         Store.objects.filter(org_id=org_id, trial_ends_at__isnull=False)
@@ -42,12 +64,26 @@ def _get_org_trial_ends_at(org_id: Optional[str]):
         .values_list("trial_ends_at", flat=True)
         .first()
     )
-    if derived:
+    if derived and _org_trial_column_exists():
         try:
             Organization.objects.filter(id=org_id).update(trial_ends_at=derived)
         except Exception:
             logger.exception("[ENTITLEMENTS] failed to persist org trial_ends_at org_id=%s", org_id)
     return derived
+
+
+def _org_trial_column_exists() -> bool:
+    global _ORG_TRIAL_COLUMN_EXISTS
+    if _ORG_TRIAL_COLUMN_EXISTS is not None:
+        return _ORG_TRIAL_COLUMN_EXISTS
+    try:
+        with connection.cursor() as cursor:
+            columns = connection.introspection.get_table_description(cursor, "organizations")
+        _ORG_TRIAL_COLUMN_EXISTS = any(col.name == "trial_ends_at" for col in columns)
+    except Exception:
+        logger.exception("[ENTITLEMENTS] failed to inspect organizations columns")
+        _ORG_TRIAL_COLUMN_EXISTS = False
+    return _ORG_TRIAL_COLUMN_EXISTS
 
 
 def is_trial_active(org_id: Optional[str]) -> bool:
@@ -75,6 +111,9 @@ def is_subscription_active(org_id: Optional[str]) -> bool:
 
 def is_trial_expired(org_id: Optional[str]) -> bool:
     if not org_id:
+        return False
+    if not _is_uuid(org_id):
+        logger.warning("[ENTITLEMENTS] invalid org_id for trial check org_id=%s", org_id)
         return False
     if not Organization.objects.filter(id=org_id).exists():
         return False

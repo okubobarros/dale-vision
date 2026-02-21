@@ -6,7 +6,7 @@ from rest_framework.decorators import action
 from rest_framework.exceptions import PermissionDenied, ValidationError, NotFound
 from rest_framework.response import Response
 from django.http import Http404
-from django.core.exceptions import ObjectDoesNotExist, PermissionDenied as DjangoPermissionDenied
+from django.core.exceptions import ObjectDoesNotExist, PermissionDenied as DjangoPermissionDenied, ValidationError as DjangoValidationError
 from django.db.utils import ProgrammingError, OperationalError
 from django.db import connection
 from django.utils import timezone
@@ -616,20 +616,27 @@ class StoreViewSet(viewsets.ModelViewSet):
         serializer = CameraSerializer(data=request.data)
         try:
             serializer.is_valid(raise_exception=True)
-        except ValidationError as exc:
+        except (ValidationError, DjangoValidationError) as exc:
+            details = None
+            if hasattr(exc, "detail"):
+                details = exc.detail
+            elif hasattr(exc, "message_dict"):
+                details = exc.message_dict
+            else:
+                details = {"non_field_errors": [str(exc)]}
             logger.warning(
                 "[STORE] cameras create validation error store_id=%s org_id=%s user_id=%s errors=%s payload=%s",
                 str(store.id),
                 str(getattr(store, "org_id", None)),
                 getattr(request.user, "id", None),
-                exc.detail,
+                details,
                 _sanitize_camera_payload(request.data),
             )
             return _error_response(
                 "CAMERA_VALIDATION_ERROR",
                 "Dados inválidos para câmera.",
                 status.HTTP_400_BAD_REQUEST,
-                details=exc.detail,
+                details=details,
                 deprecated_detail="Dados inválidos para câmera.",
             )
         requested_active = serializer.validated_data.get("active", True)
@@ -689,7 +696,7 @@ class StoreViewSet(viewsets.ModelViewSet):
     def perform_create(self, serializer):
         """Auto-popula owner_email com email do usuário - ADICIONE ESTE!"""
         user = self.request.user
-        payload = self.request.data or {}
+        payload = getattr(self.request, "data", None) or getattr(self.request, "POST", None) or {}
         requested_org_id = payload.get("org_id") or payload.get("org")
         now = timezone.now()
         user_uuid = None

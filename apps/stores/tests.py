@@ -476,8 +476,10 @@ class EdgeHeartbeatIngestTests(SimpleTestCase):
 
 
 class SubscriptionRequiredEnforcementTests(SimpleTestCase):
+    @patch("apps.stores.views.ensure_user_uuid", return_value="user-uuid")
+    @patch("apps.stores.views.get_user_org_ids", return_value=["org-1"])
     @patch("apps.stores.views.enforce_can_use_product", side_effect=TrialExpiredError())
-    def test_blocks_create_store_when_trial_expired(self, _enforce):
+    def test_blocks_create_store_when_trial_expired(self, _enforce, _get_orgs, _ensure_uuid):
         view = StoreViewSet()
         request = APIRequestFactory().post("/api/v1/stores/", {}, format="json")
         request.user = MagicMock()
@@ -496,11 +498,12 @@ class SubscriptionRequiredEnforcementTests(SimpleTestCase):
         with self.assertRaises(TrialExpiredError):
             view.destroy(request, pk="store-1")
 
-    @patch("apps.stores.views.require_trial_active", side_effect=TrialExpiredError())
+    @patch("apps.stores.views.StoreViewSet._require_subscription_for_store", side_effect=TrialExpiredError())
     def test_dashboard_returns_402_when_subscription_required(self, _enforce):
         view = StoreViewSet.as_view({"get": "dashboard"})
         request = APIRequestFactory().get("/api/v1/stores/store-1/dashboard/")
-        request.user = MagicMock(is_authenticated=True)
+        user = MagicMock(is_authenticated=True)
+        force_authenticate(request, user=user)
         store = MagicMock()
         store.id = "store-1"
         store.org_id = "org-1"

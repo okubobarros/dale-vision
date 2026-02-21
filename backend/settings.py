@@ -72,6 +72,7 @@ if os.getenv("DISABLE_APP_MIGRATIONS", "0") in ("1", "true", "True"):
         "alerts": None,
         "billing": None,
         "edge": None,
+        "knox": None,
     }
 
 MIDDLEWARE = [

@@ -42,7 +42,7 @@ class LoginSerializer(serializers.Serializer):
         identifier = (attrs.get("identifier") or attrs.get("username") or "").strip()
         password = attrs.get("password") or ""
         if not identifier or not password:
-            raise serializers.ValidationError("Usuário/senha inválidos")
+            raise serializers.ValidationError("Credenciais inválidas.")
 
         auth_username = identifier
         if "@" in identifier:
@@ -57,7 +57,7 @@ class LoginSerializer(serializers.Serializer):
                         identifier,
                         count,
                     )
-                raise serializers.ValidationError("Usuário/senha inválidos")
+                raise serializers.ValidationError("Credenciais inválidas.")
 
         user = authenticate(
             request=self.context.get("request"),
@@ -65,8 +65,8 @@ class LoginSerializer(serializers.Serializer):
             password=password,
         )
         if not user:
-            raise serializers.ValidationError("Usuário/senha inválidos")
+            raise serializers.ValidationError("Credenciais inválidas.")
         if not user.is_active:
-            raise serializers.ValidationError("Usuário/senha inválidos")
+            raise serializers.ValidationError("Credenciais inválidas.")
         attrs["user"] = user
         return attrs
