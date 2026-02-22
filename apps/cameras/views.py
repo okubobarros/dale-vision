@@ -412,12 +412,12 @@ class CameraViewSet(viewsets.ModelViewSet):
             try:
                 latest = get_latest_roi_config(str(cam.id))
             except Exception as exc:
-            logger.exception(
-                "[CAMERA] roi fetch failed camera_id=%s store_id=%s error=%s",
-                str(cam.id),
-                str(cam.store_id),
-                exc,
-            )
+                logger.exception(
+                    "[CAMERA] roi fetch failed camera_id=%s store_id=%s error=%s",
+                    str(cam.id),
+                    str(cam.store_id),
+                    exc,
+                )
                 return _error_response(
                     "ROI_UNAVAILABLE",
                     "ROI indisponível no momento.",

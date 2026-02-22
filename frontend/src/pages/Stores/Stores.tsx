@@ -73,7 +73,6 @@ const formatHoursDisplay = (store: Store) => {
   return parts.join(' · ');
 };
 
-const DEMO_URL = 'https://app.dalevision.com/agendar-demo';
 const WHATSAPP_URL = `https://wa.me/?text=${encodeURIComponent(
   'Olá! Quero fazer upgrade do meu trial do Dale Vision.'
 )}`;

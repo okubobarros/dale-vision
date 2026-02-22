@@ -1,39 +1,48 @@
+import { Suspense, lazy } from "react"
 import { Routes, Route, Navigate } from "react-router-dom"
 import PrivateRoute from "./components/PrivateRoute"
-import Layout from "./components/Layout/Layout"
 
-import HomePage from "./pages/Home/Home"
-import Login from "./pages/Login/Login"
-import ForgotPassword from "./pages/ForgotPassword/ForgotPassword"
-import AgendarDemo from "./pages/AgendarDemo/AgendarDemo"
-import AuthCallback from "./pages/AuthCallback/AuthCallback"
-import ResetPassword from "./pages/ResetPassword/ResetPassword"
-import Privacy from "./pages/Privacy/Privacy"
-import Terms from "./pages/Terms/Terms"
+const Layout = lazy(() => import("./components/Layout/Layout"))
 
-import Dashboard from "./pages/Dashboard/Dashboard"
-import Stores from "./pages/Stores/Stores"
-import Analytics from "./pages/Analytics/Analytics"
-import Cameras from "./pages/Cameras/Cameras"
-import Alerts from "./pages/Alerts/Alerts"
-import Settings from "./pages/Settings/Settings"
-import ProfilePage from "./pages/Profile/Profile"
-import Upgrade from "./pages/Billing/Upgrade"
-import EdgeHelp from "./pages/EdgeHelp/EdgeHelp"
+const HomePage = lazy(() => import("./pages/Home/Home"))
+const Login = lazy(() => import("./pages/Login/Login"))
+const ForgotPassword = lazy(() => import("./pages/ForgotPassword/ForgotPassword"))
+const AgendarDemo = lazy(() => import("./pages/AgendarDemo/AgendarDemo"))
+const AuthCallback = lazy(() => import("./pages/AuthCallback/AuthCallback"))
+const ResetPassword = lazy(() => import("./pages/ResetPassword/ResetPassword"))
+const Privacy = lazy(() => import("./pages/Privacy/Privacy"))
+const Terms = lazy(() => import("./pages/Terms/Terms"))
+
+const Dashboard = lazy(() => import("./pages/Dashboard/Dashboard"))
+const Stores = lazy(() => import("./pages/Stores/Stores"))
+const Analytics = lazy(() => import("./pages/Analytics/Analytics"))
+const Cameras = lazy(() => import("./pages/Cameras/Cameras"))
+const Alerts = lazy(() => import("./pages/Alerts/Alerts"))
+const Settings = lazy(() => import("./pages/Settings/Settings"))
+const ProfilePage = lazy(() => import("./pages/Profile/Profile"))
+const Upgrade = lazy(() => import("./pages/Billing/Upgrade"))
+const EdgeHelp = lazy(() => import("./pages/EdgeHelp/EdgeHelp"))
 
 // ✅ Alerts stack
-import AlertRules from "./pages/AlertRules/AlertRules"
-import NotificationLogs from "./pages/NotificationLogs/NotificationLogs"
+const AlertRules = lazy(() => import("./pages/AlertRules/AlertRules"))
+const NotificationLogs = lazy(() => import("./pages/NotificationLogs/NotificationLogs"))
 
 // 🆕 Onboarding / Register
-import Register from "./pages/Register/Register"
-import Onboarding from "./pages/Onboarding/Onboarding"
+const Register = lazy(() => import("./pages/Register/Register"))
+const Onboarding = lazy(() => import("./pages/Onboarding/Onboarding"))
 
 // 🆕 Setup técnico (EDGE-first)
-import Setup from "./pages/Setup/Setup"
+const Setup = lazy(() => import("./pages/Setup/Setup"))
+
+const RouteFallback = () => (
+  <div className="min-h-screen flex items-center justify-center text-sm text-gray-500">
+    Carregando...
+  </div>
+)
 
 function App() {
   return (
+    <Suspense fallback={<RouteFallback />}>
     <Routes>
       {/* Rotas públicas */}
       <Route path="/" element={<HomePage />} />
@@ -100,6 +109,7 @@ function App() {
       {/* Fallback */}
       <Route path="*" element={<Navigate to="/" replace />} />
     </Routes>
+    </Suspense>
   )
 }
 
