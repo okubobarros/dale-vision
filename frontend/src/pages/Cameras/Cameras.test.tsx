@@ -26,6 +26,7 @@ vi.mock("../../services/stores", () => ({
 
 vi.mock("../../services/cameras", () => ({
   camerasService: {
+    getCameras: vi.fn().mockResolvedValue([]),
     getStoreCameras: vi.fn().mockResolvedValue([]),
     getStoreLimits: vi.fn().mockResolvedValue({
       plan: "trial",

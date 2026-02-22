@@ -389,7 +389,16 @@ class CameraViewSet(viewsets.ModelViewSet):
 
     @action(detail=True, methods=["get", "put"], url_path="roi")
     def roi(self, request, pk=None):
-        cam = self.get_object()
+        try:
+            cam = self.get_object()
+        except Exception as exc:
+            logger.exception("[CAMERA] roi get_object failed camera_id=%s error=%s", str(pk), exc)
+            return _error_response(
+                "CAMERA_NOT_FOUND",
+                "Câmera não encontrada.",
+                status.HTTP_404_NOT_FOUND,
+                deprecated_detail="Câmera não encontrada.",
+            )
         if request.method == "GET":
             try:
                 require_store_role(request.user, str(cam.store_id), ALLOWED_READ_ROLES)
@@ -400,7 +409,21 @@ class CameraViewSet(viewsets.ModelViewSet):
                     status.HTTP_403_FORBIDDEN,
                     deprecated_detail=str(exc) or "Sem permissão.",
                 )
-            latest = get_latest_roi_config(str(cam.id))
+            try:
+                latest = get_latest_roi_config(str(cam.id))
+            except Exception as exc:
+            logger.exception(
+                "[CAMERA] roi fetch failed camera_id=%s store_id=%s error=%s",
+                str(cam.id),
+                str(cam.store_id),
+                exc,
+            )
+                return _error_response(
+                    "ROI_UNAVAILABLE",
+                    "ROI indisponível no momento.",
+                    status.HTTP_503_SERVICE_UNAVAILABLE,
+                    deprecated_detail="ROI indisponível no momento.",
+                )
             if not latest:
                 return Response(
                     {
@@ -471,11 +494,25 @@ class CameraViewSet(viewsets.ModelViewSet):
                 meta.setdefault("note", "ROI publicado pela equipe DaleVision")
         config_json["meta"] = meta
 
-        created = create_roi_config(
-            camera_id=str(cam.id),
-            config_json=config_json,
-            updated_by=updated_by,
-        )
+        try:
+            created = create_roi_config(
+                camera_id=str(cam.id),
+                config_json=config_json,
+                updated_by=updated_by,
+            )
+        except Exception as exc:
+            logger.exception(
+                "[CAMERA] roi create failed camera_id=%s store_id=%s error=%s",
+                str(cam.id),
+                str(cam.store_id),
+                exc,
+            )
+            return _error_response(
+                "ROI_SAVE_FAILED",
+                "Não foi possível salvar a configuração do ROI.",
+                status.HTTP_500_INTERNAL_SERVER_ERROR,
+                deprecated_detail="Não foi possível salvar a configuração do ROI.",
+            )
         if status_value == "published":
             try:
                 OnboardingProgressService(str(cam.store.org_id)).complete_step(
@@ -597,9 +634,18 @@ class CameraViewSet(viewsets.ModelViewSet):
 
     @action(detail=True, methods=["post"], url_path="test-connection")
     def test_connection(self, request, pk=None):
-        cam = self.get_object()
         try:
+            cam = self.get_object()
             require_store_role(request.user, str(cam.store_id), ALLOWED_MANAGE_ROLES)
+            return Response(
+                {
+                    "ok": True,
+                    "camera_id": str(cam.id),
+                    "store_id": str(cam.store_id),
+                    "queued": True,
+                },
+                status=status.HTTP_202_ACCEPTED,
+            )
         except (PermissionDenied, DjangoPermissionDenied) as exc:
             return _error_response(
                 "PERMISSION_DENIED",
@@ -607,16 +653,14 @@ class CameraViewSet(viewsets.ModelViewSet):
                 status.HTTP_403_FORBIDDEN,
                 deprecated_detail=str(exc) or "Sem permissão.",
             )
-
-        return Response(
-            {
-                "ok": True,
-                "camera_id": str(cam.id),
-                "store_id": str(cam.store_id),
-                "queued": True,
-            },
-            status=status.HTTP_202_ACCEPTED,
-        )
+        except Exception as exc:
+            logger.exception("[CAMERA] test-connection failed camera_id=%s error=%s", str(pk), exc)
+            return _error_response(
+                "CAMERA_TEST_FAILED",
+                "Não foi possível testar a conexão da câmera.",
+                status.HTTP_500_INTERNAL_SERVER_ERROR,
+                deprecated_detail="Não foi possível testar a conexão da câmera.",
+            )
 
     @action(
         detail=True,
@@ -708,7 +752,12 @@ class CameraViewSet(viewsets.ModelViewSet):
         try:
             signed_url = _sign_storage_url(supabase_url, supabase_key, bucket, storage_key, expires_in=900)
         except Exception as exc:
-            logger.exception("[SNAPSHOT] sign failed camera_id=%s error=%s", str(cam.id), exc)
+            logger.exception(
+                "[SNAPSHOT] sign failed camera_id=%s store_id=%s error=%s",
+                str(cam.id),
+                str(cam.store_id),
+                exc,
+            )
             signed_url = None
 
         snapshot = CameraSnapshot.objects.create(
@@ -741,9 +790,59 @@ class CameraViewSet(viewsets.ModelViewSet):
 
     @action(detail=True, methods=["get"], url_path="snapshot")
     def snapshot_url(self, request, pk=None):
-        cam = self.get_object()
         try:
+            cam = self.get_object()
             require_store_role(request.user, str(cam.store_id), ALLOWED_READ_ROLES)
+
+            supabase_url, supabase_key = _get_supabase_storage_config()
+            if not supabase_url or not supabase_key:
+                return _error_response(
+                    "SUPABASE_MISSING_CONFIG",
+                    "Storage não configurado.",
+                    status.HTTP_500_INTERNAL_SERVER_ERROR,
+                    deprecated_detail="Storage não configurado.",
+                )
+
+            snapshot = (
+                CameraSnapshot.objects.filter(camera_id=cam.id)
+                .order_by("-captured_at", "-created_at")
+                .first()
+            )
+            if not snapshot or not snapshot.storage_key:
+                return _error_response(
+                    "SNAPSHOT_NOT_FOUND",
+                    "Snapshot não encontrado.",
+                    status.HTTP_404_NOT_FOUND,
+                    deprecated_detail="Snapshot não encontrado.",
+                )
+
+            try:
+                signed_url = _sign_storage_url(
+                    supabase_url,
+                    supabase_key,
+                    "snapshots",
+                    snapshot.storage_key,
+                    expires_in=900,
+                )
+            except Exception as exc:
+                logger.exception("[SNAPSHOT] sign failed camera_id=%s error=%s", str(cam.id), exc)
+                return _error_response(
+                    "SNAPSHOT_SIGN_FAILED",
+                    "Falha ao gerar URL assinada.",
+                    status.HTTP_502_BAD_GATEWAY,
+                    deprecated_detail="Falha ao gerar URL assinada.",
+                )
+
+            return Response(
+                {
+                    "camera_id": str(cam.id),
+                    "snapshot_id": str(snapshot.id),
+                    "storage_key": snapshot.storage_key,
+                    "signed_url": signed_url,
+                    "expires_in": 900,
+                },
+                status=status.HTTP_200_OK,
+            )
         except (PermissionDenied, DjangoPermissionDenied) as exc:
             return _error_response(
                 "PERMISSION_DENIED",
@@ -751,50 +850,19 @@ class CameraViewSet(viewsets.ModelViewSet):
                 status.HTTP_403_FORBIDDEN,
                 deprecated_detail=str(exc) or "Sem permissão.",
             )
-
-        supabase_url, supabase_key = _get_supabase_storage_config()
-        if not supabase_url or not supabase_key:
-            return _error_response(
-                "SUPABASE_MISSING_CONFIG",
-                "Storage não configurado.",
-                status.HTTP_500_INTERNAL_SERVER_ERROR,
-                deprecated_detail="Storage não configurado.",
-            )
-
-        snapshot = (
-            CameraSnapshot.objects.filter(camera_id=cam.id)
-            .order_by("-captured_at", "-created_at")
-            .first()
-        )
-        if not snapshot or not snapshot.storage_key:
-            return _error_response(
-                "SNAPSHOT_NOT_FOUND",
-                "Snapshot não encontrado.",
-                status.HTTP_404_NOT_FOUND,
-                deprecated_detail="Snapshot não encontrado.",
-            )
-
-        try:
-            signed_url = _sign_storage_url(supabase_url, supabase_key, "snapshots", snapshot.storage_key, expires_in=900)
         except Exception as exc:
-            logger.exception("[SNAPSHOT] sign failed camera_id=%s error=%s", str(cam.id), exc)
-            return _error_response(
-                "SNAPSHOT_SIGN_FAILED",
-                "Falha ao gerar URL assinada.",
-                status.HTTP_502_BAD_GATEWAY,
-                deprecated_detail="Falha ao gerar URL assinada.",
+            logger.exception(
+                "[SNAPSHOT] snapshot_url failed camera_id=%s store_id=%s error=%s",
+                str(pk),
+                "unknown",
+                exc,
             )
-
-        return Response(
-            {
-                "camera_id": str(cam.id),
-                "snapshot_id": str(snapshot.id),
-                "storage_key": snapshot.storage_key,
-                "signed_url": signed_url,
-                "expires_in": 900,
-            },
-            status=status.HTTP_200_OK,
-        )
+            return _error_response(
+                "SNAPSHOT_FAILED",
+                "Não foi possível carregar o snapshot.",
+                status.HTTP_500_INTERNAL_SERVER_ERROR,
+                deprecated_detail="Não foi possível carregar o snapshot.",
+            )
 
 class CameraHealthLogViewSet(viewsets.ReadOnlyModelViewSet):
     serializer_class = CameraHealthLogSerializer

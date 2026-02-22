@@ -104,6 +104,16 @@ const normalizeApiError = (error: unknown, fallbackMessage: string) => {
 }
 
 export const camerasService = {
+  async getCameras(storeId?: string | null): Promise<Camera[]> {
+    try {
+      const params = storeId ? { store_id: storeId } : undefined
+      const response = await api.get("/v1/cameras/", { params })
+      return Array.isArray(response.data) ? response.data : []
+    } catch (error) {
+      throw normalizeApiError(error, "Falha ao carregar câmeras.")
+    }
+  },
+
   async getStoreCameras(storeId: string): Promise<Camera[]> {
     try {
       const response = await api.get(`/v1/stores/${storeId}/cameras/`)

@@ -60,6 +60,19 @@ const formatLastSeenDisplay = (iso?: string | null) => {
   return formatRelativeTime(iso);
 };
 
+const formatHoursDisplay = (store: Store) => {
+  const weekday = store.hours_weekdays || '';
+  const saturday = store.hours_saturday || '';
+  const sunday = store.hours_sunday_holiday || '';
+  if (!weekday && !saturday && !sunday) return null;
+  const parts = [
+    weekday ? `Dias úteis: ${weekday}` : null,
+    saturday ? `Sábado: ${saturday}` : null,
+    sunday ? `Dom/fer: ${sunday}` : null,
+  ].filter(Boolean);
+  return parts.join(' · ');
+};
+
 const DEMO_URL = 'https://app.dalevision.com/agendar-demo';
 const WHATSAPP_URL = `https://wa.me/?text=${encodeURIComponent(
   'Olá! Quero fazer upgrade do meu trial do Dale Vision.'
@@ -69,6 +82,8 @@ type PaywallState = {
   open: boolean;
   title: string;
   message: string;
+  primaryLabel?: string;
+  onPrimary?: (() => void) | null;
 };
 
 const PaywallModal = ({ state, onClose }: { state: PaywallState; onClose: () => void }) => {
@@ -95,14 +110,18 @@ const PaywallModal = ({ state, onClose }: { state: PaywallState; onClose: () => 
         </div>
 
         <div className="mt-5 flex flex-col sm:flex-row gap-3">
-          <a
-            href={DEMO_URL}
+          <button
+            type="button"
+            onClick={() => {
+              if (state.onPrimary) {
+                state.onPrimary();
+              }
+              onClose();
+            }}
             className="inline-flex items-center justify-center rounded-lg bg-blue-600 px-4 py-2 text-sm font-semibold text-white hover:bg-blue-700"
-            target="_blank"
-            rel="noreferrer"
           >
-            Agendar demonstração
-          </a>
+            {state.primaryLabel || "Agendar demonstração"}
+          </button>
           <a
             href={WHATSAPP_URL}
             className="inline-flex items-center justify-center rounded-lg border border-gray-200 px-4 py-2 text-sm font-semibold text-gray-700 hover:bg-gray-50"
@@ -195,8 +214,10 @@ const CreateStoreModal = ({ isOpen, onClose }: { isOpen: boolean; onClose: () =>
       if (payload?.code === 'PAYWALL_TRIAL_LIMIT') {
         setPaywall({
           open: true,
-          title: 'Disponível no plano Pro',
-          message: 'Seu trial permite 1 loja. Fale com nosso time para liberar mais lojas.',
+          title: 'Limite de lojas no trial',
+          message: 'Seu trial permite apenas 1 loja. Aguarde o fim do trial ou fale com nosso time para liberar mais lojas.',
+          primaryLabel: 'Entendi',
+          onPrimary: null,
         });
         return;
       }
@@ -1078,9 +1099,7 @@ const StoreCard = ({ store, onEdit, trialExpired }: StoreCardProps) => {
                 clipRule="evenodd"
               />
             </svg>
-            <span>
-              Horários: {store.hours_weekdays || "—"} · {store.hours_saturday || "—"} · {store.hours_sunday_holiday || "—"}
-            </span>
+            <span>{formatHoursDisplay(store)}</span>
           </div>
         )}
 
@@ -1198,9 +1217,16 @@ const Stores = () => {
     setStoreToEdit(store);
   };
   const trialExpired =
-    (stores ?? []).some(
-      (store) => store.status === "blocked" && store.blocked_reason === "trial_expired"
-    );
+    (stores ?? []).some((store) => {
+      if (store.status !== "blocked" || store.blocked_reason !== "trial_expired") {
+        return false;
+      }
+      const endsAt = store.trial_ends_at ? new Date(store.trial_ends_at) : null;
+      if (!endsAt || Number.isNaN(endsAt.getTime())) {
+        return false;
+      }
+      return endsAt.getTime() <= Date.now();
+    });
 
   if (isLoading) {
     return (
@@ -1255,10 +1281,6 @@ const Stores = () => {
         </div>
         <button 
           onClick={() => {
-            if (trialExpired) {
-              navigate("/app/upgrade");
-              return;
-            }
             setIsCreateModalOpen(true);
           }}
           disabled={trialExpired}
@@ -1315,10 +1337,6 @@ const Stores = () => {
           </p>
           <button 
             onClick={() => {
-              if (trialExpired) {
-                navigate("/app/upgrade");
-                return;
-              }
               setIsCreateModalOpen(true);
             }}
             disabled={trialExpired}
