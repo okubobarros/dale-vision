@@ -8,7 +8,7 @@ from unittest.mock import MagicMock, patch
 
 from apps.cameras.limits import enforce_trial_camera_limit, TRIAL_CAMERA_LIMIT_MESSAGE
 from apps.cameras.roi import create_roi_config, get_latest_published_roi_config
-from apps.cameras.permissions import require_store_role
+from apps.cameras.permissions import require_store_role, filter_cameras_for_user
 from apps.cameras.views import CameraViewSet
 from backend.utils.entitlements import TrialExpiredError
 
@@ -109,16 +109,14 @@ class RoiConfigVersionTests(SimpleTestCase):
 
 class CameraPermissionsTests(SimpleTestCase):
     @patch("apps.cameras.permissions.ensure_user_uuid", return_value="user-1")
-    @patch("apps.cameras.permissions.StoreManager")
     @patch("apps.cameras.permissions.Store")
     @patch("apps.cameras.permissions.OrgMember")
     def test_require_store_role_denied(
-        self, org_member_mock, store_mock, store_manager_mock, _uuid_mock
+        self, org_member_mock, store_mock, _uuid_mock
     ):
         store_mock.objects.filter.return_value.values.return_value.first.return_value = {
             "org_id": "org-1"
         }
-        store_manager_mock.objects.filter.return_value.order_by.return_value.first.return_value = None
         org_member_mock.objects.filter.return_value.first.return_value = None
 
         with self.assertRaises(PermissionDenied):
@@ -129,16 +127,14 @@ class CameraPermissionsTests(SimpleTestCase):
             )
 
     @patch("apps.cameras.permissions.ensure_user_uuid", return_value="user-1")
-    @patch("apps.cameras.permissions.StoreManager")
     @patch("apps.cameras.permissions.Store")
     @patch("apps.cameras.permissions.OrgMember")
     def test_require_store_role_allowed(
-        self, org_member_mock, store_mock, store_manager_mock, _uuid_mock
+        self, org_member_mock, store_mock, _uuid_mock
     ):
         store_mock.objects.filter.return_value.values.return_value.first.return_value = {
             "org_id": "org-1"
         }
-        store_manager_mock.objects.filter.return_value.order_by.return_value.first.return_value = None
         member = MagicMock()
         member.role = "manager"
         org_member_mock.objects.filter.return_value.first.return_value = member
@@ -148,6 +144,18 @@ class CameraPermissionsTests(SimpleTestCase):
             "11111111-1111-1111-1111-111111111111",
             ("owner", "manager"),
         )
+
+    @patch("apps.cameras.permissions.ensure_user_uuid", return_value="user-1")
+    @patch("apps.cameras.permissions.OrgMember")
+    def test_filter_cameras_for_user_uses_org_membership(self, org_member_mock, _uuid_mock):
+        qs = MagicMock()
+        qs.filter.return_value = "filtered"
+        org_member_mock.objects.filter.return_value.values_list.return_value = ["org-1"]
+
+        result = filter_cameras_for_user(qs, MagicMock(is_staff=False, is_superuser=False))
+
+        self.assertEqual(result, "filtered")
+        qs.filter.assert_called_once_with(store__org_id__in=["org-1"])
 
 
 class CameraHealthEndpointTests(SimpleTestCase):
@@ -210,9 +218,10 @@ class CameraRoiLatestEndpointTests(SimpleTestCase):
 
 
 class SubscriptionRequiredCameraCreateTests(SimpleTestCase):
+    @patch("apps.cameras.views.ensure_user_uuid", return_value="user-1")
     @patch("apps.cameras.views.enforce_can_use_product", side_effect=TrialExpiredError())
     @patch("apps.cameras.views.require_store_role")
-    def test_blocks_create_camera_when_trial_expired(self, _require_role, _enforce):
+    def test_blocks_create_camera_when_trial_expired(self, _require_role, _enforce, _uuid_mock):
         store = MagicMock()
         store.id = "store-1"
         store.org_id = "org-1"
@@ -235,9 +244,10 @@ class SubscriptionRequiredCameraCreateTests(SimpleTestCase):
 
 
 class CameraCreateValidationTests(SimpleTestCase):
+    @patch("apps.cameras.views.ensure_user_uuid", return_value="user-1")
     @patch("apps.cameras.views.enforce_can_use_product")
     @patch("apps.cameras.views.require_store_role")
-    def test_create_camera_validation_error_returns_standard_format(self, _require_role, _enforce):
+    def test_create_camera_validation_error_returns_standard_format(self, _require_role, _enforce, _uuid_mock):
         store = MagicMock()
         store.id = "store-1"
         store.org_id = "org-1"
@@ -258,10 +268,11 @@ class CameraCreateValidationTests(SimpleTestCase):
 
 
 class CameraCreateLimitTests(SimpleTestCase):
+    @patch("apps.cameras.views.ensure_user_uuid", return_value="user-1")
     @patch("apps.cameras.views.enforce_trial_camera_limit", side_effect=PaywallError())
     @patch("apps.cameras.views.enforce_can_use_product")
     @patch("apps.cameras.views.require_store_role")
-    def test_create_camera_limit_returns_standard_format(self, _require_role, _enforce, _limit):
+    def test_create_camera_limit_returns_standard_format(self, _require_role, _enforce, _limit, _uuid_mock):
         store = MagicMock()
         store.id = "store-1"
         store.org_id = "org-1"
