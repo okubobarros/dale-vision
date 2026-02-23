@@ -47,7 +47,7 @@ class StoreSerializer(serializers.ModelSerializer):
 
 
 class EmployeeSerializer(serializers.ModelSerializer):
-    store_id = serializers.UUIDField(write_only=True, required=True)
+    store_id = serializers.UUIDField(write_only=True, required=False)
     email = serializers.CharField(required=False, allow_blank=True, allow_null=True)
     role_other = serializers.CharField(required=False, allow_blank=True, allow_null=True)
 
@@ -58,6 +58,8 @@ class EmployeeSerializer(serializers.ModelSerializer):
                 attrs["store"] = Store.objects.get(id=store_id)
             except Store.DoesNotExist:
                 raise serializers.ValidationError({"store_id": "Loja inválida."})
+        if "store" not in attrs:
+            raise serializers.ValidationError({"store_id": "Este campo é obrigatório."})
         return attrs
 
     def create(self, validated_data):

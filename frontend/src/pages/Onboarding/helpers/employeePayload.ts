@@ -21,7 +21,7 @@ export const buildEmployeesPayload = (
       const roleOtherValue =
         entry.role === "Outro" ? entry.roleOther.trim() || null : null
       return {
-        store: storeId,
+        store_id: storeId,
         full_name: entry.name.trim(),
         email: entry.email?.trim() || null,
         role: normalizedRole,

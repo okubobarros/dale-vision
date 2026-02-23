@@ -145,7 +145,7 @@ export default function Onboarding() {
                 : Array.isArray(detail)
                 ? detail.join(" ")
                 : ""
-            if (detailText.toLowerCase().includes("unique") || detailText.includes("store")) {
+            if (detailText.toLowerCase().includes("unique") || detailText.includes("store_id")) {
               setEmployeesError("Este e-mail já está cadastrado nesta loja.")
               return
             }

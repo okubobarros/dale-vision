@@ -10,7 +10,7 @@ export type EmployeeRole =
   | "other"
 
 export type EmployeeCreatePayload = {
-  store: string
+  store_id: string
   full_name: string
   email?: string | null
   role: EmployeeRole
