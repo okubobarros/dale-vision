@@ -8,6 +8,7 @@ from unittest.mock import MagicMock, patch
 from apps.billing.utils import PaywallError, TRIAL_STORE_LIMIT, enforce_trial_store_limit
 from backend.utils.entitlements import TrialExpiredError
 from apps.stores.views import StoreViewSet
+from apps.stores.serializers import EmployeeSerializer
 from apps.stores import views_edge_status
 from apps.edge import views as edge_views
 from apps.edge.views import EdgeEventsIngestView
@@ -547,3 +548,59 @@ class SubscriptionRequiredEnforcementTests(SimpleTestCase):
             response = view(request, pk="store-1")
         self.assertEqual(response.status_code, 403)
         self.assertEqual(response.data.get("code"), "PERMISSION_DENIED")
+
+
+class EmployeeSerializerTests(SimpleTestCase):
+    def test_accepts_store_id_in_list_payload(self):
+        store_id = uuid.uuid4()
+        store = MagicMock()
+        store.id = store_id
+        payload = [
+            {
+                "store_id": str(store_id),
+                "full_name": "A",
+                "email": "a@a.com",
+                "role": "owner",
+                "role_other": None,
+            },
+            {
+                "store_id": str(store_id),
+                "full_name": "B",
+                "email": None,
+                "role": "manager",
+                "role_other": None,
+            },
+        ]
+
+        with patch("apps.stores.serializers.Store.objects.get", return_value=store):
+            serializer = EmployeeSerializer(data=payload, many=True)
+            self.assertTrue(serializer.is_valid(), serializer.errors)
+            validated = serializer.validated_data
+
+        self.assertEqual(len(validated), 2)
+        self.assertEqual(validated[0]["store"], store)
+        self.assertEqual(validated[1]["store"], store)
+
+    def test_missing_store_id_returns_error(self):
+        payload = {"full_name": "A", "role": "owner"}
+        serializer = EmployeeSerializer(data=payload)
+
+        self.assertFalse(serializer.is_valid())
+        self.assertIn("store_id", serializer.errors)
+
+    def test_store_id_mismatch_returns_error(self):
+        store_id = uuid.uuid4()
+        other_id = uuid.uuid4()
+        store = MagicMock()
+        store.id = store_id
+        payload = {
+            "store": str(store_id),
+            "store_id": str(other_id),
+            "full_name": "A",
+            "role": "owner",
+        }
+
+        with patch("apps.stores.serializers.Store.objects.get", return_value=store):
+            serializer = EmployeeSerializer(data=payload)
+            self.assertFalse(serializer.is_valid())
+            self.assertIn("store_id", serializer.errors)

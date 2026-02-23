@@ -47,19 +47,25 @@ class StoreSerializer(serializers.ModelSerializer):
 
 
 class EmployeeSerializer(serializers.ModelSerializer):
+    # Accept store_id from onboarding, but also allow store for backward compatibility.
+    store = serializers.PrimaryKeyRelatedField(queryset=Store.objects.all(), required=False)
     store_id = serializers.UUIDField(write_only=True, required=False)
     email = serializers.CharField(required=False, allow_blank=True, allow_null=True)
     role_other = serializers.CharField(required=False, allow_blank=True, allow_null=True)
 
     def validate(self, attrs):
         store_id = attrs.pop("store_id", None)
-        if store_id is not None and "store" not in attrs:
-            try:
-                attrs["store"] = Store.objects.get(id=store_id)
-            except Store.DoesNotExist:
-                raise serializers.ValidationError({"store_id": "Loja inválida."})
-        if "store" not in attrs:
+        store = attrs.get("store")
+        if store_id is None and store is None:
             raise serializers.ValidationError({"store_id": "Este campo é obrigatório."})
+        if store_id is not None:
+            if store is not None and str(store.id) != str(store_id):
+                raise serializers.ValidationError({"store_id": "store_id não corresponde à store informada."})
+            if store is None:
+                try:
+                    attrs["store"] = Store.objects.get(id=store_id)
+                except Store.DoesNotExist:
+                    raise serializers.ValidationError({"store_id": "Loja inválida."})
         return attrs
 
     def create(self, validated_data):
