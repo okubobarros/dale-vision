@@ -36,15 +36,10 @@ describe("EdgeSetupModal step 2", () => {
     expect(
       await screen.findByRole("button", { name: /Baixar Edge Agent/i })
     ).toBeInTheDocument()
-    expect(
-      screen.getAllByText(/Start_Agent/i).length
-    ).toBeGreaterThan(0)
-    expect(
-      screen.getAllByText(/Diagnose_Agent/i).length
-    ).toBeGreaterThan(0)
-    expect(
-      screen.getAllByText(/Install_Agent_Service/i).length
-    ).toBeGreaterThan(0)
+    expect(screen.getByText(/dalevision-edge-agent\.exe/i)).toBeInTheDocument()
+    expect(screen.getByText(/Start_DaleVision_Agent\.bat/i)).toBeInTheDocument()
+    expect(screen.getByText(/install-service\.ps1/i)).toBeInTheDocument()
+    expect(screen.getByText(/Diagnose\.bat/i)).toBeInTheDocument()
     expect(
       screen.getByRole("button", { name: /Já baixei e extraí/i })
     ).toBeInTheDocument()
@@ -65,6 +60,16 @@ describe("EdgeSetupModal step 2", () => {
     const user = userEvent.setup()
     await user.click(await screen.findByRole("button", { name: /Já baixei e extraí/i }))
     expect(screen.getByText(/Download confirmado/i)).toBeInTheDocument()
+  })
+
+  it("disables download confirmation when download URL is missing", async () => {
+    vi.stubEnv("VITE_EDGE_AGENT_DOWNLOAD_URL", "")
+    renderWithProviders(
+      <EdgeSetupModal open={true} onClose={() => {}} defaultStoreId="store-1" />
+    )
+    const confirmButton = await screen.findByRole("button", { name: /Já baixei e extraí/i })
+    expect(confirmButton).toBeDisabled()
+    expect(screen.getByText(/docs do Edge Agent/i)).toBeInTheDocument()
   })
 
   it("shows rotate token CTA when edge_token is missing", async () => {

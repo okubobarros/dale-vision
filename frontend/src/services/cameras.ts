@@ -17,6 +17,10 @@ export interface Camera {
   last_seen_at?: string | null
   last_error?: string | null
   last_snapshot_url?: string | null
+  last_test_status?: string | null
+  last_test_at?: string | null
+  last_test_error?: string | null
+  error_reason?: string | null
   created_at?: string
   updated_at?: string
 }

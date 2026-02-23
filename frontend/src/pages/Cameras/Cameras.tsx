@@ -29,6 +29,10 @@ const isPrivateIp = (ip: string) => {
 }
 
 const isPrivateHost = (host: string) => isPrivateIp(host) || host === "localhost"
+const EDGE_HEARTBEAT_FRESH_SECONDS = 120
+const TEST_POLL_INTERVAL_MS = 3000
+const TEST_POLL_TIMEOUT_MS = 60000
+const TEST_COOLDOWN_MS = 8000
 
 const FIELD_LABELS: Record<string, string> = {
   name: "Nome",
@@ -68,8 +72,12 @@ const Cameras = () => {
   const [testingCameraId, setTestingCameraId] = useState<string | null>(null)
   const [testMessage, setTestMessage] = useState<string | null>(null)
   const [testError, setTestError] = useState<string | null>(null)
+  const [testCooldownUntil, setTestCooldownUntil] = useState<number | null>(null)
+  const [testCooldownCameraId, setTestCooldownCameraId] = useState<string | null>(null)
   const testTimerRef = useRef<ReturnType<typeof setInterval> | null>(null)
   const testStartedAtRef = useRef<number | null>(null)
+  const testCooldownTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null)
+  const testBaselineRef = useRef<Camera | null>(null)
   const onboardingMode = initialOnboardingMode
   const queryClient = useQueryClient()
   const diagnoseUrl = "/app/edge-help"
@@ -152,6 +160,21 @@ const Cameras = () => {
     enabled: Boolean(selectedStore),
     staleTime: 15000,
   })
+  const edgeHeartbeatAt =
+    edgeStatus?.last_heartbeat_at ||
+    edgeStatus?.last_heartbeat ||
+    edgeStatus?.last_seen_at ||
+    null
+  const edgeOnline =
+    Boolean(edgeStatus?.online) ||
+    (edgeHeartbeatAt
+      ? (() => {
+          const date = new Date(edgeHeartbeatAt)
+          if (Number.isNaN(date.getTime())) return false
+          const diffSec = (Date.now() - date.getTime()) / 1000
+          return diffSec >= 0 && diffSec <= EDGE_HEARTBEAT_FRESH_SECONDS
+        })()
+      : false)
 
   const { data: limits } = useQuery({
     queryKey: ["store-limits", selectedStore],
@@ -291,6 +314,24 @@ const Cameras = () => {
 
   const deleteCameraMutation = useMutation({
     mutationFn: (cameraId: string) => camerasService.deleteCamera(cameraId),
+    onMutate: async (cameraId: string) => {
+      await queryClient.cancelQueries({ queryKey: ["store-cameras", selectedStore] })
+      if (testingCameraId === cameraId) {
+        stopTestPolling()
+        setTestingCameraId(null)
+        setTestMessage(null)
+        setTestError(null)
+      }
+      if (testCooldownCameraId === cameraId) {
+        setTestCooldownCameraId(null)
+        setTestCooldownUntil(null)
+      }
+      queryClient.setQueryData<Camera[]>(
+        ["store-cameras", selectedStore],
+        (current) => (current ? current.filter((cam) => cam.id !== cameraId) : current)
+      )
+      return { cameraId }
+    },
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ["store-cameras", selectedStore] })
       queryClient.invalidateQueries({ queryKey: ["store-limits", selectedStore] })
@@ -386,43 +427,105 @@ const Cameras = () => {
       testTimerRef.current = null
     }
     testStartedAtRef.current = null
+    testBaselineRef.current = null
+  }, [])
+
+  const hasTestUpdate = useCallback((latest: Camera, baseline: Camera | null) => {
+    const latestStatus = latest.status ?? null
+    const latestSnapshot = latest.last_snapshot_url ?? null
+    const latestError = latest.last_error ?? null
+    const latestSeen = latest.last_seen_at ?? null
+    const latestTestStatus = latest.last_test_status ?? null
+    const latestTestAt = latest.last_test_at ?? null
+    const latestTestError = latest.last_test_error ?? null
+    const latestErrorReason = latest.error_reason ?? null
+
+    if (!baseline) {
+      return Boolean(
+        latestTestAt ||
+          latestTestStatus ||
+          latestTestError ||
+          latestSnapshot ||
+          latestError ||
+          latestErrorReason ||
+          latestStatus ||
+          latestSeen
+      )
+    }
+
+    return (
+      (baseline.last_seen_at ?? null) !== latestSeen ||
+      (baseline.status ?? null) !== latestStatus ||
+      (baseline.last_snapshot_url ?? null) !== latestSnapshot ||
+      (baseline.last_error ?? null) !== latestError ||
+      (baseline.last_test_status ?? null) !== latestTestStatus ||
+      (baseline.last_test_at ?? null) !== latestTestAt ||
+      (baseline.last_test_error ?? null) !== latestTestError ||
+      (baseline.error_reason ?? null) !== latestErrorReason
+    )
+  }, [])
+
+  const getTestOutcome = useCallback((latest: Camera) => {
+    const status = latest.status ?? null
+    const lastError = latest.last_error ?? null
+    const lastTestStatus = latest.last_test_status ?? null
+    const lastTestError = latest.last_test_error ?? null
+    const errorReason = latest.error_reason ?? null
+    const normalizedStatus = String(lastTestStatus || status || "").toLowerCase()
+    const failed =
+      Boolean(lastError || lastTestError || errorReason) ||
+      ["error", "failed", "offline"].includes(normalizedStatus)
+    const success =
+      !failed &&
+      (normalizedStatus.includes("ok") ||
+        normalizedStatus.includes("success") ||
+        normalizedStatus.includes("online") ||
+        status === "online")
+    return {
+      failed,
+      success,
+      detail: lastTestError || lastError || errorReason || null,
+    }
   }, [])
 
   const startTestPolling = useCallback(
     (cameraId: string) => {
       stopTestPolling()
       setTestingCameraId(cameraId)
-      setTestMessage("Testando conexão com o Edge...")
+      setTestMessage("Teste em andamento...")
       setTestError(null)
       testStartedAtRef.current = Date.now()
 
       testTimerRef.current = setInterval(async () => {
         const startedAt = testStartedAtRef.current || Date.now()
         const elapsed = Date.now() - startedAt
-        if (elapsed > 120000) {
+        if (elapsed > TEST_POLL_TIMEOUT_MS) {
           stopTestPolling()
           setTestingCameraId(null)
-          setTestError("Sem resposta do Edge em 2 minutos. Verifique a câmera.")
+          const message =
+            "Teste em andamento no Edge. Verifique novamente em alguns instantes."
+          setTestMessage(message)
+          toast(message)
           return
         }
 
         try {
           const latest = await camerasService.getCamera(cameraId)
-          const lastSeen = latest.last_seen_at ? new Date(latest.last_seen_at).getTime() : 0
-          const ageSeconds = lastSeen ? Math.floor((Date.now() - lastSeen) / 1000) : null
-          if (latest.status === "online" && (ageSeconds === null || ageSeconds <= 60)) {
-            stopTestPolling()
-            setTestingCameraId(null)
-            setTestMessage("Câmera online.")
-            queryClient.invalidateQueries({ queryKey: ["store-cameras", selectedStore] })
-            return
+          if (!hasTestUpdate(latest, testBaselineRef.current)) return
+          const outcome = getTestOutcome(latest)
+          stopTestPolling()
+          setTestingCameraId(null)
+          if (outcome.failed) {
+            const message = outcome.detail || "Falha ao conectar na câmera."
+            setTestError(message)
+            toast.error(message)
+          } else if (outcome.success) {
+            setTestMessage("Conexão confirmada.")
+            toast.success("Conexão confirmada.")
+          } else {
+            setTestMessage("Teste concluído. Verifique os detalhes da câmera.")
           }
-          if (latest.status === "error" || latest.last_error) {
-            stopTestPolling()
-            setTestingCameraId(null)
-            setTestError(latest.last_error || "Falha ao conectar na câmera.")
-            return
-          }
+          queryClient.invalidateQueries({ queryKey: ["store-cameras", selectedStore] })
         } catch (err) {
           const status = (err as { response?: { status?: number } })?.response?.status
           if (status === 404) {
@@ -431,9 +534,9 @@ const Cameras = () => {
             setTestError("Câmera não encontrada. Atualize a lista.")
           }
         }
-      }, 5000)
+      }, TEST_POLL_INTERVAL_MS)
     },
-    [queryClient, selectedStore, stopTestPolling]
+    [getTestOutcome, hasTestUpdate, queryClient, selectedStore, stopTestPolling]
   )
 
   const handleTestConnection = useCallback(
@@ -441,23 +544,36 @@ const Cameras = () => {
       setTestError(null)
       setTestMessage(null)
       try {
-        const result = await camerasService.testConnection(cameraId)
-        if (result.queued || result.status === 202) {
-          toast.success("Teste iniciado. Aguardando resposta do Edge...")
-          setTestMessage("Teste iniciado. Aguardando resposta do Edge...")
+        testBaselineRef.current =
+          cameras?.find((camera) => camera.id === cameraId) ?? null
+        await camerasService.testConnection(cameraId)
+        toast.success("Teste iniciado")
+        setTestMessage("Teste em andamento...")
+        setTestCooldownCameraId(cameraId)
+        setTestCooldownUntil(Date.now() + TEST_COOLDOWN_MS)
+        if (testCooldownTimerRef.current) {
+          clearTimeout(testCooldownTimerRef.current)
         }
+        testCooldownTimerRef.current = setTimeout(() => {
+          setTestCooldownCameraId(null)
+          setTestCooldownUntil(null)
+        }, TEST_COOLDOWN_MS)
         startTestPolling(cameraId)
       } catch (err) {
         const detail = (err as { message?: string })?.message
         setTestError(detail || "Falha ao solicitar teste.")
       }
     },
-    [startTestPolling]
+    [cameras, startTestPolling]
   )
 
   useEffect(() => {
     return () => {
       stopTestPolling()
+      if (testCooldownTimerRef.current) {
+        clearTimeout(testCooldownTimerRef.current)
+        testCooldownTimerRef.current = null
+      }
     }
   }, [stopTestPolling])
 
@@ -542,12 +658,12 @@ const Cameras = () => {
                     Status do Edge
                   </h2>
                   <p className="text-xs text-gray-500 mt-1">
-                    {edgeStatus?.online
+                    {edgeOnline
                       ? "Agente online"
                       : "Agente offline — abra o Edge Agent para retomar o monitoramento."}
                   </p>
                 </div>
-                {!edgeStatus?.online && (
+                {!edgeOnline && (
                   <button
                     type="button"
                     onClick={() => setEdgeSetupOpen(true)}
@@ -563,7 +679,7 @@ const Cameras = () => {
                 )}
               </div>
 
-              {edgeStatus?.online && (edgeStatus?.cameras_total ?? 0) === 0 && (
+              {edgeOnline && (edgeStatus?.cameras_total ?? 0) === 0 && (
                 <div className="rounded-lg border border-blue-100 bg-blue-50 px-4 py-3 text-sm text-blue-900">
                   Você só precisa do IP + login da câmera/NVR.
                   <div className="mt-3">
@@ -737,14 +853,24 @@ const Cameras = () => {
                     <button
                       type="button"
                       onClick={() => handleTestConnection(camera.id)}
-                      disabled={!canManageStore}
+                      disabled={
+                        !canManageStore ||
+                        testingCameraId === camera.id ||
+                        (testCooldownCameraId === camera.id &&
+                          testCooldownUntil !== null &&
+                          Date.now() < testCooldownUntil)
+                      }
                       className={`rounded-lg border px-3 py-1.5 text-xs font-semibold ${
-                        !canManageStore
+                        !canManageStore ||
+                        testingCameraId === camera.id ||
+                        (testCooldownCameraId === camera.id &&
+                          testCooldownUntil !== null &&
+                          Date.now() < testCooldownUntil)
                           ? "border-emerald-100 text-emerald-300 cursor-not-allowed"
                           : "border-emerald-200 text-emerald-700 hover:bg-emerald-50"
                       }`}
                     >
-                      Testar conexão
+                      {testingCameraId === camera.id ? "Testando..." : "Testar conexão"}
                     </button>
                     {canManageStore && (
                       <button
@@ -768,6 +894,12 @@ const Cameras = () => {
                       Remover
                     </button>
                   </div>
+                  {(testingCameraId === camera.id || testCooldownCameraId === camera.id) && testMessage && (
+                    <div className="text-xs text-emerald-700">{testMessage}</div>
+                  )}
+                  {(testingCameraId === camera.id || testCooldownCameraId === camera.id) && testError && (
+                    <div className="text-xs text-red-600">{testError}</div>
+                  )}
                 </div>
               )})}
             </div>
@@ -794,7 +926,12 @@ const Cameras = () => {
         key={`${cameraModalOpen ? "open" : "closed"}-${editingCamera?.id ?? "new"}`}
         open={cameraModalOpen}
         camera={editingCamera}
-        testing={testingCameraId === editingCamera?.id}
+        testing={
+          testingCameraId === editingCamera?.id ||
+          (testCooldownCameraId === editingCamera?.id &&
+            testCooldownUntil !== null &&
+            Date.now() < testCooldownUntil)
+        }
         testMessage={testMessage}
         testError={testError}
         createErrorMessage={createErrorMessage}
@@ -814,7 +951,7 @@ const Cameras = () => {
         onSave={handleSaveCamera}
         onTest={handleTestConnection}
         isSaving={createCameraMutation.isPending || updateCameraMutation.isPending}
-        edgeOnline={Boolean(edgeStatus?.online)}
+        edgeOnline={edgeOnline}
         onOpenHelp={() => setConnectionHelpOpen(true)}
       />
 

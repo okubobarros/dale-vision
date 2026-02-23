@@ -801,19 +801,19 @@ const EdgeSetupModal = ({ open, onClose, defaultStoreId }: EdgeSetupModalProps) 
                 )}
                 <div>
                   Abra a pasta extraída e confirme que existem{" "}
-                  <span className="font-mono">Configure_Agent</span>,{" "}
-                  <span className="font-mono">Start_Agent</span> e{" "}
-                  <span className="font-mono">Diagnose_Agent</span>.
-                </div>
-                <div>
-                  Opcional (admin):{" "}
-                  <span className="font-mono">Install_Agent_Service</span>.
+                  <span className="font-mono">.env</span>,{" "}
+                  <span className="font-mono">dalevision-edge-agent.exe</span>,{" "}
+                  <span className="font-mono">Start_DaleVision_Agent.bat</span>,{" "}
+                  <span className="font-mono">install-service.ps1</span>,{" "}
+                  <span className="font-mono">uninstall-service.ps1</span> (se disponível),{" "}
+                  <span className="font-mono">Diagnose.bat</span> e{" "}
+                  <span className="font-mono">logs/</span>.
                 </div>
               </div>
               <button
                 type="button"
                 onClick={handleConfirmDownload}
-                disabled={!isStoreSelected}
+                disabled={!isStoreSelected || !canDownload}
                 className={`mt-3 ${primaryCtaClass}`}
               >
                 Já baixei e extraí
@@ -830,8 +830,7 @@ const EdgeSetupModal = ({ open, onClose, defaultStoreId }: EdgeSetupModalProps) 
               <div className="text-xs text-gray-500 mb-3 space-y-1">
                 <div>1) Clique no botão Copiar.env ou selecione o conteúdo abaixo.</div>
                 <div>
-                  2) Use o <span className="font-mono">Configure_Agent</span> (ou edite manualmente o arquivo{" "}
-                  <span className="font-mono">.env</span>).
+                  2) Abra o arquivo <span className="font-mono">.env</span> na pasta extraída.
                 </div>
               </div>
               <textarea
@@ -859,13 +858,6 @@ const EdgeSetupModal = ({ open, onClose, defaultStoreId }: EdgeSetupModalProps) 
                 </div>
                 <div>5) Salve o arquivo antes de fechar.</div>
               </div>
-               
-              {!downloadConfirmed && (
-                <div className="mt-2 text-xs text-amber-700">
-                  Se você baixou manualmente, clique em “Já baixei e extraí” no passo 2 para
-                  liberar o restante.
-                </div>
-              )}
               {loadingCreds && (
                 <div className="mt-2 text-xs text-gray-500">Aguarde as credenciais do Edge...</div>
               )}
@@ -896,15 +888,15 @@ const EdgeSetupModal = ({ open, onClose, defaultStoreId }: EdgeSetupModalProps) 
               <div className="text-sm text-gray-700 font-semibold">4. Iniciar Agent</div>
               <div className="mt-1 text-xs text-gray-500 space-y-1">
                 <div>
-                  Clique em <span className="font-mono">Start_Agent</span> e mantenha a
+                  Clique em <span className="font-mono">Start_DaleVision_Agent.bat</span> e mantenha a
                   janela aberta.
                 </div>
                 <div>
                   Se der erro ou você estiver remoto: clique em{" "}
-                  <span className="font-mono">Diagnose_Agent</span> e envie o ZIP.
+                  <span className="font-mono">Diagnose.bat</span> e envie o ZIP.
                 </div>
                 <div>
-                  Opcional: <span className="font-mono">Install_Agent_Service</span> (apenas administrador).
+                  Opcional: <span className="font-mono">install-service.ps1</span> (apenas administrador).
                 </div>
               </div>
               <div className="mt-2 rounded-lg border border-gray-200 bg-white px-3 py-2 text-xs text-gray-600">

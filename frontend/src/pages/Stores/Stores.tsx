@@ -913,14 +913,14 @@ const StoreCard = ({ store, onEdit, trialExpired }: StoreCardProps) => {
     refetchInterval: 20000,
     refetchIntervalInBackground: true,
   });
+  const edgeHeartbeatAt =
+    edgeStatus?.last_heartbeat_at || edgeStatus?.last_heartbeat || storeLastSeenAt || null;
   const lastSeenAt = storeLastSeenAt ?? getLastSeenAt(edgeStatus);
   const lastError = store.last_error ?? edgeStatus?.last_error ?? null;
   const edgeOnlineFromStatus =
     typeof edgeStatus?.online === 'boolean' ? edgeStatus.online : undefined;
   const isEdgeOnline =
-    edgeOnlineFromStatus !== undefined
-      ? edgeOnlineFromStatus
-      : isRecent(lastSeenAt);
+    edgeOnlineFromStatus === true ? true : isRecent(edgeHeartbeatAt);
   const edgeStatusLabel = isEdgeOnline ? 'Online' : 'Offline';
   const edgeStatusClass = isEdgeOnline
     ? 'bg-green-100 text-green-800'

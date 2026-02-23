@@ -233,4 +233,31 @@ describe("Cameras create camera", () => {
     expect(payload).not.toHaveProperty("channel")
     expect(payload).not.toHaveProperty("subtype")
   })
+
+  it("shows testing state and calls test-connection", async () => {
+    const { camerasService } = await import("../../services/cameras")
+    vi.mocked(camerasService.getStoreCameras).mockResolvedValueOnce([
+      {
+        id: "cam-1",
+        store: "store-1",
+        name: "Entrada",
+        status: "offline",
+      },
+    ])
+    vi.mocked(camerasService.testConnection).mockResolvedValueOnce({
+      ok: true,
+      queued: true,
+      status: 202,
+    })
+
+    renderWithProviders(<Cameras />)
+    const user = userEvent.setup()
+
+    expect(await screen.findByText("Entrada")).toBeInTheDocument()
+    const testButton = await screen.findByRole("button", { name: /Testar conexão/i })
+    await user.click(testButton)
+
+    expect(camerasService.testConnection).toHaveBeenCalledWith("cam-1")
+    expect(await screen.findByRole("button", { name: /Testando/i })).toBeInTheDocument()
+  })
 })
