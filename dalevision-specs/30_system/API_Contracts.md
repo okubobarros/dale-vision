@@ -18,12 +18,15 @@
 - `GET /api/accounts/me/`
 - `GET /api/accounts/supabase/`
 - `GET /api/me/setup-state/`
+- `GET /api/health/auth/`
+- `GET /api/health/schema/`
 
 - `GET /api/v1/onboarding/progress/`
 - `POST /api/v1/onboarding/step/complete/`
 
 - `GET|POST /api/v1/stores/`
 - `GET|PUT|PATCH|DELETE /api/v1/stores/{store_id}/`
+- `GET|POST /api/v1/employees/`
 - `GET /api/v1/stores/{store_id}/edge-status/`
 - `GET /api/v1/stores/{store_id}/edge-setup/`
 - `GET /api/v1/stores/{store_id}/edge-token/`
@@ -85,3 +88,6 @@ Observação: detalhes de validação e regras de ingestão devem referenciar `S
 
 ## Perguntas abertas
 - Existe OpenAPI oficial atualizado além do Swagger gerado?
+
+## Notas de resposta
+- `GET /api/me/setup-state/` pode retornar `X-Schema-Warnings: ORG_SCHEMA_OUTDATED` quando o schema do banco estiver desatualizado (ex.: ausência de `organizations.trial_ends_at`).

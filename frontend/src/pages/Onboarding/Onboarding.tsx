@@ -90,6 +90,7 @@ export default function Onboarding() {
     try {
       if (list.length > 0) {
         const roleMap: Record<string, EmployeeRole> = {
+          Proprietário: "owner",
           Gerente: "manager",
           Caixa: "cashier",
           Vendedor: "seller",
@@ -99,22 +100,32 @@ export default function Onboarding() {
         }
 
         const payload = list
-          .map((e) => ({
-            store_id: storeId,
-            full_name: e.name.trim(),
-            email: e.email?.trim() || undefined,
-            role: roleMap[e.role] ?? undefined,
-            role_other:
-              e.role === "Outro" ? (e.roleOther.trim() || undefined) : undefined,
-          }))
+          .map((e) => {
+            const normalizedRole = roleMap[e.role] ?? undefined
+            const roleOtherValue =
+              e.role === "Outro" ? e.roleOther.trim() || undefined : undefined
+            return {
+              store_id: storeId,
+              full_name: e.name.trim(),
+              email: e.email?.trim() || undefined,
+              role: normalizedRole,
+              role_other: roleOtherValue,
+            }
+          })
           .filter((e) => e.full_name && e.role)
 
-        try {
-          await employeesService.createEmployees(payload)
-        } catch (error) {
-          console.error("[Onboarding] create employees failed", error)
+        if (payload.length > 0) {
+          try {
+            await employeesService.createEmployees(payload)
+          } catch (error) {
+            console.error("[Onboarding] create employees failed", error)
+            setEmployeesError(
+              "Alguns funcionários não puderam ser salvos. Você pode tentar novamente depois."
+            )
+          }
+        } else {
           setEmployeesError(
-            "Alguns funcionários não puderam ser salvos. Você pode tentar novamente depois."
+            "Não foi possível salvar a equipe. Verifique os cargos informados."
           )
         }
       }

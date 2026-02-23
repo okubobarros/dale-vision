@@ -29,6 +29,7 @@
 - Acesso via Admin Console interno (não no app do cliente).
  - Pode acessar lojas para assistência de onboarding (ex.: configurar ROI em trials).
  - Quando staff publica ROI, deve registrar metadados de assistência (created_by_staff, created_by_user_id, created_at).
+ - Superuser/staff **não** expira trial e tem acesso total (bypass de paywall/trial).
 
 ## Observações
 - Tokens e secrets nunca no frontend.

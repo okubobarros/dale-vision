@@ -51,6 +51,7 @@ EVENT_STATUS = (
 )
 
 EMPLOYEE_ROLE = (
+    ("owner", "owner"),
     ("manager", "manager"),
     ("cashier", "cashier"),
     ("seller", "seller"),

@@ -22,3 +22,14 @@ Toda decisão de produto, contrato de API e regra crítica deve estar aqui antes
 - `50_specs`: especificações funcionais (SPEC-###).
 - `60_buglog`: processo de bugs.
 - `70_ops`: suporte e release.
+
+## Specs
+- Índice: `../50_specs/README.md`
+- `SPEC-001-Edge-Setup-Wizard`: `../50_specs/SPEC-001-Edge-Setup-Wizard.md`
+- `SPEC-002-Camera-Onboarding`: `../50_specs/SPEC-002-Camera-Onboarding.md`
+- `SPEC-003-ROI-Flow`: `../50_specs/SPEC-003-ROI-Flow.md`
+- `SPEC-004-Trial-Paywall`: `../50_specs/SPEC-004-Trial-Paywall.md`
+- `SPEC-005-Store-Reports`: `../50_specs/SPEC-005-Store-Reports.md`
+- `SPEC-006-Alerts`: `../50_specs/SPEC-006-Alerts.md`
+- `SPEC-007-Event-Pipeline`: `../50_specs/SPEC-007-Event-Pipeline.md`
+- `SPEC-008-Auth-Password-Recovery`: `../50_specs/SPEC-008-Auth-Password-Recovery.md`

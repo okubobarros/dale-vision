@@ -27,3 +27,20 @@ Registrar decisões e eventos do dia.
 - Próximos passos:
   - Validar bucket `snapshots` no Supabase e permissões.
   - Checar UX de “Aguardando validação” nas câmeras.
+
+## 2026-02-23
+- Data: 2026-02-23
+- Highlights:
+  - Flow de auth callback com timeout reduzido e fallback para onboarding.
+  - Forgot password (reset via Supabase) documentado.
+  - Onboarding: cargos incluem `owner` e gravação de funcionários corrigida.
+  - Superuser/staff sem expiração de trial.
+  - API health: `/api/health/auth/` e `/api/health/schema/`.
+  - Cameras: listagem all-stores no frontend e remoção de QR/avançado.
+  - Build otimizado com code-splitting e manualChunks no Vite.
+- Bloqueios:
+  - Nenhum.
+- Decisões:
+  - `setup-state` pode retornar `X-Schema-Warnings` quando schema estiver desatualizado.
+- Próximos passos:
+  - Rodar SQL `20260223_add_employee_role_owner.sql` no Supabase.

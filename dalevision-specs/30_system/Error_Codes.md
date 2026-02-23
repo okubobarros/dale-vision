@@ -60,6 +60,36 @@ Compatibilidade temporária:
 - HTTP: 500
 - Mensagem UX sugerida: "Não foi possível gerar o token do Edge."
 
+### SUPABASE_TOKEN_INVALID
+- Quando: token Supabase inválido/expirado durante bootstrap/setup-state.
+- HTTP: 401
+- Mensagem UX sugerida: "Sessão expirada, faça login novamente."
+
+### SUPABASE_MISSING_CONFIG
+- Quando: Supabase não configurado no backend.
+- HTTP: 500
+- Mensagem UX sugerida: "Estamos finalizando a configuração. Tente novamente em alguns minutos."
+
+### ROI_UNAVAILABLE
+- Quando: falha ao carregar ROI.
+- HTTP: 503
+- Mensagem UX sugerida: "ROI indisponível no momento."
+
+### CAMERA_TEST_FAILED
+- Quando: falha ao solicitar teste de conexão.
+- HTTP: 500
+- Mensagem UX sugerida: "Não foi possível testar a conexão da câmera."
+
+### CAMERA_CREATE_FAILED
+- Quando: falha inesperada ao criar câmera.
+- HTTP: 500
+- Mensagem UX sugerida: "Não foi possível cadastrar a câmera."
+
+### SNAPSHOT_SIGN_FAILED
+- Quando: falha ao gerar URL assinada de snapshot.
+- HTTP: 502
+- Mensagem UX sugerida: "Falha ao gerar URL do snapshot."
+
 ### SNAPSHOT_UPLOAD_FAILED
 - Quando: falha ao subir snapshot (storage indisponível ou erro de upload).
 - HTTP: 500
@@ -68,3 +98,4 @@ Compatibilidade temporária:
 ## Observações
 - Não inventar endpoints novos para suportar erros; quando necessário, usar `details` com o contexto.
 - Para validações de campo, `details` deve conter o mapa de erros por campo no padrão DRF.
+- `GET /api/me/setup-state/` pode retornar header `X-Schema-Warnings` quando detectar schema desatualizado.

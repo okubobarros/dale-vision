@@ -1,6 +1,13 @@
 import api from "./api"
 
-export type EmployeeRole = "manager" | "cashier" | "seller" | "security" | "stock" | "other"
+export type EmployeeRole =
+  | "owner"
+  | "manager"
+  | "cashier"
+  | "seller"
+  | "security"
+  | "stock"
+  | "other"
 
 export type EmployeeCreatePayload = {
   store_id: string

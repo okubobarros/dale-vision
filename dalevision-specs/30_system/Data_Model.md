@@ -5,6 +5,7 @@
 - Store, StoreZone
 - Camera, CameraHealthLog
 - CameraSnapshot
+- Employee
 - DetectionEvent, EventMedia
 - AlertRule, NotificationLog
 - DemoLead, JourneyEvent
@@ -20,6 +21,7 @@
 ## Observações
 - Modelos são `managed = False` (fonte de verdade no Postgres/Supabase).
 - Trial padrão definido em Store/Organization via `trial_ends_at`.
+- `employee_role` inclui: `owner`, `manager`, `cashier`, `seller`, `security`, `stock`, `other`.
 - CameraSnapshot (mínimo):
   - `camera_id`, `store_id`, `org_id`
   - `path` (storage)
@@ -28,3 +30,6 @@
 - Camera:
   - `status` default: `unknown`/`pending_validation`
   - `last_snapshot_url` (signed URL curta duração)
+- Store (campos onboarding):
+  - `business_type`, `pos_system`, `hours_weekdays`, `hours_saturday`, `hours_sunday_holiday`
+  - `employees_count`, `cameras_count`

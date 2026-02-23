@@ -22,8 +22,8 @@ type SetupState = {
 type CallbackStatus = "loading" | "error" | "timeout"
 type DiagnosticInfo = { status?: number; code?: string; requestId?: string }
 
-const CALLBACK_TIMEOUT_MS = 10000
-const SETUP_STATE_TIMEOUT_MS = 10000
+const CALLBACK_TIMEOUT_MS = 8000
+const SETUP_STATE_TIMEOUT_MS = 4000
 
 const getErrorMessage = (error: unknown, fallback: string) => {
   if (error && typeof error === "object") {
@@ -128,13 +128,15 @@ const AuthCallback: React.FC = () => {
           session = data.session
         }
 
-        const { data: userData, error: userError } = await supabase.auth.getUser()
-        if (userError) {
-          console.warn("[AuthCallback] get user failed", {
-            message: userError.message,
-          })
+        if (!user) {
+          const { data: userData, error: userError } = await supabase.auth.getUser()
+          if (userError) {
+            console.warn("[AuthCallback] get user failed", {
+              message: userError.message,
+            })
+          }
+          user = userData?.user ?? session?.user ?? null
         }
-        user = userData?.user ?? session?.user ?? null
 
         if (!session || !session.access_token || !user) {
           throw new Error("Sessão inválida. Faça login novamente.")

@@ -73,8 +73,10 @@ def _sanitize_camera_payload(payload):
         data["rtsp_url"] = _mask_rtsp(data["rtsp_url"])
     return data
 
-def _expire_trial_stores(qs):
+def _expire_trial_stores(qs, user=None):
     try:
+        if user and (getattr(user, "is_superuser", False) and getattr(user, "is_staff", False)):
+            return
         now = timezone.now()
         expired_ids = list(
             qs.filter(
@@ -216,7 +218,7 @@ class StoreViewSet(viewsets.ModelViewSet):
         org_id = self.request.query_params.get("org_id")
         if org_id:
             qs = qs.filter(org_id=org_id)
-        _expire_trial_stores(qs)
+        _expire_trial_stores(qs, self.request.user)
         return qs
     
     def list(self, request):
@@ -1060,7 +1062,16 @@ class EmployeeViewSet(viewsets.ModelViewSet):
     def create(self, request, *args, **kwargs):
         is_many = isinstance(request.data, list)
         serializer = self.get_serializer(data=request.data, many=is_many)
-        serializer.is_valid(raise_exception=True)
+        try:
+            serializer.is_valid(raise_exception=True)
+        except ValidationError as exc:
+            logger.warning(
+                "[EMPLOYEE] validation error user_id=%s payload=%s errors=%s",
+                getattr(request.user, "id", None),
+                request.data,
+                getattr(exc, "detail", None) or str(exc),
+            )
+            raise
         self.perform_create(serializer)
         headers = self.get_success_headers(serializer.data)
         return Response(serializer.data, status=status.HTTP_201_CREATED, headers=headers)

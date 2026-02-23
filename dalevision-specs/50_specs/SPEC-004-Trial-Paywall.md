@@ -20,6 +20,7 @@ Aplicar limites do trial e orientar upgrade.
 - Trial = 72h
 - Limite de lojas no trial = 1
 - Limite de câmeras no trial = 3
+- Superuser/staff não expira trial (acesso total sem paywall).
 
 ## Payloads e códigos
 - `PAYWALL_TRIAL_LIMIT` (HTTP 402)
