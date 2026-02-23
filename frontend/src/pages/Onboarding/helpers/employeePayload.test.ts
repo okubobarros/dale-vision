@@ -32,14 +32,14 @@ describe("buildEmployeesPayload", () => {
 
     expect(payload).toEqual([
       {
-        store_id: "store-1",
+        store: "store-1",
         full_name: "Ana Silva",
         email: "ana@exemplo.com",
         role: "manager",
         role_other: null,
       },
       {
-        store_id: "store-1",
+        store: "store-1",
         full_name: "Sem Email",
         email: null,
         role: "cashier",
@@ -48,4 +48,3 @@ describe("buildEmployeesPayload", () => {
     ])
   })
 })
-
