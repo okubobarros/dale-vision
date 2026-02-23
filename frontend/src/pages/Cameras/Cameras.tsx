@@ -72,7 +72,6 @@ const Cameras = () => {
   const [testingCameraId, setTestingCameraId] = useState<string | null>(null)
   const [testMessage, setTestMessage] = useState<string | null>(null)
   const [testError, setTestError] = useState<string | null>(null)
-  const [testCooldownUntil, setTestCooldownUntil] = useState<number | null>(null)
   const [testCooldownCameraId, setTestCooldownCameraId] = useState<string | null>(null)
   const testTimerRef = useRef<ReturnType<typeof setInterval> | null>(null)
   const testStartedAtRef = useRef<number | null>(null)
@@ -160,21 +159,11 @@ const Cameras = () => {
     enabled: Boolean(selectedStore),
     staleTime: 15000,
   })
-  const edgeHeartbeatAt =
-    edgeStatus?.last_heartbeat_at ||
-    edgeStatus?.last_heartbeat ||
-    edgeStatus?.last_seen_at ||
-    null
   const edgeOnline =
     Boolean(edgeStatus?.online) ||
-    (edgeHeartbeatAt
-      ? (() => {
-          const date = new Date(edgeHeartbeatAt)
-          if (Number.isNaN(date.getTime())) return false
-          const diffSec = (Date.now() - date.getTime()) / 1000
-          return diffSec >= 0 && diffSec <= EDGE_HEARTBEAT_FRESH_SECONDS
-        })()
-      : false)
+    (edgeStatus?.store_status_age_seconds !== null &&
+      edgeStatus?.store_status_age_seconds !== undefined &&
+      edgeStatus.store_status_age_seconds <= EDGE_HEARTBEAT_FRESH_SECONDS)
 
   const { data: limits } = useQuery({
     queryKey: ["store-limits", selectedStore],
@@ -324,7 +313,6 @@ const Cameras = () => {
       }
       if (testCooldownCameraId === cameraId) {
         setTestCooldownCameraId(null)
-        setTestCooldownUntil(null)
       }
       queryClient.setQueryData<Camera[]>(
         ["store-cameras", selectedStore],
@@ -370,7 +358,7 @@ const Cameras = () => {
     setCreateErrorFields({})
     setShowUpgradeCta(false)
     setConnectionHelpOpen(false)
-  }, [canManageStore])
+  }, [canManageStore, selectedStore])
 
   const openEditModal = useCallback(
     (camera: Camera) => {
@@ -550,13 +538,11 @@ const Cameras = () => {
         toast.success("Teste iniciado")
         setTestMessage("Teste em andamento...")
         setTestCooldownCameraId(cameraId)
-        setTestCooldownUntil(Date.now() + TEST_COOLDOWN_MS)
         if (testCooldownTimerRef.current) {
           clearTimeout(testCooldownTimerRef.current)
         }
         testCooldownTimerRef.current = setTimeout(() => {
           setTestCooldownCameraId(null)
-          setTestCooldownUntil(null)
         }, TEST_COOLDOWN_MS)
         startTestPolling(cameraId)
       } catch (err) {
@@ -856,16 +842,12 @@ const Cameras = () => {
                       disabled={
                         !canManageStore ||
                         testingCameraId === camera.id ||
-                        (testCooldownCameraId === camera.id &&
-                          testCooldownUntil !== null &&
-                          Date.now() < testCooldownUntil)
+                        testCooldownCameraId === camera.id
                       }
                       className={`rounded-lg border px-3 py-1.5 text-xs font-semibold ${
                         !canManageStore ||
                         testingCameraId === camera.id ||
-                        (testCooldownCameraId === camera.id &&
-                          testCooldownUntil !== null &&
-                          Date.now() < testCooldownUntil)
+                        testCooldownCameraId === camera.id
                           ? "border-emerald-100 text-emerald-300 cursor-not-allowed"
                           : "border-emerald-200 text-emerald-700 hover:bg-emerald-50"
                       }`}
@@ -928,9 +910,7 @@ const Cameras = () => {
         camera={editingCamera}
         testing={
           testingCameraId === editingCamera?.id ||
-          (testCooldownCameraId === editingCamera?.id &&
-            testCooldownUntil !== null &&
-            Date.now() < testCooldownUntil)
+          testCooldownCameraId === editingCamera?.id
         }
         testMessage={testMessage}
         testError={testError}

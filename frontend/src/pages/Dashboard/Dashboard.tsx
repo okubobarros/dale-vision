@@ -282,21 +282,6 @@ const Dashboard = () => {
     }
   }, [selectedStore, isEdgeOnlineByLastSeen])
 
-  useEffect(() => {
-    if (!showActivationProgress) return
-    if (selectedStore === ALL_STORES_VALUE) return
-    if (!edgeStatus) return
-    const lastSeen = getLastSeenAt(edgeStatus)
-    if (!isRecentTimestamp(lastSeen, ONLINE_MAX_AGE_SEC)) return
-    try {
-      localStorage.removeItem("dv_from_onboarding")
-    } catch {
-      // ignore storage access issues
-    }
-    setShowActivationProgress(false)
-    setActivationBannerDismissed(true)
-  }, [edgeStatus, selectedStore, showActivationProgress])
-
   const dismissActivationProgress = () => {
     try {
       localStorage.removeItem("dv_from_onboarding")

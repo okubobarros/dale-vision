@@ -37,9 +37,9 @@ describe("EdgeSetupModal step 2", () => {
       await screen.findByRole("button", { name: /Baixar Edge Agent/i })
     ).toBeInTheDocument()
     expect(screen.getByText(/dalevision-edge-agent\.exe/i)).toBeInTheDocument()
-    expect(screen.getByText(/Start_DaleVision_Agent\.bat/i)).toBeInTheDocument()
-    expect(screen.getByText(/install-service\.ps1/i)).toBeInTheDocument()
-    expect(screen.getByText(/Diagnose\.bat/i)).toBeInTheDocument()
+    expect(screen.getAllByText(/Start_DaleVision_Agent\.bat/i).length).toBeGreaterThan(0)
+    expect(screen.getAllByText(/install-service\.ps1/i).length).toBeGreaterThan(0)
+    expect(screen.getAllByText(/Diagnose\.bat/i).length).toBeGreaterThan(0)
     expect(
       screen.getByRole("button", { name: /Já baixei e extraí/i })
     ).toBeInTheDocument()

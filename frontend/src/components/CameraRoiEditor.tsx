@@ -53,8 +53,7 @@ const CameraRoiEditor = ({ open, camera, onClose }: CameraRoiEditorProps) => {
   const [draftPoints, setDraftPoints] = useState<RoiPoint[]>([])
   const [isDrawing, setIsDrawing] = useState(false)
   const [error, setError] = useState<string | null>(null)
-  const [snapshotUrl, setSnapshotUrl] = useState<string | null>(null)
-  const [backgroundImage, setBackgroundImage] = useState<HTMLImageElement | null>(null)
+  const backgroundImageRef = useRef<HTMLImageElement | null>(null)
   const fileInputRef = useRef<HTMLInputElement | null>(null)
 
   const cameraId = camera?.id
@@ -75,6 +74,7 @@ const CameraRoiEditor = ({ open, camera, onClose }: CameraRoiEditorProps) => {
       return count < 2
     },
   })
+  const snapshotUrl = snapshotData?.signed_url || null
 
   const updateRoiMutation = useMutation({
     mutationFn: (configJson: unknown) =>
@@ -88,10 +88,7 @@ const CameraRoiEditor = ({ open, camera, onClose }: CameraRoiEditorProps) => {
 
   const uploadSnapshotMutation = useMutation({
     mutationFn: (file: File) => camerasService.uploadSnapshot(cameraId || "", file),
-    onSuccess: (data) => {
-      if (data.signed_url) {
-        setSnapshotUrl(data.signed_url)
-      }
+    onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ["camera-snapshot", cameraId] })
       toast.success("Snapshot atualizado")
     },
@@ -127,15 +124,14 @@ const CameraRoiEditor = ({ open, camera, onClose }: CameraRoiEditorProps) => {
     ]
   }, [addedShapes, baseShapes, removedShapeIds])
 
-  useEffect(() => {
-    if (!open) return
+  const drawCanvas = useCallback(() => {
     const canvas = canvasRef.current
     if (!canvas) return
     const ctx = canvas.getContext("2d")
     if (!ctx) return
 
     ctx.clearRect(0, 0, CANVAS_WIDTH, CANVAS_HEIGHT)
-    drawBackground(ctx, backgroundImage)
+    drawBackground(ctx, backgroundImageRef.current)
 
     effectiveShapes.forEach((shape) => drawShape(ctx, shape, "#2563eb"))
     if (draftPoints.length > 0) {
@@ -145,24 +141,42 @@ const CameraRoiEditor = ({ open, camera, onClose }: CameraRoiEditorProps) => {
         "#f59e0b"
       )
     }
-  }, [open, effectiveShapes, draftPoints, mode, zoneName])
+  }, [draftPoints, effectiveShapes, mode, zoneName])
 
   useEffect(() => {
-    if (snapshotData && snapshotData.signed_url) {
-      setSnapshotUrl(snapshotData.signed_url)
-    }
-  }, [snapshotData])
+    if (!open) return
+    drawCanvas()
+  }, [drawCanvas, open])
 
   useEffect(() => {
     if (!snapshotUrl) {
-      setBackgroundImage(null)
+      backgroundImageRef.current = null
+      if (open) {
+        drawCanvas()
+      }
       return
     }
+    let active = true
     const img = new Image()
-    img.onload = () => setBackgroundImage(img)
-    img.onerror = () => setBackgroundImage(null)
+    img.onload = () => {
+      if (!active) return
+      backgroundImageRef.current = img
+      if (open) {
+        drawCanvas()
+      }
+    }
+    img.onerror = () => {
+      if (!active) return
+      backgroundImageRef.current = null
+      if (open) {
+        drawCanvas()
+      }
+    }
     img.src = snapshotUrl
-  }, [snapshotUrl])
+    return () => {
+      active = false
+    }
+  }, [drawCanvas, open, snapshotUrl])
 
   const handlePointerDown = useCallback(
     (event: PointerEvent<HTMLCanvasElement>) => {

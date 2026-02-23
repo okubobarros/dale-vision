@@ -1,29 +1,13 @@
-import { useCallback, useEffect, useMemo, useState } from "react"
+import { useCallback, useEffect, useMemo, useRef, useState } from "react"
 import { useNavigate } from "react-router-dom"
-import axios from "axios"
-import toast from "react-hot-toast"
 import { supabase } from "../../lib/supabase"
-import { API_BASE_URL } from "../../lib/api"
 import { authService } from "../../services/auth"
 import { useAuth } from "../../contexts/useAuth"
-
-type SetupState = {
-  ok?: boolean
-  state?: "no_store" | "ready"
-  has_store?: boolean
-  has_edge?: boolean
-  store_count?: number
-  primary_store_id?: string | null
-  code?: string
-  message?: string
-  request_id?: string
-}
+import { syncApiAuthHeader } from "../../services/api"
 
 type CallbackStatus = "loading" | "error" | "timeout"
-type DiagnosticInfo = { status?: number; code?: string; requestId?: string }
 
 const CALLBACK_TIMEOUT_MS = 8000
-const SETUP_STATE_TIMEOUT_MS = 4000
 
 const getErrorMessage = (error: unknown, fallback: string) => {
   if (error && typeof error === "object") {
@@ -50,7 +34,7 @@ const AuthCallback: React.FC = () => {
   const [status, setStatus] = useState<CallbackStatus>("loading")
   const [errorMessage, setErrorMessage] = useState("")
   const [attempt, setAttempt] = useState(0)
-  const [diagnostic, setDiagnostic] = useState<DiagnosticInfo | null>(null)
+  const hasNavigatedRef = useRef(false)
   const navigate = useNavigate()
   const { refreshAuth } = useAuth()
 
@@ -62,29 +46,11 @@ const AuthCallback: React.FC = () => {
     setAttempt((prev) => prev + 1)
   }, [])
 
-  const handleCopyDiagnostic = useCallback(async () => {
-    if (!diagnostic) {
-      return
-    }
-    const payload = {
-      status: diagnostic.status ?? "n/a",
-      code: diagnostic.code ?? "n/a",
-      request_id: diagnostic.requestId ?? "n/a",
-    }
-    try {
-      await navigator.clipboard.writeText(JSON.stringify(payload, null, 2))
-      toast.success("Diagnóstico copiado")
-    } catch (error) {
-      console.warn("[AuthCallback] clipboard failed", error)
-      toast.error("Não foi possível copiar o diagnóstico.")
-    }
-  }, [diagnostic])
-
   useEffect(() => {
     let active = true
     setStatus("loading")
     setErrorMessage("")
-    setDiagnostic(null)
+    hasNavigatedRef.current = false
 
     const timeoutId = window.setTimeout(() => {
       if (active) {
@@ -149,85 +115,11 @@ const AuthCallback: React.FC = () => {
 
         authService.saveSupabaseSession(session, user, user.email || "")
         refreshAuth()
+        syncApiAuthHeader()
 
-        const accessToken = session.access_token
-        let setupState: SetupState | null = null
-        try {
-          const response = await axios.get<SetupState>(
-            `${API_BASE_URL}/api/me/setup-state/`,
-            {
-              headers: { Authorization: `Bearer ${accessToken}` },
-              timeout: SETUP_STATE_TIMEOUT_MS,
-            }
-          )
-          setupState = response.data
-        } catch (setupError) {
-          if (axios.isAxiosError(setupError)) {
-            const statusCode = setupError.response?.status
-            const data = (setupError.response?.data || {}) as SetupState
-            const errorCode = data.code
-
-            if (errorCode === "SUPABASE_MISSING_CONFIG") {
-              if (active) {
-                setDiagnostic({
-                  status: statusCode,
-                  code: errorCode,
-                  requestId: data.request_id,
-                })
-                setErrorMessage(
-                  "Estamos finalizando a configuração do ambiente. Tente novamente em alguns minutos."
-                )
-                setStatus("error")
-              }
-              return
-            }
-
-            if (statusCode === 401 || errorCode === "SUPABASE_TOKEN_INVALID") {
-              await authService.logout()
-              if (active) {
-                toast.error("Sessão expirada, faça login novamente.")
-                navigate("/login", { replace: true })
-              }
-              return
-            }
-            if (statusCode === 404) {
-              setupState = (setupError.response?.data as SetupState) || { state: "no_store" }
-            } else {
-              console.warn("[AuthCallback] setup-state failed", {
-                status: statusCode,
-              })
-              if (
-                setupError.code === "ECONNABORTED" ||
-                String(setupError.message || "").toLowerCase().includes("timeout")
-              ) {
-                console.warn("[AuthCallback] setup-state timeout, continuing with onboarding fallback")
-                setupState = { state: "no_store" }
-              } else if (!statusCode) {
-                console.warn("[AuthCallback] setup-state network error, continuing with onboarding fallback")
-                setupState = { state: "no_store" }
-              } else {
-                throw new Error("Não foi possível verificar seu acesso.")
-              }
-            }
-          } else {
-            throw setupError
-          }
-        }
-
-        const hasStore = Boolean(setupState?.has_store)
-        const isNoStore = setupState?.state === "no_store" || !hasStore
-        const nextUrl = isNoStore
-          ? "/onboarding"
-          : "/app/dashboard?openEdgeSetup=1"
-
-        console.log("[AuthCallback] redirect", {
-          hasStore,
-          hasEdge: setupState?.has_edge ?? null,
-          nextUrl,
-        })
-
-        if (active) {
-          navigate(nextUrl, { replace: true })
+        if (active && !hasNavigatedRef.current) {
+          hasNavigatedRef.current = true
+          navigate("/onboarding", { replace: true })
         }
       } catch (error) {
         const message = getErrorMessage(error, "Falha ao validar o login.")
@@ -316,15 +208,6 @@ const AuthCallback: React.FC = () => {
                 Voltar para Login
               </button>
             </div>
-            {diagnostic && (
-              <button
-                type="button"
-                onClick={handleCopyDiagnostic}
-                className="text-xs text-slate-400 hover:text-slate-600"
-              >
-                Copiar diagnóstico
-              </button>
-            )}
           </div>
         )}
       </div>

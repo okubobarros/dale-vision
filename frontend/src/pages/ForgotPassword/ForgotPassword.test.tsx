@@ -21,9 +21,9 @@ describe("ForgotPassword", () => {
 
   it("validates email before sending", async () => {
     renderWithProviders(<ForgotPassword />)
+    await userEvent.type(screen.getByLabelText(/E-mail/i), "invalid-email")
     const submit = screen.getByRole("button", { name: /Enviar link de redefinição/i })
-    await userEvent.click(submit)
-    expect(await screen.findByText(/Informe um e-mail válido/i)).toBeInTheDocument()
+    expect(submit).toBeDisabled()
     expect(resetPasswordForEmail).not.toHaveBeenCalled()
   })
 

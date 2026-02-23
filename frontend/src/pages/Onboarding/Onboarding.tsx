@@ -4,10 +4,11 @@ import { useNavigate } from "react-router-dom"
 
 import { useAuth } from "../../contexts/useAuth"
 import { storesService } from "../../services/stores"
-import { employeesService, type EmployeeRole } from "../../services/employees"
+import { employeesService } from "../../services/employees"
 import OnboardingProgress from "./components/OnboardingProgress"
 import StoresSetup, { type StoreDraft } from "./components/StoresSetup"
 import EmployeesSetup, { type EmployeeDraft } from "./components/EmployeesSetup"
+import { buildEmployeesPayload } from "./helpers/employeePayload"
 
 export default function Onboarding() {
   const navigate = useNavigate()
@@ -33,6 +34,28 @@ export default function Onboarding() {
       navigate("/login", { replace: true })
     }
   }, [isAuthenticated, isLoading, navigate])
+
+  useEffect(() => {
+    let active = true
+    if (isLoading || !isAuthenticated || storeId || step !== 1) return
+    const checkStores = async () => {
+      try {
+        const existing = await storesService.getStores()
+        if (!active) return
+        if (existing.length > 0) {
+          navigate("/app/dashboard?openEdgeSetup=1", { replace: true })
+        }
+      } catch (error) {
+        if (import.meta.env.DEV) {
+          console.warn("[Onboarding] store check skipped", error)
+        }
+      }
+    }
+    void checkStores()
+    return () => {
+      active = false
+    }
+  }, [isAuthenticated, isLoading, navigate, step, storeId])
 
   function handlePrev() {
     if (step > 1) {
@@ -89,44 +112,54 @@ export default function Onboarding() {
 
     try {
       if (list.length > 0) {
-        const roleMap: Record<string, EmployeeRole> = {
-          Proprietário: "owner",
-          Gerente: "manager",
-          Caixa: "cashier",
-          Vendedor: "seller",
-          Segurança: "security",
-          Estoque: "stock",
-          Outro: "other",
+        const dedupedPayload = buildEmployeesPayload(list, storeId)
+
+        if (dedupedPayload.length === 0) {
+          setEmployeesError(
+            "Não foi possível salvar a equipe. Verifique os dados informados."
+          )
+          return
         }
 
-        const payload = list
-          .map((e) => {
-            const normalizedRole = roleMap[e.role] ?? undefined
-            const roleOtherValue =
-              e.role === "Outro" ? e.roleOther.trim() || undefined : undefined
-            return {
-              store_id: storeId,
-              full_name: e.name.trim(),
-              email: e.email?.trim() || undefined,
-              role: normalizedRole,
-              role_other: roleOtherValue,
-            }
-          })
-          .filter((e) => e.full_name && e.role)
-
-        if (payload.length > 0) {
-          try {
-            await employeesService.createEmployees(payload)
-          } catch (error) {
-            console.error("[Onboarding] create employees failed", error)
-            setEmployeesError(
-              "Alguns funcionários não puderam ser salvos. Você pode tentar novamente depois."
-            )
+        try {
+          await employeesService.createEmployees(dedupedPayload)
+        } catch (error) {
+          const response = (error as { response?: { status?: number; data?: unknown } })?.response
+          if (import.meta.env.DEV) {
+            const maskedPayload = dedupedPayload.map((entry) => ({
+              ...entry,
+              email: entry.email ? String(entry.email).replace(/^[^@]+/, "***") : null,
+            }))
+            console.warn("[Onboarding] create employees failed", {
+              status: response?.status,
+              payload: maskedPayload,
+              data: response?.data,
+            })
           }
-        } else {
+          if (response?.status === 400) {
+            const data = response.data as { detail?: unknown; message?: string } | undefined
+            const detail = data?.message || data?.detail
+            const detailText =
+              typeof detail === "string"
+                ? detail
+                : Array.isArray(detail)
+                ? detail.join(" ")
+                : ""
+            if (detailText.toLowerCase().includes("unique") || detailText.includes("store_id")) {
+              setEmployeesError("Este e-mail já está cadastrado nesta loja.")
+              return
+            }
+            setEmployeesError(
+              detailText.trim()
+                ? detailText
+                : "Dados inválidos para funcionários. Verifique nome, cargo e e-mail."
+            )
+            return
+          }
           setEmployeesError(
-            "Não foi possível salvar a equipe. Verifique os cargos informados."
+            "Não foi possível salvar os funcionários agora. Tente novamente."
           )
+          return
         }
       }
 

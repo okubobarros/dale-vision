@@ -1215,17 +1215,9 @@ const Stores = () => {
   const handleEditStore = (store: Store) => {
     setStoreToEdit(store);
   };
-  const trialExpired =
-    (stores ?? []).some((store) => {
-      if (store.status !== "blocked" || store.blocked_reason !== "trial_expired") {
-        return false;
-      }
-      const endsAt = store.trial_ends_at ? new Date(store.trial_ends_at) : null;
-      if (!endsAt || Number.isNaN(endsAt.getTime())) {
-        return false;
-      }
-      return endsAt.getTime() <= Date.now();
-    });
+  const trialExpired = (stores ?? []).some(
+    (store) => store.status === "blocked" && store.blocked_reason === "trial_expired"
+  );
 
   if (isLoading) {
     return (

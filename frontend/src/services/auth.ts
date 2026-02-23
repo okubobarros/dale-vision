@@ -83,7 +83,9 @@ export const authService = {
     const user = getStoredUser<User>()
     const token = getAccessToken()
     syncApiAuthHeader()
-    console.log("auth rehydrated", { hasUser: !!user, hasToken: !!token })
+    if (import.meta.env.DEV) {
+      console.log("auth rehydrated", { hasUser: !!user, hasToken: !!token })
+    }
     return { user, token }
   },
 

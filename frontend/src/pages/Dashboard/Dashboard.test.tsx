@@ -2,6 +2,7 @@ import { describe, it, expect, vi, beforeEach } from "vitest"
 import { screen, waitFor } from "@testing-library/react"
 import Dashboard from "./Dashboard"
 import { renderWithProviders } from "../../test/test-utils"
+import { clearAuthStorage } from "../../services/authStorage"
 
 vi.mock("../../services/stores", () => ({
   storesService: {
@@ -129,6 +130,7 @@ describe("Dashboard auth gating", () => {
     vi.clearAllMocks()
     localStorage.removeItem("userData")
     localStorage.removeItem("authToken")
+    clearAuthStorage()
   })
 
   it("does not fetch stores without token", async () => {
