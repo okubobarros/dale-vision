@@ -832,6 +832,12 @@ const EdgeSetupModal = ({ open, onClose, defaultStoreId }: EdgeSetupModalProps) 
                 <div>
                   2) Abra o arquivo <span className="font-mono">.env</span> na pasta extraída.
                 </div>
+                <div>
+                  Arquivos do pacote: <span className="font-mono">Start_DaleVision_Agent.bat</span> (teste),
+                  <span className="font-mono">install-service.ps1</span> (produção),
+                  <span className="font-mono">Diagnose.bat</span> (suporte),
+                  <span className="font-mono">update-service.ps1</span> (se disponível).
+                </div>
               </div>
               <textarea
                 value={envContent}
@@ -888,15 +894,15 @@ const EdgeSetupModal = ({ open, onClose, defaultStoreId }: EdgeSetupModalProps) 
               <div className="text-sm text-gray-700 font-semibold">4. Iniciar Agent</div>
               <div className="mt-1 text-xs text-gray-500 space-y-1">
                 <div>
-                  Clique em <span className="font-mono">Start_DaleVision_Agent.bat</span> e mantenha a
-                  janela aberta.
+                  Para teste rápido, execute <span className="font-mono">Start_DaleVision_Agent.bat</span> e mantenha a
+                  janela aberta. Para produção, use <span className="font-mono">install-service.ps1</span>.
                 </div>
                 <div>
                   Se der erro ou você estiver remoto: clique em{" "}
                   <span className="font-mono">Diagnose.bat</span> e envie o ZIP.
                 </div>
                 <div>
-                  Opcional: <span className="font-mono">install-service.ps1</span> (apenas administrador).
+                  O serviço roda em segundo plano e reinicia automaticamente.
                 </div>
               </div>
               <div className="mt-2 rounded-lg border border-gray-200 bg-white px-3 py-2 text-xs text-gray-600">

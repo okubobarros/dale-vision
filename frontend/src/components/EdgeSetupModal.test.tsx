@@ -45,6 +45,19 @@ describe("EdgeSetupModal step 2", () => {
     ).toBeInTheDocument()
   })
 
+  it("includes updated step 3 instructions for bundle scripts", async () => {
+    renderWithProviders(
+      <EdgeSetupModal open={true} onClose={() => {}} defaultStoreId="store-1" />
+    )
+
+    expect(
+      (await screen.findAllByText(/Start_DaleVision_Agent\.bat/i)).length
+    ).toBeGreaterThan(0)
+    expect(screen.getAllByText(/install-service\.ps1/i).length).toBeGreaterThan(0)
+    expect(screen.getAllByText(/Diagnose\.bat/i).length).toBeGreaterThan(0)
+    expect(screen.getByText(/update-service\.ps1/i)).toBeInTheDocument()
+  })
+
   it("keeps step 3 disabled until download confirmed", async () => {
     renderWithProviders(
       <EdgeSetupModal open={true} onClose={() => {}} defaultStoreId="store-1" />

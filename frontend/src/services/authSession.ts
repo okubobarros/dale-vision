@@ -14,6 +14,8 @@ export type SupabaseUser = {
     first_name?: string
     last_name?: string
     username?: string
+    is_staff?: boolean | string
+    is_superuser?: boolean | string
   }
 }
 
@@ -41,6 +43,12 @@ export const buildUserFromSupabase = (
   const last =
     (sbUser?.user_metadata?.last_name as string) ||
     (fullName ? fullName.split(" ").slice(1).join(" ") : "")
+  const normalizeFlag = (value?: boolean | string) => {
+    if (typeof value === "boolean") return value
+    if (typeof value === "string") return value.toLowerCase() === "true"
+    return false
+  }
+
   return {
     id: sbUser?.id || "",
     email: email || "",
@@ -49,6 +57,8 @@ export const buildUserFromSupabase = (
       (email ? email.split("@")[0] : sbUser?.id || ""),
     first_name: first,
     last_name: last,
+    is_staff: normalizeFlag(sbUser?.user_metadata?.is_staff),
+    is_superuser: normalizeFlag(sbUser?.user_metadata?.is_superuser),
   }
 }
 

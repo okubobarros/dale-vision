@@ -46,7 +46,7 @@ describe("Cameras create camera", () => {
     vi.clearAllMocks()
     localStorage.setItem(
       "userData",
-      JSON.stringify({ id: "u1", username: "tester", email: "t@x.com" })
+      JSON.stringify({ id: "u1", username: "tester", email: "t@x.com", is_staff: false })
     )
     localStorage.setItem("authToken", "token")
   })
@@ -259,5 +259,51 @@ describe("Cameras create camera", () => {
 
     expect(camerasService.testConnection).toHaveBeenCalledWith("cam-1")
     expect(await screen.findByRole("button", { name: /Testando/i })).toBeInTheDocument()
+  })
+
+  it("hides ROI button for viewer role when not staff", async () => {
+    const { storesService } = await import("../../services/stores")
+    const { camerasService } = await import("../../services/cameras")
+    vi.mocked(storesService.getStores).mockResolvedValueOnce([
+      {
+        id: "store-1",
+        name: "Loja 1",
+        status: "active",
+        plan: "trial",
+        role: "viewer",
+      },
+    ])
+    vi.mocked(camerasService.getStoreCameras).mockResolvedValueOnce([
+      { id: "cam-1", store: "store-1", name: "Entrada", status: "offline" },
+    ])
+
+    renderWithProviders(<Cameras />)
+    expect(await screen.findByText("Entrada")).toBeInTheDocument()
+    expect(screen.queryByRole("button", { name: "ROI" })).not.toBeInTheDocument()
+  })
+
+  it("shows ROI button for staff user even when role is viewer", async () => {
+    const { storesService } = await import("../../services/stores")
+    const { camerasService } = await import("../../services/cameras")
+    localStorage.setItem(
+      "userData",
+      JSON.stringify({ id: "u1", username: "tester", email: "t@x.com", is_staff: true })
+    )
+    vi.mocked(storesService.getStores).mockResolvedValueOnce([
+      {
+        id: "store-1",
+        name: "Loja 1",
+        status: "active",
+        plan: "trial",
+        role: "viewer",
+      },
+    ])
+    vi.mocked(camerasService.getStoreCameras).mockResolvedValueOnce([
+      { id: "cam-1", store: "store-1", name: "Entrada", status: "offline" },
+    ])
+
+    renderWithProviders(<Cameras />)
+    expect(await screen.findByText("Entrada")).toBeInTheDocument()
+    expect(await screen.findByRole("button", { name: "ROI" })).toBeInTheDocument()
   })
 })

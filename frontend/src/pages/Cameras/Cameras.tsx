@@ -13,6 +13,7 @@ import {
   type CreateCameraPayload,
 } from "../../services/cameras"
 import { formatStatusLabel, formatTimestamp } from "../../utils/edgeReasons"
+import { useAuth } from "../../contexts/useAuth"
 import EdgeSetupModal from "../../components/EdgeSetupModal"
 import CameraRoiEditor from "../../components/CameraRoiEditor"
 
@@ -80,6 +81,7 @@ const Cameras = () => {
   const onboardingMode = initialOnboardingMode
   const queryClient = useQueryClient()
   const diagnoseUrl = "/app/edge-help"
+  const { user } = useAuth()
 
   useEffect(() => {
     const params = new URLSearchParams(location.search)
@@ -130,6 +132,8 @@ const Cameras = () => {
   const canManageStore =
     selectedStore !== "all" &&
     (selectedStoreRole ? ["owner", "admin", "manager"].includes(selectedStoreRole) : true)
+  const canEditRoi =
+    canManageStore || Boolean(user?.is_staff || user?.is_superuser)
 
   const { data: edgeStatus } = useQuery<StoreEdgeStatus>({
     queryKey: ["store-edge-status", selectedStore],
@@ -854,10 +858,10 @@ const Cameras = () => {
                     >
                       {testingCameraId === camera.id ? "Testando..." : "Testar conexão"}
                     </button>
-                    {canManageStore && (
-                      <button
-                        type="button"
-                        onClick={() => setRoiCamera(camera)}
+                      {canEditRoi && (
+                        <button
+                          type="button"
+                          onClick={() => setRoiCamera(camera)}
                         className="rounded-lg border border-blue-200 px-3 py-1.5 text-xs font-semibold text-blue-700 hover:bg-blue-50"
                       >
                         ROI
