@@ -37,8 +37,9 @@ describe("EdgeSetupModal step 2", () => {
       await screen.findByRole("button", { name: /Baixar Edge Agent/i })
     ).toBeInTheDocument()
     expect(screen.getByText(/dalevision-edge-agent\.exe/i)).toBeInTheDocument()
-    expect(screen.getAllByText(/Start_DaleVision_Agent\.bat/i).length).toBeGreaterThan(0)
-    expect(screen.getAllByText(/install-service\.ps1/i).length).toBeGreaterThan(0)
+    expect(screen.getAllByText(/02_TESTE_RAPIDO\.bat/i).length).toBeGreaterThan(0)
+    expect(screen.getAllByText(/03_INSTALAR_AUTOSTART\.bat/i).length).toBeGreaterThan(0)
+    expect(screen.getAllByText(/04_VERIFICAR_STATUS\.bat/i).length).toBeGreaterThan(0)
     expect(screen.getAllByText(/Diagnose\.bat/i).length).toBeGreaterThan(0)
     expect(
       screen.getByRole("button", { name: /Já baixei e extraí/i })
@@ -51,18 +52,20 @@ describe("EdgeSetupModal step 2", () => {
     )
 
     expect(
-      (await screen.findAllByText(/Start_DaleVision_Agent\.bat/i)).length
+      (await screen.findAllByText(/02_TESTE_RAPIDO\.bat/i)).length
     ).toBeGreaterThan(0)
-    expect(screen.getAllByText(/install-service\.ps1/i).length).toBeGreaterThan(0)
+    expect(screen.getAllByText(/03_INSTALAR_AUTOSTART\.bat/i).length).toBeGreaterThan(0)
+    expect(screen.getAllByText(/04_VERIFICAR_STATUS\.bat/i).length).toBeGreaterThan(0)
     expect(screen.getAllByText(/Diagnose\.bat/i).length).toBeGreaterThan(0)
-    expect(screen.getByText(/update-service\.ps1/i)).toBeInTheDocument()
   })
 
   it("keeps step 3 disabled until download confirmed", async () => {
     renderWithProviders(
       <EdgeSetupModal open={true} onClose={() => {}} defaultStoreId="store-1" />
     )
-    const copyButton = await screen.findByRole("button", { name: /Copiar \.env/i })
+    const copyButton = await screen.findByRole("button", {
+      name: /Copiar dados para \.env/i,
+    })
     expect(copyButton).toBeDisabled()
   })
 
@@ -117,7 +120,9 @@ describe("EdgeSetupModal step 2", () => {
     await user.click(await screen.findByRole("button", { name: /Já baixei e extraí/i }))
     const rotateButton = await screen.findByRole("button", { name: /Gerar novo token/i })
     await user.click(rotateButton)
-    const copyButton = await screen.findByRole("button", { name: /Copiar \.env/i })
+    const copyButton = await screen.findByRole("button", {
+      name: /Copiar dados para \.env/i,
+    })
     expect(copyButton).not.toBeDisabled()
   })
 })

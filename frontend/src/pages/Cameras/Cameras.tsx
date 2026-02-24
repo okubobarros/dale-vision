@@ -31,8 +31,8 @@ const isPrivateIp = (ip: string) => {
 
 const isPrivateHost = (host: string) => isPrivateIp(host) || host === "localhost"
 const EDGE_HEARTBEAT_FRESH_SECONDS = 120
-const TEST_POLL_INTERVAL_MS = 3000
-const TEST_POLL_TIMEOUT_MS = 60000
+const TEST_POLL_INTERVAL_MS = 2000
+const TEST_POLL_TIMEOUT_MS = 30000
 const TEST_COOLDOWN_MS = 8000
 
 const FIELD_LABELS: Record<string, string> = {
@@ -495,7 +495,7 @@ const Cameras = () => {
           stopTestPolling()
           setTestingCameraId(null)
           const message =
-            "Teste em andamento no Edge. Verifique novamente em alguns instantes."
+            "Teste assíncrono iniciado. Rode o Edge Agent na rede do CFTV para validar."
           setTestMessage(message)
           toast(message)
           return

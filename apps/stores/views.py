@@ -207,6 +207,7 @@ class StoreViewSet(viewsets.ModelViewSet):
                 actor_user_id=actor_user_id,
                 action=action,
                 endpoint=self.request.path,
+                user=self.request.user,
             )
 
     def _require_subscription_for_store(self, store: Store, action: str):
@@ -261,6 +262,7 @@ class StoreViewSet(viewsets.ModelViewSet):
             actor_user_id=actor_user_id,
             action="delete_store",
             endpoint=request.path,
+            user=request.user,
         )
         return super().destroy(request, *args, **kwargs)
 
@@ -321,6 +323,7 @@ class StoreViewSet(viewsets.ModelViewSet):
             actor_user_id=actor_user_id,
             action="edge_token",
             endpoint=request.path,
+            user=request.user,
         )
         edge_token = _get_active_edge_token(store.id)
         raw_token = edge_token.token_plaintext if edge_token else None
@@ -350,6 +353,7 @@ class StoreViewSet(viewsets.ModelViewSet):
             actor_user_id=actor_user_id,
             action="edge_credentials",
             endpoint=request.path,
+            user=request.user,
         )
 
         edge_token = _get_active_edge_token(store.id)
@@ -640,12 +644,13 @@ class StoreViewSet(viewsets.ModelViewSet):
         except Exception:
             actor_user_id = None
         try:
-            enforce_can_use_product(
-                org_id=store.org_id,
-                actor_user_id=actor_user_id,
-                action="create_camera",
-                endpoint=request.path,
-            )
+                enforce_can_use_product(
+                    org_id=store.org_id,
+                    actor_user_id=actor_user_id,
+                    action="create_camera",
+                    endpoint=request.path,
+                    user=request.user,
+                )
         except Exception as exc:
             if getattr(exc, "status_code", None) == status.HTTP_402_PAYMENT_REQUIRED:
                 details = getattr(exc, "detail", None)
@@ -790,6 +795,7 @@ class StoreViewSet(viewsets.ModelViewSet):
                 actor_user_id=user_uuid,
                 action="create_store",
                 endpoint=self.request.path,
+                user=request.user,
             )
             enforce_trial_store_limit(org_id=requested_org_id, actor_user_id=user_uuid)
             store = serializer.save(
@@ -813,6 +819,7 @@ class StoreViewSet(viewsets.ModelViewSet):
                 actor_user_id=user_uuid,
                 action="create_store",
                 endpoint=self.request.path,
+                user=request.user,
             )
             enforce_trial_store_limit(org_id=org_ids[0], actor_user_id=user_uuid)
             store = serializer.save(
@@ -864,6 +871,7 @@ class StoreViewSet(viewsets.ModelViewSet):
                 actor_user_id=user_uuid,
                 action="create_store",
                 endpoint=self.request.path,
+                user=request.user,
             )
             enforce_trial_store_limit(org_id=org.id, actor_user_id=user_uuid)
             store = serializer.save(

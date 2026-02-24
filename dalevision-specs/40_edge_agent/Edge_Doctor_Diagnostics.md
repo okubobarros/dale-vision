@@ -19,3 +19,8 @@ Diagnosticar falhas de conectividade e saúde do edge-agent.
 - Validar rede da loja
 - Revalidar RTSP
 - Regerar token se necessário
+
+## Ferramentas no bundle (Windows)
+- `Diagnose.bat` (gera ZIP de diagnóstico)
+- `04_VERIFICAR_STATUS.bat` / `verify-service.ps1` (status do serviço)
+- Logs: `logs\agent.log` e `logs\update.log`

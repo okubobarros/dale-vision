@@ -16,5 +16,10 @@ Padronizar suporte e reduzir tempo de resolução.
 - Logs do edge-agent
 - Erro no backend
 
+## Coleta rápida (Edge Agent)
+- `Diagnose.bat` (gera ZIP de diagnóstico)
+- `logs\agent.log`
+- `logs\update.log`
+
 ## Escalonamento
 - Quando envolver infra, billing ou segurança

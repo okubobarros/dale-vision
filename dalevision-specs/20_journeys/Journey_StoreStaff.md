@@ -11,6 +11,7 @@ Experiência diária do time da loja no uso do sistema.
 ## Fricções
 - Permissões insuficientes
 - Alertas ruidosos
+- Edge offline / sem heartbeat
 
 ## Métricas
 - Tempo de resposta a alertas

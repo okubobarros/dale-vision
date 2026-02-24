@@ -13,6 +13,11 @@ ROI publicado e alertas configurados com baixo atrito.
 ## Jornada (primeiro acesso)
 1. Login e seleção de loja (se multi-loja).
 2. Edge Setup (gera .env, instala agent, valida “Loja Online”).
+   - Baixar e extrair ZIP do edge-agent
+   - Configurar `.env` com `EDGE_TOKEN`, `STORE_ID`, `AGENT_ID`, `CLOUD_BASE_URL`
+   - Teste: `02_TESTE_RAPIDO.bat`
+   - Produção: `03_INSTALAR_AUTOSTART.bat`
+   - Verificar: `04_VERIFICAR_STATUS.bat`
 3. Cadastro de câmeras (inventário inicial).
 4. Teste de conexão (assíncrono; aguarda status).
 5. Definição de ROI (entrada, caixa, fila, salão, etc).

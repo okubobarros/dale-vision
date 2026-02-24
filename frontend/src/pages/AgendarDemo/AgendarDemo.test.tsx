@@ -34,13 +34,13 @@ const fillBaseRequired = async (
     target: { value: "joao@empresa.com" },
   })
 
-  await user.selectOptions(
+  fireEvent.change(
     screen.getByLabelText(/Quantas lojas você opera hoje\? \*/i),
-    "1"
+    { target: { value: "1" } }
   )
-  await user.selectOptions(
+  fireEvent.change(
     screen.getByLabelText(/Quantidade total de Câmeras\? \*/i),
-    "1-3"
+    { target: { value: "1-3" } }
   )
 
   await user.click(
@@ -49,29 +49,27 @@ const fillBaseRequired = async (
 
   await user.click(screen.getByLabelText(/Reduzir perdas \/ fraudes/i))
 
-  await user.selectOptions(
+  fireEvent.change(
     screen.getByLabelText(/Onde a DaleVision irá rodar em sua loja\? \*/i),
-    "store_pc"
+    { target: { value: "store_pc" } }
   )
   if (!options?.skipOperators) {
-    await user.selectOptions(
+    fireEvent.change(
       screen.getByLabelText(/Operadores terão acesso se rodar no computador\? \*/i),
-      "yes"
+      { target: { value: "yes" } }
     )
   }
-  await user.selectOptions(
+  fireEvent.change(
     screen.getByLabelText(/Quem terá acesso para ajudar na ativação\? \*/i),
-    "owner"
+    { target: { value: "owner" } }
   )
 
-  await user.selectOptions(
+  fireEvent.change(
     screen.getByLabelText(/Onde você conheceu a Dale Vision\? \*/i),
-    "google"
+    { target: { value: "google" } }
   )
 
-  await user.click(
-    screen.getByLabelText(/Concordo em receber comunicações/i)
-  )
+  await user.click(screen.getByLabelText(/Concordo em receber comunicações/i))
 }
 
 describe("AgendarDemo", () => {
@@ -98,18 +96,16 @@ describe("AgendarDemo", () => {
     renderWithProviders(<AgendarDemo />)
     const user = userEvent.setup()
 
-    await user.selectOptions(screen.getByLabelText(/Segmento \/ tipo de operação \*/i), "other")
+    fireEvent.change(screen.getByLabelText(/Segmento \/ tipo de operação \*/i), {
+      target: { value: "other" },
+    })
 
     await fillBaseRequired(user)
 
-    await user.click(
-      screen.getByRole("button", { name: /Ver horários disponíveis/i })
-    )
+    await user.click(screen.getByRole("button", { name: /Ver horários disponíveis/i }))
 
     expect(demoService.createLead).not.toHaveBeenCalled()
-    expect(toastError).toHaveBeenCalledWith(
-      'Preencha "Qual?" (segmento da operação).'
-    )
+    expect(toastError).toHaveBeenCalledWith('Preencha "Qual?" (segmento da operação).')
   }, 10000)
 
   it("permite envio quando Segmento é Outros e 'Qual?' preenchido", async () => {
@@ -117,21 +113,20 @@ describe("AgendarDemo", () => {
     renderWithProviders(<AgendarDemo />)
     const user = userEvent.setup()
 
-    await user.selectOptions(
-      screen.getByLabelText(/Segmento \/ tipo de operação \*/i),
-      "other"
-    )
+    fireEvent.change(screen.getByLabelText(/Segmento \/ tipo de operação \*/i), {
+      target: { value: "other" },
+    })
     fireEvent.change(screen.getByLabelText(/Qual\? \*/i), {
       target: { value: "Bazar" },
     })
 
     await fillBaseRequired(user)
 
-    await user.click(
-      screen.getByRole("button", { name: /Ver horários disponíveis/i })
-    )
+    await user.click(screen.getByRole("button", { name: /Ver horários disponíveis/i }))
 
-    expect(demoService.createLead).toHaveBeenCalled()
+    await waitFor(() => {
+      expect(demoService.createLead).toHaveBeenCalled()
+    })
   }, 10000)
 
   it("não exibe o bloco de Infraestrutura atual (opcional)", () => {

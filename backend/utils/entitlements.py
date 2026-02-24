@@ -174,7 +174,12 @@ def require_trial_active(
     actor_user_id: Optional[str],
     action: str,
     endpoint: str,
+    user=None,
 ) -> None:
+    if user is not None and (
+        getattr(user, "is_staff", False) or getattr(user, "is_superuser", False)
+    ):
+        return
     if not is_trial_expired(org_id):
         return
     log_trial_block(
@@ -192,12 +197,14 @@ def enforce_can_use_product(
     actor_user_id: Optional[str],
     action: str,
     endpoint: str,
+    user=None,
 ) -> None:
     require_trial_active(
         org_id=org_id,
         actor_user_id=actor_user_id,
         action=action,
         endpoint=endpoint,
+        user=user,
     )
 
 

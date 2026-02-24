@@ -14,7 +14,7 @@ from rest_framework.parsers import MultiPartParser, FormParser
 from django.conf import settings
 
 from django.db.models import Q
-from apps.core.models import Camera, CameraHealthLog, OrgMember, Store, StoreManager
+from apps.core.models import AuditLog, Camera, CameraHealthLog, OrgMember, Store, StoreManager
 from apps.edge.models import EdgeToken
 from .serializers import (
     CameraSerializer,
@@ -91,6 +91,32 @@ def _paywall_trial_response(message: str, *, details=None):
         details=details,
         deprecated_detail=message,
     )
+
+
+def _log_staff_action(request, *, action: str, org_id=None, store_id=None, payload=None):
+    user = getattr(request, "user", None)
+    if not user or not (getattr(user, "is_staff", False) or getattr(user, "is_superuser", False)):
+        return
+    actor_user_id = None
+    try:
+        actor_user_id = ensure_user_uuid(user)
+    except Exception:
+        actor_user_id = None
+    safe_payload = dict(payload or {})
+    safe_payload.setdefault(
+        "changed_by_staff_user_id", str(actor_user_id) if actor_user_id else None
+    )
+    try:
+        AuditLog.objects.create(
+            org_id=org_id,
+            store_id=store_id,
+            actor_user_id=actor_user_id,
+            action=action,
+            payload=safe_payload,
+            created_at=timezone.now(),
+        )
+    except Exception:
+        logger.exception("[AUDIT] failed to log staff action=%s", action)
 
 
 def _validate_edge_token_for_store(store_id: str, provided: str) -> bool:
@@ -270,6 +296,7 @@ class CameraViewSet(viewsets.ModelViewSet):
                 actor_user_id=actor_user_id,
                 action="create_camera",
                 endpoint=request.path,
+                user=request.user,
             )
         except TrialExpiredError as exc:
             details = getattr(exc, "detail", None)
@@ -325,14 +352,45 @@ class CameraViewSet(viewsets.ModelViewSet):
             except PaywallError as exc:
                 raise exc
         now = timezone.now()
-        serializer.save(store=store, created_at=now, updated_at=now)
+        instance = serializer.save(store=store, created_at=now, updated_at=now)
+        _log_staff_action(
+            self.request,
+            action="staff_camera_create",
+            org_id=getattr(store, "org_id", None),
+            store_id=str(store_id) if store_id else None,
+            payload={
+                "camera_id": str(getattr(instance, "id", "")),
+                "requested_active": requested_active,
+                "path": self.request.path,
+            },
+        )
 
     def perform_update(self, serializer):
         require_store_role(self.request.user, str(serializer.instance.store_id), ALLOWED_MANAGE_ROLES)
-        serializer.save(updated_at=timezone.now())
+        instance = serializer.save(updated_at=timezone.now())
+        _log_staff_action(
+            self.request,
+            action="staff_camera_update",
+            org_id=str(getattr(instance.store, "org_id", None)) if getattr(instance, "store", None) else None,
+            store_id=str(getattr(instance, "store_id", None)) if getattr(instance, "store_id", None) else None,
+            payload={
+                "camera_id": str(getattr(instance, "id", "")),
+                "path": self.request.path,
+            },
+        )
 
     def perform_destroy(self, instance):
         require_store_role(self.request.user, str(instance.store_id), ALLOWED_MANAGE_ROLES)
+        _log_staff_action(
+            self.request,
+            action="staff_camera_delete",
+            org_id=str(getattr(instance.store, "org_id", None)) if getattr(instance, "store", None) else None,
+            store_id=str(getattr(instance, "store_id", None)) if getattr(instance, "store_id", None) else None,
+            payload={
+                "camera_id": str(getattr(instance, "id", "")),
+                "path": self.request.path,
+            },
+        )
         instance.delete()
 
     @action(detail=True, methods=["post"], url_path="test-snapshot")
@@ -513,6 +571,18 @@ class CameraViewSet(viewsets.ModelViewSet):
                 status.HTTP_500_INTERNAL_SERVER_ERROR,
                 deprecated_detail="Não foi possível salvar a configuração do ROI.",
             )
+        _log_staff_action(
+            request,
+            action="staff_camera_roi_update",
+            org_id=str(getattr(cam.store, "org_id", None)) if getattr(cam, "store", None) else None,
+            store_id=str(getattr(cam, "store_id", None)) if getattr(cam, "store_id", None) else None,
+            payload={
+                "camera_id": str(cam.id),
+                "roi_status": status_value,
+                "roi_version": config_json.get("roi_version"),
+                "path": request.path,
+            },
+        )
         if status_value == "published":
             try:
                 OnboardingProgressService(str(cam.store.org_id)).complete_step(

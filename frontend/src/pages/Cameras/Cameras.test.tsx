@@ -62,7 +62,7 @@ describe("Cameras create camera", () => {
     const user = userEvent.setup()
 
     const addButton = await screen.findByRole("button", {
-      name: /Adicionar primeira câmera/i,
+      name: /Adicionar .*câmera/i,
     })
     await user.click(addButton)
 
@@ -99,7 +99,7 @@ describe("Cameras create camera", () => {
     const user = userEvent.setup()
 
     const addButton = await screen.findByRole("button", {
-      name: /Adicionar primeira câmera/i,
+      name: /Adicionar .*câmera/i,
     })
     await user.click(addButton)
 
@@ -132,7 +132,7 @@ describe("Cameras create camera", () => {
     const user = userEvent.setup()
 
     const addButton = await screen.findByRole("button", {
-      name: /Adicionar primeira câmera/i,
+      name: /Adicionar .*câmera/i,
     })
     await user.click(addButton)
 
@@ -159,7 +159,7 @@ describe("Cameras create camera", () => {
     const user = userEvent.setup()
 
     const addButton = await screen.findByRole("button", {
-      name: /Adicionar primeira câmera/i,
+      name: /Adicionar .*câmera/i,
     })
     await user.click(addButton)
 
@@ -187,7 +187,7 @@ describe("Cameras create camera", () => {
     const user = userEvent.setup()
 
     const addButton = await screen.findByRole("button", {
-      name: /Adicionar primeira câmera/i,
+      name: /Adicionar .*câmera/i,
     })
     await user.click(addButton)
 

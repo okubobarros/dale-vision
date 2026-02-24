@@ -803,9 +803,9 @@ const EdgeSetupModal = ({ open, onClose, defaultStoreId }: EdgeSetupModalProps) 
                   Abra a pasta extraída e confirme que existem{" "}
                   <span className="font-mono">.env</span>,{" "}
                   <span className="font-mono">dalevision-edge-agent.exe</span>,{" "}
-                  <span className="font-mono">Start_DaleVision_Agent.bat</span>,{" "}
-                  <span className="font-mono">install-service.ps1</span>,{" "}
-                  <span className="font-mono">uninstall-service.ps1</span> (se disponível),{" "}
+                  <span className="font-mono">02_TESTE_RAPIDO.bat</span>,{" "}
+                  <span className="font-mono">03_INSTALAR_AUTOSTART.bat</span>,{" "}
+                  <span className="font-mono">04_VERIFICAR_STATUS.bat</span>,{" "}
                   <span className="font-mono">Diagnose.bat</span> e{" "}
                   <span className="font-mono">logs/</span>.
                 </div>
@@ -826,17 +826,20 @@ const EdgeSetupModal = ({ open, onClose, defaultStoreId }: EdgeSetupModalProps) 
             </div>
 
             <div className={step3Enabled ? "rounded-xl border border-gray-200 bg-gray-50 p-4" : "rounded-xl border border-gray-200 bg-gray-50 p-4 opacity-60 pointer-events-none"}>
-              <div className="text-sm font-semibold text-gray-700 mb-2">3. Copiar .env</div>
+              <div className="text-sm font-semibold text-gray-700 mb-2">3. Copiar Dados para arquivo .env local</div>
               <div className="text-xs text-gray-500 mb-3 space-y-1">
-                <div>1) Clique no botão Copiar.env ou selecione o conteúdo abaixo.</div>
+                <div>1) Clique no botão Copiar .env ou selecione o conteúdo abaixo.</div>
                 <div>
                   2) Abra o arquivo <span className="font-mono">.env</span> na pasta extraída.
                 </div>
                 <div>
-                  Arquivos do pacote: <span className="font-mono">Start_DaleVision_Agent.bat</span> (teste),
-                  <span className="font-mono">install-service.ps1</span> (produção),
-                  <span className="font-mono">Diagnose.bat</span> (suporte),
-                  <span className="font-mono">update-service.ps1</span> (se disponível).
+                  3) Cole o conteúdo do wizard no <span className="font-mono">.env</span> e salve.
+                </div>
+                <div>
+                  Depois, siga a sequência dos arquivos:{" "}
+                  <span className="font-mono">02_TESTE_RAPIDO.bat</span> (teste),{" "}
+                  <span className="font-mono">03_INSTALAR_AUTOSTART.bat</span> (produção) e{" "}
+                  <span className="font-mono">04_VERIFICAR_STATUS.bat</span> (confirmação).
                 </div>
               </div>
               <textarea
@@ -851,7 +854,7 @@ const EdgeSetupModal = ({ open, onClose, defaultStoreId }: EdgeSetupModalProps) 
                 disabled={!canCopyEnv}
                 className={`mt-3 ${secondaryCtaClass} text-xs`}
               >
-                {rotatingToken ? "Gerando token..." : "Copiar .env"}
+                {rotatingToken ? "Gerando token..." : "Copiar dados para .env"}
               </button>
               <div className="text-xs text-gray-500 mb-3 space-y-1">
                 <div>
@@ -892,19 +895,22 @@ const EdgeSetupModal = ({ open, onClose, defaultStoreId }: EdgeSetupModalProps) 
 
             <div className={step4Enabled ? "rounded-xl border border-gray-200 bg-gray-50 px-4 py-3" : "rounded-xl border border-gray-200 bg-gray-50 px-4 py-3 opacity-60 pointer-events-none"}>
               <div className="text-sm text-gray-700 font-semibold">4. Iniciar Agent</div>
-              <div className="mt-1 text-xs text-gray-500 space-y-1">
-                <div>
-                  Para teste rápido, execute <span className="font-mono">Start_DaleVision_Agent.bat</span> e mantenha a
-                  janela aberta. Para produção, use <span className="font-mono">install-service.ps1</span>.
+                <div className="mt-1 text-xs text-gray-500 space-y-1">
+                  <div>
+                    Primeiro rode <span className="font-mono">02_TESTE_RAPIDO.bat</span> para validar a conexão.
+                  </div>
+                  <div>
+                    Em seguida, rode <span className="font-mono">03_INSTALAR_AUTOSTART.bat</span> para produção
+                    (executa em segundo plano e reinicia sozinho).
+                  </div>
+                  <div>
+                    Para confirmar, rode <span className="font-mono">04_VERIFICAR_STATUS.bat</span>.
+                  </div>
+                  <div>
+                    Se der erro ou você estiver remoto: clique em{" "}
+                    <span className="font-mono">Diagnose.bat</span> e envie o ZIP.
+                  </div>
                 </div>
-                <div>
-                  Se der erro ou você estiver remoto: clique em{" "}
-                  <span className="font-mono">Diagnose.bat</span> e envie o ZIP.
-                </div>
-                <div>
-                  O serviço roda em segundo plano e reinicia automaticamente.
-                </div>
-              </div>
               <div className="mt-2 rounded-lg border border-gray-200 bg-white px-3 py-2 text-xs text-gray-600">
                 Se o Windows bloquear: “Mais informações” → “Executar assim mesmo”.
               </div>

@@ -1,5 +1,5 @@
 import { describe, it, expect, vi, beforeEach } from "vitest"
-import { screen, waitFor, render } from "@testing-library/react"
+import { screen, waitFor, render, fireEvent } from "@testing-library/react"
 import userEvent from "@testing-library/user-event"
 import Stores from "./Stores"
 import { renderWithProviders } from "../../test/test-utils"
@@ -67,7 +67,7 @@ describe("Stores TRIAL_EXPIRED handling", () => {
     await user.click(openButton)
 
     const nameInput = await screen.findByLabelText(/Nome da Loja/i)
-    await user.type(nameInput, "Loja Centro")
+    fireEvent.change(nameInput, { target: { value: "Loja Centro" } })
 
     const submitButton = screen.getByRole("button", { name: /Criar Loja/i })
     await user.click(submitButton)
