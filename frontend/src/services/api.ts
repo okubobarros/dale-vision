@@ -226,7 +226,7 @@ api.interceptors.response.use(
       )
     }
 
-    if (status === 401 && config && !config._retryAuth) {
+    if ((status === 401 || status === 403) && config && !config._retryAuth) {
       config._retryAuth = true
       const refreshed = await refreshSupabaseSession()
       if (refreshed?.token) {

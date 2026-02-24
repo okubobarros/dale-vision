@@ -31,6 +31,21 @@ export interface User {
 
 // ============ AGORA A authService ============
 
+const bootstrapSupabaseAccount = async (): Promise<void> => {
+  try {
+    await api.post("/accounts/supabase/", {}, { timeout: 5000 })
+  } catch (error: unknown) {
+    if (import.meta.env.DEV) {
+      const err = error as { code?: string; message?: string; response?: { status?: number } }
+      const status = err?.response?.status
+      const code = err?.code
+      const message = err?.message
+      const reason = code === "ECONNABORTED" ? "timeout" : "error"
+      console.warn("[auth] bootstrap failed - ignored", { status, code, reason, message })
+    }
+  }
+}
+
 export const authService = {
   async login(credentials: LoginCredentials): Promise<AuthResponse> {
     const email = credentials.username.trim()
@@ -50,13 +65,7 @@ export const authService = {
     syncApiAuthHeader()
 
     // Bootstrap é melhor esforço; não deve bloquear o login em caso de timeout.
-    void api
-      .post("/accounts/supabase/", {}, { timeout: 5000 })
-      .catch((error: unknown) => {
-        if (import.meta.env.DEV) {
-          console.warn("[auth] supabase bootstrap failed", error)
-        }
-      })
+    void bootstrapSupabaseAccount()
 
     return saved
   },
