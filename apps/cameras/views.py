@@ -348,6 +348,7 @@ class CameraViewSet(viewsets.ModelViewSet):
                     str(store_id),
                     requested_active=requested_active,
                     actor_user_id=actor_user_id,
+                    user=self.request.user,
                 )
             except PaywallError as exc:
                 raise exc

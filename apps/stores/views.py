@@ -75,7 +75,7 @@ def _sanitize_camera_payload(payload):
 
 def _expire_trial_stores(qs, user=None):
     try:
-        if user and (getattr(user, "is_superuser", False) and getattr(user, "is_staff", False)):
+        if user and (getattr(user, "is_superuser", False) or getattr(user, "is_staff", False)):
             return
         now = timezone.now()
         expired_ids = list(
@@ -93,6 +93,15 @@ def _expire_trial_stores(qs, user=None):
             )
     except Exception:
         logger.exception("[STORE] failed to expire trial stores")
+
+
+def _apply_staff_trial_bypass(store: Store, data: dict, user) -> dict:
+    if not user or not (getattr(user, "is_staff", False) or getattr(user, "is_superuser", False)):
+        return data
+    if data.get("status") == "blocked" and data.get("blocked_reason") == "trial_expired":
+        data["status"] = "trial"
+        data["blocked_reason"] = None
+    return data
 
 def get_user_org_ids(user):
     user_uuid = ensure_user_uuid(user)
@@ -234,6 +243,7 @@ class StoreViewSet(viewsets.ModelViewSet):
                 role = "owner" if (request.user.is_staff or request.user.is_superuser) else get_user_role_for_store(request.user, str(store.id))
                 if role:
                     data[idx]["role"] = role
+                data[idx] = _apply_staff_trial_bypass(store, data[idx], request.user)
         return Response({
             'status': 'success',
             'count': stores.count(),
@@ -277,7 +287,9 @@ class StoreViewSet(viewsets.ModelViewSet):
                 status.HTTP_403_FORBIDDEN,
                 deprecated_detail=str(exc) or "Sem permissão.",
             )
-        return super().retrieve(request, *args, **kwargs)
+        serializer = self.get_serializer(store)
+        data = _apply_staff_trial_bypass(store, dict(serializer.data), request.user)
+        return Response(data)
 
     def update(self, request, *args, **kwargs):
         store = self.get_object()
@@ -579,6 +591,7 @@ class StoreViewSet(viewsets.ModelViewSet):
                     requested_active=True,
                     exclude_camera_id=str(camera.id),
                     actor_user_id=actor_user_id,
+                    user=request.user,
                 )
             except PaywallError as exc:
                 return Response(
@@ -715,6 +728,7 @@ class StoreViewSet(viewsets.ModelViewSet):
                 str(store.id),
                 requested_active=requested_active,
                 actor_user_id=actor_user_id,
+                user=request.user,
             )
         except PaywallError as exc:
             return _error_response(
@@ -797,7 +811,11 @@ class StoreViewSet(viewsets.ModelViewSet):
                 endpoint=self.request.path,
                 user=request.user,
             )
-            enforce_trial_store_limit(org_id=requested_org_id, actor_user_id=user_uuid)
+            enforce_trial_store_limit(
+                org_id=requested_org_id,
+                actor_user_id=user_uuid,
+                user=request.user,
+            )
             store = serializer.save(
                 org_id=requested_org_id,
                 created_at=now,
@@ -821,7 +839,11 @@ class StoreViewSet(viewsets.ModelViewSet):
                 endpoint=self.request.path,
                 user=request.user,
             )
-            enforce_trial_store_limit(org_id=org_ids[0], actor_user_id=user_uuid)
+            enforce_trial_store_limit(
+                org_id=org_ids[0],
+                actor_user_id=user_uuid,
+                user=request.user,
+            )
             store = serializer.save(
                 org_id=org_ids[0],
                 created_at=now,
@@ -873,7 +895,11 @@ class StoreViewSet(viewsets.ModelViewSet):
                 endpoint=self.request.path,
                 user=request.user,
             )
-            enforce_trial_store_limit(org_id=org.id, actor_user_id=user_uuid)
+            enforce_trial_store_limit(
+                org_id=org.id,
+                actor_user_id=user_uuid,
+                user=request.user,
+            )
             store = serializer.save(
                 org=org,
                 created_at=now,
@@ -894,6 +920,13 @@ class StoreViewSet(viewsets.ModelViewSet):
             require_store_role(request.user, str(store.id), ALLOWED_READ_ROLES)
             self._require_subscription_for_store(store, "store_dashboard")
             store_status = getattr(store, "status", None)
+            if (
+                request.user
+                and (getattr(request.user, "is_staff", False) or getattr(request.user, "is_superuser", False))
+                and store_status == "blocked"
+                and getattr(store, "blocked_reason", None) == "trial_expired"
+            ):
+                store_status = "trial"
             status_ui = "active" if store_status in ("active", "trial") else "inactive"
             plan_value = "trial" if store_status == "trial" else None
 

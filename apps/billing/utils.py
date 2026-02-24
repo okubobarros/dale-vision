@@ -81,7 +81,12 @@ def enforce_trial_store_limit(
     org_id: str,
     actor_user_id: Optional[str] = None,
     limit: int = TRIAL_STORE_LIMIT,
+    user=None,
 ) -> None:
+    if user is not None and (
+        getattr(user, "is_staff", False) or getattr(user, "is_superuser", False)
+    ):
+        return
     if not is_trial(org_id):
         return
 

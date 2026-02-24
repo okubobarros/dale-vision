@@ -70,7 +70,12 @@ def enforce_trial_camera_limit(
     requested_active: bool = True,
     exclude_camera_id: Optional[str] = None,
     actor_user_id: Optional[str] = None,
+    user=None,
 ) -> None:
+    if user is not None and (
+        getattr(user, "is_staff", False) or getattr(user, "is_superuser", False)
+    ):
+        return
     if not requested_active:
         return
 
