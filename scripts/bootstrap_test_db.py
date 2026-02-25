@@ -1,5 +1,4 @@
 import os
-import sys
 from urllib.parse import urlparse, unquote
 
 import psycopg2
@@ -42,7 +41,6 @@ def main():
         print("DATABASE_URL is required.")
         return 2
 
-    drop_first = "--drop" in sys.argv
     test_db_name = os.getenv("TEST_DB_NAME", "test_postgres")
     schema_path = os.getenv(
         "TEST_SCHEMA_PATH",
@@ -63,8 +61,6 @@ def main():
 
     try:
         with admin_conn.cursor() as cursor:
-            if drop_first:
-                cursor.execute(f"DROP DATABASE IF EXISTS {test_db_name};")
             cursor.execute(f"CREATE DATABASE {test_db_name};")
     except Exception as exc:
         if "already exists" not in str(exc).lower():

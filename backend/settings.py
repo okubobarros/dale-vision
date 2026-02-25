@@ -1,5 +1,6 @@
 # backend/settings.py
 import os
+import sys
 from pathlib import Path
 from urllib.parse import urlparse, parse_qs, unquote
 from dotenv import load_dotenv
@@ -61,19 +62,6 @@ INSTALLED_APPS = [
     "apps.edge",
 ]
 
-# Disable migrations for unmanaged/internal apps when bootstrapping test DB.
-if os.getenv("DISABLE_APP_MIGRATIONS", "0") in ("1", "true", "True"):
-    MIGRATION_MODULES = {
-        "accounts": None,
-        "core": None,
-        "stores": None,
-        "cameras": None,
-        "analytics": None,
-        "alerts": None,
-        "billing": None,
-        "edge": None,
-        "knox": None,
-    }
 
 MIDDLEWARE = [
     'corsheaders.middleware.CorsMiddleware',
@@ -108,7 +96,53 @@ TEMPLATES = [
 WSGI_APPLICATION = 'backend.wsgi.application'
 
 # ⭐ DATABASE - Supabase Postgres (prod e dev)
-_database_url = os.getenv("DATABASE_URL")
+_running_tests = any(arg in ("test", "pytest") or "test" in arg for arg in sys.argv)
+_use_sqlite_for_tests = os.getenv("USE_SQLITE_FOR_TESTS", "0") in ("1", "true", "True")
+if _running_tests and not os.getenv("USE_POSTGRES_FOR_TESTS"):
+    _use_sqlite_for_tests = True
+
+# Disable migrations for unmanaged/internal apps when bootstrapping test DB.
+if _use_sqlite_for_tests or os.getenv("DISABLE_APP_MIGRATIONS", "0") in ("1", "true", "True"):
+    MIGRATION_MODULES = {
+        "accounts": None,
+        "core": None,
+        "stores": None,
+        "cameras": None,
+        "analytics": None,
+        "alerts": None,
+        "billing": None,
+        "edge": None,
+        "knox": None,
+    }
+
+if _use_sqlite_for_tests:
+    _test_log_level = os.getenv("TEST_LOG_LEVEL", "WARNING").upper()
+    LOGGING = {
+        "version": 1,
+        "disable_existing_loggers": False,
+        "handlers": {
+            "console": {
+                "class": "logging.StreamHandler",
+                "level": _test_log_level,
+            }
+        },
+        "root": {"handlers": ["console"], "level": _test_log_level},
+        "loggers": {
+            "django.request": {"handlers": ["console"], "level": "ERROR", "propagate": False},
+            "django.security": {"handlers": ["console"], "level": "ERROR", "propagate": False},
+            "apps.accounts": {"handlers": ["console"], "level": "ERROR", "propagate": False},
+            "apps.accounts.auth_supabase": {"handlers": ["console"], "level": "ERROR", "propagate": False},
+            "apps.accounts.views": {"handlers": ["console"], "level": "CRITICAL", "propagate": False},
+            "apps.cameras": {"handlers": ["console"], "level": "ERROR", "propagate": False},
+            "apps.edge": {"handlers": ["console"], "level": "ERROR", "propagate": False},
+            "apps.snapshots": {"handlers": ["console"], "level": "ERROR", "propagate": False},
+            "apps.supabase": {"handlers": ["console"], "level": "ERROR", "propagate": False},
+            "apps.stores": {"handlers": ["console"], "level": "ERROR", "propagate": False},
+            "apps.stores.services.user_uuid": {"handlers": ["console"], "level": "CRITICAL", "propagate": False},
+            "backend.utils.entitlements": {"handlers": ["console"], "level": "ERROR", "propagate": False},
+        },
+    }
+_database_url = None if _use_sqlite_for_tests else os.getenv("DATABASE_URL")
 if _database_url:
     parsed = urlparse(_database_url)
     scheme = (parsed.scheme or "").split("+", 1)[0]
@@ -132,19 +166,41 @@ else:
     DATABASES = None
 
 if DATABASES is None:
-    DATABASES = {
-        'default': {
-            'ENGINE': 'django.db.backends.postgresql',
-            'NAME': os.getenv('DB_NAME', 'postgres'),
-            'USER': os.getenv('DB_USER', 'postgres'),
-            'PASSWORD': os.getenv('DB_PASSWORD', ''),
-            'HOST': os.getenv('DB_HOST', ''),
-            'PORT': os.getenv('DB_PORT', '5432'),
-            'OPTIONS': {
-                'sslmode': os.getenv('DB_SSLMODE', 'require'),
+    if _use_sqlite_for_tests:
+        DATABASES = {
+            "default": {
+                "ENGINE": "django.db.backends.sqlite3",
+                "NAME": ":memory:",
             }
         }
-    }
+    elif not os.getenv("DB_NAME") and not os.getenv("DB_HOST") and not os.getenv("DB_USER"):
+        DATABASES = {
+            "default": {
+                "ENGINE": "django.db.backends.sqlite3",
+                "NAME": str(BASE_DIR / "db.sqlite3"),
+            }
+        }
+    else:
+        DATABASES = {
+            'default': {
+                'ENGINE': 'django.db.backends.postgresql',
+                'NAME': os.getenv('DB_NAME', 'postgres'),
+                'USER': os.getenv('DB_USER', 'postgres'),
+                'PASSWORD': os.getenv('DB_PASSWORD', ''),
+                'HOST': os.getenv('DB_HOST', ''),
+                'PORT': os.getenv('DB_PORT', '5432'),
+                'OPTIONS': {
+                    'sslmode': os.getenv('DB_SSLMODE', 'require'),
+                }
+            }
+        }
+
+if _running_tests and DATABASES["default"]["ENGINE"] == "django.db.backends.postgresql":
+    base_test_name = os.getenv("TEST_DB_NAME")
+    if not base_test_name:
+        base_test_name = f"test_{DATABASES['default']['NAME']}"
+    suffix = os.getenv("TEST_DB_SUFFIX") or str(os.getpid())
+    DATABASES["default"]["TEST"] = {"NAME": f"{base_test_name}_{suffix}"}
 
 # Password validation
 AUTH_PASSWORD_VALIDATORS = [

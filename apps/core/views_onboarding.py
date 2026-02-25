@@ -3,7 +3,7 @@ from rest_framework.response import Response
 from rest_framework.permissions import IsAuthenticated
 from rest_framework import status
 
-from apps.stores.views import get_user_org_ids
+from apps.stores.services.user_orgs import get_user_org_ids
 from apps.core.services.onboarding_progress import (
     OnboardingProgressService,
     get_service_for_user_store,

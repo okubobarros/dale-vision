@@ -7,6 +7,9 @@ import sys
 def main():
     """Run administrative tasks."""
     os.environ.setdefault('DJANGO_SETTINGS_MODULE', 'backend.settings')
+    if "test" in sys.argv:
+        if not os.getenv("USE_POSTGRES_FOR_TESTS"):
+            os.environ.setdefault("USE_SQLITE_FOR_TESTS", "1")
     try:
         from django.core.management import execute_from_command_line
     except ImportError as exc:

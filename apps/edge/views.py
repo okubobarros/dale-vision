@@ -23,7 +23,8 @@ from .models import EdgeEventReceipt, EdgeToken
 from apps.alerts.views import AlertRuleViewSet
 from apps.core.models import Camera, CameraHealthLog
 from apps.core.models import Store
-from apps.stores.views import ensure_user_uuid, get_user_org_ids
+from apps.stores.services.user_uuid import ensure_user_uuid
+from apps.stores.services.user_orgs import get_user_org_ids
 from apps.stores.views_edge_status import classify_age, compute_store_edge_status_snapshot
 from apps.cameras.limits import enforce_trial_camera_limit
 from apps.billing.utils import PaywallError

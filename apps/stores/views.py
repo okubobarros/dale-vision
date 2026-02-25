@@ -38,6 +38,7 @@ import secrets
 import uuid
 from .serializers import StoreSerializer, EmployeeSerializer
 from apps.stores.services.user_uuid import ensure_user_uuid
+from apps.stores.services.user_orgs import get_user_org_ids
 
 logger = logging.getLogger(__name__)
 
@@ -102,13 +103,6 @@ def _apply_staff_trial_bypass(store: Store, data: dict, user) -> dict:
         data["status"] = "trial"
         data["blocked_reason"] = None
     return data
-
-def get_user_org_ids(user):
-    user_uuid = ensure_user_uuid(user)
-    return list(
-        OrgMember.objects.filter(user_id=user_uuid).values_list("org_id", flat=True)
-    )
-
 
 def filter_stores_for_user(qs, user):
     if getattr(user, "is_superuser", False) or getattr(user, "is_staff", False):
@@ -809,12 +803,12 @@ class StoreViewSet(viewsets.ModelViewSet):
                 actor_user_id=user_uuid,
                 action="create_store",
                 endpoint=self.request.path,
-                user=request.user,
+                user=self.request.user,
             )
             enforce_trial_store_limit(
                 org_id=requested_org_id,
                 actor_user_id=user_uuid,
-                user=request.user,
+                user=self.request.user,
             )
             store = serializer.save(
                 org_id=requested_org_id,
@@ -837,12 +831,12 @@ class StoreViewSet(viewsets.ModelViewSet):
                 actor_user_id=user_uuid,
                 action="create_store",
                 endpoint=self.request.path,
-                user=request.user,
+                user=self.request.user,
             )
             enforce_trial_store_limit(
                 org_id=org_ids[0],
                 actor_user_id=user_uuid,
-                user=request.user,
+                user=self.request.user,
             )
             store = serializer.save(
                 org_id=org_ids[0],

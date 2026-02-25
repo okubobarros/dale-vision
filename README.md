@@ -262,4 +262,17 @@ Regras:
 - Se “Mibo/iC4 sem NVR” → marcar como “não compatível no MVP” (oferecer alternativa: NVR ou plano premium cloud no futuro)
 - Se “NVR Intelbras” → qualificado para trial imediato
 
+---
+
+## 11) Testes (backend)
+Comandos:
+- `python manage.py test`
+
+Notas:
+- Não existe `DROP DATABASE` manual no fluxo de testes.
+- Se `DATABASE_URL` estiver configurado, o Django cria e destrói automaticamente o banco de teste `test_<db>`.
+- O nome do banco de teste Postgres inclui um sufixo por processo (ex.: `test_postgres_<pid>`) para evitar colisões sem `DROP DATABASE`.
+- Por padrão, `python manage.py test` usa SQLite em memória (independente de `DATABASE_URL`), evitando depender de Postgres local.
+- Para forçar Postgres em testes, use `USE_POSTGRES_FOR_TESTS=1`.
+
 # FIM

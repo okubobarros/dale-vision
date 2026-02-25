@@ -600,7 +600,7 @@ class EmployeeSerializerTests(SimpleTestCase):
             "role": "owner",
         }
 
-        with patch("apps.stores.serializers.Store.objects.get", return_value=store):
-            serializer = EmployeeSerializer(data=payload)
-            self.assertFalse(serializer.is_valid())
-            self.assertIn("store_id", serializer.errors)
+        serializer = EmployeeSerializer(data=payload)
+        serializer.fields["store"].queryset = MagicMock(get=MagicMock(return_value=store))
+        self.assertFalse(serializer.is_valid())
+        self.assertIn("store_id", serializer.errors)
