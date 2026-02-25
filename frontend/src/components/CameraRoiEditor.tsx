@@ -9,7 +9,12 @@ import {
 } from "react"
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query"
 import toast from "react-hot-toast"
-import { camerasService, type Camera, type CameraROIConfig } from "../services/cameras"
+import {
+  camerasService,
+  type Camera,
+  type CameraROIConfig,
+  type CameraSnapshotResponse,
+} from "../services/cameras"
 import { onboardingService } from "../services/onboarding"
 
 type RoiPoint = {
