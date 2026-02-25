@@ -16,6 +16,7 @@ import {
   type CameraSnapshotResponse,
 } from "../services/cameras"
 import { onboardingService } from "../services/onboarding"
+import { normalizePointInDrawRect } from "./CameraRoiEditor.helpers"
 
 type RoiPoint = {
   x: number
@@ -36,8 +37,17 @@ type CameraRoiEditorProps = {
   onClose: () => void
 }
 
-const CANVAS_WIDTH = 960
-const CANVAS_HEIGHT = 540
+type CanvasSize = {
+  width: number
+  height: number
+}
+
+type DrawRect = {
+  x: number
+  y: number
+  width: number
+  height: number
+}
 
 const extractShapesFromConfig = (configJson: unknown): RoiShape[] => {
   if (!configJson) return []
@@ -59,6 +69,9 @@ const CameraRoiEditor = ({ open, camera, canEditRoi = false, onClose }: CameraRo
   const [draftPoints, setDraftPoints] = useState<RoiPoint[]>([])
   const [isDrawing, setIsDrawing] = useState(false)
   const [error, setError] = useState<string | null>(null)
+  const [canvasSize, setCanvasSize] = useState<CanvasSize>({ width: 0, height: 0 })
+  const [drawRect, setDrawRect] = useState<DrawRect | null>(null)
+  const imageSizeRef = useRef<CanvasSize | null>(null)
   const backgroundImageRef = useRef<HTMLImageElement | null>(null)
   const fileInputRef = useRef<HTMLInputElement | null>(null)
 
@@ -168,24 +181,64 @@ const CameraRoiEditor = ({ open, camera, canEditRoi = false, onClose }: CameraRo
     ]
   }, [addedShapes, baseShapes, removedShapeIds])
 
+  const updateCanvasSize = useCallback(() => {
+    const canvas = canvasRef.current
+    if (!canvas) return
+    const rect = canvas.getBoundingClientRect()
+    if (!rect.width || !rect.height) return
+
+    const dpr = window.devicePixelRatio || 1
+    canvas.width = Math.round(rect.width * dpr)
+    canvas.height = Math.round(rect.height * dpr)
+    const ctx = canvas.getContext("2d")
+    if (ctx) {
+      ctx.setTransform(dpr, 0, 0, dpr, 0, 0)
+    }
+
+    setCanvasSize((prev) => {
+      if (prev.width === rect.width && prev.height === rect.height) return prev
+      return { width: rect.width, height: rect.height }
+    })
+
+    setDrawRect((prev) => {
+      const next = computeContainRect({ width: rect.width, height: rect.height }, backgroundImageRef.current)
+      if (
+        prev &&
+        Math.abs(prev.x - next.x) < 0.5 &&
+        Math.abs(prev.y - next.y) < 0.5 &&
+        Math.abs(prev.width - next.width) < 0.5 &&
+        Math.abs(prev.height - next.height) < 0.5
+      ) {
+        return prev
+      }
+      return next
+    })
+  }, [])
+
   const drawCanvas = useCallback(() => {
     const canvas = canvasRef.current
     if (!canvas) return
     const ctx = canvas.getContext("2d")
     if (!ctx) return
 
-    ctx.clearRect(0, 0, CANVAS_WIDTH, CANVAS_HEIGHT)
-    drawBackground(ctx, backgroundImageRef.current)
+    if (!canvasSize.width || !canvasSize.height) return
 
-    effectiveShapes.forEach((shape) => drawShape(ctx, shape, "#2563eb"))
+    const activeDrawRect =
+      drawRect ?? computeContainRect(canvasSize, backgroundImageRef.current)
+
+    ctx.clearRect(0, 0, canvasSize.width, canvasSize.height)
+    drawBackground(ctx, canvasSize, activeDrawRect, backgroundImageRef.current)
+
+    effectiveShapes.forEach((shape) => drawShape(ctx, shape, "#2563eb", activeDrawRect))
     if (draftPoints.length > 0) {
       drawShape(
         ctx,
         { id: "draft", name: zoneName || "Rascunho", type: mode, points: draftPoints },
-        "#f59e0b"
+        "#f59e0b",
+        activeDrawRect
       )
     }
-  }, [draftPoints, effectiveShapes, mode, zoneName])
+  }, [canvasSize, draftPoints, drawRect, effectiveShapes, mode, zoneName])
 
   useEffect(() => {
     if (!open) return
@@ -193,8 +246,21 @@ const CameraRoiEditor = ({ open, camera, canEditRoi = false, onClose }: CameraRo
   }, [drawCanvas, open])
 
   useEffect(() => {
+    if (!open) return
+    updateCanvasSize()
+    const canvas = canvasRef.current
+    if (!canvas || typeof ResizeObserver === "undefined") return
+    const observer = new ResizeObserver(() => {
+      updateCanvasSize()
+    })
+    observer.observe(canvas)
+    return () => observer.disconnect()
+  }, [open, updateCanvasSize])
+
+  useEffect(() => {
     if (!snapshotUrl) {
       backgroundImageRef.current = null
+      imageSizeRef.current = null
       if (open) {
         drawCanvas()
       }
@@ -205,13 +271,16 @@ const CameraRoiEditor = ({ open, camera, canEditRoi = false, onClose }: CameraRo
     img.onload = () => {
       if (!active) return
       backgroundImageRef.current = img
+      imageSizeRef.current = { width: img.naturalWidth, height: img.naturalHeight }
       if (open) {
+        updateCanvasSize()
         drawCanvas()
       }
     }
     img.onerror = () => {
       if (!active) return
       backgroundImageRef.current = null
+      imageSizeRef.current = null
       if (open) {
         drawCanvas()
       }
@@ -220,7 +289,7 @@ const CameraRoiEditor = ({ open, camera, canEditRoi = false, onClose }: CameraRo
     return () => {
       active = false
     }
-  }, [drawCanvas, open, snapshotUrl])
+  }, [drawCanvas, open, snapshotUrl, updateCanvasSize])
 
   const handlePointerDown = useCallback(
     (event: PointerEvent<HTMLCanvasElement>) => {
@@ -231,8 +300,17 @@ const CameraRoiEditor = ({ open, camera, canEditRoi = false, onClose }: CameraRo
       }
       setError(null)
 
-      const { x, y } = getCanvasPoint(event)
-      const point = normalizePoint(x, y)
+      if (!drawRect) return
+      const canvasPoint = getCanvasCssPoint(event)
+      if (
+        backgroundImageRef.current &&
+        !isPointInsideDrawRect(canvasPoint, drawRect)
+      ) {
+        setError("Clique dentro da imagem.")
+        return
+      }
+
+      const point = normalizePointInDrawRect(canvasPoint, drawRect)
 
       if (mode === "rect") {
         setIsDrawing(true)
@@ -241,17 +319,18 @@ const CameraRoiEditor = ({ open, camera, canEditRoi = false, onClose }: CameraRo
         setDraftPoints((prev) => [...prev, point])
       }
     },
-    [cameraId, mode, zoneName]
+    [cameraId, canEditRoi, drawRect, mode, zoneName]
   )
 
   const handlePointerMove = useCallback(
     (event: PointerEvent<HTMLCanvasElement>) => {
       if (!isDrawing || mode !== "rect") return
-      const { x, y } = getCanvasPoint(event)
-      const point = normalizePoint(x, y)
+      if (!drawRect) return
+      const canvasPoint = getCanvasCssPoint(event)
+      const point = normalizePointInDrawRect(canvasPoint, drawRect)
       setDraftPoints((prev) => (prev.length >= 2 ? [prev[0], point] : prev))
     },
-    [isDrawing, mode]
+    [drawRect, isDrawing, mode]
   )
 
   const finalizeRect = useCallback(() => {
@@ -314,16 +393,22 @@ const CameraRoiEditor = ({ open, camera, canEditRoi = false, onClose }: CameraRo
 
   const handleSave = useCallback(() => {
     if (!cameraId || !canEditRoi) return
+    const imageSize = imageSizeRef.current
     updateRoiMutation.mutate({
       roi_version: roiVersionLabel,
       status: "draft",
-      image: { width: CANVAS_WIDTH, height: CANVAS_HEIGHT },
+      image: {
+        width: imageSize?.width ?? Math.round(canvasSize.width || 0),
+        height: imageSize?.height ?? Math.round(canvasSize.height || 0),
+      },
       zones: effectiveShapes,
       metrics_enabled: Boolean(latestConfig?.metrics_enabled),
     })
   }, [
     cameraId,
     canEditRoi,
+    canvasSize.height,
+    canvasSize.width,
     effectiveShapes,
     latestConfig?.metrics_enabled,
     roiVersionLabel,
@@ -332,16 +417,22 @@ const CameraRoiEditor = ({ open, camera, canEditRoi = false, onClose }: CameraRo
 
   const handlePublish = useCallback(() => {
     if (!cameraId || !canEditRoi) return
+    const imageSize = imageSizeRef.current
     updateRoiMutation.mutate({
       roi_version: roiVersionLabel,
       status: "published",
-      image: { width: CANVAS_WIDTH, height: CANVAS_HEIGHT },
+      image: {
+        width: imageSize?.width ?? Math.round(canvasSize.width || 0),
+        height: imageSize?.height ?? Math.round(canvasSize.height || 0),
+      },
       zones: effectiveShapes,
       metrics_enabled: Boolean(latestConfig?.metrics_enabled),
     })
   }, [
     cameraId,
     canEditRoi,
+    canvasSize.height,
+    canvasSize.width,
     effectiveShapes,
     latestConfig?.metrics_enabled,
     roiVersionLabel,
@@ -478,8 +569,6 @@ const CameraRoiEditor = ({ open, camera, canEditRoi = false, onClose }: CameraRo
             ) : (
               <canvas
                 ref={canvasRef}
-                width={CANVAS_WIDTH}
-                height={CANVAS_HEIGHT}
                 onPointerDown={handlePointerDown}
                 onPointerMove={handlePointerMove}
                 onPointerUp={handlePointerUp}
@@ -638,7 +727,7 @@ const CameraRoiEditor = ({ open, camera, canEditRoi = false, onClose }: CameraRo
   )
 }
 
-const getCanvasPoint = (event: PointerEvent<HTMLCanvasElement>) => {
+const getCanvasCssPoint = (event: PointerEvent<HTMLCanvasElement>) => {
   const rect = event.currentTarget.getBoundingClientRect()
   return {
     x: event.clientX - rect.left,
@@ -646,38 +735,62 @@ const getCanvasPoint = (event: PointerEvent<HTMLCanvasElement>) => {
   }
 }
 
-const normalizePoint = (x: number, y: number): RoiPoint => ({
-  x: Math.min(Math.max(x / CANVAS_WIDTH, 0), 1),
-  y: Math.min(Math.max(y / CANVAS_HEIGHT, 0), 1),
+const isPointInsideDrawRect = (point: RoiPoint, rect: DrawRect) =>
+  point.x >= rect.x &&
+  point.x <= rect.x + rect.width &&
+  point.y >= rect.y &&
+  point.y <= rect.y + rect.height
+
+const denormalizePointInDrawRect = (point: RoiPoint, rect: DrawRect) => ({
+  x: rect.x + point.x * rect.width,
+  y: rect.y + point.y * rect.height,
 })
 
-const denormalizePoint = (point: RoiPoint) => ({
-  x: point.x * CANVAS_WIDTH,
-  y: point.y * CANVAS_HEIGHT,
-})
+const computeContainRect = (canvasSize: CanvasSize, image?: HTMLImageElement | null): DrawRect => {
+  if (!canvasSize.width || !canvasSize.height) {
+    return { x: 0, y: 0, width: 0, height: 0 }
+  }
+  if (!image || !image.naturalWidth || !image.naturalHeight) {
+    return { x: 0, y: 0, width: canvasSize.width, height: canvasSize.height }
+  }
+  const scale = Math.min(
+    canvasSize.width / image.naturalWidth,
+    canvasSize.height / image.naturalHeight
+  )
+  const width = image.naturalWidth * scale
+  const height = image.naturalHeight * scale
+  return {
+    x: (canvasSize.width - width) / 2,
+    y: (canvasSize.height - height) / 2,
+    width,
+    height,
+  }
+}
 
 const drawBackground = (
   ctx: CanvasRenderingContext2D,
+  canvasSize: CanvasSize,
+  drawRect: DrawRect,
   image?: HTMLImageElement | null
 ) => {
   ctx.fillStyle = "#f8fafc"
-  ctx.fillRect(0, 0, CANVAS_WIDTH, CANVAS_HEIGHT)
-  if (image) {
-    ctx.drawImage(image, 0, 0, CANVAS_WIDTH, CANVAS_HEIGHT)
+  ctx.fillRect(0, 0, canvasSize.width, canvasSize.height)
+  if (image && drawRect.width > 0 && drawRect.height > 0) {
+    ctx.drawImage(image, drawRect.x, drawRect.y, drawRect.width, drawRect.height)
   }
   ctx.strokeStyle = "#e2e8f0"
   ctx.lineWidth = 1
   const step = 40
-  for (let x = 0; x <= CANVAS_WIDTH; x += step) {
+  for (let x = 0; x <= canvasSize.width; x += step) {
     ctx.beginPath()
     ctx.moveTo(x, 0)
-    ctx.lineTo(x, CANVAS_HEIGHT)
+    ctx.lineTo(x, canvasSize.height)
     ctx.stroke()
   }
-  for (let y = 0; y <= CANVAS_HEIGHT; y += step) {
+  for (let y = 0; y <= canvasSize.height; y += step) {
     ctx.beginPath()
     ctx.moveTo(0, y)
-    ctx.lineTo(CANVAS_WIDTH, y)
+    ctx.lineTo(canvasSize.width, y)
     ctx.stroke()
   }
 }
@@ -685,16 +798,17 @@ const drawBackground = (
 const drawShape = (
   ctx: CanvasRenderingContext2D,
   shape: RoiShape,
-  stroke: string
+  stroke: string,
+  drawRect: DrawRect
 ) => {
-  if (shape.points.length === 0) return
+  if (shape.points.length === 0 || drawRect.width === 0 || drawRect.height === 0) return
   ctx.strokeStyle = stroke
   ctx.lineWidth = 2
   ctx.fillStyle = `${stroke}22`
 
   if (shape.type === "rect" && shape.points.length >= 2) {
-    const start = denormalizePoint(shape.points[0])
-    const end = denormalizePoint(shape.points[1])
+    const start = denormalizePointInDrawRect(shape.points[0], drawRect)
+    const end = denormalizePointInDrawRect(shape.points[1], drawRect)
     const width = end.x - start.x
     const height = end.y - start.y
     ctx.strokeRect(start.x, start.y, width, height)
@@ -706,7 +820,7 @@ const drawShape = (
 
   ctx.beginPath()
   shape.points.forEach((point, index) => {
-    const p = denormalizePoint(point)
+    const p = denormalizePointInDrawRect(point, drawRect)
     if (index === 0) {
       ctx.moveTo(p.x, p.y)
     } else {
@@ -718,7 +832,7 @@ const drawShape = (
   }
   ctx.stroke()
   ctx.fill()
-  const labelPoint = denormalizePoint(shape.points[0])
+  const labelPoint = denormalizePointInDrawRect(shape.points[0], drawRect)
   ctx.fillStyle = stroke
   ctx.fillText(shape.name, labelPoint.x + 6, labelPoint.y + 18)
 }
