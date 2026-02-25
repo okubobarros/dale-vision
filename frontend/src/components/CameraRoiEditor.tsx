@@ -69,7 +69,7 @@ const CameraRoiEditor = ({ open, camera, canEditRoi = false, onClose }: CameraRo
     data: snapshotData,
     isLoading: snapshotLoading,
     error: snapshotError,
-  } = useQuery({
+  } = useQuery<CameraSnapshotResponse>({
     queryKey: ["camera-snapshot", cameraId],
     queryFn: () => camerasService.getSnapshotUrl(cameraId || ""),
     enabled: Boolean(cameraId),
@@ -82,15 +82,6 @@ const CameraRoiEditor = ({ open, camera, canEditRoi = false, onClose }: CameraRo
       if (status === 503 && code === "STORAGE_NOT_CONFIGURED") return false
       return count < 2
     },
-    onError: (err) => {
-      if (import.meta.env.DEV) {
-        const response = (err as { response?: { status?: number; data?: unknown } })?.response
-        console.warn("[ROI] snapshot fetch failed", {
-          status: response?.status,
-          data: response?.data,
-        })
-      }
-    },
   })
   const snapshotUrl =
     snapshotData?.snapshot_url || snapshotData?.signed_url || null
@@ -100,6 +91,15 @@ const CameraRoiEditor = ({ open, camera, canEditRoi = false, onClose }: CameraRo
   const snapshotStatus = snapshotErrorResponse?.response?.status
   const snapshotCode = snapshotErrorResponse?.response?.data?.code
   const snapshotMessage = snapshotErrorResponse?.response?.data?.message
+
+  useEffect(() => {
+    if (!snapshotError || !import.meta.env.DEV) return
+    const response = (snapshotError as { response?: { status?: number; data?: unknown } })?.response
+    console.warn("[ROI] snapshot fetch failed", {
+      status: response?.status,
+      data: response?.data,
+    })
+  }, [snapshotError])
 
   const updateRoiMutation = useMutation({
     mutationFn: (configJson: unknown) =>
