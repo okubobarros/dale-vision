@@ -22,10 +22,10 @@ Registrar decisões e eventos do dia.
   - Nenhum bloqueio ativo.
 - Decisões:
   - Viewer somente leitura (sem ROI/teste/edição).
-  - Snapshot sempre via signed URL curta; bucket privado `snapshots`.
+  - Snapshot sempre via signed URL curta; bucket privado `camera-snapshots`.
   - Staff assist pode publicar ROI com metadados de assistência.
 - Próximos passos:
-  - Validar bucket `snapshots` no Supabase e permissões.
+  - Validar bucket `camera-snapshots` no Supabase e permissões.
   - Checar UX de “Aguardando validação” nas câmeras.
 
 ## 2026-02-23
@@ -44,3 +44,17 @@ Registrar decisões e eventos do dia.
   - `setup-state` pode retornar `X-Schema-Warnings` quando schema estiver desatualizado.
 - Próximos passos:
   - Rodar SQL `20260223_add_employee_role_owner.sql` no Supabase.
+
+## 2026-02-25
+- Data: 2026-02-25
+- Highlights:
+  - Snapshot ROI agora retorna 503 `STORAGE_NOT_CONFIGURED` quando env vars faltam.
+  - Endpoint staff-only `/api/v1/system/storage-status/` para diagnóstico de Storage.
+  - UI do ROI Editor mostra mensagens claras para 404/503 e progresso no upload.
+- Bloqueios:
+  - Nenhum.
+- Decisões:
+  - Bucket padrão de snapshots: `camera-snapshots`.
+  - Signed URL curta (10 min) para snapshots.
+- Próximos passos:
+  - Validar env vars no Render e bucket no Supabase.

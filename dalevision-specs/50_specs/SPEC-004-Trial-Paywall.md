@@ -21,6 +21,7 @@ Aplicar limites do trial e orientar upgrade.
 - Limite de lojas no trial = 1
 - Limite de câmeras no trial = 3
 - Superuser/staff não expira trial (acesso total sem paywall).
+  - UI não deve exibir banners de trial para staff/superuser.
 
 ## Payloads e códigos
 - `PAYWALL_TRIAL_LIMIT` (HTTP 402)

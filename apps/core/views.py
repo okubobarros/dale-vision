@@ -2,7 +2,9 @@ import requests
 from django.conf import settings
 from rest_framework import viewsets, status
 from rest_framework.response import Response
-from rest_framework.permissions import AllowAny
+from rest_framework.permissions import AllowAny, IsAuthenticated
+from rest_framework.exceptions import PermissionDenied
+from apps.core.integrations import supabase_storage
 from apps.core import models
 from .serializers import DemoLeadSerializer
 
@@ -39,3 +41,14 @@ class DemoLeadViewSet(viewsets.ModelViewSet):
                 pass
 
         return Response(serializer.data, status=status.HTTP_201_CREATED)
+
+
+class StorageStatusView(viewsets.ViewSet):
+    permission_classes = [IsAuthenticated]
+
+    def list(self, request):
+        user = request.user
+        if not (getattr(user, "is_staff", False) or getattr(user, "is_superuser", False)):
+            raise PermissionDenied("Sem permissão.")
+        status_payload = supabase_storage.get_config_status()
+        return Response(status_payload, status=status.HTTP_200_OK)

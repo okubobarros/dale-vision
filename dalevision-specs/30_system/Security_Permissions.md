@@ -30,6 +30,7 @@
  - Pode acessar lojas para assistência de onboarding (ex.: configurar ROI em trials).
  - Quando staff publica ROI, deve registrar metadados de assistência (created_by_staff, created_by_user_id, created_at).
  - Superuser/staff **não** expira trial e tem acesso total (bypass de paywall/trial).
+ - Storage status: endpoint `/api/v1/system/storage-status/` é **staff-only**.
 
 ## Observações
 - Tokens e secrets nunca no frontend.

@@ -734,6 +734,12 @@ class CameraViewSet(viewsets.ModelViewSet):
             )
 
         if not supabase_storage.get_config():
+            logger.warning(
+                "[SNAPSHOT] storage_not_configured camera_id=%s store_id=%s flags=%s",
+                str(cam.id),
+                str(cam.store_id),
+                supabase_storage.get_config_status(),
+            )
             return _error_response(
                 "STORAGE_NOT_CONFIGURED",
                 "Storage não configurado.",
@@ -764,7 +770,13 @@ class CameraViewSet(viewsets.ModelViewSet):
         try:
             supabase_storage.upload_file(file.read(), storage_key, content_type)
         except supabase_storage.StorageUploadError as exc:
-            logger.exception("[SNAPSHOT] upload failed camera_id=%s error=%s", str(cam.id), exc)
+            logger.exception(
+                "[SNAPSHOT] upload failed camera_id=%s store_id=%s storage_key=%s error=%s",
+                str(cam.id),
+                str(cam.store_id),
+                storage_key,
+                exc,
+            )
             return _error_response(
                 "SNAPSHOT_UPLOAD_FAILED",
                 "Falha ao enviar snapshot.",
@@ -772,6 +784,12 @@ class CameraViewSet(viewsets.ModelViewSet):
                 deprecated_detail="Falha ao enviar snapshot.",
             )
         except supabase_storage.StorageNotConfigured:
+            logger.warning(
+                "[SNAPSHOT] storage_not_configured camera_id=%s store_id=%s flags=%s",
+                str(cam.id),
+                str(cam.store_id),
+                supabase_storage.get_config_status(),
+            )
             return _error_response(
                 "STORAGE_NOT_CONFIGURED",
                 "Storage não configurado.",
@@ -783,9 +801,10 @@ class CameraViewSet(viewsets.ModelViewSet):
             signed_url = supabase_storage.create_signed_url(storage_key, expires_seconds=600)
         except Exception as exc:
             logger.exception(
-                "[SNAPSHOT] sign failed camera_id=%s store_id=%s error=%s",
+                "[SNAPSHOT] sign failed camera_id=%s store_id=%s storage_key=%s error=%s",
                 str(cam.id),
                 str(cam.store_id),
+                storage_key,
                 exc,
             )
             signed_url = None
@@ -826,6 +845,12 @@ class CameraViewSet(viewsets.ModelViewSet):
                 require_store_role(request.user, str(cam.store_id), ALLOWED_READ_ROLES)
 
             if not supabase_storage.get_config():
+                logger.warning(
+                    "[SNAPSHOT] storage_not_configured camera_id=%s store_id=%s flags=%s",
+                    str(cam.id),
+                    str(cam.store_id),
+                    supabase_storage.get_config_status(),
+                )
                 return _error_response(
                     "STORAGE_NOT_CONFIGURED",
                     "Storage não configurado.",
@@ -845,7 +870,13 @@ class CameraViewSet(viewsets.ModelViewSet):
                         expires_seconds=600,
                     )
                 except Exception as exc:
-                    logger.exception("[SNAPSHOT] sign failed camera_id=%s error=%s", str(cam.id), exc)
+                    logger.exception(
+                        "[SNAPSHOT] sign failed camera_id=%s store_id=%s storage_key=%s error=%s",
+                        str(cam.id),
+                        str(cam.store_id),
+                        snapshot.storage_key,
+                        exc,
+                    )
                     return _error_response(
                         "SNAPSHOT_SIGN_FAILED",
                         "Falha ao gerar URL assinada.",

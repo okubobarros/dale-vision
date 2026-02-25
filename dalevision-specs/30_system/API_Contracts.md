@@ -16,7 +16,7 @@
 - `POST /api/accounts/logout/`
 - `POST /api/accounts/logoutall/`
 - `GET /api/accounts/me/`
-- `GET /api/accounts/supabase/`
+- `POST /api/accounts/supabase/`
 - `GET /api/me/setup-state/`
 - `GET /api/health/auth/`
 - `GET /api/health/schema/`
@@ -41,13 +41,15 @@
 - `GET|POST /api/v1/cameras/`
 - `GET|PUT|PATCH|DELETE /api/v1/cameras/{camera_id}/`
 - `POST /api/v1/cameras/{camera_id}/test-snapshot/`
-- `POST /api/v1/cameras/{camera_id}/test-connection/`
+- `POST /api/v1/cameras/{camera_id}/test-connection/` (202 async)
 - `POST /api/v1/cameras/{camera_id}/snapshot/upload/`
 - `GET /api/v1/cameras/{camera_id}/snapshot/`
 - `GET|PUT /api/v1/cameras/{camera_id}/roi/`
 - `GET /api/v1/cameras/{camera_id}/roi/latest/`
 - `POST /api/v1/cameras/{camera_id}/health/` (edge)
 - `GET /api/v1/camera-health-logs/`
+
+- `GET /api/v1/system/storage-status/` (staff-only)
 
 - `GET|POST /api/alerts/alert-rules/`
 - `GET|PUT|PATCH|DELETE /api/alerts/alert-rules/{id}/`
@@ -91,3 +93,5 @@ Observação: detalhes de validação e regras de ingestão devem referenciar `S
 
 ## Notas de resposta
 - `GET /api/me/setup-state/` pode retornar `X-Schema-Warnings: ORG_SCHEMA_OUTDATED` quando o schema do banco estiver desatualizado (ex.: ausência de `organizations.trial_ends_at`).
+- `GET /api/v1/cameras/{camera_id}/snapshot/` retorna `snapshot_url` (signed URL curta), `storage_key` (quando existir) e `expires_in`.
+- `GET /api/v1/system/storage-status/` retorna flags sem segredos: `configured`, `bucket`, `supabase_url_present`, `service_role_present`.

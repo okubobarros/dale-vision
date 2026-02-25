@@ -18,6 +18,12 @@ Variáveis de ambiente (backend):
 - `SUPABASE_SERVICE_ROLE_KEY` (service role do Supabase)
 - `SUPABASE_STORAGE_BUCKET` (default: `camera-snapshots`)
 
+Checklist Render (Storage de snapshots):
+- Definir `SUPABASE_URL` e `SUPABASE_SERVICE_ROLE_KEY` no Render.
+- (Opcional) Definir `SUPABASE_STORAGE_BUCKET` (default: `camera-snapshots`).
+- Criar o bucket no Supabase com o mesmo nome configurado.
+- Validar em `/api/v1/system/storage-status/` (staff only).
+
 ## 1) Realidade do campo (lições aprendidas)
 ### 1.1 Intelbras iC4/Mibo/iC5 (consumer cloud-only)
 - Não expõe RTSP/ONVIF na LAN: portas fechadas; acesso via cloud do fabricante.

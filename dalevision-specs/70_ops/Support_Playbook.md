@@ -21,5 +21,10 @@ Padronizar suporte e reduzir tempo de resolução.
 - `logs\agent.log`
 - `logs\update.log`
 
+## Checagem rápida de Storage (ROI Snapshot)
+- `GET /api/v1/system/storage-status/` (somente staff)
+- Verificar `configured`, `supabase_url_present`, `service_role_present`, `bucket`
+- Bucket esperado: `camera-snapshots`
+
 ## Escalonamento
 - Quando envolver infra, billing ou segurança

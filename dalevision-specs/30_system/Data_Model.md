@@ -24,7 +24,8 @@
 - `employee_role` inclui: `owner`, `manager`, `cashier`, `seller`, `security`, `stock`, `other`.
 - CameraSnapshot (mínimo):
   - `camera_id`, `store_id`, `org_id`
-  - `path` (storage)
+  - `storage_key`
+  - `snapshot_url` (signed URL curta, quando aplicável)
   - `created_at`
   - `source` (edge|backend)
 - Camera:

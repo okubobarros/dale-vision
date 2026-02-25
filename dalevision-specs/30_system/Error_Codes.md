@@ -90,10 +90,35 @@ Compatibilidade temporária:
 - HTTP: 502
 - Mensagem UX sugerida: "Falha ao gerar URL do snapshot."
 
+### STORAGE_NOT_CONFIGURED
+- Quando: storage de snapshots não configurado no backend.
+- HTTP: 503
+- Mensagem UX sugerida: "Snapshot central indisponível. Fale com suporte."
+
+### SNAPSHOT_NOT_FOUND
+- Quando: não existe snapshot disponível para a câmera.
+- HTTP: 404
+- Mensagem UX sugerida: "Sem snapshot ainda. Faça upload ou gere via Edge."
+
+### SNAPSHOT_MISSING
+- Quando: upload sem arquivo `file`.
+- HTTP: 400
+- Mensagem UX sugerida: "Envie o arquivo do snapshot."
+
+### SNAPSHOT_INVALID_TYPE
+- Quando: upload com tipo inválido (não JPEG/PNG).
+- HTTP: 400
+- Mensagem UX sugerida: "Envie uma imagem JPEG ou PNG."
+
 ### SNAPSHOT_UPLOAD_FAILED
 - Quando: falha ao subir snapshot (storage indisponível ou erro de upload).
-- HTTP: 500
+- HTTP: 502
 - Mensagem UX sugerida: "Falha ao enviar snapshot. Tente novamente."
+
+### SNAPSHOT_FAILED
+- Quando: falha inesperada ao carregar snapshot.
+- HTTP: 500
+- Mensagem UX sugerida: "Não foi possível carregar o snapshot."
 
 ## Observações
 - Não inventar endpoints novos para suportar erros; quando necessário, usar `details` com o contexto.

@@ -28,7 +28,8 @@ Cadastrar câmeras com store inferida pela URL e sem validação de rede no back
   - Label UX sugerido: "Aguardando validação"
   - `last_error_code`, `last_error_details`: `null`
   - `validate_now=false` (default). Se `true`, enfileira validação sem bloquear o POST.
-- `POST /api/v1/cameras/{camera_id}/test-connection/` -> inicia verificação assíncrona
+- `POST /api/v1/cameras/{camera_id}/test-connection/` -> inicia verificação assíncrona (202)
+- UI deve fazer polling em `GET /api/v1/cameras/{camera_id}/` para refletir resultado.
 
 ## Erros
 - 404 Store not found

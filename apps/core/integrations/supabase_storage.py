@@ -43,6 +43,27 @@ def get_config() -> Optional[StorageConfig]:
     return StorageConfig(url=url.rstrip("/"), key=key, bucket=bucket)
 
 
+def get_config_status() -> dict:
+    url = getattr(settings, "SUPABASE_URL", None) or os.getenv("SUPABASE_URL")
+    key = (
+        getattr(settings, "SUPABASE_SERVICE_ROLE_KEY", None)
+        or os.getenv("SUPABASE_SERVICE_ROLE_KEY")
+        or getattr(settings, "SUPABASE_KEY", None)
+        or os.getenv("SUPABASE_KEY")
+    )
+    bucket = (
+        getattr(settings, "SUPABASE_STORAGE_BUCKET", None)
+        or os.getenv("SUPABASE_STORAGE_BUCKET")
+        or "camera-snapshots"
+    )
+    return {
+        "configured": bool(url and key),
+        "bucket": bucket,
+        "supabase_url_present": bool(url),
+        "service_role_present": bool(key),
+    }
+
+
 def require_config() -> StorageConfig:
     config = get_config()
     if not config:
