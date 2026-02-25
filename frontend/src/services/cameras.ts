@@ -49,9 +49,10 @@ export interface CameraROIConfig {
 
 export interface CameraSnapshotResponse {
   camera_id: string
-  snapshot_id: string
-  storage_key: string
-  signed_url: string | null
+  snapshot_id?: string
+  storage_key?: string
+  snapshot_url?: string | null
+  signed_url?: string | null
   expires_in?: number
 }
 

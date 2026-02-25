@@ -27,6 +27,7 @@ type RoiShape = {
 type CameraRoiEditorProps = {
   open: boolean
   camera: Camera | null
+  canEditRoi?: boolean
   onClose: () => void
 }
 
@@ -43,7 +44,7 @@ const extractShapesFromConfig = (configJson: unknown): RoiShape[] => {
   return []
 }
 
-const CameraRoiEditor = ({ open, camera, onClose }: CameraRoiEditorProps) => {
+const CameraRoiEditor = ({ open, camera, canEditRoi = false, onClose }: CameraRoiEditorProps) => {
   const canvasRef = useRef<HTMLCanvasElement | null>(null)
   const queryClient = useQueryClient()
   const [mode, setMode] = useState<"rect" | "poly">("rect")
@@ -64,17 +65,41 @@ const CameraRoiEditor = ({ open, camera, onClose }: CameraRoiEditorProps) => {
     enabled: Boolean(cameraId),
   })
 
-  const { data: snapshotData } = useQuery({
+  const {
+    data: snapshotData,
+    isLoading: snapshotLoading,
+    error: snapshotError,
+  } = useQuery({
     queryKey: ["camera-snapshot", cameraId],
     queryFn: () => camerasService.getSnapshotUrl(cameraId || ""),
     enabled: Boolean(cameraId),
     retry: (count, error) => {
-      const status = (error as { response?: { status?: number } })?.response?.status
+      const response = (error as { response?: { status?: number; data?: { code?: string } } })
+        ?.response
+      const status = response?.status
+      const code = response?.data?.code
       if (status === 404) return false
+      if (status === 503 && code === "STORAGE_NOT_CONFIGURED") return false
       return count < 2
     },
+    onError: (err) => {
+      if (import.meta.env.DEV) {
+        const response = (err as { response?: { status?: number; data?: unknown } })?.response
+        console.warn("[ROI] snapshot fetch failed", {
+          status: response?.status,
+          data: response?.data,
+        })
+      }
+    },
   })
-  const snapshotUrl = snapshotData?.signed_url || null
+  const snapshotUrl =
+    snapshotData?.snapshot_url || snapshotData?.signed_url || null
+  const snapshotErrorResponse = snapshotError as
+    | { response?: { status?: number; data?: { code?: string; message?: string } } }
+    | undefined
+  const snapshotStatus = snapshotErrorResponse?.response?.status
+  const snapshotCode = snapshotErrorResponse?.response?.data?.code
+  const snapshotMessage = snapshotErrorResponse?.response?.data?.message
 
   const updateRoiMutation = useMutation({
     mutationFn: (configJson: unknown) =>
@@ -92,7 +117,21 @@ const CameraRoiEditor = ({ open, camera, onClose }: CameraRoiEditorProps) => {
       queryClient.invalidateQueries({ queryKey: ["camera-snapshot", cameraId] })
       toast.success("Snapshot atualizado")
     },
-    onError: () => toast.error("Falha ao enviar snapshot."),
+    onError: (err: unknown) => {
+      const response = (err as { response?: { status?: number; data?: { message?: string } } })
+        ?.response
+      const message =
+        response?.data?.message ||
+        (err as { message?: string })?.message ||
+        "Falha ao enviar snapshot."
+      toast.error(message)
+      if (import.meta.env.DEV) {
+        console.warn("[ROI] snapshot upload failed", {
+          status: response?.status,
+          data: response?.data,
+        })
+      }
+    },
   })
 
   const latestUpdatedAt = roiConfig?.updated_at ?? null
@@ -180,7 +219,7 @@ const CameraRoiEditor = ({ open, camera, onClose }: CameraRoiEditorProps) => {
 
   const handlePointerDown = useCallback(
     (event: PointerEvent<HTMLCanvasElement>) => {
-      if (!cameraId) return
+      if (!cameraId || !canEditRoi) return
       if (!zoneName.trim()) {
         setError("Informe o nome da zona antes de desenhar.")
         return
@@ -252,10 +291,11 @@ const CameraRoiEditor = ({ open, camera, onClose }: CameraRoiEditorProps) => {
   }, [draftPoints, mode, zoneName])
 
   const handlePointerUp = useCallback(() => {
+    if (!canEditRoi) return
     if (mode === "rect") {
       finalizeRect()
     }
-  }, [finalizeRect, mode])
+  }, [canEditRoi, finalizeRect, mode])
 
   const clearDraft = useCallback(() => {
     setDraftPoints([])
@@ -268,7 +308,7 @@ const CameraRoiEditor = ({ open, camera, onClose }: CameraRoiEditorProps) => {
   }, [])
 
   const handleSave = useCallback(() => {
-    if (!cameraId) return
+    if (!cameraId || !canEditRoi) return
     updateRoiMutation.mutate({
       roi_version: roiVersionLabel,
       status: "draft",
@@ -276,10 +316,17 @@ const CameraRoiEditor = ({ open, camera, onClose }: CameraRoiEditorProps) => {
       zones: effectiveShapes,
       metrics_enabled: Boolean(latestConfig?.metrics_enabled),
     })
-  }, [cameraId, effectiveShapes, latestConfig?.metrics_enabled, roiVersionLabel, updateRoiMutation])
+  }, [
+    cameraId,
+    canEditRoi,
+    effectiveShapes,
+    latestConfig?.metrics_enabled,
+    roiVersionLabel,
+    updateRoiMutation,
+  ])
 
   const handlePublish = useCallback(() => {
-    if (!cameraId) return
+    if (!cameraId || !canEditRoi) return
     updateRoiMutation.mutate({
       roi_version: roiVersionLabel,
       status: "published",
@@ -287,7 +334,14 @@ const CameraRoiEditor = ({ open, camera, onClose }: CameraRoiEditorProps) => {
       zones: effectiveShapes,
       metrics_enabled: Boolean(latestConfig?.metrics_enabled),
     })
-  }, [cameraId, effectiveShapes, latestConfig?.metrics_enabled, roiVersionLabel, updateRoiMutation])
+  }, [
+    cameraId,
+    canEditRoi,
+    effectiveShapes,
+    latestConfig?.metrics_enabled,
+    roiVersionLabel,
+    updateRoiMutation,
+  ])
 
   const handleStartMonitoring = useCallback(async () => {
     if (!cameraId || !camera?.store) return
@@ -324,17 +378,18 @@ const CameraRoiEditor = ({ open, camera, onClose }: CameraRoiEditorProps) => {
   }, [onClose])
 
   const handleSelectSnapshot = useCallback(() => {
+    if (!canEditRoi) return
     fileInputRef.current?.click()
-  }, [])
+  }, [canEditRoi])
 
   const handleSnapshotChange = useCallback(
     (event: ChangeEvent<HTMLInputElement>) => {
       const file = event.target.files?.[0]
-      if (!file || !cameraId) return
+      if (!file || !cameraId || !canEditRoi) return
       uploadSnapshotMutation.mutate(file)
       event.target.value = ""
     },
-    [cameraId, uploadSnapshotMutation]
+    [cameraId, canEditRoi, uploadSnapshotMutation]
   )
 
   if (!open || !camera) return null
@@ -360,48 +415,56 @@ const CameraRoiEditor = ({ open, camera, onClose }: CameraRoiEditorProps) => {
               </div>
             </div>
             <div className="flex flex-wrap gap-2">
-            <button
-              type="button"
-              onClick={handleSave}
-              disabled={updateRoiMutation.isPending}
-              className={`rounded-lg px-4 py-2 text-sm font-semibold text-white ${
-                updateRoiMutation.isPending
-                  ? "bg-gray-300 cursor-not-allowed"
-                  : "bg-blue-600 hover:bg-blue-700"
-              }`}
-            >
-              {updateRoiMutation.isPending ? "Salvando..." : "Salvar rascunho"}
-            </button>
-            <button
-              type="button"
-              onClick={handlePublish}
-              disabled={updateRoiMutation.isPending || effectiveShapes.length === 0}
-              className={`rounded-lg px-4 py-2 text-sm font-semibold text-white ${
-                updateRoiMutation.isPending || effectiveShapes.length === 0
-                  ? "bg-gray-300 cursor-not-allowed"
-                  : "bg-emerald-600 hover:bg-emerald-700"
-              }`}
-            >
-              Publicar versão
-            </button>
-            {roiStatus === "published" && (
+              {canEditRoi ? (
+                <>
+                  <button
+                    type="button"
+                    onClick={handleSave}
+                    disabled={updateRoiMutation.isPending}
+                    className={`rounded-lg px-4 py-2 text-sm font-semibold text-white ${
+                      updateRoiMutation.isPending
+                        ? "bg-gray-300 cursor-not-allowed"
+                        : "bg-blue-600 hover:bg-blue-700"
+                    }`}
+                  >
+                    {updateRoiMutation.isPending ? "Salvando..." : "Salvar rascunho"}
+                  </button>
+                  <button
+                    type="button"
+                    onClick={handlePublish}
+                    disabled={updateRoiMutation.isPending || effectiveShapes.length === 0}
+                    className={`rounded-lg px-4 py-2 text-sm font-semibold text-white ${
+                      updateRoiMutation.isPending || effectiveShapes.length === 0
+                        ? "bg-gray-300 cursor-not-allowed"
+                        : "bg-emerald-600 hover:bg-emerald-700"
+                    }`}
+                  >
+                    Publicar versão
+                  </button>
+                </>
+              ) : (
+                <div className="rounded-lg border border-amber-100 bg-amber-50 px-3 py-2 text-xs text-amber-800">
+                  Somente leitura. Peça acesso de admin/manager para editar ROI.
+                </div>
+              )}
+              {roiStatus === "published" && (
+                <button
+                  type="button"
+                  onClick={handleStartMonitoring}
+                  className="rounded-lg px-4 py-2 text-sm font-semibold text-white bg-indigo-600 hover:bg-indigo-700"
+                >
+                  Iniciar monitoramento
+                </button>
+              )}
               <button
                 type="button"
-                onClick={handleStartMonitoring}
-                className="rounded-lg px-4 py-2 text-sm font-semibold text-white bg-indigo-600 hover:bg-indigo-700"
+                onClick={handleClose}
+                className="rounded-lg border border-gray-200 px-4 py-2 text-sm font-semibold text-gray-700 hover:bg-gray-50"
               >
-                Iniciar monitoramento
+                Fechar
               </button>
-            )}
-            <button
-              type="button"
-              onClick={handleClose}
-              className="rounded-lg border border-gray-200 px-4 py-2 text-sm font-semibold text-gray-700 hover:bg-gray-50"
-            >
-              Fechar
-            </button>
+            </div>
           </div>
-        </div>
 
         <div className="mt-6 grid grid-cols-1 lg:grid-cols-[2fr,1fr] gap-5">
           <div className="rounded-xl border border-gray-200 bg-gray-50 p-3">
@@ -415,7 +478,9 @@ const CameraRoiEditor = ({ open, camera, onClose }: CameraRoiEditorProps) => {
                 onPointerDown={handlePointerDown}
                 onPointerMove={handlePointerMove}
                 onPointerUp={handlePointerUp}
-                className="w-full rounded-lg border border-gray-200 bg-white"
+                className={`w-full rounded-lg border border-gray-200 bg-white ${
+                  !canEditRoi ? "cursor-not-allowed opacity-80" : ""
+                }`}
               />
             )}
           </div>
@@ -430,7 +495,8 @@ const CameraRoiEditor = ({ open, camera, onClose }: CameraRoiEditorProps) => {
                   value={zoneName}
                   onChange={(e) => setZoneName(e.target.value)}
                   placeholder="Ex: Entrada"
-                  className="mt-1 w-full rounded-lg border border-gray-200 px-3 py-2 text-sm"
+                  disabled={!canEditRoi}
+                  className="mt-1 w-full rounded-lg border border-gray-200 px-3 py-2 text-sm disabled:bg-gray-50"
                 />
               </div>
               <div>
@@ -438,6 +504,7 @@ const CameraRoiEditor = ({ open, camera, onClose }: CameraRoiEditorProps) => {
                 <select
                   value={mode}
                   onChange={(e) => setMode(e.target.value as "rect" | "poly")}
+                  disabled={!canEditRoi}
                   className="mt-1 w-full rounded-lg border border-gray-200 px-3 py-2 text-sm"
                 >
                   <option value="rect">Retângulo</option>
@@ -445,7 +512,7 @@ const CameraRoiEditor = ({ open, camera, onClose }: CameraRoiEditorProps) => {
                 </select>
               </div>
               {error && <p className="text-xs text-red-600">{error}</p>}
-              {mode === "poly" && (
+              {mode === "poly" && canEditRoi && (
                 <button
                   type="button"
                   onClick={finalizePolygon}
@@ -455,7 +522,7 @@ const CameraRoiEditor = ({ open, camera, onClose }: CameraRoiEditorProps) => {
                   Finalizar polígono
                 </button>
               )}
-              {draftPoints.length > 0 && (
+              {canEditRoi && draftPoints.length > 0 && (
                 <button
                   type="button"
                   onClick={clearDraft}
@@ -472,28 +539,42 @@ const CameraRoiEditor = ({ open, camera, onClose }: CameraRoiEditorProps) => {
                 Use um snapshot para desenhar o ROI (a validação da câmera pode
                 acontecer depois).
               </p>
-              {snapshotUrl ? (
+              {snapshotLoading ? (
+                <div className="text-xs text-gray-500">Carregando snapshot...</div>
+              ) : snapshotStatus === 503 && snapshotCode === "STORAGE_NOT_CONFIGURED" ? (
+                <div className="rounded-lg border border-amber-100 bg-amber-50 px-3 py-2 text-xs text-amber-800">
+                  Snapshot central indisponível. Fale com suporte.
+                </div>
+              ) : snapshotStatus === 404 ? (
+                <div className="text-xs text-gray-500">
+                  Sem snapshot ainda. Faça upload ou gere via Edge.
+                </div>
+              ) : snapshotUrl ? (
                 <img
                   src={snapshotUrl}
                   alt="Snapshot atual"
                   className="w-full rounded-lg border border-gray-200"
                 />
               ) : (
-                <div className="text-xs text-gray-500">Nenhum snapshot disponível.</div>
+                <div className="text-xs text-gray-500">
+                  {snapshotMessage || "Nenhum snapshot disponível."}
+                </div>
               )}
               <div className="flex items-center gap-2">
-                <button
-                  type="button"
-                  onClick={handleSelectSnapshot}
-                  disabled={uploadSnapshotMutation.isPending}
-                  className={`rounded-lg px-3 py-2 text-xs font-semibold ${
-                    uploadSnapshotMutation.isPending
-                      ? "bg-gray-200 text-gray-400 cursor-not-allowed"
-                      : "bg-blue-600 text-white hover:bg-blue-700"
-                  }`}
-                >
-                  {uploadSnapshotMutation.isPending ? "Enviando..." : "Enviar snapshot"}
-                </button>
+                {canEditRoi && (
+                  <button
+                    type="button"
+                    onClick={handleSelectSnapshot}
+                    disabled={uploadSnapshotMutation.isPending}
+                    className={`rounded-lg px-3 py-2 text-xs font-semibold ${
+                      uploadSnapshotMutation.isPending
+                        ? "bg-gray-200 text-gray-400 cursor-not-allowed"
+                        : "bg-blue-600 text-white hover:bg-blue-700"
+                    }`}
+                  >
+                    {uploadSnapshotMutation.isPending ? "Enviando..." : "Enviar snapshot"}
+                  </button>
+                )}
                 <input
                   ref={fileInputRef}
                   type="file"
@@ -531,13 +612,15 @@ const CameraRoiEditor = ({ open, camera, onClose }: CameraRoiEditorProps) => {
                           {shape.points.length} pontos
                         </p>
                       </div>
-                      <button
-                        type="button"
-                        onClick={() => removeShape(shape.id)}
-                        className="text-xs font-semibold text-red-600 hover:text-red-700"
-                      >
-                        Remover
-                      </button>
+                      {canEditRoi && (
+                        <button
+                          type="button"
+                          onClick={() => removeShape(shape.id)}
+                          className="text-xs font-semibold text-red-600 hover:text-red-700"
+                        >
+                          Remover
+                        </button>
+                      )}
                     </div>
                   ))}
                 </div>

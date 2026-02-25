@@ -943,6 +943,7 @@ const Cameras = () => {
         key={`${roiCamera?.id ?? "none"}-${roiCamera ? "open" : "closed"}`}
         open={Boolean(roiCamera)}
         camera={roiCamera}
+        canEditRoi={canEditRoi}
         onClose={() => setRoiCamera(null)}
       />
 

@@ -3,6 +3,7 @@ from django.test import override_settings
 from rest_framework.test import APIRequestFactory, force_authenticate
 from rest_framework.exceptions import ValidationError
 from django.core.exceptions import PermissionDenied
+from django.core.files.uploadedfile import SimpleUploadedFile
 from apps.billing.utils import PaywallError
 from unittest.mock import MagicMock, patch
 
@@ -291,3 +292,101 @@ class CameraCreateLimitTests(SimpleTestCase):
 
         self.assertEqual(response.status_code, 409)
         self.assertEqual(response.data.get("code"), "LIMIT_CAMERAS_REACHED")
+
+
+class CameraSnapshotEndpointTests(SimpleTestCase):
+    def setUp(self):
+        self.factory = APIRequestFactory()
+
+    @patch("apps.cameras.views.supabase_storage.get_config", return_value=None)
+    def test_snapshot_upload_returns_503_when_storage_missing(self, _cfg_mock):
+        cam = MagicMock()
+        cam.id = "cam-1"
+        cam.store_id = "store-1"
+        cam.store = MagicMock(org_id="org-1")
+
+        file = SimpleUploadedFile("snap.jpg", b"data", content_type="image/jpeg")
+        view = CameraViewSet.as_view({"post": "snapshot_upload"})
+        request = self.factory.post(
+            "/api/v1/cameras/cam-1/snapshot/upload/",
+            {"file": file},
+            format="multipart",
+        )
+        force_authenticate(request, user=MagicMock(is_authenticated=True, is_staff=True))
+
+        with patch.object(CameraViewSet, "get_object", return_value=cam):
+            response = view(request, pk="cam-1")
+
+        self.assertEqual(response.status_code, 503)
+        self.assertEqual(response.data.get("code"), "STORAGE_NOT_CONFIGURED")
+
+    @patch("apps.cameras.views.supabase_storage.get_config", return_value={"ok": True})
+    @patch("apps.cameras.views.supabase_storage.create_signed_url", return_value="https://signed.url")
+    @patch("apps.cameras.views.supabase_storage.upload_file", return_value="path")
+    @patch("apps.cameras.views.CameraSnapshot")
+    def test_snapshot_upload_returns_url_when_configured(
+        self,
+        snapshot_mock,
+        _upload_mock,
+        _sign_mock,
+        _cfg_mock,
+    ):
+        cam = MagicMock()
+        cam.id = "cam-1"
+        cam.store_id = "store-1"
+        cam.store = MagicMock(org_id="org-1")
+
+        file = SimpleUploadedFile("snap.jpg", b"data", content_type="image/jpeg")
+        view = CameraViewSet.as_view({"post": "snapshot_upload"})
+        request = self.factory.post(
+            "/api/v1/cameras/cam-1/snapshot/upload/",
+            {"file": file},
+            format="multipart",
+        )
+        force_authenticate(request, user=MagicMock(is_authenticated=True, is_staff=True))
+
+        snapshot_mock.objects.create.return_value = MagicMock(id="snap-1")
+
+        with patch.object(CameraViewSet, "get_object", return_value=cam):
+            response = view(request, pk="cam-1")
+
+        self.assertEqual(response.status_code, 201)
+        self.assertEqual(response.data.get("snapshot_url"), "https://signed.url")
+        snapshot_mock.objects.create.assert_called_once()
+
+    @patch("apps.cameras.views.require_store_role", side_effect=PermissionDenied("Sem permissão"))
+    def test_snapshot_get_denied_for_viewer(self, _role_mock):
+        cam = MagicMock()
+        cam.id = "cam-1"
+        cam.store_id = "store-1"
+        cam.last_snapshot_url = None
+
+        view = CameraViewSet.as_view({"get": "snapshot_url"})
+        request = self.factory.get("/api/v1/cameras/cam-1/snapshot/")
+        force_authenticate(request, user=MagicMock(is_authenticated=True, is_staff=False, is_superuser=False))
+
+        with patch.object(CameraViewSet, "get_object", return_value=cam):
+            response = view(request, pk="cam-1")
+
+        self.assertEqual(response.status_code, 403)
+        self.assertEqual(response.data.get("code"), "PERMISSION_DENIED")
+
+    @patch("apps.cameras.views.supabase_storage.get_config", return_value={"ok": True})
+    @patch("apps.cameras.views.CameraSnapshot")
+    def test_snapshot_get_404_when_missing(self, snapshot_mock, _cfg_mock):
+        cam = MagicMock()
+        cam.id = "cam-1"
+        cam.store_id = "store-1"
+        cam.last_snapshot_url = None
+
+        snapshot_mock.objects.filter.return_value.order_by.return_value.first.return_value = None
+
+        view = CameraViewSet.as_view({"get": "snapshot_url"})
+        request = self.factory.get("/api/v1/cameras/cam-1/snapshot/")
+        force_authenticate(request, user=MagicMock(is_authenticated=True, is_staff=True))
+
+        with patch.object(CameraViewSet, "get_object", return_value=cam):
+            response = view(request, pk="cam-1")
+
+        self.assertEqual(response.status_code, 404)
+        self.assertEqual(response.data.get("code"), "SNAPSHOT_NOT_FOUND")

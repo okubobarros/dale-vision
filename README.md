@@ -13,6 +13,11 @@ Objetivo comercial:
 
 ---
 
+Variáveis de ambiente (backend):
+- `SUPABASE_URL`
+- `SUPABASE_SERVICE_ROLE_KEY` (service role do Supabase)
+- `SUPABASE_STORAGE_BUCKET` (default: `camera-snapshots`)
+
 ## 1) Realidade do campo (lições aprendidas)
 ### 1.1 Intelbras iC4/Mibo/iC5 (consumer cloud-only)
 - Não expõe RTSP/ONVIF na LAN: portas fechadas; acesso via cloud do fabricante.

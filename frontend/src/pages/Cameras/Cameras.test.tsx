@@ -38,6 +38,8 @@ vi.mock("../../services/cameras", () => ({
     deleteCamera: vi.fn(),
     getCamera: vi.fn(),
     testConnection: vi.fn(),
+    getSnapshotUrl: vi.fn(),
+    uploadSnapshot: vi.fn(),
   },
 }))
 
@@ -305,5 +307,48 @@ describe("Cameras create camera", () => {
     renderWithProviders(<Cameras />)
     expect(await screen.findByText("Entrada")).toBeInTheDocument()
     expect(await screen.findByRole("button", { name: "ROI" })).toBeInTheDocument()
+  })
+
+  it("shows empty snapshot message on 404", async () => {
+    const { camerasService } = await import("../../services/cameras")
+    vi.mocked(camerasService.getStoreCameras).mockResolvedValueOnce([
+      { id: "cam-1", store: "store-1", name: "Entrada", status: "offline" },
+    ])
+    vi.mocked(camerasService.getSnapshotUrl).mockRejectedValueOnce({
+      response: { status: 404, data: { code: "SNAPSHOT_NOT_FOUND" } },
+    })
+
+    renderWithProviders(<Cameras />)
+    const user = userEvent.setup()
+
+    const roiButton = await screen.findByRole("button", { name: "ROI" })
+    await user.click(roiButton)
+
+    expect(
+      await screen.findByText(/Sem snapshot ainda\. Faça upload ou gere via Edge\./i)
+    ).toBeInTheDocument()
+  })
+
+  it("shows storage callout on 503", async () => {
+    const { camerasService } = await import("../../services/cameras")
+    vi.mocked(camerasService.getStoreCameras).mockResolvedValueOnce([
+      { id: "cam-1", store: "store-1", name: "Entrada", status: "offline" },
+    ])
+    vi.mocked(camerasService.getSnapshotUrl).mockRejectedValueOnce({
+      response: {
+        status: 503,
+        data: { code: "STORAGE_NOT_CONFIGURED", message: "Storage não configurado." },
+      },
+    })
+
+    renderWithProviders(<Cameras />)
+    const user = userEvent.setup()
+
+    const roiButton = await screen.findByRole("button", { name: "ROI" })
+    await user.click(roiButton)
+
+    expect(
+      await screen.findByText(/Snapshot central indisponível\. Fale com suporte\./i)
+    ).toBeInTheDocument()
   })
 })
