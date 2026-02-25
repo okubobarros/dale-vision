@@ -13,6 +13,7 @@ import { refreshSupabaseSession } from "./authSession"
 
 const DEFAULT_TIMEOUT_MS = import.meta.env.PROD ? 60000 : 30000
 const LONG_TIMEOUT_MS = 60000
+const SHORT_TIMEOUT_MS = 5000
 const RETRY_BACKOFF_MS = [1000, 3000]
 const TRIAL_EXPIRED_CODE = "TRIAL_EXPIRED"
 const SUBSCRIPTION_REQUIRED_CODE = "SUBSCRIPTION_REQUIRED"
@@ -22,6 +23,11 @@ const TRIAL_EXPIRED_EVENT = "dv-trial-expired"
 const isLongTimeoutPath = (url?: string) => {
   const u = String(url || "")
   return /(^|\/)alerts\//.test(u) || /(^|\/)v1\/stores\//.test(u)
+}
+
+const isShortTimeoutPath = (url?: string) => {
+  const u = String(url || "")
+  return /(^|\/)accounts\/supabase\/?$/.test(u)
 }
 
 const api = axios.create({
@@ -155,8 +161,19 @@ const notifyTrialExpired = () => {
 // Request interceptor
 api.interceptors.request.use(
   (config) => {
-    const timeout = isLongTimeoutPath(config.url) ? LONG_TIMEOUT_MS : DEFAULT_TIMEOUT_MS
-    config.timeout = Math.max(Number(config.timeout || 0), timeout)
+    const timeout = isShortTimeoutPath(config.url)
+      ? SHORT_TIMEOUT_MS
+      : isLongTimeoutPath(config.url)
+      ? LONG_TIMEOUT_MS
+      : DEFAULT_TIMEOUT_MS
+    const existingTimeout = Number(config.timeout || 0)
+    if (!existingTimeout) {
+      config.timeout = timeout
+    } else if (isShortTimeoutPath(config.url) && existingTimeout > timeout) {
+      config.timeout = timeout
+    } else if (isLongTimeoutPath(config.url) && existingTimeout < timeout) {
+      config.timeout = timeout
+    }
 
     const token = getAccessToken()
 
