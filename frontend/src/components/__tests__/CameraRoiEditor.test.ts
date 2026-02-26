@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest"
-import { normalizePointInDrawRect } from "../CameraRoiEditor.helpers"
+import { mergeShapesById, normalizePointInDrawRect } from "../CameraRoiEditor.helpers"
 
 describe("CameraRoiEditor helpers", () => {
   it("normalizes point based on drawRect", () => {
@@ -10,5 +10,18 @@ describe("CameraRoiEditor helpers", () => {
 
     expect(normalized.x).toBeCloseTo(0.5)
     expect(normalized.y).toBeCloseTo(0.5)
+  })
+
+  it("dedupes shapes by id to avoid publish duplication", () => {
+    const shapes = [
+      { id: "roi-1", name: "A" },
+      { id: "roi-2", name: "B" },
+      { id: "roi-1", name: "A-dup" },
+    ]
+
+    const merged = mergeShapesById(shapes)
+
+    expect(merged).toHaveLength(2)
+    expect(merged.find((shape) => shape.id === "roi-1")?.name).toBe("A-dup")
   })
 })

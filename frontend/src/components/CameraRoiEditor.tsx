@@ -16,7 +16,7 @@ import {
   type CameraSnapshotResponse,
 } from "../services/cameras"
 import { onboardingService } from "../services/onboarding"
-import { normalizePointInDrawRect } from "./CameraRoiEditor.helpers"
+import { mergeShapesById, normalizePointInDrawRect } from "./CameraRoiEditor.helpers"
 
 type RoiPoint = {
   x: number
@@ -124,6 +124,10 @@ const CameraRoiEditor = ({ open, camera, canEditRoi = false, onClose }: CameraRo
       camerasService.updateRoi(cameraId || "", configJson),
     onSuccess: (data) => {
       queryClient.invalidateQueries({ queryKey: ["camera-roi", cameraId] })
+      setAddedShapes([])
+      setRemovedShapeIds([])
+      setDraftPoints([])
+      setIsDrawing(false)
       toast.success(`ROI salvo (v${data.version})`)
     },
     onError: () => toast.error("Falha ao salvar ROI."),
@@ -172,13 +176,13 @@ const CameraRoiEditor = ({ open, camera, canEditRoi = false, onClose }: CameraRo
 
   const effectiveShapes = useMemo(() => {
     if (removedShapeIds.length === 0) {
-      return [...baseShapes, ...addedShapes]
+      return mergeShapesById([...baseShapes, ...addedShapes])
     }
     const removed = new Set(removedShapeIds)
-    return [
+    return mergeShapesById([
       ...baseShapes.filter((shape) => !removed.has(shape.id)),
       ...addedShapes,
-    ]
+    ])
   }, [addedShapes, baseShapes, removedShapeIds])
 
   const updateCanvasSize = useCallback(() => {
@@ -326,11 +330,20 @@ const CameraRoiEditor = ({ open, camera, canEditRoi = false, onClose }: CameraRo
     (event: PointerEvent<HTMLCanvasElement>) => {
       if (!isDrawing || mode !== "rect") return
       if (!drawRect) return
-      const canvasPoint = getCanvasCssPoint(event)
+      let canvasPoint = getCanvasCssPoint(event)
+      if (event.shiftKey && draftPoints.length > 0) {
+        const startCss = denormalizePointInDrawRect(draftPoints[0], drawRect)
+        const dx = Math.abs(canvasPoint.x - startCss.x)
+        const dy = Math.abs(canvasPoint.y - startCss.y)
+        canvasPoint = {
+          x: dx >= dy ? canvasPoint.x : startCss.x,
+          y: dx >= dy ? startCss.y : canvasPoint.y,
+        }
+      }
       const point = normalizePointInDrawRect(canvasPoint, drawRect)
       setDraftPoints((prev) => (prev.length >= 2 ? [prev[0], point] : prev))
     },
-    [drawRect, isDrawing, mode]
+    [draftPoints, drawRect, isDrawing, mode]
   )
 
   const finalizeRect = useCallback(() => {
@@ -573,7 +586,11 @@ const CameraRoiEditor = ({ open, camera, canEditRoi = false, onClose }: CameraRo
                 onPointerMove={handlePointerMove}
                 onPointerUp={handlePointerUp}
                 className={`w-full rounded-lg border border-gray-200 bg-white ${
-                  !canEditRoi ? "cursor-not-allowed opacity-80" : ""
+                  !canEditRoi
+                    ? "cursor-not-allowed opacity-80"
+                    : isDrawing
+                    ? "cursor-grabbing"
+                    : "cursor-crosshair"
                 }`}
               />
             )}
@@ -729,9 +746,14 @@ const CameraRoiEditor = ({ open, camera, canEditRoi = false, onClose }: CameraRo
 
 const getCanvasCssPoint = (event: PointerEvent<HTMLCanvasElement>) => {
   const rect = event.currentTarget.getBoundingClientRect()
+  const canvas = event.currentTarget
+  const scaleX = canvas.width / rect.width
+  const scaleY = canvas.height / rect.height
+  const xCanvas = (event.clientX - rect.left) * scaleX
+  const yCanvas = (event.clientY - rect.top) * scaleY
   return {
-    x: event.clientX - rect.left,
-    y: event.clientY - rect.top,
+    x: xCanvas / scaleX,
+    y: yCanvas / scaleY,
   }
 }
 

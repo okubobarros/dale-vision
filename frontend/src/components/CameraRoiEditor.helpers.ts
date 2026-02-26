@@ -3,6 +3,10 @@ type RoiPoint = {
   y: number
 }
 
+type RoiShapeLike = {
+  id: string
+}
+
 type DrawRect = {
   x: number
   y: number
@@ -16,3 +20,11 @@ export const normalizePointInDrawRect = (point: RoiPoint, rect: DrawRect): RoiPo
   x: clamp01((point.x - rect.x) / rect.width),
   y: clamp01((point.y - rect.y) / rect.height),
 })
+
+export const mergeShapesById = <T extends RoiShapeLike>(shapes: T[]): T[] => {
+  const map = new Map<string, T>()
+  shapes.forEach((shape) => {
+    map.set(shape.id, shape)
+  })
+  return Array.from(map.values())
+}
