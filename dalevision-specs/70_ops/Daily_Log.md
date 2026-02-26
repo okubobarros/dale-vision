@@ -58,3 +58,17 @@ Registrar decisões e eventos do dia.
   - Signed URL curta (10 min) para snapshots.
 - Próximos passos:
   - Validar env vars no Render e bucket no Supabase.
+
+## 2026-02-26
+- Data: 2026-02-26
+- Highlights:
+  - Edge bundle Windows agora instala em `C:\ProgramData\DaleVision\EdgeAgent\dalevision-edge-agent-windows`.
+  - Task do agente usa `run_agent.cmd` e gera `logs\run_agent.log`.
+  - Release inclui `BUILD_INFO.txt` com hashes e commit.
+  - `verify-service.ps1` mostra `BUILD_INFO.txt` e ultimo heartbeat.
+- Bloqueios:
+  - Nenhum.
+- Decisões:
+  - Padronizar logs de instalacao em `logs\service_install.log` e `logs\service_install.ps1.log`.
+- Próximos passos:
+  - Atualizar docs do edge-agent no repo `dale-vision` (runbook, spec, journey).

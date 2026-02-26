@@ -10,11 +10,12 @@ Jornada do dono da organização desde onboarding até operação recorrente.
 4. Edge setup (token, download e instalação)
    - Baixar e extrair ZIP do edge-agent
    - Configurar `.env` com `EDGE_TOKEN`, `STORE_ID`, `AGENT_ID`, `CLOUD_BASE_URL`
-   - Teste: `02_TESTE_RAPIDO.bat`
-   - Produção: `03_INSTALAR_AUTOSTART.bat`
-   - Verificar: `04_VERIFICAR_STATUS.bat`
+   - Teste: `01_TESTE_RAPIDO.bat`
+   - Produção: `02_INSTALAR_AUTOSTART.bat`
+   - Verificar: `03_VERIFICAR_STATUS.bat`
    - Referência: `README.txt` do ZIP
    - Diagnóstico: `Diagnose.bat` (gera ZIP para suporte)
+   - Instalacao copia o bundle para `C:\ProgramData\DaleVision\EdgeAgent\dalevision-edge-agent-windows`
 5. Adição de câmeras
 6. Dashboard + alertas
 7. Upgrade / renovação

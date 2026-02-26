@@ -22,5 +22,11 @@ Diagnosticar falhas de conectividade e saúde do edge-agent.
 
 ## Ferramentas no bundle (Windows)
 - `Diagnose.bat` (gera ZIP de diagnóstico)
-- `04_VERIFICAR_STATUS.bat` / `verify-service.ps1` (status do serviço)
+- `03_VERIFICAR_STATUS.bat` / `verify-service.ps1` (status do serviço)
 - Logs: `logs\agent.log` e `logs\update.log`
+
+## Sinais adicionais
+- `BUILD_INFO.txt` (hashes e build info do release)
+- `logs\run_agent.log` (execucao via task)
+- `logs\service_install.log` e `logs\service_install.ps1.log` (instalacao)
+- Ultimo heartbeat visivel no `03_VERIFICAR_STATUS.bat`
