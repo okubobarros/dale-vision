@@ -19,7 +19,7 @@ from .serializers import (
     CameraHealthLogSerializer,
     CameraROIConfigSerializer,
 )
-from .models import CameraSnapshot, CameraHealth
+from .models import CameraSnapshot, CameraHealth, CameraROIConfig
 from apps.core.integrations import supabase_storage
 from .services import rtsp_snapshot
 from .limits import enforce_trial_camera_limit
