@@ -9,7 +9,7 @@ Instalar e iniciar o edge-agent em ambiente de loja.
 
 ## Passos
 1. Solicitar credenciais via `GET /api/v1/stores/{store_id}/edge-setup/`
-2. Baixar e extrair o ZIP do edge-agent
+2. Baixar e extrair o ZIP do edge-agent (pode ser em qualquer pasta)
 3. Configurar `.env` com `EDGE_TOKEN`, `STORE_ID`, `AGENT_ID`, `CLOUD_BASE_URL`
 4. Fase 1 (teste manual): executar `01_TESTE_RAPIDO.bat`
 5. Fase 2 (auto start): executar `02_INSTALAR_AUTOSTART.bat` e reiniciar o PC

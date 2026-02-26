@@ -23,6 +23,11 @@ Toda decisão de produto, contrato de API e regra crítica deve estar aqui antes
 - `60_buglog`: processo de bugs.
 - `70_ops`: suporte e release.
 
+## Edge Agent Runbooks
+- `40_edge_agent/Edge_Install_Runbook.md`
+- `40_edge_agent/Edge_Doctor_Diagnostics.md`
+- `40_edge_agent/Edge_QA_Runbook.md`
+
 ## Specs
 - Índice: `../50_specs/README.md`
 - `SPEC-001-Edge-Setup-Wizard`: `../50_specs/SPEC-001-Edge-Setup-Wizard.md`
