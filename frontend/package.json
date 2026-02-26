@@ -9,7 +9,9 @@
     "build": "tsc -b && vite build",
     "lint": "eslint .",
     "preview": "vite preview",
-    "test": "vitest run",
+    "test": "vitest",
+    "test:run": "vitest run",
+    "test:edge-setup": "vitest run src/components/EdgeSetupModal.test.tsx --reporter=verbose --pool=forks --no-file-parallelism",
     "test:watch": "vitest"
   },
   "dependencies": {

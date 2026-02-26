@@ -33,9 +33,15 @@ type ApiErrorLike = {
 const DEFAULT_CLOUD_BASE_URL = API_BASE_URL
 const DEFAULT_AGENT_ID = "edge-001"
 const HEARTBEAT_INTERVAL_SECONDS = 30
+const CAMERA_HEARTBEAT_INTERVAL_SECONDS = 30
 const POLL_INTERVAL_MS = 3000
 const POLL_MAX_DURATION_MS = 120000
 const HEARTBEAT_FRESHNESS_SECONDS = 120
+const DASHBOARD_BASE_URL = "https://app.dalevision.com/app/cameras"
+const AUTO_UPDATE_ENABLED = 0
+const UPDATE_CHANNEL = "stable"
+const UPDATE_GITHUB_REPO = "daleship/dalevision-edge-agent"
+const UPDATE_INTERVAL_SECONDS = 21600
 
 const getApiError = (err: unknown): ApiErrorLike => {
   if (err && typeof err === "object") {
@@ -286,21 +292,32 @@ const EdgeSetupModal = ({ open, onClose, defaultStoreId }: EdgeSetupModalProps) 
 
   const resolvedCloudBaseUrl = cloudBaseUrl || DEFAULT_CLOUD_BASE_URL
 
+  const buildDashboardUrl = (storeIdValue?: string) => {
+    const params = new URLSearchParams()
+    if (storeIdValue) {
+      params.set("store_id", storeIdValue)
+    }
+    params.set("onboarding", "true")
+    return `${DASHBOARD_BASE_URL}?${params.toString()}`
+  }
+
+  const buildEnvPayload = (token: string, storeIdValue: string) => [
+    `CLOUD_BASE_URL=${resolvedCloudBaseUrl}`,
+    `STORE_ID=${storeIdValue}`,
+    `EDGE_TOKEN=${token}`,
+    `AGENT_ID=${agentId || DEFAULT_AGENT_ID}`,
+    `HEARTBEAT_INTERVAL_SECONDS=${HEARTBEAT_INTERVAL_SECONDS}`,
+    `CAMERA_HEARTBEAT_INTERVAL_SECONDS=${CAMERA_HEARTBEAT_INTERVAL_SECONDS}`,
+    `DASHBOARD_URL=${buildDashboardUrl(storeIdValue)}`,
+    `AUTO_UPDATE_ENABLED=${AUTO_UPDATE_ENABLED}`,
+    `UPDATE_CHANNEL=${UPDATE_CHANNEL}`,
+    `UPDATE_GITHUB_REPO=${UPDATE_GITHUB_REPO}`,
+    `UPDATE_INTERVAL_SECONDS=${UPDATE_INTERVAL_SECONDS}`,
+  ]
+
   const envContent = useMemo(() => {
-    const lines = [`CLOUD_BASE_URL=${resolvedCloudBaseUrl}`]
-    if (storeId) {
-      lines.push(`STORE_ID=${storeId}`)
-    }
-    if (edgeToken) {
-      lines.push(`EDGE_TOKEN=${edgeToken}`)
-    }
-    lines.push(
-      `AGENT_ID=${agentId || DEFAULT_AGENT_ID}`,
-      `HEARTBEAT_INTERVAL_SECONDS=${HEARTBEAT_INTERVAL_SECONDS}`,
-      `CAMERA_HEARTBEAT_INTERVAL_SECONDS=${HEARTBEAT_INTERVAL_SECONDS}`
-    )
-    return lines.join("\n")
-  }, [resolvedCloudBaseUrl, storeId, edgeToken, agentId])
+    return buildEnvPayload(edgeToken, storeId).join("\n")
+  }, [agentId, edgeToken, resolvedCloudBaseUrl, storeId])
 
   const pollRemainingSec = () => {
     const startedAt = pollStartedAt.current
@@ -416,19 +433,7 @@ const EdgeSetupModal = ({ open, onClose, defaultStoreId }: EdgeSetupModalProps) 
   }
 
   const buildEnvContent = (token: string) => {
-    const lines = [`CLOUD_BASE_URL=${resolvedCloudBaseUrl}`]
-    if (storeId) {
-      lines.push(`STORE_ID=${storeId}`)
-    }
-    if (token) {
-      lines.push(`EDGE_TOKEN=${token}`)
-    }
-    lines.push(
-      `AGENT_ID=${agentId || DEFAULT_AGENT_ID}`,
-      `HEARTBEAT_INTERVAL_SECONDS=${HEARTBEAT_INTERVAL_SECONDS}`,
-      `CAMERA_HEARTBEAT_INTERVAL_SECONDS=${HEARTBEAT_INTERVAL_SECONDS}`
-    )
-    return lines.join("\n")
+    return buildEnvPayload(token, storeId).join("\n")
   }
 
   const rotateTokenForSetup = async (): Promise<string | null> => {
@@ -652,7 +657,7 @@ const EdgeSetupModal = ({ open, onClose, defaultStoreId }: EdgeSetupModalProps) 
     <div className="fixed inset-0 z-[60] flex items-center justify-center bg-black/50 p-4">
       <div className="w-full max-w-2xl max-h-[90svh] sm:max-h-[90vh] rounded-2xl bg-white shadow-xl border border-gray-100 flex min-h-0 flex-col overflow-hidden">
         <div className="sticky top-0 z-10 flex items-center justify-between border-b px-5 py-4 bg-white">
-          <h2 className="text-lg font-semibold text-gray-900">Edge Setup Wizard</h2>
+          <h2 className="text-lg font-semibold text-gray-900">Ativação Remota da Loja</h2>
           <button
             type="button"
             onClick={handleClose}
@@ -770,7 +775,7 @@ const EdgeSetupModal = ({ open, onClose, defaultStoreId }: EdgeSetupModalProps) 
                   : "rounded-xl border border-gray-200 bg-gray-50 px-4 py-3 opacity-60 pointer-events-none"
               }
             >
-              <div className="text-sm text-gray-700 font-semibold">2. Download do Edge Agent</div>
+              <div className="text-sm text-gray-700 font-semibold">2. Download do Agente Dalevision</div>
               <p className="mt-1 text-xs text-gray-500">
                 Baixe e extraia o pacote no computador da loja.
               </p>
@@ -816,7 +821,7 @@ const EdgeSetupModal = ({ open, onClose, defaultStoreId }: EdgeSetupModalProps) 
                 disabled={!isStoreSelected || !canDownload}
                 className={`mt-3 ${primaryCtaClass}`}
               >
-                Já baixei e extraí
+                Já baixei e extraí pasta
               </button>
               {downloadConfirmed && (
                 <div className="mt-2 text-xs text-green-600 font-semibold">
@@ -828,7 +833,9 @@ const EdgeSetupModal = ({ open, onClose, defaultStoreId }: EdgeSetupModalProps) 
             <div className={step3Enabled ? "rounded-xl border border-gray-200 bg-gray-50 p-4" : "rounded-xl border border-gray-200 bg-gray-50 p-4 opacity-60 pointer-events-none"}>
               <div className="text-sm font-semibold text-gray-700 mb-2">3. Copiar Dados para arquivo .env local</div>
               <div className="text-xs text-gray-500 mb-3 space-y-1">
-                <div>1) Clique no botão Copiar .env ou selecione o conteúdo abaixo.</div>
+                <div>
+                  1) Cole esse conteúdo no arquivo <span className="font-mono">.env</span> do ZIP (substitua tudo).
+                </div>
                 <div>
                   2) Abra o arquivo <span className="font-mono">.env</span> na pasta extraída.
                 </div>
@@ -848,11 +855,14 @@ const EdgeSetupModal = ({ open, onClose, defaultStoreId }: EdgeSetupModalProps) 
                 rows={6}
                 className="w-full rounded-lg border border-gray-200 bg-white px-3 py-2 text-xs font-mono text-gray-700"
               />
+              <div className="mt-2 text-[11px] text-gray-500">
+                Auto-update está desativado por padrão (AUTO_UPDATE_ENABLED=0).
+              </div>
               <button
                 type="button"
                 onClick={handleCopyEnv}
                 disabled={!canCopyEnv}
-                className={`mt-3 ${secondaryCtaClass} text-xs`}
+                className={`mt-3 ${primaryCtaClass} text-xs`}
               >
                 {rotatingToken ? "Gerando token..." : "Copiar dados para .env"}
               </button>
@@ -911,16 +921,18 @@ const EdgeSetupModal = ({ open, onClose, defaultStoreId }: EdgeSetupModalProps) 
                     <span className="font-mono">Diagnose.bat</span> e envie o ZIP.
                   </div>
                 </div>
-              <div className="mt-2 rounded-lg border border-gray-200 bg-white px-3 py-2 text-xs text-gray-600">
+              <div className="mt-2 rounded-lg border border-amber-300 bg-amber-50 px-3 py-2 text-xs text-amber-800">
                 Se o Windows bloquear: “Mais informações” → “Executar assim mesmo”.
               </div>
               <div className="mt-2 flex flex-col sm:flex-row sm:items-center gap-3">
-                <div>Feito o processo anterior, clique em “Já iniciei o agent”.</div>
+                <div className="text-xs text-gray-500">
+                  Feito o processo anterior, clique em “Já iniciei o agent”.
+                </div>
                 <button
                   type="button"
                   onClick={handleConfirmRunning}
                   disabled={!canStartAgent}
-                  className={secondaryCtaClass}
+                  className={primaryCtaClass}
                 >
                   Já iniciei o agent
                 </button>

@@ -275,4 +275,10 @@ Notas:
 - Por padrão, `python manage.py test` usa SQLite em memória (independente de `DATABASE_URL`), evitando depender de Postgres local.
 - Para forçar Postgres em testes, use `USE_POSTGRES_FOR_TESTS=1`.
 
+## 12) Testes (frontend)
+Comandos:
+- Suite completa: `pnpm -C frontend test:run`
+- Arquivo específico: `pnpm -C frontend test:run src/components/EdgeSetupModal.test.tsx`
+- Diagnóstico sem paralelismo: `pnpm -C frontend test:edge-setup`
+
 # FIM

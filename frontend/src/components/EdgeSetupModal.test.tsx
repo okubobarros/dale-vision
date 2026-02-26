@@ -69,6 +69,29 @@ describe("EdgeSetupModal step 2", () => {
     expect(copyButton).toBeDisabled()
   })
 
+  it("renders env content with all keys in the expected order", async () => {
+    renderWithProviders(
+      <EdgeSetupModal open={true} onClose={() => {}} defaultStoreId="store-1" />
+    )
+
+    const textarea = (await screen.findByDisplayValue(/EDGE_TOKEN=token/)) as HTMLTextAreaElement
+    const lines = textarea.value.split("\n")
+
+    expect(lines).toEqual([
+      "CLOUD_BASE_URL=https://api.example.com",
+      "STORE_ID=store-1",
+      "EDGE_TOKEN=token",
+      "AGENT_ID=edge-001",
+      "HEARTBEAT_INTERVAL_SECONDS=30",
+      "CAMERA_HEARTBEAT_INTERVAL_SECONDS=30",
+      "DASHBOARD_URL=https://app.dalevision.com/app/cameras?store_id=store-1&onboarding=true",
+      "AUTO_UPDATE_ENABLED=0",
+      "UPDATE_CHANNEL=stable",
+      "UPDATE_GITHUB_REPO=daleship/dalevision-edge-agent",
+      "UPDATE_INTERVAL_SECONDS=21600",
+    ])
+  })
+
   it("shows download confirmed inside step 2 when clicking CTA", async () => {
     renderWithProviders(
       <EdgeSetupModal open={true} onClose={() => {}} defaultStoreId="store-1" />
