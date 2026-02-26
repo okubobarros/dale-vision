@@ -10,6 +10,7 @@ from rest_framework.exceptions import NotFound, ValidationError, PermissionDenie
 from django.core.exceptions import PermissionDenied as DjangoPermissionDenied
 from rest_framework.parsers import MultiPartParser, FormParser
 
+from django.db import transaction
 from django.db.models import Q
 from apps.core.models import AuditLog, Camera, CameraHealthLog, OrgMember, Store, StoreManager
 from apps.edge.models import EdgeToken
@@ -18,7 +19,7 @@ from .serializers import (
     CameraHealthLogSerializer,
     CameraROIConfigSerializer,
 )
-from .models import CameraSnapshot
+from .models import CameraSnapshot, CameraHealth
 from apps.core.integrations import supabase_storage
 from .services import rtsp_snapshot
 from .limits import enforce_trial_camera_limit
@@ -364,7 +365,34 @@ class CameraViewSet(viewsets.ModelViewSet):
                 "path": self.request.path,
             },
         )
-        instance.delete()
+        try:
+            with transaction.atomic():
+                CameraSnapshot.objects.filter(camera_id=instance.id).delete()
+                CameraHealth.objects.filter(camera_id=instance.id).delete()
+                CameraHealthLog.objects.filter(camera_id=instance.id).delete()
+                CameraROIConfig.objects.filter(camera_id=instance.id).delete()
+                instance.delete()
+        except Exception as exc:
+            logger.exception(
+                "[CAMERA] delete failed camera_id=%s store_id=%s error=%s",
+                str(instance.id),
+                str(instance.store_id),
+                exc,
+            )
+            raise
+
+    def destroy(self, request, *args, **kwargs):
+        cam = self.get_object()
+        try:
+            self.perform_destroy(cam)
+        except Exception:
+            return _error_response(
+                "CAMERA_DELETE_FAILED",
+                "Não foi possível remover a câmera.",
+                status.HTTP_500_INTERNAL_SERVER_ERROR,
+                deprecated_detail="Não foi possível remover a câmera.",
+            )
+        return Response(status=status.HTTP_204_NO_CONTENT)
 
     @action(detail=True, methods=["post"], url_path="test-snapshot")
     def test_snapshot(self, request, pk=None):

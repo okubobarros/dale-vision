@@ -27,6 +27,7 @@ Validar release do edge-agent (Windows) antes de liberar para producao.
 6. Executar `03_VERIFICAR_STATUS.bat`.
    - Esperado: task instalada e ativa.
    - Esperado: ultimo heartbeat recente no log.
+   - Observacao: `03_VERIFICAR_STATUS.bat` aponta para `C:\ProgramData\DaleVision\EdgeAgent\...` quando existir.
 7. Validar heartbeat no cloud:
    - `GET /api/v1/stores/{store_id}/edge-status/` deve mostrar `online` ou `degraded`.
 8. Validar logs:

@@ -135,6 +135,20 @@ def _is_uuid(value: str) -> bool:
 def _hash_edge_token(raw_token: str) -> str:
     return hashlib.sha256(raw_token.encode("utf-8")).hexdigest()
 
+def _validate_edge_token_for_store(store_id: str, provided: str) -> bool:
+    if not provided or not store_id:
+        return False
+    token_hash = _hash_edge_token(provided)
+    edge_token = EdgeToken.objects.filter(
+        store_id=store_id,
+        token_hash=token_hash,
+        active=True,
+    ).first()
+    if edge_token:
+        EdgeToken.objects.filter(id=edge_token.id).update(last_used_at=timezone.now())
+        return True
+    return False
+
 def _get_active_edge_token(store_id):
     return (
         EdgeToken.objects.filter(store_id=store_id, active=True)
@@ -619,7 +633,7 @@ class StoreViewSet(viewsets.ModelViewSet):
             }
         )
 
-    @action(detail=True, methods=["get", "post"], url_path="cameras")
+    @action(detail=True, methods=["get", "post"], url_path="cameras", permission_classes=[permissions.AllowAny])
     def cameras(self, request, pk=None):
         try:
             store = self.get_object()
@@ -631,7 +645,17 @@ class StoreViewSet(viewsets.ModelViewSet):
                 deprecated_detail="Store not found",
             )
         if request.method == "GET":
-            require_store_role(request.user, str(store.id), ALLOWED_READ_ROLES)
+            if request.user and request.user.is_authenticated:
+                require_store_role(request.user, str(store.id), ALLOWED_READ_ROLES)
+            else:
+                provided = request.headers.get("X-EDGE-TOKEN") or ""
+                if not _validate_edge_token_for_store(str(store.id), provided):
+                    return _error_response(
+                        "FORBIDDEN",
+                        "Edge token inválido para esta loja.",
+                        status.HTTP_403_FORBIDDEN,
+                        deprecated_detail="Edge token inválido para esta loja.",
+                    )
             cameras_qs = Camera.objects.filter(store_id=store.id).order_by("-updated_at")
             serializer = CameraSerializer(cameras_qs, many=True)
             return Response(serializer.data)
