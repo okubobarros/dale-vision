@@ -66,9 +66,14 @@ Registrar decisões e eventos do dia.
   - Task do agente usa `run_agent.cmd` e gera `logs\run_agent.log`.
   - Release inclui `BUILD_INFO.txt` com hashes e commit.
   - `verify-service.ps1` mostra `BUILD_INFO.txt` e ultimo heartbeat.
+  - QA final do autostart aprovado (LastResult=0) e fluxo de cameras validado no app.
+  - Backup diario de metrics no Google Drive definido (CSV + TTL) com setup no Render via Secret Files.
+  - Cron alternativo via GitHub Actions definido para Render Free.
+  - Vision worker integrado no edge-agent e checklist atualizado (ROI + dependencias).
+  - Checklist de loja (3 câmeras + métricas) adicionado.
 - Bloqueios:
   - Nenhum.
 - Decisões:
   - Padronizar logs de instalacao em `logs\service_install.log` e `logs\service_install.ps1.log`.
 - Próximos passos:
-  - Atualizar docs do edge-agent no repo `dale-vision` (runbook, spec, journey).
+  - Nenhum imediato.

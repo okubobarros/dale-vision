@@ -11,6 +11,11 @@ Instalar e iniciar o edge-agent em ambiente de loja.
 1. Solicitar credenciais via `GET /api/v1/stores/{store_id}/edge-setup/`
 2. Baixar e extrair o ZIP do edge-agent (pode ser em qualquer pasta)
 3. Configurar `.env` com `EDGE_TOKEN`, `STORE_ID`, `AGENT_ID`, `CLOUD_BASE_URL`
+   - Defaults de visão recomendados:
+     - `VISION_ENABLED=1`
+     - `VISION_BUCKET_SECONDS=30`
+     - `VISION_POLL_SECONDS=5`
+     - `VISION_SNAPSHOT_TIMEOUT_SECONDS=10`
 4. Fase 1 (teste manual): executar `01_TESTE_RAPIDO.bat`
 5. Fase 2 (auto start): executar `02_INSTALAR_AUTOSTART.bat` e reiniciar o PC
 6. Verificar status: `03_VERIFICAR_STATUS.bat`
@@ -42,6 +47,9 @@ Instalar e iniciar o edge-agent em ambiente de loja.
 - Edge status `online` ou `degraded`
 - `last_heartbeat` recente
 - Logs em `logs\agent.log`
+ - Vision worker:
+   - `[VISION] worker started`
+   - nao deve conter `yolo failed`
 
 ## Erros comuns
 - Token inválido (`X-EDGE-TOKEN`)

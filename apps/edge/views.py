@@ -29,6 +29,7 @@ from apps.stores.views_edge_status import classify_age, compute_store_edge_statu
 from apps.cameras.limits import enforce_trial_camera_limit
 from apps.billing.utils import PaywallError
 from .status_events import emit_store_status_changed, emit_camera_status_changed
+from .vision_metrics import insert_event_receipt_if_new, apply_vision_metrics
 
 
 def _is_uuid(x: str) -> bool:
@@ -259,6 +260,28 @@ class EdgeEventsIngestView(APIView):
                 status=status.HTTP_200_OK,
             )
         stored = True
+
+        # --- vision metrics (v1) ---
+        if event_name == "vision.metrics.v1":
+            try:
+                inserted = insert_event_receipt_if_new(
+                    event_id=receipt_id,
+                    event_name=event_name,
+                    payload=payload,
+                    source=source or "edge",
+                )
+                if inserted:
+                    apply_vision_metrics(payload)
+                return Response(
+                    {"ok": True, "receipt_id": receipt_id or None, "stored": True, "deduped": not inserted},
+                    status=status.HTTP_201_CREATED if inserted else status.HTTP_200_OK,
+                )
+            except Exception:
+                logger.exception("[EDGE] vision metrics ingest failed")
+                return Response(
+                    {"ok": False, "stored": False, "reason": "vision_ingest_failed"},
+                    status=status.HTTP_500_INTERNAL_SERVER_ERROR,
+                )
 
         # --- persistir heartbeat do edge ---
         if normalized in ("edge_heartbeat", "camera_heartbeat", "edge_camera_heartbeat"):

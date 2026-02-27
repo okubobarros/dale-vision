@@ -27,6 +27,12 @@ Toda decisão de produto, contrato de API e regra crítica deve estar aqui antes
 - `40_edge_agent/Edge_Install_Runbook.md`
 - `40_edge_agent/Edge_Doctor_Diagnostics.md`
 - `40_edge_agent/Edge_QA_Runbook.md`
+- `40_edge_agent/Edge_Store_Checklist.md`
+- `40_edge_agent/Edge_Vision_MVP.md`
+
+## Ops Runbooks
+- `70_ops/Drive_Backup_Metrics.md`
+- `70_ops/Edge_Lessons_Learned.md`
 
 ## Specs
 - Índice: `../50_specs/README.md`

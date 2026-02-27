@@ -14,6 +14,7 @@ Estabelecer um pipeline confiável de eventos do **Agent** no **Edge** até **Ba
 - `queue.detected`
 - `idle.detected`
 - `compliance.detected`
+- `vision.metrics.v1`
 
 ## Contrato do evento (v1)
 Campos obrigatórios:

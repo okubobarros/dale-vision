@@ -15,10 +15,16 @@ Validar release do edge-agent (Windows) antes de liberar para producao.
   - `EDGE_TOKEN`
   - `AGENT_ID`
 - Acesso local de administrador na maquina.
+ - Variaveis de visao (padrão do ZIP):
+   - `VISION_ENABLED=1`
+   - `VISION_BUCKET_SECONDS=30`
+   - `VISION_POLL_SECONDS=5`
+   - `VISION_SNAPSHOT_TIMEOUT_SECONDS=10`
 
 ## Passo a passo
 1. Baixar o ZIP e extrair em qualquer pasta.
 2. Editar `.env` e preencher `CLOUD_BASE_URL`, `STORE_ID`, `EDGE_TOKEN`, `AGENT_ID`.
+   - Se usar nomes de camera fora do padrão, definir `VISION_ROLE_MAP` (ex.: `{"balcao":"caixa","salao":"salon","entrada":"entrada"}`).
 3. Executar `01_TESTE_RAPIDO.bat` e confirmar `status=201`.
 4. Executar `02_INSTALAR_AUTOSTART.bat` (admin).
    - Esperado: copia para `C:\ProgramData\DaleVision\EdgeAgent\dalevision-edge-agent-windows`.
@@ -34,6 +40,10 @@ Validar release do edge-agent (Windows) antes de liberar para producao.
    - `logs\agent.log` (heartbeat e sync de cameras)
    - `logs\run_agent.log` (execucao via task)
    - `logs\service_install.log` e `logs\service_install.ps1.log` (instalacao)
+   - Vision worker:
+     - deve conter `[VISION] worker started`
+     - nao deve conter `yolo failed`
+     - se `cameras list failed 403`, validar permissao do endpoint `/api/v1/stores/{id}/cameras/` com `X-EDGE-TOKEN`.
 9. Remocao:
    - Executar `04_REMOVER_AUTOSTART.bat` (admin).
    - Confirmar que a task nao existe:

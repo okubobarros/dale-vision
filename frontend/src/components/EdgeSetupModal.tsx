@@ -42,6 +42,10 @@ const AUTO_UPDATE_ENABLED = 0
 const UPDATE_CHANNEL = "stable"
 const UPDATE_GITHUB_REPO = "daleship/dalevision-edge-agent"
 const UPDATE_INTERVAL_SECONDS = 21600
+const VISION_ENABLED = 1
+const VISION_BUCKET_SECONDS = 30
+const VISION_POLL_SECONDS = 5
+const VISION_SNAPSHOT_TIMEOUT_SECONDS = 10
 
 const getApiError = (err: unknown): ApiErrorLike => {
   if (err && typeof err === "object") {
@@ -310,6 +314,10 @@ const EdgeSetupModal = ({ open, onClose, defaultStoreId }: EdgeSetupModalProps) 
     `UPDATE_CHANNEL=${UPDATE_CHANNEL}`,
     `UPDATE_GITHUB_REPO=${UPDATE_GITHUB_REPO}`,
     `UPDATE_INTERVAL_SECONDS=${UPDATE_INTERVAL_SECONDS}`,
+    `VISION_ENABLED=${VISION_ENABLED}`,
+    `VISION_BUCKET_SECONDS=${VISION_BUCKET_SECONDS}`,
+    `VISION_POLL_SECONDS=${VISION_POLL_SECONDS}`,
+    `VISION_SNAPSHOT_TIMEOUT_SECONDS=${VISION_SNAPSHOT_TIMEOUT_SECONDS}`,
   ]
 
   const envContent = useMemo(() => {

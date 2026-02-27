@@ -12,7 +12,7 @@ import { clearAuthStorage, getAccessToken } from "./authStorage"
 import { refreshSupabaseSession } from "./authSession"
 
 const DEFAULT_TIMEOUT_MS = import.meta.env.PROD ? 60000 : 30000
-const LONG_TIMEOUT_MS = 60000
+const LONG_TIMEOUT_MS = 120000
 const SHORT_TIMEOUT_MS = 5000
 const RETRY_BACKOFF_MS = [1000, 3000]
 const TRIAL_EXPIRED_CODE = "TRIAL_EXPIRED"
