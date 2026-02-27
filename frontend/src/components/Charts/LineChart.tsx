@@ -10,22 +10,28 @@ import {
   ResponsiveContainer,
 } from "recharts"
 
-const data = [
-  { hora: "08:00", visitantes: 45, conversões: 12 },
-  { hora: "10:00", visitantes: 120, conversões: 45 },
-  { hora: "12:00", visitantes: 210, conversões: 85 },
-  { hora: "14:00", visitantes: 180, conversões: 78 },
-  { hora: "16:00", visitantes: 150, conversões: 65 },
-  { hora: "18:00", visitantes: 90, conversões: 32 },
-  { hora: "20:00", visitantes: 40, conversões: 15 },
+export type LineChartPoint = {
+  label: string
+  visitantes: number
+  conversoes: number
+}
+
+const defaultData: LineChartPoint[] = [
+  { label: "08:00", visitantes: 45, conversoes: 12 },
+  { label: "10:00", visitantes: 120, conversoes: 45 },
+  { label: "12:00", visitantes: 210, conversoes: 85 },
+  { label: "14:00", visitantes: 180, conversoes: 78 },
+  { label: "16:00", visitantes: 150, conversoes: 65 },
+  { label: "18:00", visitantes: 90, conversoes: 32 },
+  { label: "20:00", visitantes: 40, conversoes: 15 },
 ]
 
-export const LineChart = () => {
+export const LineChart = ({ data = defaultData }: { data?: LineChartPoint[] }) => {
   return (
     <ResponsiveContainer width="100%" height="100%">
       <RechartsLineChart data={data}>
         <CartesianGrid strokeDasharray="3 3" stroke="#f0f0f0" />
-        <XAxis dataKey="hora" stroke="#666" />
+        <XAxis dataKey="label" stroke="#666" />
         <YAxis stroke="#666" />
         <Tooltip
           contentStyle={{
@@ -46,7 +52,7 @@ export const LineChart = () => {
         />
         <Line
           type="monotone"
-          dataKey="conversões"
+          dataKey="conversoes"
           stroke="#8b5cf6"
           strokeWidth={2}
           dot={{ r: 4 }}

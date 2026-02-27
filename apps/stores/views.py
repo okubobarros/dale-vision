@@ -1,6 +1,7 @@
 # apps/stores/views.py 
 import logging
 import os
+from datetime import datetime, timedelta
 import time
 from django.core.cache import cache
 from rest_framework import viewsets, status, permissions
@@ -13,7 +14,7 @@ from django.db.utils import ProgrammingError, OperationalError
 from django.db import connection, DatabaseError
 from django.utils import timezone
 from django.conf import settings
-from datetime import timedelta
+from django.utils.dateparse import parse_datetime
 from apps.core.models import Store, OrgMember, Organization, Camera, Employee
 from apps.edge.models import EdgeToken
 from apps.cameras.limits import (
@@ -202,6 +203,20 @@ def _resolve_cloud_base_url(request=None) -> str:
         except Exception:
             pass
     return ""
+
+
+def _parse_dt(value: str | None, tz) -> datetime | None:
+    if not value:
+        return None
+    dt = parse_datetime(value)
+    if not dt:
+        try:
+            dt = datetime.fromisoformat(value)
+        except Exception:
+            return None
+    if timezone.is_naive(dt):
+        dt = timezone.make_aware(dt, tz)
+    return dt
 
 class StoreViewSet(viewsets.ModelViewSet):
     queryset = Store.objects.all()
@@ -1164,6 +1179,153 @@ class StoreViewSet(viewsets.ModelViewSet):
                     "cameras": cameras_used,
                     "stores": stores_used,
                 },
+            }
+        )
+
+    @action(detail=True, methods=["get"], url_path="metrics/summary")
+    def metrics_summary(self, request, pk=None):
+        store = self.get_object()
+        require_store_role(request.user, str(store.id), ALLOWED_READ_ROLES)
+
+        tz = timezone.get_current_timezone()
+        period = (request.query_params.get("period") or "7d").lower()
+        bucket = (request.query_params.get("bucket") or "day").lower()
+        if bucket not in {"hour", "day"}:
+            bucket = "day"
+
+        start = _parse_dt(request.query_params.get("from"), tz)
+        end = _parse_dt(request.query_params.get("to"), tz)
+        if not end:
+            end = timezone.now()
+        if not start:
+            days = 7
+            if period == "30d":
+                days = 30
+            elif period == "90d":
+                days = 90
+            start = end - timedelta(days=days)
+
+        traffic_series = []
+        conversion_series = []
+        totals = {
+            "total_visitors": 0,
+            "avg_dwell_seconds": 0,
+            "avg_queue_seconds": 0,
+            "avg_staff_active": 0,
+            "avg_conversion_rate": 0,
+        }
+        zones_breakdown = []
+
+        with connection.cursor() as cursor:
+            cursor.execute(
+                """
+                SELECT date_trunc(%s, ts_bucket) AS bucket,
+                       COALESCE(SUM(footfall), 0) AS footfall,
+                       COALESCE(AVG(dwell_seconds_avg), 0) AS dwell_avg
+                FROM public.traffic_metrics
+                WHERE store_id = %s AND ts_bucket >= %s AND ts_bucket < %s
+                GROUP BY 1
+                ORDER BY 1 ASC
+                """,
+                [bucket, str(store.id), start, end],
+            )
+            for row in cursor.fetchall():
+                traffic_series.append(
+                    {
+                        "ts_bucket": row[0].isoformat(),
+                        "footfall": int(row[1] or 0),
+                        "dwell_seconds_avg": int(row[2] or 0),
+                    }
+                )
+
+            cursor.execute(
+                """
+                SELECT date_trunc(%s, ts_bucket) AS bucket,
+                       COALESCE(AVG(queue_avg_seconds), 0) AS queue_avg_seconds,
+                       COALESCE(AVG(staff_active_est), 0) AS staff_active_est,
+                       COALESCE(AVG(conversion_rate), 0) AS conversion_rate
+                FROM public.conversion_metrics
+                WHERE store_id = %s AND ts_bucket >= %s AND ts_bucket < %s
+                GROUP BY 1
+                ORDER BY 1 ASC
+                """,
+                [bucket, str(store.id), start, end],
+            )
+            for row in cursor.fetchall():
+                conversion_series.append(
+                    {
+                        "ts_bucket": row[0].isoformat(),
+                        "queue_avg_seconds": int(row[1] or 0),
+                        "staff_active_est": int(row[2] or 0),
+                        "conversion_rate": float(row[3] or 0),
+                    }
+                )
+
+            cursor.execute(
+                """
+                SELECT COALESCE(SUM(footfall), 0) AS total_visitors,
+                       COALESCE(AVG(dwell_seconds_avg), 0) AS avg_dwell_seconds
+                FROM public.traffic_metrics
+                WHERE store_id = %s AND ts_bucket >= %s AND ts_bucket < %s
+                """,
+                [str(store.id), start, end],
+            )
+            row = cursor.fetchone()
+            if row:
+                totals["total_visitors"] = int(row[0] or 0)
+                totals["avg_dwell_seconds"] = int(row[1] or 0)
+
+            cursor.execute(
+                """
+                SELECT COALESCE(AVG(queue_avg_seconds), 0) AS avg_queue_seconds,
+                       COALESCE(AVG(staff_active_est), 0) AS avg_staff_active,
+                       COALESCE(AVG(conversion_rate), 0) AS avg_conversion_rate
+                FROM public.conversion_metrics
+                WHERE store_id = %s AND ts_bucket >= %s AND ts_bucket < %s
+                """,
+                [str(store.id), start, end],
+            )
+            row = cursor.fetchone()
+            if row:
+                totals["avg_queue_seconds"] = int(row[0] or 0)
+                totals["avg_staff_active"] = int(row[1] or 0)
+                totals["avg_conversion_rate"] = float(row[2] or 0)
+
+            cursor.execute(
+                """
+                SELECT z.id, z.name,
+                       COALESCE(SUM(t.footfall), 0) AS footfall,
+                       COALESCE(AVG(t.dwell_seconds_avg), 0) AS dwell_avg
+                FROM public.store_zones z
+                JOIN public.traffic_metrics t ON t.zone_id = z.id
+                WHERE z.store_id = %s AND t.ts_bucket >= %s AND t.ts_bucket < %s
+                GROUP BY z.id, z.name
+                ORDER BY footfall DESC
+                """,
+                [str(store.id), start, end],
+            )
+            for row in cursor.fetchall():
+                zones_breakdown.append(
+                    {
+                        "zone_id": str(row[0]),
+                        "name": row[1],
+                        "footfall": int(row[2] or 0),
+                        "dwell_seconds_avg": int(row[3] or 0),
+                    }
+                )
+
+        return Response(
+            {
+                "store_id": str(store.id),
+                "from": start.isoformat(),
+                "to": end.isoformat(),
+                "bucket": bucket,
+                "totals": totals,
+                "series": {
+                    "traffic": traffic_series,
+                    "conversion": conversion_series,
+                },
+                "zones": zones_breakdown,
             }
         )
     

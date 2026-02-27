@@ -71,6 +71,7 @@ Registrar decisões e eventos do dia.
   - Cron alternativo via GitHub Actions definido para Render Free.
   - Vision worker integrado no edge-agent e checklist atualizado (ROI + dependencias).
   - Checklist de loja (3 câmeras + métricas) adicionado.
+  - Demo mock (analytics + alerts) com seed e endpoint de métricas implementados.
 - Bloqueios:
   - Nenhum.
 - Decisões:

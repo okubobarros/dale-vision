@@ -8,15 +8,17 @@ import {
   Tooltip,
 } from "recharts"
 
-const data = [
-  { name: "Setor A", value: 35, color: "#3b82f6" },
-  { name: "Setor B", value: 25, color: "#8b5cf6" },
-  { name: "Setor C", value: 20, color: "#10b981" },
-  { name: "Setor D", value: 15, color: "#f59e0b" },
+export type PieChartPoint = { name: string; value: number; color: string }
+
+const defaultData: PieChartPoint[] = [
+  { name: "Entrada", value: 35, color: "#3b82f6" },
+  { name: "Balcao", value: 25, color: "#8b5cf6" },
+  { name: "Salao", value: 20, color: "#10b981" },
+  { name: "Caixas", value: 15, color: "#f59e0b" },
   { name: "Outros", value: 5, color: "#6b7280" },
 ]
 
-export const PieChart = () => {
+export const PieChart = ({ data = defaultData }: { data?: PieChartPoint[] }) => {
   return (
     <ResponsiveContainer width="100%" height="100%">
       <RechartsPieChart>

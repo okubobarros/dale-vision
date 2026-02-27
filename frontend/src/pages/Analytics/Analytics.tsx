@@ -1,7 +1,12 @@
 import { useMemo, useState } from "react"
+import { useQuery } from "@tanstack/react-query"
+import { LineChart, type LineChartPoint } from "../../components/Charts/LineChart"
+import { PieChart, type PieChartPoint } from "../../components/Charts/PieChart"
+import { storesService, type Store } from "../../services/stores"
 
 const Analytics = () => {
   const [period, setPeriod] = useState("7d")
+  const [selectedStore, setSelectedStore] = useState<string>("")
 
   const periodLabel = useMemo(() => {
     switch (period) {
@@ -14,10 +19,62 @@ const Analytics = () => {
     }
   }, [period])
 
+  const { data: stores } = useQuery<Store[]>({
+    queryKey: ["stores"],
+    queryFn: storesService.getStores,
+    staleTime: 60000,
+  })
+
+  const defaultStoreId = useMemo(() => {
+    if (selectedStore) return selectedStore
+    if ((stores ?? []).length === 1) return stores?.[0]?.id ?? ""
+    return ""
+  }, [selectedStore, stores])
+
+  const { data: summary, isLoading: loadingSummary } = useQuery({
+    queryKey: ["analytics-summary", defaultStoreId, period],
+    queryFn: () =>
+      defaultStoreId
+        ? storesService.getStoreAnalyticsSummary(defaultStoreId, { period, bucket: "day" })
+        : Promise.resolve(null),
+    enabled: Boolean(defaultStoreId),
+  })
+
+  const totalVisitors = summary?.totals.total_visitors ?? 0
+  const conversionRate = summary?.totals.avg_conversion_rate ?? 0
+  const queueAvgMin = Math.round((summary?.totals.avg_queue_seconds ?? 0) / 60)
+  const dwellAvgMin = Math.round((summary?.totals.avg_dwell_seconds ?? 0) / 60)
+
+  const lineData: LineChartPoint[] = useMemo(() => {
+    if (!summary) return []
+    return summary.series.traffic.map((t) => {
+      const conv = summary.series.conversion.find((c) => c.ts_bucket === t.ts_bucket)
+      const convRate = conv?.conversion_rate ?? 0
+      const conversions = Math.round((t.footfall || 0) * (convRate / 100))
+      const label = new Date(t.ts_bucket).toLocaleDateString("pt-BR", {
+        day: "2-digit",
+        month: "2-digit",
+      })
+      return { label, visitantes: t.footfall, conversoes: conversions }
+    })
+  }, [summary])
+
+  const pieData: PieChartPoint[] = useMemo(() => {
+    if (!summary || summary.zones.length === 0) return []
+    const total = summary.zones.reduce((acc, z) => acc + (z.footfall || 0), 0) || 1
+    const colors = ["#3b82f6", "#8b5cf6", "#10b981", "#f59e0b", "#6b7280"]
+    return summary.zones.map((z, idx) => ({
+      name: z.name,
+      value: Math.round((z.footfall / total) * 100),
+      color: colors[idx % colors.length],
+    }))
+  }, [summary])
+
   const metrics = [
-    { title: "Total de Visitantes", value: "0", change: "0%" },
-    { title: "Taxa de Conversão", value: "0%", change: "0%" },
-    { title: "Ticket Médio", value: "R$ 0,00", change: "0%" },
+    { title: "Total de Visitantes", value: totalVisitors.toLocaleString("pt-BR"), change: periodLabel },
+    { title: "Taxa de Conversão (média)", value: `${conversionRate.toFixed(1)}%`, change: periodLabel },
+    { title: "Fila Média (min)", value: queueAvgMin.toString(), change: periodLabel },
+    { title: "Permanência Média (min)", value: dwellAvgMin.toString(), change: periodLabel },
   ]
 
   return (
@@ -46,6 +103,24 @@ const Analytics = () => {
             <option value="90d">Últimos 90 dias</option>
           </select>
 
+          <label htmlFor="store" className="sr-only">
+            Selecionar loja
+          </label>
+          <select
+            id="store"
+            className="w-full sm:w-auto border border-gray-300 rounded-lg px-4 py-2"
+            aria-label="Selecionar loja"
+            value={selectedStore || defaultStoreId}
+            onChange={(event) => setSelectedStore(event.target.value)}
+          >
+            <option value="">Selecione uma loja</option>
+            {(stores ?? []).map((store) => (
+              <option key={store.id} value={store.id}>
+                {store.name}
+              </option>
+            ))}
+          </select>
+
           <button
             type="button"
             disabled
@@ -57,7 +132,7 @@ const Analytics = () => {
       </div>
 
       {/* Cards */}
-      <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4 sm:gap-6">
+      <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4 sm:gap-6">
         {metrics.map((metric) => (
           <div
             key={metric.title}
@@ -84,27 +159,14 @@ const Analytics = () => {
         <div className="flex flex-col gap-4 sm:flex-row sm:items-center sm:justify-between">
           <div>
             <h2 className="text-lg font-semibold text-gray-800">
-              Conecte sua loja para liberar analytics
+              Período selecionado
             </h2>
             <p className="text-sm text-gray-500 mt-1">
-              Assim que câmeras e edge estiverem online, mostramos insights do período selecionado.
+              {periodLabel}
             </p>
-            <p className="text-xs text-gray-400 mt-2">Período atual: {periodLabel}</p>
-          </div>
-
-          <div className="flex flex-col gap-2 sm:flex-row">
-            <a
-              href="/app/stores"
-              className="inline-flex items-center justify-center rounded-xl border border-gray-200 bg-white px-4 py-2 text-sm font-semibold text-gray-700 hover:bg-gray-50"
-            >
-              Conectar loja
-            </a>
-            <a
-              href="/app/cameras"
-              className="inline-flex items-center justify-center rounded-xl bg-blue-600 px-4 py-2 text-sm font-semibold text-white hover:bg-blue-700"
-            >
-              Conectar câmeras
-            </a>
+            <p className="text-xs text-gray-400 mt-2">
+              {summary ? `${summary.from} → ${summary.to}` : "Sem dados ainda"}
+            </p>
           </div>
         </div>
       </div>
@@ -116,16 +178,24 @@ const Analytics = () => {
             Evolução de Métricas
           </h3>
           <div className="h-[260px] sm:h-64 bg-gray-100 rounded-lg flex items-center justify-center">
-            <p className="text-gray-500">Sem dados disponíveis</p>
+            {loadingSummary || !summary ? (
+              <p className="text-gray-500">Sem dados disponíveis</p>
+            ) : (
+              <LineChart data={lineData} />
+            )}
           </div>
         </div>
 
         <div className="bg-white rounded-xl shadow-sm p-4 sm:p-6 border border-gray-100">
           <h3 className="text-lg font-semibold text-gray-800 mb-4">
-            Comparativo entre Lojas
+            Distribuição por Zona
           </h3>
           <div className="h-[260px] sm:h-64 bg-gray-100 rounded-lg flex items-center justify-center">
-            <p className="text-gray-500">Sem dados disponíveis</p>
+            {loadingSummary || !summary ? (
+              <p className="text-gray-500">Sem dados disponíveis</p>
+            ) : (
+              <PieChart data={pieData} />
+            )}
           </div>
         </div>
       </div>

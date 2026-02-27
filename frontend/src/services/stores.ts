@@ -86,6 +86,39 @@ export interface StoreMetrics {
   alerts_today: number;
 }
 
+export interface StoreAnalyticsSummary {
+  store_id: string;
+  from: string;
+  to: string;
+  bucket: "hour" | "day";
+  totals: {
+    total_visitors: number;
+    avg_dwell_seconds: number;
+    avg_queue_seconds: number;
+    avg_staff_active: number;
+    avg_conversion_rate: number;
+  };
+  series: {
+    traffic: Array<{
+      ts_bucket: string;
+      footfall: number;
+      dwell_seconds_avg: number;
+    }>;
+    conversion: Array<{
+      ts_bucket: string;
+      queue_avg_seconds: number;
+      staff_active_est: number;
+      conversion_rate: number;
+    }>;
+  };
+  zones: Array<{
+    zone_id: string;
+    name: string;
+    footfall: number;
+    dwell_seconds_avg: number;
+  }>;
+}
+
 export interface NetworkDashboard {
   total_stores: number;
   active_stores: number;
@@ -328,6 +361,11 @@ export const storesService = {
       peak_hour: "",
       alerts_today: 0,
     };
+  },
+
+  async getStoreAnalyticsSummary(storeId: string, params?: { period?: string; from?: string; to?: string; bucket?: "hour" | "day" }): Promise<StoreAnalyticsSummary> {
+    const response = await api.get(`/v1/stores/${storeId}/metrics/summary/`, { params })
+    return response.data as StoreAnalyticsSummary
   },
 
   // Obter visão da rede (todas as lojas)

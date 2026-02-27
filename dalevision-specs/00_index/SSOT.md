@@ -34,6 +34,9 @@ Toda decisão de produto, contrato de API e regra crítica deve estar aqui antes
 - `70_ops/Drive_Backup_Metrics.md`
 - `70_ops/Edge_Lessons_Learned.md`
 
+## Data Flow
+- `30_system/Data_Flow_Mock_Demo.md`
+
 ## Specs
 - Índice: `../50_specs/README.md`
 - `SPEC-001-Edge-Setup-Wizard`: `../50_specs/SPEC-001-Edge-Setup-Wizard.md`
