@@ -15,6 +15,9 @@ vi.mock("../../services/stores", () => ({
         role: "admin",
       },
     ]),
+    getStoresMinimal: vi.fn().mockResolvedValue([
+      { id: "store-1", name: "Loja 1", created_at: null, is_active: true },
+    ]),
     getStoreDashboard: vi.fn().mockResolvedValue({
       store: {
         id: "store-1",
@@ -69,9 +72,19 @@ vi.mock("../../queries/alerts.queries", () => ({
 
 vi.mock("../../services/onboarding", () => ({
   onboardingService: {
-    getProgress: vi.fn().mockResolvedValue({
-      steps: {},
-      next_step: null,
+    getNextStep: vi.fn().mockResolvedValue({
+      stage: "collecting_data",
+      title: "Coletando dados",
+      description: "Aguardando dados recentes.",
+      cta_label: "Ver dashboard",
+      cta_url: "/app/dashboard",
+      blocking_items: [],
+      health: {
+        edge_status: "offline",
+        cameras_total: 0,
+        cameras_online: 0,
+        cameras_offline: 0,
+      },
     }),
   },
 }))

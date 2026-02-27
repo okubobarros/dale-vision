@@ -762,9 +762,21 @@ const Cameras = () => {
             <div className="space-y-3">
               {cameras.map((camera) => {
                 const storeName =
-                  selectedStore === "all"
-                    ? stores?.find((store) => store.id === camera.store)?.name
-                    : null
+                  camera.store_name ||
+                  stores?.find((store) => store.id === camera.store)?.name ||
+                  null
+                const normalizedStatus = String(camera.status || "unknown").toLowerCase()
+                const isAwaitingValidation =
+                  normalizedStatus === "unknown" || normalizedStatus === "awaiting_validation"
+                const latencyValue =
+                  camera.camera_health?.latency_ms ?? camera.latency_ms ?? null
+                const errorValue =
+                  camera.camera_health?.error ?? camera.last_error ?? null
+                const snapshotUrl =
+                  camera.camera_health?.snapshot_url ?? camera.last_snapshot_url ?? null
+                const showInlineTestResult =
+                  (testingCameraId === camera.id || testCooldownCameraId === camera.id) &&
+                  (testMessage || testError || latencyValue || errorValue || snapshotUrl)
                 return (
                 <div
                   key={camera.id}
@@ -775,27 +787,30 @@ const Cameras = () => {
                       <p className="text-sm font-semibold text-gray-800 truncate">
                         {camera.name}
                       </p>
+                      {isAwaitingValidation && (
+                        <span className="inline-flex items-center rounded-full border border-amber-200 bg-amber-50 px-2 py-0.5 text-[10px] font-semibold uppercase tracking-wide text-amber-800">
+                          Em validação
+                        </span>
+                      )}
                       <span
-                        className={`px-2 py-0.5 text-xs rounded-full ${
+                        className={`inline-flex items-center rounded-full border px-2 py-0.5 text-[11px] font-semibold uppercase tracking-wide ${
                           camera.status === "online"
-                            ? "bg-green-100 text-green-800"
+                            ? "border-emerald-200 bg-emerald-50 text-emerald-800"
                             : camera.status === "degraded"
-                            ? "bg-yellow-100 text-yellow-800"
+                            ? "border-yellow-200 bg-yellow-50 text-yellow-800"
                             : camera.status === "error"
-                            ? "bg-red-100 text-red-800"
+                            ? "border-red-200 bg-red-50 text-red-800"
                             : camera.status === "offline"
-                            ? "bg-gray-100 text-gray-700"
-                            : "bg-yellow-100 text-yellow-800"
+                            ? "border-rose-200 bg-rose-50 text-rose-800"
+                            : "border-slate-200 bg-slate-50 text-slate-700"
                         }`}
                       >
                         {formatStatusLabel(camera.status ?? "unknown")}
                       </span>
                     </div>
-                    {storeName && (
-                      <p className="text-xs text-gray-500 mt-1">
-                        Loja: {storeName}
-                      </p>
-                    )}
+                    <p className="text-xs text-gray-500 mt-1">
+                      Loja: {storeName || "—"}
+                    </p>
                     <p className="text-xs text-gray-500 mt-1">
                       RTSP: {camera.rtsp_url_masked ?? "não informado"}
                     </p>
@@ -804,23 +819,23 @@ const Cameras = () => {
                         Última verificação: {formatTimestamp(camera.last_seen_at)}
                       </p>
                     )}
-                    {camera.latency_ms !== null && camera.latency_ms !== undefined && (
+                    {latencyValue !== null && latencyValue !== undefined && (
                       <p className="text-xs text-gray-500 mt-1">
-                        Latência: {camera.latency_ms} ms
+                        Latência: {latencyValue} ms
                       </p>
                     )}
-                    {camera.last_error && (
+                    {errorValue && (
                       <p className="text-xs text-red-600 mt-1">
-                        Erro: {camera.last_error}
+                        Erro: {errorValue}
                       </p>
                     )}
-                    {camera.last_snapshot_url && (
+                    {snapshotUrl && (
                       <div className="mt-2">
                         <p className="text-xs text-blue-600 truncate">
-                          Snapshot: {camera.last_snapshot_url}
+                          Snapshot: {snapshotUrl}
                         </p>
                         <img
-                          src={camera.last_snapshot_url}
+                          src={snapshotUrl}
                           alt={`Snapshot ${camera.name}`}
                           className="mt-2 h-24 w-full max-w-xs rounded-lg border border-gray-200 object-cover"
                         />
@@ -885,6 +900,17 @@ const Cameras = () => {
                   )}
                   {(testingCameraId === camera.id || testCooldownCameraId === camera.id) && testError && (
                     <div className="text-xs text-red-600">{testError}</div>
+                  )}
+                  {showInlineTestResult && (
+                    <div className="text-xs text-gray-600 space-y-1">
+                      {latencyValue !== null && latencyValue !== undefined && (
+                        <div>Latência: {latencyValue} ms</div>
+                      )}
+                      {errorValue && <div className="text-red-600">Erro: {errorValue}</div>}
+                      {snapshotUrl && (
+                        <div className="text-blue-600 truncate">Snapshot: {snapshotUrl}</div>
+                      )}
+                    </div>
                   )}
                 </div>
               )})}

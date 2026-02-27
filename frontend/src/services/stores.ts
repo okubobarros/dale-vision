@@ -119,6 +119,53 @@ export interface StoreAnalyticsSummary {
   }>;
 }
 
+export type StoreOverviewCamera = {
+  id: string
+  name: string
+  status?: string | null
+  last_seen_at?: string | null
+  last_snapshot_url?: string | null
+  last_error?: string | null
+  zone_id?: string | null
+}
+
+export type StoreOverviewEmployee = {
+  id: string
+  full_name: string
+  role?: string | null
+  email?: string | null
+  active?: boolean | null
+}
+
+export type StoreOverviewAlert = {
+  id: string
+  title?: string | null
+  severity?: string | null
+  status?: string | null
+  occurred_at?: string | null
+  created_at?: string | null
+  type?: string | null
+}
+
+export type StoreOverview = {
+  store: {
+    id: string
+    name: string
+    city?: string | null
+    state?: string | null
+    status?: StoreStatus | null
+    trial_ends_at?: string | null
+  }
+  metrics_summary: StoreAnalyticsSummary
+  edge_health: {
+    last_seen_at?: string | null
+    last_error?: string | null
+  }
+  cameras: StoreOverviewCamera[]
+  employees: StoreOverviewEmployee[]
+  last_alerts: StoreOverviewAlert[]
+}
+
 export interface NetworkDashboard {
   total_stores: number;
   active_stores: number;
@@ -366,6 +413,11 @@ export const storesService = {
   async getStoreAnalyticsSummary(storeId: string, params?: { period?: string; from?: string; to?: string; bucket?: "hour" | "day" }): Promise<StoreAnalyticsSummary> {
     const response = await api.get(`/v1/stores/${storeId}/metrics/summary/`, { params })
     return response.data as StoreAnalyticsSummary
+  },
+
+  async getStoreOverview(storeId: string): Promise<StoreOverview> {
+    const response = await api.get(`/v1/stores/${storeId}/overview/`)
+    return response.data as StoreOverview
   },
 
   // Obter visão da rede (todas as lojas)

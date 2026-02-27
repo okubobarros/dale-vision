@@ -25,6 +25,12 @@ from .auth_supabase import (
 )
 from apps.core.models import OrgMember, Store, Camera
 from apps.stores.services.user_uuid import upsert_user_id_map
+from apps.core.services.journey_events import log_journey_event
+from backend.utils.entitlements import (
+    is_trial_active,
+    is_subscription_active,
+    get_org_trial_ends_at,
+)
 
 logger = logging.getLogger(__name__)
 
@@ -41,6 +47,24 @@ class RegisterView(APIView):
             ensure_org_membership(user)
         except Exception:
             logger.exception("[REGISTER] failed to ensure org membership user_id=%s", user.id)
+        try:
+            user_uuid = upsert_user_id_map(user)
+            org_id = (
+                OrgMember.objects.filter(user_id=user_uuid)
+                .values_list("org_id", flat=True)
+                .first()
+            )
+            log_journey_event(
+                org_id=str(org_id) if org_id else None,
+                event_name="signup_completed",
+                payload={
+                    "user_id": str(user_uuid),
+                },
+                source="app",
+                meta={"path": request.path},
+            )
+        except Exception:
+            logger.exception("[REGISTER] failed to log signup_completed user_id=%s", user.id)
         token = AuthToken.objects.create(user)[1]
 
         return Response(
@@ -236,6 +260,60 @@ class MeView(APIView):
                     "last_name": user.last_name,
                 },
                 "orgs": orgs,
+            },
+            status=status.HTTP_200_OK,
+        )
+
+
+class MeStatusView(APIView):
+    permission_classes = [IsAuthenticated]
+
+    def get(self, request):
+        user = request.user
+        if not user or not getattr(user, "id", None):
+            return Response({"detail": "Usuário não autenticado."}, status=status.HTTP_403_FORBIDDEN)
+
+        with connection.cursor() as cursor:
+            cursor.execute(
+                "SELECT user_uuid FROM public.user_id_map WHERE django_user_id = %s",
+                [user.id],
+            )
+            row = cursor.fetchone()
+            if not row or not row[0]:
+                cursor.execute(
+                    "INSERT INTO public.user_id_map (django_user_id) VALUES (%s) RETURNING user_uuid",
+                    [user.id],
+                )
+                row = cursor.fetchone()
+            user_uuid = row[0]
+
+        membership = (
+            OrgMember.objects
+            .filter(user_id=user_uuid)
+            .select_related("org")
+            .order_by("created_at")
+            .first()
+        )
+        if not membership:
+            return Response(
+                {
+                    "trial_active": False,
+                    "trial_ends_at": None,
+                    "has_subscription": False,
+                    "role": None,
+                },
+                status=status.HTTP_200_OK,
+            )
+
+        org_id = str(membership.org.id)
+        trial_ends_at = get_org_trial_ends_at(org_id)
+
+        return Response(
+            {
+                "trial_active": is_trial_active(org_id),
+                "trial_ends_at": trial_ends_at.isoformat() if trial_ends_at else None,
+                "has_subscription": is_subscription_active(org_id),
+                "role": membership.role,
             },
             status=status.HTTP_200_OK,
         )

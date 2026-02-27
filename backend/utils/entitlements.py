@@ -72,6 +72,10 @@ def _get_org_trial_ends_at(org_id: Optional[str]):
     return derived
 
 
+def get_org_trial_ends_at(org_id: Optional[str]):
+    return _get_org_trial_ends_at(org_id)
+
+
 def _org_trial_column_exists() -> bool:
     global _ORG_TRIAL_COLUMN_EXISTS
     if _ORG_TRIAL_COLUMN_EXISTS is not None:

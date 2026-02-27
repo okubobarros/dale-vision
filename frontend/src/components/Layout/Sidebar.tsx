@@ -6,6 +6,7 @@ import {
   CameraIcon,
   BellAlertIcon,
   Cog6ToothIcon,
+  DocumentTextIcon,
 } from "@heroicons/react/24/outline"
 
 const Sidebar = () => {
@@ -18,6 +19,7 @@ const Sidebar = () => {
     { name: "Dashboard", href: "/app/dashboard", icon: HomeIcon },
     { name: "Lojas", href: "/app/stores", icon: BuildingStorefrontIcon },
     { name: "Analytics", href: "/app/analytics", icon: ChartBarIcon },
+    { name: "Relatórios", href: "/app/reports", icon: DocumentTextIcon },
     { name: "Câmeras", href: "/app/cameras", icon: CameraIcon },
 
     // Grupo ALERTAS (abre no HOVER)

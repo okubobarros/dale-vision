@@ -1,5 +1,5 @@
 import uuid
-from unittest.mock import patch
+from unittest.mock import patch, MagicMock
 from django.contrib.auth.models import User
 from django.db import connection
 from django.test import override_settings
@@ -194,3 +194,39 @@ class SetupStateProvisioningTests(APITestCase):
         self.assertEqual(response.data.get("state"), "no_store")
         auth_mock.assert_called()
         upsert_mock.assert_called_once_with(user)
+
+
+class MeStatusViewTests(APITestCase):
+    def test_me_status_returns_trial_flags(self):
+        user = User.objects.create_user(
+            username="statususer",
+            email="status@example.com",
+            password="pass1234",
+        )
+
+        membership = MagicMock()
+        membership.role = "owner"
+        membership.org = MagicMock()
+        membership.org.id = "11111111-1111-1111-1111-111111111111"
+
+        cursor = MagicMock()
+        cursor.fetchone.side_effect = [(uuid.uuid4(),)]
+        cursor_cm = MagicMock()
+        cursor_cm.__enter__.return_value = cursor
+        cursor_cm.__exit__.return_value = None
+
+        with (
+            patch("apps.accounts.views.connection.cursor", return_value=cursor_cm),
+            patch("apps.accounts.views.OrgMember.objects.filter") as filter_mock,
+            patch("apps.accounts.views.is_trial_active", return_value=False),
+            patch("apps.accounts.views.is_subscription_active", return_value=False),
+            patch("apps.accounts.views.get_org_trial_ends_at", return_value=None),
+        ):
+            filter_mock.return_value.select_related.return_value.order_by.return_value.first.return_value = membership
+            self.client.force_authenticate(user=user)
+            response = self.client.get("/api/v1/me/status/")
+
+        self.assertEqual(response.status_code, 200)
+        self.assertFalse(response.data.get("trial_active"))
+        self.assertFalse(response.data.get("has_subscription"))
+        self.assertEqual(response.data.get("role"), "owner")

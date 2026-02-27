@@ -15,7 +15,10 @@ import {
 } from "../../queries/alerts.queries"
 import SetupProgress from "../Onboarding/components/SetupProgress"
 import { useIsMobile } from "../../hooks/useIsMobile"
-import { onboardingService, type OnboardingStep } from "../../services/onboarding"
+import {
+  onboardingService,
+  type OnboardingNextStepResponse,
+} from "../../services/onboarding"
 
 interface MetricCardProps {
   title: string
@@ -263,16 +266,26 @@ const Dashboard = () => {
   const resolveEvent = useResolveEvent()
   const ignoreEvent = useIgnoreEvent()
 
-  const { data: onboardingProgress } = useQuery({
-    queryKey: ["onboarding-progress", selectedStore],
+  const shouldFetchOnboardingNextStep =
+    canFetchAuth && (selectedStore !== ALL_STORES_VALUE || (stores ?? []).length === 0)
+  const {
+    data: onboardingNextStep,
+    isLoading: onboardingNextStepLoading,
+    error: onboardingNextStepErrorRaw,
+  } = useQuery<OnboardingNextStepResponse>({
+    queryKey: ["onboarding-next-step", selectedStore],
     queryFn: () =>
-      onboardingService.getProgress(
+      onboardingService.getNextStep(
         selectedStore !== ALL_STORES_VALUE ? selectedStore : undefined
       ),
-    enabled: canFetchAuth && Boolean(selectedStore && selectedStore !== ALL_STORES_VALUE),
+    enabled: shouldFetchOnboardingNextStep,
     staleTime: 30000,
     retry: 1,
   })
+  const onboardingNextStepError =
+    onboardingNextStepErrorRaw instanceof Error
+      ? onboardingNextStepErrorRaw.message
+      : null
 
   useEffect(() => {
     const params = new URLSearchParams(location.search)
@@ -326,51 +339,18 @@ const Dashboard = () => {
     !activationBannerDismissed &&
     (showActivationProgress || (selectedStore !== ALL_STORES_VALUE && !isEdgeOnlineByLastSeen))
 
-  const nextStep = (onboardingProgress?.next_step || null) as OnboardingStep | null
+  const onboardingStage = onboardingNextStep?.stage || null
   const nextStepCta = useMemo(() => {
     if (!canManageStore) return null
-    if (!nextStep) return null
-    switch (nextStep) {
-      case "edge_connected":
-        return { label: "Conectar Edge", href: edgeSetupLink || "/app/dashboard" }
-      case "camera_added":
-        return {
-          label: "Adicionar câmera",
-          href:
-            selectedStore !== ALL_STORES_VALUE
-              ? `/app/cameras?store_id=${selectedStore}&onboarding=true`
-              : "/app/cameras",
-        }
-      case "camera_health_ok":
-        return {
-          label: "Testar câmera",
-          href:
-            selectedStore !== ALL_STORES_VALUE
-              ? `/app/cameras?store_id=${selectedStore}&onboarding=true`
-              : "/app/cameras",
-        }
-      case "roi_published":
-        return {
-          label: "Configurar ROI",
-          href:
-            selectedStore !== ALL_STORES_VALUE
-              ? `/app/cameras?store_id=${selectedStore}&onboarding=true`
-              : "/app/cameras",
-        }
-      case "monitoring_started":
-        return { label: "Iniciar monitoramento", href: "/app/dashboard" }
-      case "first_insight":
-        return { label: "Gerar primeiro insight", href: "/app/dashboard" }
-      default:
-        return null
-    }
-  }, [canManageStore, nextStep, selectedStore, edgeSetupLink])
+    if (!onboardingNextStep?.cta_url || !onboardingNextStep?.cta_label) return null
+    return { label: onboardingNextStep.cta_label, href: onboardingNextStep.cta_url }
+  }, [canManageStore, onboardingNextStep])
 
   const showNextStepBanner =
     canManageStore &&
     Boolean(nextStepCta) &&
     selectedStore !== ALL_STORES_VALUE &&
-    nextStep !== "first_insight"
+    onboardingStage !== "active"
 
   const activationBanner = shouldShowActivationBanner ? (
     <div className="bg-white rounded-xl shadow-sm border border-gray-100 p-4 sm:p-6">
@@ -458,12 +438,18 @@ const Dashboard = () => {
     </div>
   ) : null
 
-  const camerasTotal = edgeStatus?.cameras_total ?? 0
+  const health = onboardingNextStep?.health
+  const camerasTotal = health?.cameras_total ?? edgeStatus?.cameras_total ?? 0
+  const camerasOnline = health?.cameras_online ?? edgeStatus?.cameras_online ?? 0
+  const camerasOffline = health?.cameras_offline ?? Math.max(camerasTotal - camerasOnline, 0)
   const camerasLimit = storeLimits?.limits?.cameras ?? 3
-  const edgeOnlineLabel = isEdgeOnlineByLastSeen ? "Online" : "Offline"
+  const edgeStatusValue = (health?.edge_status || edgeStatus?.store_status || "").toLowerCase()
+  const isEdgeOnlineByHealth = ["online", "degraded", "online_no_cameras"].includes(edgeStatusValue)
+  const edgeOnlineLabel = isEdgeOnlineByHealth
+    ? "Online"
+    : "Offline"
   const edgeLastSeenLabel = formatLastSeenDisplay(lastSeenAt)
-  const showFirstCameraCards =
-    selectedStore !== ALL_STORES_VALUE && isEdgeOnlineByLastSeen && camerasTotal === 0
+  const showFirstCameraCards = onboardingStage === "add_cameras"
 
   const minimalStatusCards =
     selectedStore !== ALL_STORES_VALUE ? (
@@ -472,24 +458,24 @@ const Dashboard = () => {
           title="Status do Edge"
           value={edgeOnlineLabel}
           icon={<span>📡</span>}
-          color={isEdgeOnlineByLastSeen ? "bg-green-100 text-green-800" : "bg-gray-100 text-gray-700"}
+          color={isEdgeOnlineByHealth ? "bg-green-100 text-green-800" : "bg-gray-100 text-gray-700"}
           subtitle={`Último sinal: ${edgeLastSeenLabel}`}
         />
         <MetricCard
-          title="Câmeras conectadas"
-          value={`${camerasTotal}/${camerasLimit}`}
+          title="Câmeras online/offline"
+          value={`${camerasOnline} online · ${camerasOffline} offline`}
           icon={<span>🎥</span>}
           color="bg-blue-100 text-blue-800"
-          subtitle="Trial até 3 câmeras"
+          subtitle={`Total: ${camerasTotal} · Limite: ${camerasLimit}`}
         />
         <MetricCard
           title="Próximo passo"
-          value={canManageStore ? nextStepCta?.label || "—" : "Somente leitura"}
+          value={canManageStore ? onboardingNextStep?.title || "—" : "Somente leitura"}
           icon={<span>✅</span>}
           color="bg-amber-100 text-amber-800"
           subtitle={
             canManageStore
-              ? "Continue a configuração guiada"
+              ? onboardingNextStep?.description || "Continue a configuração guiada"
               : "Peça ao admin para avançar"
           }
         />
@@ -510,17 +496,18 @@ const Dashboard = () => {
           <div className="p-3 rounded-lg bg-blue-100 text-blue-800">🎥</div>
         </div>
         <h3 className="text-lg font-bold text-gray-800 mb-1">
-          Próximo passo: adicionar sua primeira câmera
+          {onboardingNextStep?.title || "Adicionar sua primeira câmera"}
         </h3>
         <p className="text-gray-600 text-sm mb-3">
-          Leva menos de 2 minutos com IP + usuário + senha do NVR.
+          {onboardingNextStep?.description ||
+            "Leva menos de 2 minutos com IP + usuário + senha do NVR."}
         </p>
         {canManageStore ? (
           <Link
-            to={`/app/cameras?store_id=${selectedStore}&onboarding=true`}
+            to={nextStepCta?.href || `/app/cameras?store_id=${selectedStore}&onboarding=true`}
             className="inline-flex items-center justify-center rounded-lg bg-blue-600 px-4 py-2 text-sm font-semibold text-white hover:bg-blue-700"
           >
-            Adicionar primeira câmera
+            {nextStepCta?.label || "Adicionar primeira câmera"}
           </Link>
         ) : (
           <div className="text-sm text-gray-500">
@@ -543,13 +530,46 @@ const Dashboard = () => {
   ) : null
 
   const statusCards = showFirstCameraCards ? firstCameraCards : minimalStatusCards
+  const onboardingStateCards = onboardingNextStepLoading ? (
+    <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+      <div className="bg-white rounded-xl border border-gray-100 p-4 sm:p-6 animate-pulse h-28" />
+      <div className="bg-white rounded-xl border border-gray-100 p-4 sm:p-6 animate-pulse h-28" />
+      <div className="bg-white rounded-xl border border-gray-100 p-4 sm:p-6 animate-pulse h-28" />
+    </div>
+  ) : onboardingNextStepError ? (
+    <div className="bg-red-50 border border-red-200 rounded-xl p-4 text-sm text-red-700">
+      Não foi possível carregar o próximo passo. {onboardingNextStepError}
+    </div>
+  ) : onboardingStage === "no_store" ? (
+    <div className="bg-white rounded-xl shadow-sm border border-gray-100 p-4 sm:p-6">
+      <h3 className="text-lg font-bold text-gray-800">
+        {onboardingNextStep?.title || "Crie sua primeira loja"}
+      </h3>
+      <p className="text-sm text-gray-600 mt-1">
+        {onboardingNextStep?.description ||
+          "Cadastre uma loja para liberar o dashboard completo."}
+      </p>
+      {nextStepCta && (
+        <div className="mt-4">
+          <Link
+            to={nextStepCta.href}
+            className="inline-flex items-center justify-center rounded-lg bg-blue-600 px-4 py-2 text-sm font-semibold text-white hover:bg-blue-700"
+          >
+            {nextStepCta.label}
+          </Link>
+        </div>
+      )}
+    </div>
+  ) : (
+    statusCards
+  )
   const emptySubtitle = "Conecte uma câmera para começar"
-
   const nextStepBanner = showNextStepBanner ? (
     <div className="bg-white rounded-xl shadow-sm border border-gray-100 p-4 sm:p-6">
       <h3 className="text-lg font-bold text-gray-800">Próximo passo</h3>
       <p className="text-sm text-gray-600 mt-1">
-        Complete a próxima etapa para liberar o primeiro insight do trial.
+        {onboardingNextStep?.description ||
+          "Complete a próxima etapa para liberar o primeiro insight do trial."}
       </p>
       {nextStepCta && (
         <div className="mt-4">
@@ -707,6 +727,20 @@ const Dashboard = () => {
   }
 
   if (stores && stores.length === 0) {
+    if (onboardingNextStepLoading) {
+      return (
+        <div className="flex items-center justify-center h-64">
+          <div className="animate-spin rounded-full h-12 w-12 border-t-2 border-b-2 border-blue-500" />
+        </div>
+      )
+    }
+    if (onboardingNextStepError) {
+      return (
+        <div className="bg-red-50 border border-red-200 rounded-xl p-6 text-sm text-red-700">
+          Não foi possível carregar o onboarding. {onboardingNextStepError}
+        </div>
+      )
+    }
     return (
       <div className="text-center py-16 bg-gray-50 rounded-xl border border-gray-200">
         <div className="inline-flex items-center justify-center w-16 h-16 bg-blue-100 rounded-full mb-6">
@@ -725,17 +759,20 @@ const Dashboard = () => {
           </svg>
         </div>
         <h3 className="text-xl font-semibold text-gray-900 mb-3">
-          Nenhuma loja cadastrada
+          {onboardingNextStep?.title || "Nenhuma loja cadastrada"}
         </h3>
         <p className="text-gray-600 max-w-md mx-auto mb-8">
-          Crie sua primeira loja para visualizar o dashboard.
+          {onboardingNextStep?.description ||
+            "Crie sua primeira loja para visualizar o dashboard."}
         </p>
-        <Link
-          to="/app/stores"
-          className="bg-blue-500 hover:bg-blue-600 text-white px-6 py-3 rounded-lg font-medium inline-flex items-center"
-        >
-          Criar loja
-        </Link>
+        {nextStepCta && (
+          <Link
+            to={nextStepCta.href}
+            className="bg-blue-500 hover:bg-blue-600 text-white px-6 py-3 rounded-lg font-medium inline-flex items-center"
+          >
+            {nextStepCta.label}
+          </Link>
+        )}
       </div>
     )
   }
@@ -810,7 +847,7 @@ const Dashboard = () => {
 
   return (
     <div className="space-y-6 sm:space-y-8">
-      {statusCards}
+      {onboardingStateCards}
       {nextStepBanner}
       {activationBanner}
       {/* Header (mobile-first) */}

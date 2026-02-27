@@ -77,7 +77,7 @@ export default function Alerts() {
   const [query, setQuery] = useState("")
   const [severityFilter, setSeverityFilter] = useState<FilterSeverity>("all")
   const [statusFilter, setStatusFilter] = useState<FilterStatus>("open")
-  const [storeId, setStoreId] = useState<string>("")
+  const [storeId, setStoreId] = useState<string>(() => searchParams.get("store_id") || "")
   const [selectedEventId, setSelectedEventId] = useState<string | null>(() =>
     searchParams.get("event_id")
   )

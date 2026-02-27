@@ -1,4 +1,5 @@
-import { useMemo, useState } from "react"
+import { useMemo, useState, useEffect } from "react"
+import { trackJourneyEvent, trackJourneyEventOnce } from "../../services/journey"
 
 const WHATSAPP_URL =
   "https://api.whatsapp.com/send/?phone=5511996918070&text&type=phone_number&app_absent=0"
@@ -8,6 +9,10 @@ const UpgradeComplete = () => {
   const [faturamento, setFaturamento] = useState(500000)
   const [numFuncionarios, setNumFuncionarios] = useState(8)
   const [setor, setSetor] = useState("farmácia")
+
+  useEffect(() => {
+    void trackJourneyEventOnce("upgrade_viewed", "upgrade_viewed", { path: "/app/upgrade" })
+  }, [])
 
   const pricing = {
     starter: { monthly: 279.9, annual: 279.9 * 10 },
@@ -59,6 +64,10 @@ const UpgradeComplete = () => {
 
   return (
     <div className="min-h-screen bg-gray-50">
+      <div className="bg-red-50 border-b border-red-200 text-red-700 px-6 py-3 text-sm">
+        <span className="font-semibold">Trial expirou.</span>{" "}
+        Faça upgrade para reativar o acesso completo.
+      </div>
       <section className="bg-gradient-to-br from-emerald-900 via-emerald-800 to-blue-900 text-white py-20">
         <div className="max-w-7xl mx-auto px-4 py-16">
           <div className="text-center">
@@ -237,9 +246,13 @@ const UpgradeComplete = () => {
                   </div>
                   <button
                     type="button"
-                    onClick={() =>
+                    onClick={() => {
+                      void trackJourneyEvent("upgrade_clicked", {
+                        plan_id: plan.id,
+                        source: "upgrade_plan_card",
+                      })
                       window.open(WHATSAPP_URL, "_blank", "noopener,noreferrer")
-                    }
+                    }}
                     className={`w-full mt-6 py-4 rounded-2xl font-bold text-xl shadow-lg transition ${
                       plan.popular
                         ? "bg-emerald-500 text-white hover:bg-emerald-600"

@@ -28,6 +28,8 @@ from apps.core.models import (
 )
 from backend.utils.entitlements import require_trial_active
 from apps.stores.services.user_uuid import ensure_user_uuid
+from apps.stores.services.user_orgs import get_user_org_ids
+from apps.core.services.journey_events import log_journey_event
 
 from .serializers import (
     AlertRuleSerializer,
@@ -992,5 +994,34 @@ class JourneyEventViewSet(viewsets.ModelViewSet):
 
         return qs
 
-    def perform_create(self, serializer):
-        serializer.save(created_at=timezone.now())
+    def create(self, request, *args, **kwargs):
+        serializer = self.get_serializer(data=request.data)
+        serializer.is_valid(raise_exception=True)
+        validated = serializer.validated_data
+
+        lead = validated.get("lead")
+        org = validated.get("org")
+        event_name = validated.get("event_name")
+        payload = validated.get("payload") or {}
+        source = request.data.get("source") or "app"
+
+        org_id = str(org.id) if org else None
+        if not org_id and getattr(request, "user", None) and request.user.is_authenticated:
+            org_ids = get_user_org_ids(request.user)
+            if len(org_ids) == 1:
+                org_id = str(org_ids[0])
+
+        journey_event = log_journey_event(
+            org_id=org_id,
+            lead_id=str(lead.id) if lead else None,
+            event_name=event_name,
+            payload=payload,
+            source=source,
+            meta={"path": request.path},
+        )
+        if not journey_event:
+            journey_event = serializer.save(created_at=timezone.now())
+
+        output = JourneyEventSerializer(journey_event).data
+        headers = self.get_success_headers(output)
+        return Response(output, status=status.HTTP_201_CREATED, headers=headers)

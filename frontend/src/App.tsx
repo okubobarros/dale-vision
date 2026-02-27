@@ -15,6 +15,7 @@ const Terms = lazy(() => import("./pages/Terms/Terms"))
 
 const Dashboard = lazy(() => import("./pages/Dashboard/Dashboard"))
 const Stores = lazy(() => import("./pages/Stores/Stores"))
+const StoreDetails = lazy(() => import("./pages/Stores/StoreDetails"))
 const Analytics = lazy(() => import("./pages/Analytics/Analytics"))
 const Cameras = lazy(() => import("./pages/Cameras/Cameras"))
 const Alerts = lazy(() => import("./pages/Alerts/Alerts"))
@@ -22,6 +23,8 @@ const Settings = lazy(() => import("./pages/Settings/Settings"))
 const ProfilePage = lazy(() => import("./pages/Profile/Profile"))
 const Upgrade = lazy(() => import("./pages/Billing/Upgrade"))
 const EdgeHelp = lazy(() => import("./pages/EdgeHelp/EdgeHelp"))
+const Report = lazy(() => import("./pages/Report/Report"))
+const Reports = lazy(() => import("./pages/Reports/Reports"))
 
 // ✅ Alerts stack
 const AlertRules = lazy(() => import("./pages/AlertRules/AlertRules"))
@@ -70,6 +73,7 @@ function App() {
         <Route index element={<Navigate to="/app/dashboard" replace />} />
         <Route path="dashboard" element={<Dashboard />} />
         <Route path="stores" element={<Stores />} />
+        <Route path="stores/:id" element={<StoreDetails />} />
         <Route path="analytics" element={<Analytics />} />
         <Route path="cameras" element={<Cameras />} />
         <Route path="alerts" element={<Alerts />} />
@@ -83,6 +87,8 @@ function App() {
 
         <Route path="settings" element={<Settings />} />
         <Route path="profile" element={<ProfilePage />} />
+        <Route path="report" element={<Report />} />
+        <Route path="reports" element={<Reports />} />
         <Route path="upgrade" element={<Upgrade />} />
         <Route path="edge-help" element={<EdgeHelp />} />
       </Route>

@@ -23,6 +23,35 @@ export type OnboardingProgressResponse = {
   ordered_steps?: OnboardingStep[]
 }
 
+export type OnboardingStage =
+  | "no_store"
+  | "add_cameras"
+  | "validate_cameras"
+  | "setup_roi"
+  | "collecting_data"
+  | "active"
+
+export type OnboardingBlockingItem = {
+  type: string
+  label: string
+  url: string
+}
+
+export type OnboardingNextStepResponse = {
+  stage: OnboardingStage
+  title: string
+  description: string
+  cta_label?: string | null
+  cta_url?: string | null
+  blocking_items: OnboardingBlockingItem[]
+  health: {
+    edge_status: string
+    cameras_total: number
+    cameras_online: number
+    cameras_offline: number
+  }
+}
+
 export const onboardingService = {
   async getProgress(storeId?: string): Promise<OnboardingProgressResponse> {
     const params = storeId ? `?store_id=${storeId}` : ""
@@ -36,6 +65,12 @@ export const onboardingService = {
       meta,
       store_id: storeId || undefined,
     })
+    return response.data
+  },
+
+  async getNextStep(storeId?: string): Promise<OnboardingNextStepResponse> {
+    const params = storeId ? `?store_id=${storeId}` : ""
+    const response = await api.get(`/v1/onboarding/next-step/${params}`)
     return response.data
   },
 }

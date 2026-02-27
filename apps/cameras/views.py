@@ -34,6 +34,7 @@ from apps.billing.utils import PaywallError
 from backend.utils.entitlements import enforce_can_use_product, require_trial_active, TrialExpiredError
 from apps.stores.services.user_uuid import ensure_user_uuid
 from apps.core.services.onboarding_progress import OnboardingProgressService
+from apps.core.services.journey_events import log_journey_event
 
 logger = logging.getLogger(__name__)
 
@@ -187,7 +188,7 @@ class CameraViewSet(viewsets.ModelViewSet):
 
     def get_queryset(self):
         store_id = self.request.query_params.get("store_id")
-        qs = Camera.objects.all().order_by("-updated_at")
+        qs = Camera.objects.select_related("store").all().order_by("-updated_at")
         if getattr(self.request, "user", None) and self.request.user.is_authenticated:
             qs = filter_cameras_for_user(qs, self.request.user)
         if store_id:
@@ -338,6 +339,23 @@ class CameraViewSet(viewsets.ModelViewSet):
                 "path": self.request.path,
             },
         )
+        try:
+            log_journey_event(
+                org_id=str(getattr(store, "org_id", None)) if store else None,
+                event_name="camera_added",
+                payload={
+                    "store_id": str(store_id) if store_id else None,
+                    "camera_id": str(getattr(instance, "id", "")),
+                },
+                source="app",
+                meta={"path": self.request.path},
+            )
+        except Exception:
+            logger.exception(
+                "[CAMERA] failed to log camera_added store_id=%s camera_id=%s",
+                str(store_id),
+                str(getattr(instance, "id", "")),
+            )
 
     def perform_update(self, serializer):
         require_store_role(self.request.user, str(serializer.instance.store_id), ALLOWED_MANAGE_ROLES)
@@ -584,6 +602,25 @@ class CameraViewSet(viewsets.ModelViewSet):
                 "path": request.path,
             },
         )
+        try:
+            log_journey_event(
+                org_id=str(cam.store.org_id),
+                event_name="roi_saved",
+                payload={
+                    "store_id": str(cam.store_id),
+                    "camera_id": str(cam.id),
+                    "roi_status": status_value,
+                    "roi_version": config_json.get("roi_version"),
+                },
+                source="app",
+                meta={"path": request.path},
+            )
+        except Exception:
+            logger.exception(
+                "[CAMERA] failed to log roi_saved store_id=%s camera_id=%s",
+                str(cam.store_id),
+                str(cam.id),
+            )
         if status_value == "published":
             try:
                 OnboardingProgressService(str(cam.store.org_id)).complete_step(
@@ -638,6 +675,8 @@ class CameraViewSet(viewsets.ModelViewSet):
                 )
 
         payload = request.data or {}
+        prev_status = getattr(cam, "status", None)
+        prev_last_seen = getattr(cam, "last_seen_at", None)
         status_value = payload.get("status")
         if status_value not in ("online", "degraded", "offline", "unknown", "error"):
             return Response(
@@ -692,6 +731,29 @@ class CameraViewSet(viewsets.ModelViewSet):
                 )
             except Exception:
                 pass
+            try:
+                should_log_validation = (
+                    prev_status in ("unknown", "offline", "error") or prev_last_seen is None
+                )
+                if should_log_validation:
+                    log_journey_event(
+                        org_id=str(cam.store.org_id),
+                        event_name="camera_validated",
+                        payload={
+                            "store_id": str(cam.store_id),
+                            "camera_id": str(cam.id),
+                            "status": status_value,
+                            "latency_ms": latency_ms,
+                        },
+                        source="app",
+                        meta={"path": request.path},
+                    )
+            except Exception:
+                logger.exception(
+                    "[CAMERA] failed to log camera_validated store_id=%s camera_id=%s",
+                    str(cam.store_id),
+                    str(cam.id),
+                )
 
         return Response(
             {

@@ -15,6 +15,12 @@ vi.mock("../../services/stores", () => ({
         role: "admin",
       },
     ]),
+    getStoresMinimal: vi.fn().mockResolvedValue([
+      {
+        id: "store-1",
+        name: "Loja 1",
+      },
+    ]),
     getStoreEdgeStatus: vi.fn().mockResolvedValue({
       online: true,
       cameras_total: 0,

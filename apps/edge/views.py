@@ -30,6 +30,7 @@ from apps.cameras.limits import enforce_trial_camera_limit
 from apps.billing.utils import PaywallError
 from .status_events import emit_store_status_changed, emit_camera_status_changed
 from .vision_metrics import insert_event_receipt_if_new, apply_vision_metrics
+from apps.core.services.journey_events import log_journey_event
 
 
 def _is_uuid(x: str) -> bool:
@@ -290,6 +291,7 @@ class EdgeEventsIngestView(APIView):
             pre_reason = None
             if store_obj:
                 pre_snapshot, pre_reason = compute_store_edge_status_snapshot(store_id)
+            org_id = str(getattr(store_obj, "org_id", None)) if store_obj else None
 
             camera_transitions = []
             heartbeat_ok = True
@@ -397,6 +399,22 @@ class EdgeEventsIngestView(APIView):
                     camera_obj.last_snapshot_url = snapshot_url or camera_obj.last_snapshot_url
                     camera_obj.status = "online"
                     camera_obj.last_seen_at = ts_dt
+
+                    if prev_status in ("unknown", "offline", "error"):
+                        try:
+                            log_journey_event(
+                                org_id=org_id,
+                                event_name="camera_validated",
+                                payload={
+                                    "store_id": str(store_id),
+                                    "camera_id": str(getattr(camera_obj, "id", "")),
+                                    "status": "online",
+                                },
+                                source="app",
+                                meta={"path": request.path},
+                            )
+                        except Exception:
+                            pass
 
                     CameraHealthLog.objects.create(
                         camera_id=camera_obj.id,

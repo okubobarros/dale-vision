@@ -5,6 +5,7 @@ export type CameraStatus = "online" | "degraded" | "offline" | "unknown" | "erro
 export interface Camera {
   id: string
   store: string
+  store_name?: string | null
   name: string
   external_id?: string | null
   brand?: string | null
@@ -14,6 +15,13 @@ export interface Camera {
   active?: boolean
   status?: CameraStatus
   latency_ms?: number | null
+  camera_health?: {
+    checked_at?: string | null
+    status?: string | null
+    latency_ms?: number | null
+    error?: string | null
+    snapshot_url?: string | null
+  } | null
   last_seen_at?: string | null
   last_error?: string | null
   last_snapshot_url?: string | null

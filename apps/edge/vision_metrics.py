@@ -6,6 +6,8 @@ from typing import Any, Dict, Optional
 from django.db import connection
 from django.utils import timezone
 from django.utils.dateparse import parse_datetime
+from apps.core.models import Store
+from apps.core.services.journey_events import log_journey_event
 
 
 def _parse_ts(raw: Optional[str]):
@@ -110,8 +112,39 @@ def apply_vision_metrics(payload: Dict[str, Any]) -> None:
     ts_bucket = _parse_ts(bucket.get("start"))
     if not store_id:
         return
+    should_log_first = False
+    try:
+        with connection.cursor() as cursor:
+            cursor.execute(
+                "SELECT 1 FROM public.traffic_metrics WHERE store_id = %s LIMIT 1",
+                [store_id],
+            )
+            has_traffic = cursor.fetchone() is not None
+            cursor.execute(
+                "SELECT 1 FROM public.conversion_metrics WHERE store_id = %s LIMIT 1",
+                [store_id],
+            )
+            has_conversion = cursor.fetchone() is not None
+        should_log_first = not (has_traffic or has_conversion)
+    except Exception:
+        should_log_first = False
     traffic = data.get("traffic") or {}
     conversion = data.get("conversion") or {}
     _upsert_traffic_metrics(store_id, ts_bucket, traffic, zone_id=None)
     _upsert_conversion_metrics(store_id, ts_bucket, conversion)
-
+    if should_log_first:
+        try:
+            org_id = (
+                Store.objects.filter(id=store_id).values_list("org_id", flat=True).first()
+            )
+            log_journey_event(
+                org_id=str(org_id) if org_id else None,
+                event_name="first_metrics_received",
+                payload={
+                    "store_id": str(store_id),
+                    "ts_bucket": ts_bucket.isoformat() if ts_bucket else None,
+                },
+                source="app",
+            )
+        except Exception:
+            pass

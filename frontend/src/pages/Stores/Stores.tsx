@@ -1174,7 +1174,7 @@ const StoreCard = ({ store, onEdit, trialExpired }: StoreCardProps) => {
       <div className="mt-6 pt-4 border-t border-gray-100">
         <button 
           className="w-full bg-gray-50 hover:bg-gray-100 text-gray-700 py-2 px-4 rounded-lg text-sm font-medium transition-colors"
-          onClick={() => toast('Detalhes da loja em desenvolvimento', { icon: '🔧' })}
+          onClick={() => navigate(`/app/stores/${store.id}`)}
           aria-label="Ver detalhes da loja"
           title="Ver detalhes completos da loja"
         >

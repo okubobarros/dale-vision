@@ -819,8 +819,8 @@ const EdgeSetupModal = ({ open, onClose, defaultStoreId }: EdgeSetupModalProps) 
                   <span className="font-mono">02_TESTE_RAPIDO.bat</span>,{" "}
                   <span className="font-mono">03_INSTALAR_AUTOSTART.bat</span>,{" "}
                   <span className="font-mono">04_VERIFICAR_STATUS.bat</span>,{" "}
-                  <span className="font-mono">Diagnose.bat</span> e{" "}
-                  <span className="font-mono">logs/</span>.
+                  <span className="font-mono">dalevision-edge-agent</span> e{" "}
+                  <span className="font-mono">outros arquivos</span>.
                 </div>
               </div>
               <button
@@ -842,20 +842,9 @@ const EdgeSetupModal = ({ open, onClose, defaultStoreId }: EdgeSetupModalProps) 
               <div className="text-sm font-semibold text-gray-700 mb-2">3. Copiar Dados para arquivo .env local</div>
               <div className="text-xs text-gray-500 mb-3 space-y-1">
                 <div>
-                  1) Cole esse conteúdo no arquivo <span className="font-mono">.env</span> do ZIP (substitua tudo).
+                  1) Copie todo o conteúdo abaixo clicando no botao Copiar dados para .env.
                 </div>
-                <div>
-                  2) Abra o arquivo <span className="font-mono">.env</span> na pasta extraída.
-                </div>
-                <div>
-                  3) Cole o conteúdo do wizard no <span className="font-mono">.env</span> e salve.
-                </div>
-                <div>
-                  Depois, siga a sequência dos arquivos:{" "}
-                  <span className="font-mono">02_TESTE_RAPIDO.bat</span> (teste),{" "}
-                  <span className="font-mono">03_INSTALAR_AUTOSTART.bat</span> (produção) e{" "}
-                  <span className="font-mono">04_VERIFICAR_STATUS.bat</span> (confirmação).
-                </div>
+
               </div>
               <textarea
                 value={envContent}
@@ -863,9 +852,6 @@ const EdgeSetupModal = ({ open, onClose, defaultStoreId }: EdgeSetupModalProps) 
                 rows={6}
                 className="w-full rounded-lg border border-gray-200 bg-white px-3 py-2 text-xs font-mono text-gray-700"
               />
-              <div className="mt-2 text-[11px] text-gray-500">
-                Auto-update está desativado por padrão (AUTO_UPDATE_ENABLED=0).
-              </div>
               <button
                 type="button"
                 onClick={handleCopyEnv}
@@ -876,14 +862,10 @@ const EdgeSetupModal = ({ open, onClose, defaultStoreId }: EdgeSetupModalProps) 
               </button>
               <div className="text-xs text-gray-500 mb-3 space-y-1">
                 <div>
-                  3) Procure o arquivo <span className="font-mono">.env</span> na pasta extraída e substitua o conteúdo
+                  2) Procure o arquivo <span className="font-mono">.env</span> na pasta extraída e substitua o conteúdo
                   pelo texto copiado.
                 </div>
-                <div>
-                  4) Edite somente o arquivo <span className="font-mono">.env</span> (tipo "Arquivo ENV"). Ignore{" "}
-                  <span className="font-mono">.env.example</span> se ele aparecer.
-                </div>
-                <div>5) Salve o arquivo antes de fechar.</div>
+                <div>3) Salve o arquivo antes de fechar.</div>
               </div>
               {loadingCreds && (
                 <div className="mt-2 text-xs text-gray-500">Aguarde as credenciais do Edge...</div>

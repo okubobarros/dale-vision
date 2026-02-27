@@ -13,6 +13,7 @@ from apps.stores import views_edge_status
 from apps.edge import views as edge_views
 from apps.edge.views import EdgeEventsIngestView
 from rest_framework.test import APIRequestFactory, force_authenticate
+from rest_framework.response import Response
 
 
 class TrialStoreLimitTests(SimpleTestCase):
@@ -288,6 +289,96 @@ class StoreCamerasEndpointTests(SimpleTestCase):
 
         self.assertEqual(response.status_code, 201)
         self.assertEqual(response.data.get("id"), "cam-2")
+
+
+class StoreOverviewEndpointTests(SimpleTestCase):
+    def setUp(self):
+        self.factory = APIRequestFactory()
+        self.user = MagicMock(is_authenticated=True, is_staff=False, is_superuser=False)
+
+    @patch("apps.stores.views.DetectionEvent")
+    @patch("apps.stores.views.Employee")
+    @patch("apps.stores.views.Camera")
+    @patch("apps.stores.views.StoreViewSet.metrics_summary")
+    @patch("apps.stores.views.require_store_role")
+    def test_overview_payload(
+        self,
+        _require_role,
+        metrics_summary_mock,
+        camera_model,
+        employee_model,
+        event_model,
+    ):
+        store = MagicMock()
+        store.id = "11111111-1111-1111-1111-111111111111"
+        store.name = "Loja 1"
+        store.city = "São Paulo"
+        store.state = "SP"
+        store.status = "trial"
+        store.trial_ends_at = None
+        store.last_seen_at = None
+        store.last_error = None
+
+        metrics_summary_mock.return_value = Response({"totals": {"total_visitors": 0}})
+
+        camera_qs = MagicMock()
+        camera_qs.order_by.return_value = camera_qs
+        camera_qs.values.return_value = [
+            {
+                "id": "cam-1",
+                "name": "Entrada",
+                "status": "online",
+                "last_seen_at": None,
+                "last_snapshot_url": None,
+                "last_error": None,
+                "zone_id": None,
+            }
+        ]
+        camera_model.objects.filter.return_value = camera_qs
+
+        employee_qs = MagicMock()
+        employee_qs.order_by.return_value = employee_qs
+        employee_qs.values.return_value = [
+            {
+                "id": "emp-1",
+                "full_name": "Ana",
+                "role": "manager",
+                "email": "ana@dale.com",
+                "active": True,
+            }
+        ]
+        employee_model.objects.filter.return_value = employee_qs
+
+        event_qs = MagicMock()
+        event_qs.order_by.return_value = event_qs
+        event_qs.values.return_value = [
+            {
+                "id": "evt-1",
+                "title": "Fila formada",
+                "severity": "warning",
+                "status": "open",
+                "occurred_at": None,
+                "created_at": None,
+                "type": "queue",
+            }
+        ]
+        event_qs.__getitem__.return_value = event_qs.values.return_value
+        event_model.objects.filter.return_value = event_qs
+
+        view = StoreViewSet.as_view({"get": "overview"})
+        request = self.factory.get(f"/api/v1/stores/{store.id}/overview/")
+        force_authenticate(request, user=self.user)
+
+        with patch.object(StoreViewSet, "get_object", return_value=store):
+            response = view(request, pk=store.id)
+
+        self.assertEqual(response.status_code, 200)
+        self.assertEqual(response.data["store"]["id"], str(store.id))
+        self.assertIn("metrics_summary", response.data)
+        self.assertIn("edge_health", response.data)
+        self.assertIn("cameras", response.data)
+        self.assertIn("employees", response.data)
+        self.assertIn("last_alerts", response.data)
 
 
 class StoreCameraActiveTests(SimpleTestCase):

@@ -2,6 +2,7 @@
 import logging
 import os
 from datetime import datetime, timedelta
+from zoneinfo import ZoneInfo
 import time
 from django.core.cache import cache
 from rest_framework import viewsets, status, permissions
@@ -15,7 +16,7 @@ from django.db import connection, DatabaseError
 from django.utils import timezone
 from django.conf import settings
 from django.utils.dateparse import parse_datetime
-from apps.core.models import Store, OrgMember, Organization, Camera, Employee
+from apps.core.models import Store, OrgMember, Organization, Camera, Employee, DetectionEvent
 from apps.edge.models import EdgeToken
 from apps.cameras.limits import (
     enforce_trial_camera_limit,
@@ -23,6 +24,7 @@ from apps.cameras.limits import (
     get_camera_limit_for_store,
 )
 from apps.core.services.onboarding_progress import OnboardingProgressService
+from apps.core.services.journey_events import log_journey_event
 from apps.cameras.permissions import (
     require_store_role,
     get_user_role_for_store,
@@ -217,6 +219,20 @@ def _parse_dt(value: str | None, tz) -> datetime | None:
     if timezone.is_naive(dt):
         dt = timezone.make_aware(dt, tz)
     return dt
+
+
+def _get_org_timezone(store: Store):
+    tz_name = None
+    try:
+        org = Organization.objects.filter(id=store.org_id).values("timezone").first()
+        tz_name = org.get("timezone") if org else None
+    except Exception:
+        tz_name = None
+    tz_name = tz_name or settings.TIME_ZONE
+    try:
+        return ZoneInfo(tz_name)
+    except Exception:
+        return timezone.get_current_timezone()
 
 class StoreViewSet(viewsets.ModelViewSet):
     queryset = Store.objects.all()
@@ -775,7 +791,7 @@ class StoreViewSet(viewsets.ModelViewSet):
                         status.HTTP_403_FORBIDDEN,
                         deprecated_detail="Edge token inválido para esta loja.",
                     )
-            cameras_qs = Camera.objects.filter(store_id=store.id).order_by("-updated_at")
+            cameras_qs = Camera.objects.select_related("store").filter(store_id=store.id).order_by("-updated_at")
             serializer = CameraSerializer(cameras_qs, many=True)
             return Response(serializer.data)
 
@@ -907,6 +923,23 @@ class StoreViewSet(viewsets.ModelViewSet):
             )
         except Exception:
             pass
+        try:
+            log_journey_event(
+                org_id=str(store.org_id),
+                event_name="camera_added",
+                payload={
+                    "store_id": str(store.id),
+                    "camera_id": str(camera.id),
+                },
+                source="app",
+                meta={"path": request.path},
+            )
+        except Exception:
+            logger.exception(
+                "[STORE] failed to log camera_added store_id=%s camera_id=%s",
+                str(store.id),
+                str(camera.id),
+            )
         return Response(CameraSerializer(camera).data, status=status.HTTP_201_CREATED)
     
     def perform_create(self, serializer):
@@ -916,6 +949,21 @@ class StoreViewSet(viewsets.ModelViewSet):
         requested_org_id = payload.get("org_id") or payload.get("org")
         now = timezone.now()
         user_uuid = None
+
+        def _log_store_created(store: Store):
+            try:
+                log_journey_event(
+                    org_id=str(getattr(store, "org_id", None)) if getattr(store, "org_id", None) else None,
+                    event_name="store_created",
+                    payload={
+                        "store_id": str(store.id),
+                        "status": getattr(store, "status", None),
+                    },
+                    source="app",
+                    meta={"path": self.request.path},
+                )
+            except Exception:
+                logger.exception("[STORE] failed to log store_created store_id=%s", str(store.id))
 
         def _trial_defaults():
             if payload.get("status") or payload.get("trial_started_at") or payload.get("trial_ends_at"):
@@ -960,6 +1008,7 @@ class StoreViewSet(viewsets.ModelViewSet):
                 **_trial_defaults(),
             )
             logger.info("[STORE] created store_id=%s org_id=%s user_id=%s", str(store.id), str(requested_org_id), getattr(user, "id", None))
+            _log_store_created(store)
             return
 
         org_ids = get_user_org_ids(user)
@@ -988,6 +1037,7 @@ class StoreViewSet(viewsets.ModelViewSet):
                 **_trial_defaults(),
             )
             logger.info("[STORE] created store_id=%s org_id=%s user_id=%s", str(store.id), str(org_ids[0]), getattr(user, "id", None))
+            _log_store_created(store)
             return
         if len(org_ids) > 1:
             raise ValidationError("Informe org_id para criar a store.")
@@ -1044,6 +1094,7 @@ class StoreViewSet(viewsets.ModelViewSet):
                 **_trial_defaults(),
             )
             logger.info("[STORE] created store_id=%s org_id=%s user_id=%s", str(store.id), str(org.id), getattr(user, "id", None))
+            _log_store_created(store)
         except (ProgrammingError, OperationalError) as exc:
             print(f"[RBAC] falha ao criar org padrão: {exc}")
             raise ValidationError("Não foi possível criar organização padrão.")
@@ -1187,7 +1238,7 @@ class StoreViewSet(viewsets.ModelViewSet):
         store = self.get_object()
         require_store_role(request.user, str(store.id), ALLOWED_READ_ROLES)
 
-        tz = timezone.get_current_timezone()
+        tz = _get_org_timezone(store)
         period = (request.query_params.get("period") or "7d").lower()
         bucket = (request.query_params.get("bucket") or "day").lower()
         if bucket not in {"hour", "day"}:
@@ -1328,6 +1379,97 @@ class StoreViewSet(viewsets.ModelViewSet):
                 "zones": zones_breakdown,
             }
         )
+
+    @action(detail=True, methods=["get"], url_path="overview")
+    def overview(self, request, pk=None):
+        store = self.get_object()
+        require_store_role(request.user, str(store.id), ALLOWED_READ_ROLES)
+
+        summary_response = self.metrics_summary(request, pk=store.id)
+        metrics_summary = summary_response.data if isinstance(summary_response, Response) else {}
+
+        try:
+            camera_qs = Camera.objects.filter(store_id=store.id).order_by("name")
+        except Exception:
+            camera_qs = Camera.objects.filter(store_id=store.id)
+        cameras = list(
+            camera_qs.values(
+                "id",
+                "name",
+                "status",
+                "last_seen_at",
+                "last_snapshot_url",
+                "last_error",
+                "zone_id",
+            )
+        )
+        cameras_out = [
+            {
+                **row,
+                "id": str(row["id"]),
+                "zone_id": str(row["zone_id"]) if row.get("zone_id") else None,
+                "last_seen_at": row["last_seen_at"].isoformat() if row.get("last_seen_at") else None,
+            }
+            for row in cameras
+        ]
+
+        employees_qs = Employee.objects.filter(store_id=store.id, active=True).order_by("full_name")
+        employees = list(
+            employees_qs.values(
+                "id",
+                "full_name",
+                "role",
+                "email",
+                "active",
+            )
+        )
+        employees_out = [
+            {**row, "id": str(row["id"])}
+            for row in employees
+        ]
+
+        alerts_qs = (
+            DetectionEvent.objects.filter(store_id=store.id)
+            .order_by("-occurred_at")
+            .values(
+                "id",
+                "title",
+                "severity",
+                "status",
+                "occurred_at",
+                "created_at",
+                "type",
+            )[:10]
+        )
+        alerts_out = [
+            {
+                **row,
+                "id": str(row["id"]),
+                "occurred_at": row["occurred_at"].isoformat() if row.get("occurred_at") else None,
+                "created_at": row["created_at"].isoformat() if row.get("created_at") else None,
+            }
+            for row in alerts_qs
+        ]
+
+        payload = {
+            "store": {
+                "id": str(store.id),
+                "name": store.name,
+                "city": store.city,
+                "state": store.state,
+                "status": store.status,
+                "trial_ends_at": store.trial_ends_at.isoformat() if store.trial_ends_at else None,
+            },
+            "metrics_summary": metrics_summary,
+            "edge_health": {
+                "last_seen_at": store.last_seen_at.isoformat() if store.last_seen_at else None,
+                "last_error": store.last_error,
+            },
+            "cameras": cameras_out,
+            "employees": employees_out,
+            "last_alerts": alerts_out,
+        }
+        return Response(payload)
     
     @action(detail=False, methods=['get'])
     def network_dashboard(self, request):

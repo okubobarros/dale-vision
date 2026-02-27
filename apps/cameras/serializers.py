@@ -5,12 +5,15 @@ from .models import CameraROIConfig, CameraHealth
 class CameraSerializer(serializers.ModelSerializer):
     rtsp_url_masked = serializers.SerializerMethodField()
     latency_ms = serializers.SerializerMethodField()
+    store_name = serializers.SerializerMethodField()
+    camera_health = serializers.SerializerMethodField()
 
     class Meta:
         model = Camera
         fields = (
             "id",
             "store",
+            "store_name",
             "name",
             "external_id",
             "brand",
@@ -23,6 +26,7 @@ class CameraSerializer(serializers.ModelSerializer):
             "active",
             "status",
             "latency_ms",
+            "camera_health",
             "last_seen_at",
             "last_error",
             "last_snapshot_url",
@@ -73,6 +77,28 @@ class CameraSerializer(serializers.ModelSerializer):
         if not latest:
             return None
         return latest.get("latency_ms")
+
+    def get_store_name(self, obj):
+        store = getattr(obj, "store", None)
+        return getattr(store, "name", None)
+
+    def get_camera_health(self, obj):
+        latest = (
+            CameraHealthLog.objects.filter(camera_id=obj.id)
+            .order_by("-checked_at")
+            .values("checked_at", "status", "latency_ms", "error", "snapshot_url")
+            .first()
+        )
+        if not latest:
+            return None
+        checked_at = latest.get("checked_at")
+        return {
+            "checked_at": checked_at.isoformat() if checked_at else None,
+            "status": latest.get("status"),
+            "latency_ms": latest.get("latency_ms"),
+            "error": latest.get("error"),
+            "snapshot_url": latest.get("snapshot_url"),
+        }
 
 class CameraHealthLogSerializer(serializers.ModelSerializer):
     class Meta:

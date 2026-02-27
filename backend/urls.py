@@ -51,6 +51,7 @@ urlpatterns = [
 
     # ✅ Core
     path("api/v1/", include("apps.core.urls")),
+    path("api/v1/billing/", include("apps.billing.urls")),
 
     # ✅ Stores
     path("api/v1/", include("apps.stores.urls")),
