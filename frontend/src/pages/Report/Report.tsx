@@ -28,17 +28,6 @@ const downloadBlob = (blob: Blob, filename: string) => {
   window.URL.revokeObjectURL(url)
 }
 
-const severityClass = (severity?: string | null) => {
-  switch ((severity || "").toLowerCase()) {
-    case "critical":
-      return "bg-red-100 text-red-700"
-    case "warning":
-      return "bg-yellow-100 text-yellow-800"
-    default:
-      return "bg-blue-100 text-blue-700"
-  }
-}
-
 const Report = () => {
   const { data: stores } = useQuery<StoreSummary[]>({
     queryKey: ["stores-summary"],
