@@ -6,13 +6,12 @@ import { clearAuthStorage } from "../../services/authStorage"
 
 vi.mock("../../services/stores", () => ({
   storesService: {
-    getStores: vi.fn().mockResolvedValue([
+    getStoresSummary: vi.fn().mockResolvedValue([
       {
         id: "store-1",
         name: "Loja 1",
         status: "active",
         plan: "trial",
-        owner_email: "owner@dale.com",
         role: "admin",
       },
     ]),
@@ -109,7 +108,7 @@ describe("Dashboard trial upgrade CTA", () => {
 
   it("links Assinar agora to /app/upgrade", async () => {
     const { storesService } = await import("../../services/stores")
-    ;(storesService.getStores as unknown as vi.Mock).mockResolvedValueOnce([
+    ;(storesService.getStoresSummary as unknown as vi.Mock).mockResolvedValueOnce([
       {
         id: "store-1",
         name: "Loja 1",
@@ -138,7 +137,7 @@ describe("Dashboard auth gating", () => {
     renderWithProviders(<Dashboard />)
 
     await waitFor(() => {
-      expect(storesService.getStores).not.toHaveBeenCalled()
+      expect(storesService.getStoresSummary).not.toHaveBeenCalled()
     })
   })
 })

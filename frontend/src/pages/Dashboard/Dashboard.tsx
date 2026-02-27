@@ -3,7 +3,7 @@ import { useQuery } from "@tanstack/react-query"
 import { Link, useLocation } from "react-router-dom"
 import toast from "react-hot-toast"
 import { useAuth } from "../../contexts/useAuth"
-import { storesService, type Store, type StoreEdgeStatus } from "../../services/stores"
+import { storesService, type StoreSummary, type StoreEdgeStatus } from "../../services/stores"
 import type { StoreDashboard } from "../../types/dashboard"
 import { camerasService } from "../../services/cameras"
 import { formatReason, formatTimestamp } from "../../utils/edgeReasons"
@@ -146,9 +146,25 @@ const Dashboard = () => {
 
   const canFetchAuth = authReady && isAuthenticated
 
-  const { data: stores, isLoading: storesLoading } = useQuery<Store[]>({
+  const { data: stores, isLoading: storesLoading } = useQuery<StoreSummary[]>({
     queryKey: ["stores"],
-    queryFn: storesService.getStores,
+    queryFn: async () => {
+      try {
+        return await storesService.getStoresSummary()
+      } catch (error) {
+        console.warn("⚠️ Falha ao buscar stores summary. Usando view=min.", error)
+        const minimal = await storesService.getStoresMinimal()
+        return minimal.map((store) => ({
+          id: store.id,
+          name: store.name,
+          status: null,
+          blocked_reason: null,
+          trial_ends_at: null,
+          plan: null,
+          role: null,
+        }))
+      }
+    },
     staleTime: 60000,
     enabled: canFetchAuth,
   })
@@ -218,15 +234,14 @@ const Dashboard = () => {
   const canManageStore = selectedStoreRole
     ? ["owner", "admin", "manager"].includes(selectedStoreRole)
     : true
-  const storeLastSeenAt = selectedStoreItem?.last_seen_at ?? null
+  const storeLastSeenAt = null
   const lastSeenAt = storeLastSeenAt ?? getLastSeenAt(edgeStatus)
   const isEdgeOnlineByLastSeen = isRecentTimestamp(lastSeenAt, ONLINE_MAX_AGE_SEC)
   const selectedStoreStatus = selectedStoreItem?.status ?? null
   const selectedStorePlan =
     selectedStoreItem?.plan ??
     (selectedStoreStatus === "trial" ? "trial" : null)
-  const selectedStoreOwner =
-    selectedStoreItem?.owner_email || user?.email || null
+  const selectedStoreOwner = user?.email || null
 
   const { data: storeLimits } = useQuery({
     queryKey: ["store-limits", selectedStore],

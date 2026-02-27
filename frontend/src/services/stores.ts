@@ -38,6 +38,23 @@ export interface Store {
   role?: "owner" | "admin" | "manager" | "viewer" | null;
 }
 
+export interface StoreMinimal {
+  id: string;
+  name: string;
+  created_at: string | null;
+  is_active: boolean;
+}
+
+export interface StoreSummary {
+  id: string;
+  name: string;
+  status: StoreStatus | null;
+  blocked_reason?: string | null;
+  trial_ends_at?: string | null;
+  plan?: StorePlan | null;
+  role?: "owner" | "admin" | "manager" | "viewer" | null;
+}
+
 type StoreWriteFields = {
   description?: string;
   address?: string;
@@ -214,6 +231,54 @@ const normalizeEdgeStatus = (
 });
 
 export const storesService = {
+  // Listar lojas com payload mínimo (para telas rápidas)
+  async getStoresMinimal(): Promise<StoreMinimal[]> {
+    console.log("🔄 Buscando lojas (view=min)...")
+    try {
+      const response = await api.get("/v1/stores/", {
+        params: { view: "min" },
+        timeout: 20000,
+      });
+      const payload = response.data;
+      const stores = Array.isArray(payload)
+        ? payload
+        : Array.isArray(payload?.data)
+        ? payload.data
+        : Array.isArray(payload?.results)
+        ? payload.results
+        : [];
+      console.log(`✅ Encontradas ${stores?.length || 0} lojas (min)`);
+      return stores;
+    } catch (error) {
+      console.error("❌ Erro ao buscar lojas (min):", error);
+      throw normalizeApiError(error, "Falha ao carregar lojas.");
+    }
+  },
+
+  // Listar lojas com payload summary (status/role/plan)
+  async getStoresSummary(): Promise<StoreSummary[]> {
+    console.log("🔄 Buscando lojas (view=summary)...")
+    try {
+      const response = await api.get("/v1/stores/", {
+        params: { view: "summary" },
+        timeout: 20000,
+      });
+      const payload = response.data;
+      const stores = Array.isArray(payload)
+        ? payload
+        : Array.isArray(payload?.data)
+        ? payload.data
+        : Array.isArray(payload?.results)
+        ? payload.results
+        : [];
+      console.log(`✅ Encontradas ${stores?.length || 0} lojas (summary)`);
+      return stores;
+    } catch (error) {
+      console.error("❌ Erro ao buscar lojas (summary):", error);
+      throw normalizeApiError(error, "Falha ao carregar lojas.");
+    }
+  },
+
   // Listar todas as lojas do usuário
   async getStores(): Promise<Store[]> {
     console.log("🔄 Buscando lojas... (fetching stores)")

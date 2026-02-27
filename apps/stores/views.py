@@ -1,6 +1,8 @@
 # apps/stores/views.py 
 import logging
 import os
+import time
+from django.core.cache import cache
 from rest_framework import viewsets, status, permissions
 from rest_framework.decorators import action
 from rest_framework.exceptions import PermissionDenied, ValidationError, NotFound
@@ -241,7 +243,109 @@ class StoreViewSet(viewsets.ModelViewSet):
     
     def list(self, request):
         """Sobrescreve list para retornar formato personalizado - MANTENHA ESTE!"""
+        view = request.query_params.get("view")
         stores = self.get_queryset()
+
+        if view in ("min", "summary"):
+            start_ts = time.monotonic()
+            try:
+                user = request.user if request.user and request.user.is_authenticated else None
+                user_key = "anon"
+                if user:
+                    user_key = str(getattr(user, "id", "unknown"))
+                org_ids = get_user_org_ids(user) if user else []
+                org_key = ",".join(sorted({str(o) for o in org_ids if o}))[:200]
+                cache_key = f"stores:list:{view}:u={user_key}:orgs={org_key}"
+                cached = cache.get(cache_key)
+                if cached:
+                    return Response(cached)
+            except Exception:
+                cache_key = None
+
+            if view == "min":
+                rows = list(
+                    stores.values("id", "name", "created_at", "status")
+                )
+                data = [
+                    {
+                        "id": str(row["id"]),
+                        "name": row.get("name"),
+                        "created_at": row.get("created_at").isoformat() if row.get("created_at") else None,
+                        "is_active": row.get("status") in ("active", "trial"),
+                    }
+                    for row in rows
+                ]
+                payload = {
+                    "status": "success",
+                    "count": len(data),
+                    "data": data,
+                    "timestamp": timezone.now().isoformat(),
+                }
+            else:
+                rows = list(
+                    stores.values("id", "name", "status", "blocked_reason", "trial_ends_at", "org_id")
+                )
+                role_map = {}
+                if request.user and request.user.is_authenticated:
+                    if request.user.is_staff or request.user.is_superuser:
+                        role_map = {str(row.get("org_id")): "owner" for row in rows}
+                    else:
+                        try:
+                            user_uuid = ensure_user_uuid(request.user)
+                            org_ids = {row.get("org_id") for row in rows if row.get("org_id")}
+                            members = OrgMember.objects.filter(
+                                org_id__in=list(org_ids),
+                                user_id=user_uuid,
+                            ).values("org_id", "role")
+                            role_map = {str(m["org_id"]): m["role"] for m in members}
+                        except Exception:
+                            role_map = {}
+
+                data = []
+                for row in rows:
+                    status_value = row.get("status")
+                    blocked_reason = row.get("blocked_reason")
+                    if request.user and (request.user.is_staff or request.user.is_superuser):
+                        if status_value == "blocked" and blocked_reason == "trial_expired":
+                            status_value = "trial"
+                            blocked_reason = None
+                    data.append({
+                        "id": str(row["id"]),
+                        "name": row.get("name"),
+                        "status": status_value,
+                        "blocked_reason": blocked_reason,
+                        "trial_ends_at": row.get("trial_ends_at").isoformat() if row.get("trial_ends_at") else None,
+                        "plan": "trial" if status_value == "trial" else None,
+                        "role": role_map.get(str(row.get("org_id"))),
+                    })
+
+                payload = {
+                    "status": "success",
+                    "count": len(data),
+                    "data": data,
+                    "timestamp": timezone.now().isoformat(),
+                }
+
+            duration_ms = int((time.monotonic() - start_ts) * 1000)
+            try:
+                log_key = f"stores:list:log:{view}"
+                if cache.add(log_key, True, timeout=30):
+                    logger.info(
+                        "[STORE] list view=%s duration_ms=%s count=%s",
+                        view,
+                        duration_ms,
+                        len(payload.get("data", [])),
+                    )
+            except Exception:
+                pass
+
+            if cache_key:
+                try:
+                    cache.set(cache_key, payload, timeout=30)
+                except Exception:
+                    pass
+            return Response(payload)
+
         serializer = self.get_serializer(stores, many=True)
         data = list(serializer.data)
         if request.user and request.user.is_authenticated:

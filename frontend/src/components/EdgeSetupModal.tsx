@@ -1,9 +1,9 @@
-import { useEffect, useMemo, useRef, useState } from "react"
+import { useCallback, useEffect, useMemo, useRef, useState } from "react"
 import { useQuery } from "@tanstack/react-query"
 import { useNavigate } from "react-router-dom"
 import toast from "react-hot-toast"
 import api from "../services/api"
-import { storesService, type Store } from "../services/stores"
+import { storesService, type StoreMinimal } from "../services/stores"
 import { API_BASE_URL } from "../lib/api"
 
 type EdgeSetupModalProps = {
@@ -173,9 +173,9 @@ const EdgeSetupModal = ({ open, onClose, defaultStoreId }: EdgeSetupModalProps) 
   const docsUrl = siteUrl ? `${siteUrl.replace(/\/$/, "")}/docs/edge-agent` : "/docs/edge-agent"
   const canDownload = Boolean(downloadUrl)
 
-  const { data: stores } = useQuery<Store[]>({
+  const { data: stores } = useQuery<StoreMinimal[]>({
     queryKey: ["stores"],
-    queryFn: storesService.getStores,
+    queryFn: storesService.getStoresMinimal,
     enabled: open,
     staleTime: 60000,
   })
@@ -293,36 +293,39 @@ const EdgeSetupModal = ({ open, onClose, defaultStoreId }: EdgeSetupModalProps) 
 
   const resolvedCloudBaseUrl = cloudBaseUrl || DEFAULT_CLOUD_BASE_URL
 
-  const buildDashboardUrl = (storeIdValue?: string) => {
+  const buildDashboardUrl = useCallback((storeIdValue?: string) => {
     const params = new URLSearchParams()
     if (storeIdValue) {
       params.set("store_id", storeIdValue)
     }
     params.set("onboarding", "true")
     return `${DASHBOARD_BASE_URL}?${params.toString()}`
-  }
+  }, [])
 
-  const buildEnvPayload = (token: string, storeIdValue: string) => [
-    `CLOUD_BASE_URL=${resolvedCloudBaseUrl}`,
-    `STORE_ID=${storeIdValue}`,
-    `EDGE_TOKEN=${token}`,
-    `AGENT_ID=${agentId || DEFAULT_AGENT_ID}`,
-    `HEARTBEAT_INTERVAL_SECONDS=${HEARTBEAT_INTERVAL_SECONDS}`,
-    `CAMERA_HEARTBEAT_INTERVAL_SECONDS=${CAMERA_HEARTBEAT_INTERVAL_SECONDS}`,
-    `DASHBOARD_URL=${buildDashboardUrl(storeIdValue)}`,
-    `AUTO_UPDATE_ENABLED=${AUTO_UPDATE_ENABLED}`,
-    `UPDATE_CHANNEL=${UPDATE_CHANNEL}`,
-    `UPDATE_GITHUB_REPO=${UPDATE_GITHUB_REPO}`,
-    `UPDATE_INTERVAL_SECONDS=${UPDATE_INTERVAL_SECONDS}`,
-    `VISION_ENABLED=${VISION_ENABLED}`,
-    `VISION_BUCKET_SECONDS=${VISION_BUCKET_SECONDS}`,
-    `VISION_POLL_SECONDS=${VISION_POLL_SECONDS}`,
-    `VISION_SNAPSHOT_TIMEOUT_SECONDS=${VISION_SNAPSHOT_TIMEOUT_SECONDS}`,
-  ]
+  const buildEnvPayload = useCallback(
+    (token: string, storeIdValue: string) => [
+      `CLOUD_BASE_URL=${resolvedCloudBaseUrl}`,
+      `STORE_ID=${storeIdValue}`,
+      `EDGE_TOKEN=${token}`,
+      `AGENT_ID=${agentId || DEFAULT_AGENT_ID}`,
+      `HEARTBEAT_INTERVAL_SECONDS=${HEARTBEAT_INTERVAL_SECONDS}`,
+      `CAMERA_HEARTBEAT_INTERVAL_SECONDS=${CAMERA_HEARTBEAT_INTERVAL_SECONDS}`,
+      `DASHBOARD_URL=${buildDashboardUrl(storeIdValue)}`,
+      `AUTO_UPDATE_ENABLED=${AUTO_UPDATE_ENABLED}`,
+      `UPDATE_CHANNEL=${UPDATE_CHANNEL}`,
+      `UPDATE_GITHUB_REPO=${UPDATE_GITHUB_REPO}`,
+      `UPDATE_INTERVAL_SECONDS=${UPDATE_INTERVAL_SECONDS}`,
+      `VISION_ENABLED=${VISION_ENABLED}`,
+      `VISION_BUCKET_SECONDS=${VISION_BUCKET_SECONDS}`,
+      `VISION_POLL_SECONDS=${VISION_POLL_SECONDS}`,
+      `VISION_SNAPSHOT_TIMEOUT_SECONDS=${VISION_SNAPSHOT_TIMEOUT_SECONDS}`,
+    ],
+    [agentId, buildDashboardUrl, resolvedCloudBaseUrl]
+  )
 
   const envContent = useMemo(() => {
     return buildEnvPayload(edgeToken, storeId).join("\n")
-  }, [agentId, edgeToken, resolvedCloudBaseUrl, storeId])
+  }, [buildEnvPayload, edgeToken, storeId])
 
   const pollRemainingSec = () => {
     const startedAt = pollStartedAt.current

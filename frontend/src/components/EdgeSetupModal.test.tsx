@@ -6,8 +6,8 @@ import { renderWithProviders } from "../test/test-utils"
 
 vi.mock("../services/stores", () => ({
   storesService: {
-    getStores: vi.fn().mockResolvedValue([
-      { id: "store-1", name: "Loja 1", status: "active", plan: "trial" },
+    getStoresMinimal: vi.fn().mockResolvedValue([
+      { id: "store-1", name: "Loja 1", created_at: "2024-01-01T00:00:00Z", is_active: true },
     ]),
     getEdgeSetup: vi.fn().mockResolvedValue({
       edge_token: "token",
@@ -89,6 +89,10 @@ describe("EdgeSetupModal step 2", () => {
       "UPDATE_CHANNEL=stable",
       "UPDATE_GITHUB_REPO=daleship/dalevision-edge-agent",
       "UPDATE_INTERVAL_SECONDS=21600",
+      "VISION_ENABLED=1",
+      "VISION_BUCKET_SECONDS=30",
+      "VISION_POLL_SECONDS=5",
+      "VISION_SNAPSHOT_TIMEOUT_SECONDS=10",
     ])
   })
 

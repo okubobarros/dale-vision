@@ -40,7 +40,7 @@ export default function Onboarding() {
     if (isLoading || !isAuthenticated || storeId || step !== 1) return
     const checkStores = async () => {
       try {
-        const existing = await storesService.getStores()
+        const existing = await storesService.getStoresMinimal()
         if (!active) return
         if (existing.length > 0) {
           navigate("/app/dashboard?openEdgeSetup=1", { replace: true })

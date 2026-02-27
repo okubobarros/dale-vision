@@ -1,7 +1,7 @@
 import { useMemo, useState } from "react"
 import { useQuery } from "@tanstack/react-query"
 
-import { storesService, type Store } from "../../services/stores"
+import { storesService, type StoreMinimal } from "../../services/stores"
 import { alertsService, type NotificationLog } from "../../services/alerts"
 
 function formatDateBR(value?: string) {
@@ -22,7 +22,7 @@ export default function NotificationLogs() {
     error: storesError,
   } = useQuery({
     queryKey: ["stores"],
-    queryFn: storesService.getStores,
+    queryFn: storesService.getStoresMinimal,
   })
 
   const selectedStoreId = useMemo(() => {
@@ -33,7 +33,7 @@ export default function NotificationLogs() {
 
   const selectedStore = useMemo(() => {
     if (!stores || !selectedStoreId) return null
-    return stores.find((s: Store) => String(s.id) === String(selectedStoreId)) ?? null
+    return stores.find((s: StoreMinimal) => String(s.id) === String(selectedStoreId)) ?? null
   }, [stores, selectedStoreId])
 
   const logsQueryKey = useMemo(
@@ -105,7 +105,7 @@ export default function NotificationLogs() {
                 aria-label="Selecionar loja para logs"
                 title="Selecionar loja"
               >
-                {(stores ?? []).map((s: Store) => (
+                {(stores ?? []).map((s: StoreMinimal) => (
                   <option key={String(s.id)} value={String(s.id)}>
                     {s.name ?? `Loja ${s.id}`}
                   </option>
