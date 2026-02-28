@@ -1,4 +1,4 @@
-import { useEffect, useMemo } from "react"
+import { useEffect, useMemo, useState } from "react"
 import { useLocation, useNavigate } from "react-router-dom"
 import { useQuery } from "@tanstack/react-query"
 import { meService } from "../services/me"
@@ -15,12 +15,15 @@ const isAllowedPath = (pathname: string) =>
 const SubscriptionGuard = () => {
   const location = useLocation()
   const navigate = useNavigate()
+  const [allowReportFetch, setAllowReportFetch] = useState(false)
 
   const { data: status } = useQuery({
     queryKey: ["me-status"],
     queryFn: meService.getStatus,
     staleTime: 60000,
-    retry: 1,
+    retry: 0,
+    refetchOnWindowFocus: false,
+    refetchOnReconnect: false,
   })
 
   const isExpired = useMemo(() => {
@@ -32,15 +35,24 @@ const SubscriptionGuard = () => {
   const { data: report } = useQuery({
     queryKey: ["report-summary"],
     queryFn: () => meService.getReportSummary(),
-    enabled: isExpired,
+    enabled: isExpired && allowReportFetch,
     staleTime: 60000,
-    retry: 1,
+    retry: 0,
+    refetchOnWindowFocus: false,
+    refetchOnReconnect: false,
   })
 
   const hasReportData = useMemo(() => {
     if (!report) return false
     return (report.kpis?.total_visitors ?? 0) > 0 || (report.kpis?.total_alerts ?? 0) > 0
   }, [report])
+
+  useEffect(() => {
+    const timer = window.setTimeout(() => {
+      setAllowReportFetch(true)
+    }, 800)
+    return () => window.clearTimeout(timer)
+  }, [])
 
   useEffect(() => {
     if (typeof window === "undefined") return

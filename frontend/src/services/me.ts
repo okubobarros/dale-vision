@@ -35,7 +35,7 @@ export type ReportRangeParams = {
 
 export const meService = {
   async getStatus(): Promise<MeStatus> {
-    const response = await api.get("/v1/me/status/")
+    const response = await api.get("/v1/me/status/", { timeout: 2000 })
     return response.data as MeStatus
   },
   async getReportSummary(

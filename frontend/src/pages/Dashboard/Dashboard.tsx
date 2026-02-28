@@ -611,7 +611,7 @@ const Dashboard = () => {
     : 1
   const ceoPeakIdle = ceoIdle.reduce(
     (acc, cur) => (cur.idle_index > acc.idle_index ? cur : acc),
-    { idle_index: -1, ts_bucket: null }
+    { idle_index: -1, ts_bucket: null, staff_active_est: 0, footfall: 0 }
   )
   const nextStepBanner = showNextStepBanner ? (
     <div className="bg-white rounded-xl shadow-sm border border-gray-100 p-4 sm:p-6">
