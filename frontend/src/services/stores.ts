@@ -18,6 +18,8 @@ export interface Store {
   business_type_other?: string | null;
   pos_system?: string | null;
   pos_other?: string | null;
+  pos_integration_interest?: boolean | null;
+  avg_hourly_labor_cost?: number | null;
   hours_weekdays?: string | null;
   hours_saturday?: string | null;
   hours_sunday_holiday?: string | null;
@@ -65,6 +67,8 @@ type StoreWriteFields = {
   business_type_other?: string;
   pos_system?: string;
   pos_other?: string;
+  pos_integration_interest?: boolean;
+  avg_hourly_labor_cost?: number;
   hours_weekdays?: string;
   hours_saturday?: string;
   hours_sunday_holiday?: string;
@@ -264,6 +268,25 @@ export type StoreCeoDashboard = {
   meta?: Record<string, unknown>
 }
 
+export type StoreEvidenceItem = {
+  id: string
+  title?: string | null
+  severity?: string | null
+  status?: string | null
+  occurred_at?: string | null
+  camera_id?: string | null
+  zone_id?: string | null
+  metadata?: Record<string, unknown>
+  type?: string | null
+  media?: Array<{ url?: string | null; type?: string | null }>
+}
+
+export type StoreEvidenceResponse = {
+  store_id: string
+  hour_bucket: string
+  events: StoreEvidenceItem[]
+}
+
 const omitEmpty = <T extends Record<string, unknown>>(payload: T): Partial<T> => {
   const result: Partial<T> = {};
 
@@ -440,6 +463,16 @@ export const storesService = {
     return response.data as StoreCeoDashboard
   },
 
+  async getProductivityEvidence(
+    storeId: string,
+    hourBucket: string
+  ): Promise<StoreEvidenceResponse> {
+    const response = await api.get(`/v1/stores/${storeId}/productivity/evidence/`, {
+      params: { hour_bucket: hourBucket },
+    })
+    return response.data as StoreEvidenceResponse
+  },
+
   // Obter métricas no formato antigo (para compatibilidade se necessário)
   // NOTE: keep storeId in signature for API compatibility; reference it to avoid TS6133.
   async getStoreMetrics(storeId: string): Promise<StoreMetrics> {
@@ -526,6 +559,8 @@ export const storesService = {
       business_type_other,
       pos_system,
       pos_other,
+      pos_integration_interest,
+      avg_hourly_labor_cost,
       hours_weekdays,
       hours_saturday,
       hours_sunday_holiday,
@@ -543,6 +578,8 @@ export const storesService = {
       business_type_other,
       pos_system,
       pos_other,
+      pos_integration_interest,
+      avg_hourly_labor_cost,
       hours_weekdays,
       hours_saturday,
       hours_sunday_holiday,
@@ -566,6 +603,8 @@ export const storesService = {
       business_type_other,
       pos_system,
       pos_other,
+      pos_integration_interest,
+      avg_hourly_labor_cost,
       hours_weekdays,
       hours_saturday,
       hours_sunday_holiday,
@@ -583,6 +622,8 @@ export const storesService = {
       business_type_other,
       pos_system,
       pos_other,
+      pos_integration_interest,
+      avg_hourly_labor_cost,
       hours_weekdays,
       hours_saturday,
       hours_sunday_holiday,

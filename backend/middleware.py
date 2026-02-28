@@ -69,6 +69,7 @@ class TrialEnforcementMiddleware:
     def _is_whitelisted(self, path: str) -> bool:
         whitelist = (
             "/api/v1/report/summary",
+            "/api/v1/report/impact",
             "/api/v1/report/export",
             "/api/v1/billing/plans",
             "/api/v1/me/status",

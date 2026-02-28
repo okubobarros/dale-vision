@@ -5,6 +5,7 @@
 - Onboarding de câmera (SPEC-002)
 - Alertas base + ingest (SPEC-006)
 - Paywall de trial (SPEC-004)
+- Relatório de impacto (trial) e upgrade profissional (SPEC-005)
 
 ## Próximo (3-6 meses)
 - ROI flow completo (SPEC-003)

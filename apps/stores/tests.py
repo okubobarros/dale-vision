@@ -53,6 +53,11 @@ class StoreCamerasEndpointTests(SimpleTestCase):
     def setUp(self):
         self.factory = APIRequestFactory()
         self.user = MagicMock(is_authenticated=True, is_staff=False, is_superuser=False)
+        self._journey_patcher = patch("apps.stores.views.log_journey_event")
+        self._journey_patcher.start()
+
+    def tearDown(self):
+        self._journey_patcher.stop()
 
     def _mock_store(self, store_id):
         store = MagicMock()

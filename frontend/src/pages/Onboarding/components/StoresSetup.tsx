@@ -5,12 +5,36 @@ export type StoreDraft = {
   city: string
   state: string
   businessType: string
+  businessTypeOther: string
   posSystem: string
+  posSystemOther: string
+  posIntegrationInterest: boolean
   hoursWeekdays: string
   hoursSaturday: string
   hoursSundayHoliday: string
   camerasCount: string
 }
+
+const BUSINESS_TYPES = [
+  "Moda",
+  "Alimentação",
+  "Farmácia",
+  "Beleza",
+  "Casa & Decoração",
+  "Mercado",
+  "Serviços",
+  "Outro",
+]
+
+const POS_SYSTEMS = [
+  "Linx",
+  "TOTVS",
+  "Oracle Retail",
+  "SAP",
+  "Conta Azul",
+  "NCR",
+  "Outro",
+]
 
 export default function StoresSetup({
   value,
@@ -32,7 +56,10 @@ export default function StoresSetup({
     city: "",
     state: "",
     businessType: "",
+    businessTypeOther: "",
     posSystem: "",
+    posSystemOther: "",
+    posIntegrationInterest: false,
     hoursWeekdays: "",
     hoursSaturday: "",
     hoursSundayHoliday: "",
@@ -116,26 +143,99 @@ export default function StoresSetup({
           </div>
 
           <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
-            <Field label="Tipo de negócio (opcional)">
-              <input
-                className="w-full rounded-2xl border border-slate-200 bg-white px-4 py-3 outline-none text-slate-900 placeholder:text-slate-400
+            <Field label="Segmento do negócio (opcional)">
+              <select
+                className="w-full rounded-2xl border border-slate-200 bg-white px-4 py-3 outline-none text-slate-900
                            focus:ring-4 focus:ring-cyan-100 focus:border-cyan-300 transition"
-                placeholder="Ex: Moda, Alimentação, Farmácia"
                 value={form.businessType}
                 onChange={(e) => set("businessType", e.target.value)}
                 disabled={isSubmitting}
-              />
+              >
+                <option value="">Selecione...</option>
+                {BUSINESS_TYPES.map((item) => (
+                  <option key={item} value={item}>
+                    {item}
+                  </option>
+                ))}
+              </select>
             </Field>
 
             <Field label="Sistema de PDV (opcional)">
-              <input
-                className="w-full rounded-2xl border border-slate-200 bg-white px-4 py-3 outline-none text-slate-900 placeholder:text-slate-400
+              <select
+                className="w-full rounded-2xl border border-slate-200 bg-white px-4 py-3 outline-none text-slate-900
                            focus:ring-4 focus:ring-cyan-100 focus:border-cyan-300 transition"
-                placeholder="Ex: Linx, TOTVS, ERP"
                 value={form.posSystem}
                 onChange={(e) => set("posSystem", e.target.value)}
                 disabled={isSubmitting}
-              />
+              >
+                <option value="">Selecione...</option>
+                {POS_SYSTEMS.map((item) => (
+                  <option key={item} value={item}>
+                    {item}
+                  </option>
+                ))}
+              </select>
+            </Field>
+          </div>
+
+          {(form.businessType || "").toLowerCase() === "outro" && (
+            <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+              <Field label="Qual segmento?">
+                <input
+                  className="w-full rounded-2xl border border-slate-200 bg-white px-4 py-3 outline-none text-slate-900 placeholder:text-slate-400
+                             focus:ring-4 focus:ring-cyan-100 focus:border-cyan-300 transition"
+                  placeholder="Descreva o segmento"
+                  value={form.businessTypeOther}
+                  onChange={(e) => set("businessTypeOther", e.target.value)}
+                  disabled={isSubmitting}
+                />
+              </Field>
+            </div>
+          )}
+
+          {(form.posSystem || "").toLowerCase() === "outro" && (
+            <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+              <Field label="Qual PDV?">
+                <input
+                  className="w-full rounded-2xl border border-slate-200 bg-white px-4 py-3 outline-none text-slate-900 placeholder:text-slate-400
+                             focus:ring-4 focus:ring-cyan-100 focus:border-cyan-300 transition"
+                  placeholder="Descreva o sistema"
+                  value={form.posSystemOther}
+                  onChange={(e) => set("posSystemOther", e.target.value)}
+                  disabled={isSubmitting}
+                />
+              </Field>
+            </div>
+          )}
+
+          <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+            <Field label="Quer integrar PDV? (opcional)">
+              <div className="flex items-center gap-3">
+                <button
+                  type="button"
+                  onClick={() => set("posIntegrationInterest", true)}
+                  disabled={isSubmitting}
+                  className={`flex-1 rounded-2xl border px-4 py-2 text-sm font-semibold transition ${
+                    form.posIntegrationInterest
+                      ? "border-cyan-300 bg-cyan-50 text-cyan-800"
+                      : "border-slate-200 bg-white text-slate-600 hover:border-slate-300"
+                  }`}
+                >
+                  Sim, quero integrar
+                </button>
+                <button
+                  type="button"
+                  onClick={() => set("posIntegrationInterest", false)}
+                  disabled={isSubmitting}
+                  className={`flex-1 rounded-2xl border px-4 py-2 text-sm font-semibold transition ${
+                    !form.posIntegrationInterest
+                      ? "border-slate-300 bg-slate-100 text-slate-700"
+                      : "border-slate-200 bg-white text-slate-600 hover:border-slate-300"
+                  }`}
+                >
+                  Não agora
+                </button>
+              </div>
             </Field>
           </div>
 

@@ -22,6 +22,8 @@ export default function EmployeesSetup({
   onNext,
   employeesTotal,
   onEmployeesTotalChange,
+  avgHourlyLaborCost,
+  onAvgHourlyLaborCostChange,
   isSubmitting = false,
   submitError = "",
 }: {
@@ -31,6 +33,8 @@ export default function EmployeesSetup({
   onNext: (employees: EmployeeDraft[]) => Promise<void>
   employeesTotal: string
   onEmployeesTotalChange: (value: string) => void
+  avgHourlyLaborCost: string
+  onAvgHourlyLaborCostChange: (value: string) => void
   isSubmitting?: boolean
   submitError?: string
 }) {
@@ -40,6 +44,7 @@ export default function EmployeesSetup({
   const [email, setEmail] = useState("")
   const [touched, setTouched] = useState(false)
   const [totalTouched, setTotalTouched] = useState(false)
+  const [costTouched, setCostTouched] = useState(false)
 
   const errors = useMemo(() => {
     const e: Record<string, string> = {}
@@ -59,6 +64,14 @@ export default function EmployeesSetup({
     if (Number(employeesTotal) < 0) return "Informe um número positivo."
     return ""
   }, [employeesTotal])
+
+  const costError = useMemo(() => {
+    if (!avgHourlyLaborCost.trim()) return ""
+    const normalized = Number(avgHourlyLaborCost.replace(",", "."))
+    if (Number.isNaN(normalized)) return "Informe um valor válido."
+    if (normalized < 0) return "Informe um valor positivo."
+    return ""
+  }, [avgHourlyLaborCost])
 
   // ✅ Pode adicionar mesmo sem email
   const canAdd = Object.keys(errors).length === 0
@@ -94,6 +107,10 @@ export default function EmployeesSetup({
       setTotalTouched(true)
       return
     }
+    if (costError) {
+      setCostTouched(true)
+      return
+    }
     await onNext(employees)
   }
 
@@ -121,6 +138,27 @@ export default function EmployeesSetup({
             inputMode="numeric"
           />
           {totalTouched && totalError && <p className="mt-2 text-xs text-red-600">{totalError}</p>}
+        </div>
+      </div>
+
+      <div className="rounded-3xl border border-slate-200 bg-white/70 p-6 space-y-3 shadow-[0_18px_50px_rgba(15,23,42,0.08)]">
+        <h4 className="font-semibold text-slate-900">Custo médio/hora por funcionário (opcional)</h4>
+        <div>
+          <label className="text-sm font-medium text-slate-700">Valor em R$</label>
+          <input
+            className="mt-2 w-full rounded-2xl border border-slate-200 bg-white px-4 py-3 outline-none text-slate-900 placeholder:text-slate-400
+                       focus:ring-4 focus:ring-cyan-100 focus:border-cyan-300 transition"
+            placeholder="Ex: 28,50"
+            value={avgHourlyLaborCost}
+            onChange={(e) => onAvgHourlyLaborCostChange(e.target.value)}
+            onBlur={() => setCostTouched(true)}
+            disabled={isSubmitting}
+            inputMode="decimal"
+          />
+          {costTouched && costError && <p className="mt-2 text-xs text-red-600">{costError}</p>}
+          <p className="mt-2 text-xs text-slate-500">
+            Usamos este valor para estimar o custo de ociosidade no diagnóstico do trial.
+          </p>
         </div>
       </div>
 

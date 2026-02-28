@@ -22,6 +22,7 @@ export default function Onboarding() {
   const [storeSaving, setStoreSaving] = useState(false)
   const [storeError, setStoreError] = useState("")
   const [employeesTotal, setEmployeesTotal] = useState("")
+  const [avgHourlyLaborCost, setAvgHourlyLaborCost] = useState("")
   const [employeesSaving, setEmployeesSaving] = useState(false)
   const [employeesError, setEmployeesError] = useState("")
 
@@ -72,12 +73,28 @@ export default function Onboarding() {
     setStoreSaving(true)
     setStoreError("")
     try {
+      const businessType =
+        draft.businessType && draft.businessType.trim() ? draft.businessType.trim() : undefined
+      const businessTypeOther =
+        businessType?.toLowerCase() === "outro" && draft.businessTypeOther.trim()
+          ? draft.businessTypeOther.trim()
+          : undefined
+      const posSystem =
+        draft.posSystem && draft.posSystem.trim() ? draft.posSystem.trim() : undefined
+      const posOther =
+        posSystem?.toLowerCase() === "outro" && draft.posSystemOther.trim()
+          ? draft.posSystemOther.trim()
+          : undefined
+
       const created = await storesService.createStore({
         name: draft.name,
         city: draft.city,
         state: draft.state,
-        business_type: draft.businessType || undefined,
-        pos_system: draft.posSystem || undefined,
+        business_type: businessType,
+        business_type_other: businessTypeOther,
+        pos_system: posSystem,
+        pos_other: posOther,
+        pos_integration_interest: draft.posIntegrationInterest,
         hours_weekdays: draft.hoursWeekdays || undefined,
         hours_saturday: draft.hoursSaturday || undefined,
         hours_sunday_holiday: draft.hoursSundayHoliday || undefined,
@@ -177,7 +194,24 @@ export default function Onboarding() {
         }
       }
 
-      localStorage.setItem("demo_onboarding", JSON.stringify({ store, storeId, employees: list }))
+      if (avgHourlyLaborCost.trim()) {
+        const normalized = Number(avgHourlyLaborCost.replace(",", "."))
+        if (!Number.isNaN(normalized)) {
+          try {
+            await storesService.updateStore(storeId, { avg_hourly_labor_cost: normalized })
+          } catch (error) {
+            console.error("[Onboarding] update store avg_hourly_labor_cost failed", error)
+            setEmployeesError(
+              "Não foi possível salvar o custo/hora agora. Você pode atualizar depois."
+            )
+          }
+        }
+      }
+
+      localStorage.setItem(
+        "demo_onboarding",
+        JSON.stringify({ store, storeId, employees: list, avgHourlyLaborCost })
+      )
       navigate("/app/dashboard?openEdgeSetup=1", { replace: true })
     } catch (error) {
       console.error("[Onboarding] onboarding completion failed", error)
@@ -221,6 +255,8 @@ export default function Onboarding() {
         submitError={employeesError}
         employeesTotal={employeesTotal}
         onEmployeesTotalChange={setEmployeesTotal}
+        avgHourlyLaborCost={avgHourlyLaborCost}
+        onAvgHourlyLaborCostChange={setAvgHourlyLaborCost}
       />
             )}
           </div>

@@ -245,6 +245,113 @@ def _build_report_payload(*, org_id: str, store_id: str | None, start, end):
     return payload
 
 
+def _resolve_segment(*, org_id: str, store_id: str | None) -> str | None:
+    if store_id:
+        row = Store.objects.filter(id=store_id).values("business_type").first()
+        if row and row.get("business_type"):
+            return str(row["business_type"]).strip().lower()
+    row = Store.objects.filter(org_id=org_id, business_type__isnull=False).values("business_type").first()
+    if row and row.get("business_type"):
+        return str(row["business_type"]).strip().lower()
+    return None
+
+
+def _resolve_avg_hourly_cost(*, org_id: str, store_id: str | None) -> float:
+    default_cost = float(getattr(settings, "DEFAULT_AVG_HOURLY_LABOR_COST", 0) or 0)
+    if store_id:
+        row = Store.objects.filter(id=store_id).values("avg_hourly_labor_cost").first()
+        if row and row.get("avg_hourly_labor_cost") is not None:
+            return float(row["avg_hourly_labor_cost"])
+    row = (
+        Store.objects.filter(org_id=org_id, avg_hourly_labor_cost__isnull=False)
+        .values("avg_hourly_labor_cost")
+        .first()
+    )
+    if row and row.get("avg_hourly_labor_cost") is not None:
+        return float(row["avg_hourly_labor_cost"])
+    return float(default_cost)
+
+
+def _build_report_impact_payload(*, org_id: str, store_id: str | None, start, end):
+    payload = _build_report_payload(
+        org_id=org_id,
+        store_id=store_id,
+        start=start,
+        end=end,
+    )
+    store_ids = list(Store.objects.filter(org_id=org_id).values_list("id", flat=True))
+    if store_id:
+        store_ids = [sid for sid in store_ids if str(sid) == str(store_id)]
+
+    idle_seconds_total = 0
+    queue_wait_seconds_total = 0
+    if store_ids:
+        with connection.cursor() as cursor:
+            cursor.execute(
+                """
+                SELECT
+                    COALESCE(SUM(
+                        GREATEST(
+                            0,
+                            LEAST(
+                                1,
+                                CASE
+                                    WHEN cm.staff_active_est IS NULL OR cm.staff_active_est <= 0 THEN 0
+                                    WHEN tm.footfall IS NULL THEN 0
+                                    ELSE 1 - (tm.footfall::float / NULLIF(cm.staff_active_est::float, 0))
+                                END
+                            )
+                        ) * 3600
+                    ), 0) AS idle_seconds_total,
+                    COALESCE(SUM(
+                        COALESCE(cm.queue_avg_seconds, 0) * GREATEST(COALESCE(tm.footfall, 0), 1)
+                    ), 0) AS queue_wait_seconds_total
+                FROM public.conversion_metrics cm
+                LEFT JOIN public.traffic_metrics tm
+                  ON tm.store_id = cm.store_id AND tm.ts_bucket = cm.ts_bucket
+                WHERE cm.store_id = ANY(%s) AND cm.ts_bucket >= %s AND cm.ts_bucket < %s
+                """,
+                [store_ids, start, end],
+            )
+            row = cursor.fetchone() or (0, 0)
+            idle_seconds_total = float(row[0] or 0)
+            queue_wait_seconds_total = float(row[1] or 0)
+
+    avg_hourly_cost = _resolve_avg_hourly_cost(org_id=org_id, store_id=store_id)
+    segment = _resolve_segment(org_id=org_id, store_id=store_id)
+    segment_key = (segment or "default").strip().lower()
+    abandon_rates = getattr(settings, "TRIAL_QUEUE_ABANDON_RATE_BY_SEGMENT", {})
+    abandon_rate = float(abandon_rates.get(segment_key, abandon_rates.get("default", 0.08)))
+
+    idle_cost = (idle_seconds_total / 3600) * avg_hourly_cost
+    queue_cost = (queue_wait_seconds_total / 3600) * avg_hourly_cost * abandon_rate
+
+    period_days = max(1, int((end - start).total_seconds() / 86400))
+    scale_factor = 30 / period_days
+    potential_monthly = (idle_cost + queue_cost) * scale_factor
+
+    payload["impact"] = {
+        "idle_seconds_total": round(idle_seconds_total, 2),
+        "queue_wait_seconds_total": round(queue_wait_seconds_total, 2),
+        "avg_hourly_labor_cost": round(avg_hourly_cost, 2),
+        "queue_abandon_rate": round(abandon_rate, 4),
+        "cost_idle": round(idle_cost, 2),
+        "cost_queue": round(queue_cost, 2),
+        "potential_monthly_estimated": round(potential_monthly, 2),
+        "currency": "BRL",
+        "estimated": True,
+        "method": "idle_proxy_from_staff_active_est_and_footfall",
+    }
+    payload["segment"] = segment or "default"
+    payload["features_blocked"] = [
+        "Produtividade por funcionário",
+        "Alertas configuráveis",
+        "Heatmap e benchmarking",
+        "Integração PDV",
+    ]
+    return payload
+
+
 class ReportSummaryView(APIView):
     permission_classes = [IsAuthenticated]
 
@@ -397,3 +504,58 @@ class ReportExportView(APIView):
                 return Response({"detail": "Falha ao gerar PDF."}, status=500)
 
         return Response({"detail": "Formato inválido."}, status=400)
+
+
+class ReportImpactView(APIView):
+    permission_classes = [IsAuthenticated]
+
+    def get(self, request):
+        org_ids = get_user_org_ids(request.user)
+        if not org_ids:
+            return Response(
+                {
+                    "period": "7d",
+                    "from": None,
+                    "to": None,
+                    "store_id": None,
+                    "stores_count": 0,
+                    "kpis": {
+                        "total_visitors": 0,
+                        "avg_dwell_seconds": 0,
+                        "avg_queue_seconds": 0,
+                        "avg_conversion_rate": 0,
+                        "total_alerts": 0,
+                    },
+                    "chart_footfall_by_day": [],
+                    "chart_footfall_by_hour": [],
+                    "alert_counts_by_type": [],
+                    "insights": [],
+                    "impact": {
+                        "idle_seconds_total": 0,
+                        "queue_wait_seconds_total": 0,
+                        "avg_hourly_labor_cost": 0,
+                        "queue_abandon_rate": 0,
+                        "cost_idle": 0,
+                        "cost_queue": 0,
+                        "potential_monthly_estimated": 0,
+                        "currency": "BRL",
+                        "estimated": True,
+                        "method": "idle_proxy_from_staff_active_est_and_footfall",
+                    },
+                    "segment": "default",
+                    "features_blocked": [],
+                }
+            )
+
+        org_id = str(org_ids[0])
+        store_id = request.query_params.get("store_id")
+        tz = _get_org_timezone(org_id)
+        start, end, period = _parse_date_range(request, tz)
+        payload = _build_report_impact_payload(
+            org_id=org_id,
+            store_id=store_id,
+            start=start,
+            end=end,
+        )
+        payload["period"] = period
+        return Response(payload)

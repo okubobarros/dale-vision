@@ -470,6 +470,16 @@ class EdgeEventsIngestView(APIView):
 
         # --- encaminhar ALERT do edge para o ingest do Alerts ---
         if event_name == "alert":
+            try:
+                insert_event_receipt_if_new(
+                    event_id=receipt_id,
+                    event_name=event_name,
+                    payload=payload,
+                    source=source or "edge",
+                )
+            except Exception:
+                logger.exception("[EDGE] alert receipt insert failed")
+
             ingest_payload = {
                 "store_id": data.get("store_id"),
                 "camera_id": data.get("camera_id"),

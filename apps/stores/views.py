@@ -1652,6 +1652,54 @@ class StoreViewSet(viewsets.ModelViewSet):
             "last_alerts": alerts_out,
         }
         return Response(payload)
+
+    @action(detail=True, methods=["get"], url_path="productivity/evidence")
+    def productivity_evidence(self, request, pk=None):
+        store = self.get_object()
+        require_store_role(request.user, str(store.id), ALLOWED_READ_ROLES)
+        self._require_subscription_for_store(store, "productivity_evidence")
+
+        tz = _get_org_timezone(store)
+        hour_bucket = request.query_params.get("hour_bucket")
+        start = _parse_dt(hour_bucket, tz)
+        if not start:
+            return _error_response(
+                "INVALID_HOUR_BUCKET",
+                "hour_bucket inválido.",
+                status.HTTP_400_BAD_REQUEST,
+                deprecated_detail="hour_bucket inválido.",
+            )
+        end = start + timedelta(hours=1)
+
+        events_qs = (
+            DetectionEvent.objects.filter(store_id=store.id, occurred_at__gte=start, occurred_at__lt=end)
+            .order_by("-occurred_at")
+            .values("id", "title", "severity", "status", "occurred_at", "camera_id", "zone_id", "metadata", "type")
+        )
+
+        events = [
+            {
+                "id": str(row["id"]),
+                "title": row.get("title"),
+                "severity": row.get("severity"),
+                "status": row.get("status"),
+                "occurred_at": row["occurred_at"].isoformat() if row.get("occurred_at") else None,
+                "camera_id": str(row["camera_id"]) if row.get("camera_id") else None,
+                "zone_id": str(row["zone_id"]) if row.get("zone_id") else None,
+                "metadata": row.get("metadata") or {},
+                "type": row.get("type"),
+                "media": [],
+            }
+            for row in events_qs[:12]
+        ]
+
+        return Response(
+            {
+                "store_id": str(store.id),
+                "hour_bucket": start.isoformat(),
+                "events": events,
+            }
+        )
     
     @action(detail=False, methods=['get'])
     def network_dashboard(self, request):

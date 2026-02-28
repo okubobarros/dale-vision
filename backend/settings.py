@@ -219,6 +219,19 @@ USE_TZ = True
 
 # Onboarding dynamic next-step
 ONBOARDING_RECENT_MINUTES = int(os.getenv("ONBOARDING_RECENT_MINUTES", "15"))
+# Report / Trial impact heuristics
+DEFAULT_AVG_HOURLY_LABOR_COST = float(os.getenv("DEFAULT_AVG_HOURLY_LABOR_COST", "0"))
+TRIAL_QUEUE_ABANDON_RATE_BY_SEGMENT = {
+    "default": float(os.getenv("TRIAL_QUEUE_ABANDON_RATE_DEFAULT", "0.08")),
+    "moda": float(os.getenv("TRIAL_QUEUE_ABANDON_RATE_MODA", "0.12")),
+    "alimentação": float(os.getenv("TRIAL_QUEUE_ABANDON_RATE_ALIMENTACAO", "0.06")),
+    "alimentacao": float(os.getenv("TRIAL_QUEUE_ABANDON_RATE_ALIMENTACAO", "0.06")),
+    "farmácia": float(os.getenv("TRIAL_QUEUE_ABANDON_RATE_FARMACIA", "0.05")),
+    "farmacia": float(os.getenv("TRIAL_QUEUE_ABANDON_RATE_FARMACIA", "0.05")),
+    "mercado": float(os.getenv("TRIAL_QUEUE_ABANDON_RATE_MERCADO", "0.07")),
+    "serviços": float(os.getenv("TRIAL_QUEUE_ABANDON_RATE_SERVICOS", "0.08")),
+    "servicos": float(os.getenv("TRIAL_QUEUE_ABANDON_RATE_SERVICOS", "0.08")),
+}
 # Static files (CSS, JavaScript, Images)
 STATIC_URL = 'static/'
 STATIC_ROOT = BASE_DIR / 'staticfiles'

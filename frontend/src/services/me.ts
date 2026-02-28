@@ -26,6 +26,23 @@ export type ReportSummary = {
   insights: string[]
 }
 
+export type ReportImpact = ReportSummary & {
+  impact: {
+    idle_seconds_total: number
+    queue_wait_seconds_total: number
+    avg_hourly_labor_cost: number
+    queue_abandon_rate: number
+    cost_idle: number
+    cost_queue: number
+    potential_monthly_estimated: number
+    currency: string
+    estimated: boolean
+    method: string
+  }
+  segment?: string | null
+  features_blocked?: string[]
+}
+
 export type ReportRangeParams = {
   store_id?: string | null
   from?: string | null
@@ -50,6 +67,19 @@ export const meService = {
     if (range?.period) params.period = range.period
     const response = await api.get("/v1/report/summary/", { params })
     return response.data as ReportSummary
+  },
+  async getReportImpact(
+    storeId?: string | null,
+    range?: ReportRangeParams
+  ): Promise<ReportImpact> {
+    const params: Record<string, string> = {}
+    if (storeId) params.store_id = storeId
+    if (range?.store_id) params.store_id = range.store_id
+    if (range?.from) params.from = range.from
+    if (range?.to) params.to = range.to
+    if (range?.period) params.period = range.period
+    const response = await api.get("/v1/report/impact/", { params })
+    return response.data as ReportImpact
   },
   async exportReport(
     format: "csv" | "pdf",

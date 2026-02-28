@@ -53,6 +53,30 @@ de dados e a forma de cálculo usada nos relatórios e dashboards.
 - **Cálculo**: normalização simples por hora: `1 - (staff_active_est / max_staff_active_est_no_periodo)`.
 - **Observação**: proxy MVP sem CV; é exibido como estimativa.
 
+## Relatório de Impacto (derivadas)
+
+### idle_seconds_total (Ociosidade total - estimado)
+- **Fonte**: `conversion_metrics.staff_active_est` + `traffic_metrics.footfall`.
+- **Cálculo**: `idle_index_proxy * 3600` por bucket (proxy), somado no período.
+- **Observação**: estimativa MVP; não representa tempo real de ociosidade.
+
+### queue_wait_seconds_total (Tempo total de fila - estimado)
+- **Fonte**: `conversion_metrics.queue_avg_seconds` + `traffic_metrics.footfall`.
+- **Cálculo**: `queue_avg_seconds * footfall` por bucket, somado no período.
+- **Observação**: aproximação para custo de fila.
+
+### cost_idle (Custo de ociosidade - estimado)
+- **Fonte**: `idle_seconds_total` e `stores.avg_hourly_labor_cost`.
+- **Cálculo**: `(idle_seconds_total / 3600) * avg_hourly_labor_cost`.
+
+### cost_queue (Custo de filas - estimado)
+- **Fonte**: `queue_wait_seconds_total`, `stores.avg_hourly_labor_cost`, taxa de abandono por segmento.
+- **Cálculo**: `(queue_wait_seconds_total / 3600) * avg_hourly_labor_cost * abandon_rate`.
+
+### potential_monthly_estimated (Potencial mensal - estimado)
+- **Fonte**: `cost_idle` + `cost_queue`.
+- **Cálculo**: projeção para 30 dias com base no período solicitado.
+
 ## Alertas (detection_events)
 
 ### total_alerts (Total de alertas)

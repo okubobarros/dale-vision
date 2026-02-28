@@ -38,10 +38,15 @@
 - `GET /api/v1/stores/{store_id}/limits/`
 - `GET /api/v1/stores/{store_id}/dashboard/`
 - `GET /api/v1/stores/{store_id}/ceo-dashboard/` (query: `period=day|7d`)
+- `GET /api/v1/stores/{store_id}/productivity/evidence/` (query: `hour_bucket`)
 - `GET /api/v1/stores/network_dashboard/`
 - `GET|POST /api/v1/stores/{store_id}/cameras/`
 - `PATCH /api/v1/stores/{store_id}/cameras/{camera_id}/` (ativa/desativa câmera)
 - `GET /api/v1/stores/{store_id}/metrics/summary/`
+
+Notas de payload (stores):
+- `avg_hourly_labor_cost` (numeric): custo médio/hora por funcionário (usado no diagnóstico do trial).
+- `pos_integration_interest` (boolean): interesse em integrar PDV.
 
 - `GET|POST /api/v1/cameras/`
 - `GET|PUT|PATCH|DELETE /api/v1/cameras/{camera_id}/`
@@ -57,6 +62,7 @@
 - `GET /api/v1/system/storage-status/` (staff-only)
 
 - `GET /api/v1/report/summary/`
+- `GET /api/v1/report/impact/`
 - `GET /api/v1/report/export/` (query: `format=csv|pdf`, `store_id`, `period`, `from`, `to`)
 
 - `GET|POST /api/alerts/alert-rules/`

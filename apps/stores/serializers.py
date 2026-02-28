@@ -28,6 +28,8 @@ class StoreSerializer(serializers.ModelSerializer):
             "business_type_other",
             "pos_system",
             "pos_other",
+            "pos_integration_interest",
+            "avg_hourly_labor_cost",
             "hours_weekdays",
             "hours_saturday",
             "hours_sunday_holiday",

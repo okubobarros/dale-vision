@@ -20,7 +20,7 @@ Jornada do dono da organização desde onboarding até operação recorrente.
 6. Adição de câmeras
 7. Validação de câmeras + ROI
 8. Dashboard + alertas
-9. Trial expira → relatório final + upgrade
+9. Trial expira → relatório final (diagnóstico de impacto) + upgrade
 10. Pós-upgrade: relatório contínuo com período customizado + export
 
 ## Fricções
@@ -32,3 +32,5 @@ Jornada do dono da organização desde onboarding até operação recorrente.
 ## Eventos e métricas
 - Tempo para primeira câmera ativa.
 - Conversão de trial.
+- Visualização do relatório de impacto.
+- Cliques em CTA de upgrade.

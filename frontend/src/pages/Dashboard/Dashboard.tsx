@@ -8,6 +8,7 @@ import {
   type StoreSummary,
   type StoreEdgeStatus,
   type StoreCeoDashboard,
+  type StoreEvidenceResponse,
 } from "../../services/stores"
 import type { StoreDashboard } from "../../types/dashboard"
 import { camerasService } from "../../services/cameras"
@@ -590,8 +591,6 @@ const Dashboard = () => {
 
   const [evidenceOpen, setEvidenceOpen] = useState(false)
   const [selectedEvidenceHour, setSelectedEvidenceHour] = useState<string | null>(null)
-  const evidenceEvents = (events ?? []).slice(0, 6)
-
   const openEvidence = (hourLabel?: string | null) => {
     setSelectedEvidenceHour(hourLabel || null)
     setEvidenceOpen(true)
@@ -613,6 +612,26 @@ const Dashboard = () => {
     (acc, cur) => (cur.idle_index > acc.idle_index ? cur : acc),
     { idle_index: -1, ts_bucket: null, staff_active_est: 0, footfall: 0 }
   )
+
+  const {
+    data: evidenceData,
+    isLoading: evidenceLoading,
+    error: evidenceErrorRaw,
+  } = useQuery<StoreEvidenceResponse>({
+    queryKey: ["store-evidence", selectedStore, selectedEvidenceHour],
+    queryFn: () =>
+      storesService.getProductivityEvidence(
+        selectedStore,
+        selectedEvidenceHour || ""
+      ),
+    enabled:
+      evidenceOpen &&
+      Boolean(selectedStore && selectedStore !== ALL_STORES_VALUE && selectedEvidenceHour),
+    staleTime: 30000,
+    retry: 1,
+  })
+  const evidenceError =
+    evidenceErrorRaw instanceof Error ? evidenceErrorRaw.message : null
   const nextStepBanner = showNextStepBanner ? (
     <div className="bg-white rounded-xl shadow-sm border border-gray-100 p-4 sm:p-6">
       <h3 className="text-lg font-bold text-gray-800">Próximo passo</h3>
@@ -1468,13 +1487,21 @@ const Dashboard = () => {
               </button>
             </div>
 
-            {evidenceEvents.length === 0 ? (
+            {evidenceLoading ? (
+              <div className="mt-6 grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4">
+                {[1, 2, 3].map((i) => (
+                  <div key={i} className="h-40 rounded-xl bg-gray-100 animate-pulse" />
+                ))}
+              </div>
+            ) : evidenceError ? (
+              <div className="mt-6 text-sm text-red-600">{evidenceError}</div>
+            ) : (evidenceData?.events?.length ?? 0) === 0 ? (
               <div className="mt-6 text-sm text-gray-500">
                 Nenhum evento registrado. Evidências reais aparecem após ativar CV.
               </div>
             ) : (
               <div className="mt-6 grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4">
-                {evidenceEvents.map((event) => (
+                {evidenceData?.events.map((event) => (
                   <div key={event.id} className="rounded-xl border border-gray-100 overflow-hidden">
                     <div className="relative aspect-video bg-slate-200">
                       <div className="absolute inset-0 bg-slate-300 blur-md" />
@@ -1484,7 +1511,7 @@ const Dashboard = () => {
                     </div>
                     <div className="p-3">
                       <div className="text-xs text-gray-400">
-                        {formatTimeSafe(event.occurred_at || event.created_at)}
+                        {formatTimeSafe(event.occurred_at)}
                       </div>
                       <div className="text-sm font-semibold text-gray-800 mt-1 line-clamp-2">
                         {event.title}

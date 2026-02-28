@@ -124,6 +124,8 @@ class Store(UnmanagedModel):
     business_type_other = models.TextField(null=True, blank=True)
     pos_system = models.TextField(null=True, blank=True)
     pos_other = models.TextField(null=True, blank=True)
+    pos_integration_interest = models.BooleanField(default=False)
+    avg_hourly_labor_cost = models.DecimalField(null=True, blank=True, max_digits=12, decimal_places=2)
     hours_weekdays = models.TextField(null=True, blank=True)
     hours_saturday = models.TextField(null=True, blank=True)
     hours_sunday_holiday = models.TextField(null=True, blank=True)

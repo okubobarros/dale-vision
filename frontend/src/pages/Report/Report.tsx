@@ -1,7 +1,7 @@
 import { useMemo, useState, useEffect } from "react"
 import { useQuery } from "@tanstack/react-query"
 import { Link } from "react-router-dom"
-import { meService, type ReportSummary } from "../../services/me"
+import { meService, type ReportImpact } from "../../services/me"
 import { storesService, type StoreSummary } from "../../services/stores"
 import { trackJourneyEvent, trackJourneyEventOnce } from "../../services/journey"
 
@@ -37,9 +37,9 @@ const Report = () => {
   const [selectedStore, setSelectedStore] = useState<string>("")
   const [exporting, setExporting] = useState<"csv" | "pdf" | null>(null)
 
-  const { data, isLoading, error } = useQuery<ReportSummary>({
-    queryKey: ["report-summary", selectedStore],
-    queryFn: () => meService.getReportSummary(selectedStore || null),
+  const { data, isLoading, error } = useQuery<ReportImpact>({
+    queryKey: ["report-impact", selectedStore],
+    queryFn: () => meService.getReportImpact(selectedStore || null),
     staleTime: 60000,
     retry: 1,
   })
@@ -178,6 +178,36 @@ const Report = () => {
           <div className="text-2xl font-bold text-gray-800 mt-2">
             {formatPercent(data?.kpis?.avg_conversion_rate)}
           </div>
+        </div>
+      </div>
+
+      <div className="grid grid-cols-1 lg:grid-cols-3 gap-4">
+        <div className="bg-white rounded-xl border border-amber-100 p-4 sm:p-6">
+          <div className="text-xs text-amber-600 font-semibold">Custo de ociosidade</div>
+          <div className="text-2xl font-bold text-gray-800 mt-2">
+            R$ {Math.round(data?.impact?.cost_idle ?? 0).toLocaleString("pt-BR")}
+          </div>
+          <p className="text-xs text-gray-500 mt-2">
+            Estimativa baseada no tempo ocioso e custo médio/hora.
+          </p>
+        </div>
+        <div className="bg-white rounded-xl border border-blue-100 p-4 sm:p-6">
+          <div className="text-xs text-blue-600 font-semibold">Custo das filas</div>
+          <div className="text-2xl font-bold text-gray-800 mt-2">
+            R$ {Math.round(data?.impact?.cost_queue ?? 0).toLocaleString("pt-BR")}
+          </div>
+          <p className="text-xs text-gray-500 mt-2">
+            Estimativa com taxa de abandono por segmento.
+          </p>
+        </div>
+        <div className="bg-white rounded-xl border border-emerald-100 p-4 sm:p-6">
+          <div className="text-xs text-emerald-600 font-semibold">Potencial mensal</div>
+          <div className="text-2xl font-bold text-gray-800 mt-2">
+            R$ {Math.round(data?.impact?.potential_monthly_estimated ?? 0).toLocaleString("pt-BR")}
+          </div>
+          <p className="text-xs text-gray-500 mt-2">
+            Projeção do período para 30 dias.
+          </p>
         </div>
       </div>
 
