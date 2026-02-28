@@ -227,6 +227,42 @@ export type RotateEdgeTokenResult =
   | ({ supported: true } & StoreEdgeSetupPayload)
   | { supported: false };
 
+export type StoreCeoDashboard = {
+  store_id: string
+  store_name: string
+  timezone: string
+  period: "day" | "7d"
+  generated_at: string
+  series: {
+    flow_by_hour: Array<{
+      ts_bucket: string | null
+      footfall: number
+      dwell_seconds_avg: number
+      hour_label?: string | null
+    }>
+    idle_index_by_hour: Array<{
+      ts_bucket: string | null
+      idle_index: number
+      staff_active_est: number
+      footfall: number
+    }>
+  }
+  kpis: {
+    avg_dwell_seconds: number
+    avg_queue_seconds: number
+    avg_conversion_rate: number
+    queue_now_seconds: number
+    queue_now_people: number
+    queue_now_bucket?: string | null
+    queue_now_estimated?: boolean
+  }
+  overlay: {
+    flow_peak_hour?: string | null
+    idle_peak_hour?: string | null
+    message?: string | null
+  }
+  meta?: Record<string, unknown>
+}
 
 const omitEmpty = <T extends Record<string, unknown>>(payload: T): Partial<T> => {
   const result: Partial<T> = {};
@@ -394,6 +430,14 @@ export const storesService = {
       console.error('❌ Erro ao buscar dashboard:', error);
       throw error;
     }
+  },
+
+  async getStoreCeoDashboard(
+    storeId: string,
+    params?: { period?: "day" | "7d" }
+  ): Promise<StoreCeoDashboard> {
+    const response = await api.get(`/v1/stores/${storeId}/ceo-dashboard/`, { params })
+    return response.data as StoreCeoDashboard
   },
 
   // Obter métricas no formato antigo (para compatibilidade se necessário)

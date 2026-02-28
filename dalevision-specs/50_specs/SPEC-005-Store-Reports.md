@@ -26,7 +26,12 @@ Resumo por **Org** com comparação entre lojas.
   - Evolução de Events críticos e **Alerts** por loja.
   - Tendências de ROI e impactos operacionais.
 
-### 3) ROI Dashboard (v1)
+### 3) Relatório contínuo (pós‑upgrade)
+- Período customizável (7d / 30d / 90d / custom).
+- KPIs, gráficos por hora e insights básicos.
+- Exportação CSV/PDF.
+
+### 4) ROI Dashboard (v1)
 Painel simples com ROI explicado, transparente e rastreável.
 - Entrada: métricas de performance e eventos.
 - Saída: ROI estimado com faixas e limites claros.
@@ -48,7 +53,7 @@ Painel simples com ROI explicado, transparente e rastreável.
 ## UX (v1)
 - Acesso por **Store** e por **Org** com filtros de período.
 - Estados: `idle`, `loading`, `ready`, `error`.
-- Exportação: CSV/PDF **TBD** (definir no `30_system/API_Contracts.md`).
+- Exportação: CSV/PDF disponível via `/api/v1/report/export/`.
 - Informar claramente limites do **Trial** quando aplicável.
 - Visual simples e comparável (cards + tabela de ranking).
 
@@ -57,11 +62,12 @@ Painel simples com ROI explicado, transparente e rastreável.
 ### Confirmadas
 - Autenticação, permissões e acesso por **Org/Store** já existentes.
 - Health e status via endpoints atuais de **Store** / **Camera** (ver `30_system/API_Contracts.md`).
+- `GET /api/v1/report/summary/` (KPIs, charts e insights)
+- `GET /api/v1/report/export/` (CSV/PDF)
 
 ### TBD (não inventar endpoints)
 - Endpoint(s) de relatórios semanal/mensal.
 - Endpoint de ROI Dashboard.
-- Exportação de relatório.
 
 Todos os endpoints novos devem ser definidos em `30_system/API_Contracts.md` antes de implementação.
 

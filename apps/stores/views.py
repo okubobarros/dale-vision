@@ -1380,6 +1380,188 @@ class StoreViewSet(viewsets.ModelViewSet):
             }
         )
 
+    @action(detail=True, methods=["get"], url_path="ceo-dashboard")
+    def ceo_dashboard(self, request, pk=None):
+        store = self.get_object()
+        require_store_role(request.user, str(store.id), ALLOWED_READ_ROLES)
+        self._require_subscription_for_store(store, "ceo_dashboard")
+
+        tz = _get_org_timezone(store)
+        period = (request.query_params.get("period") or "7d").lower()
+        if period not in {"day", "7d"}:
+            period = "7d"
+
+        end = timezone.localtime(timezone.now(), tz)
+        start = end - timedelta(days=1 if period == "day" else 7)
+
+        traffic_by_hour = []
+        conversion_by_hour = []
+
+        with connection.cursor() as cursor:
+            cursor.execute(
+                """
+                SELECT date_trunc('hour', ts_bucket AT TIME ZONE %s) AS bucket_local,
+                       COALESCE(SUM(footfall), 0) AS footfall,
+                       COALESCE(AVG(dwell_seconds_avg), 0) AS dwell_avg
+                FROM public.traffic_metrics
+                WHERE store_id = %s AND ts_bucket >= %s AND ts_bucket < %s
+                GROUP BY 1
+                ORDER BY 1 ASC
+                """,
+                [tz.key, str(store.id), start, end],
+            )
+            for row in cursor.fetchall():
+                bucket_local = row[0]
+                if bucket_local and timezone.is_naive(bucket_local):
+                    bucket_local = timezone.make_aware(bucket_local, tz)
+                traffic_by_hour.append(
+                    {
+                        "ts_bucket": bucket_local.isoformat() if bucket_local else None,
+                        "footfall": int(row[1] or 0),
+                        "dwell_seconds_avg": int(row[2] or 0),
+                        "hour_label": bucket_local.strftime("%H:00") if bucket_local else None,
+                    }
+                )
+
+            cursor.execute(
+                """
+                SELECT date_trunc('hour', ts_bucket AT TIME ZONE %s) AS bucket_local,
+                       COALESCE(AVG(queue_avg_seconds), 0) AS queue_avg_seconds,
+                       COALESCE(AVG(staff_active_est), 0) AS staff_active_est,
+                       COALESCE(AVG(conversion_rate), 0) AS conversion_rate
+                FROM public.conversion_metrics
+                WHERE store_id = %s AND ts_bucket >= %s AND ts_bucket < %s
+                GROUP BY 1
+                ORDER BY 1 ASC
+                """,
+                [tz.key, str(store.id), start, end],
+            )
+            for row in cursor.fetchall():
+                bucket_local = row[0]
+                if bucket_local and timezone.is_naive(bucket_local):
+                    bucket_local = timezone.make_aware(bucket_local, tz)
+                conversion_by_hour.append(
+                    {
+                        "ts_bucket": bucket_local.isoformat() if bucket_local else None,
+                        "queue_avg_seconds": int(row[1] or 0),
+                        "staff_active_est": int(row[2] or 0),
+                        "conversion_rate": float(row[3] or 0),
+                        "hour_label": bucket_local.strftime("%H:00") if bucket_local else None,
+                    }
+                )
+
+        with connection.cursor() as cursor:
+            cursor.execute(
+                """
+                SELECT ts_bucket, queue_avg_seconds, staff_active_est, conversion_rate
+                FROM public.conversion_metrics
+                WHERE store_id = %s
+                ORDER BY ts_bucket DESC
+                LIMIT 1
+                """,
+                [str(store.id)],
+            )
+            latest_row = cursor.fetchone()
+
+        latest_bucket = None
+        queue_now_seconds = 0
+        queue_now_people = 0
+        if latest_row:
+            latest_bucket = latest_row[0]
+            if latest_bucket and timezone.is_naive(latest_bucket):
+                latest_bucket = timezone.make_aware(latest_bucket, timezone.utc)
+            queue_now_seconds = int(latest_row[1] or 0)
+            queue_now_people = max(0, int(round(queue_now_seconds / 30)))
+
+        traffic_avg_dwell = 0
+        if traffic_by_hour:
+            traffic_avg_dwell = int(
+                round(sum(row["dwell_seconds_avg"] for row in traffic_by_hour) / len(traffic_by_hour))
+            )
+
+        conversion_avg_queue = 0
+        conversion_avg_rate = 0.0
+        if conversion_by_hour:
+            conversion_avg_queue = int(
+                round(sum(row["queue_avg_seconds"] for row in conversion_by_hour) / len(conversion_by_hour))
+            )
+            conversion_avg_rate = float(
+                sum(row["conversion_rate"] for row in conversion_by_hour) / len(conversion_by_hour)
+            )
+
+        max_staff = max((row["staff_active_est"] for row in conversion_by_hour), default=0)
+        traffic_map = {row["ts_bucket"]: row for row in traffic_by_hour if row.get("ts_bucket")}
+        conversion_map = {row["ts_bucket"]: row for row in conversion_by_hour if row.get("ts_bucket")}
+        all_buckets = sorted({*traffic_map.keys(), *conversion_map.keys()})
+
+        idle_index_by_hour = []
+        for bucket in all_buckets:
+            staff_active = conversion_map.get(bucket, {}).get("staff_active_est", 0)
+            footfall = traffic_map.get(bucket, {}).get("footfall", 0)
+            idle_index = 0.0
+            if max_staff > 0:
+                idle_index = max(0.0, min(1.0, 1 - (staff_active / max_staff)))
+            idle_index_by_hour.append(
+                {
+                    "ts_bucket": bucket,
+                    "idle_index": round(idle_index, 3),
+                    "staff_active_est": int(staff_active or 0),
+                    "footfall": int(footfall or 0),
+                }
+            )
+
+        flow_peak = max(traffic_by_hour, key=lambda x: x.get("footfall", 0), default=None)
+        idle_peak = max(idle_index_by_hour, key=lambda x: x.get("idle_index", 0), default=None)
+        flow_peak_label = flow_peak.get("hour_label") if flow_peak else None
+        idle_peak_label = None
+        if idle_peak:
+            try:
+                dt = datetime.fromisoformat(idle_peak.get("ts_bucket"))
+                idle_peak_label = dt.strftime("%H:00")
+            except Exception:
+                idle_peak_label = None
+
+        overlay_message = None
+        if flow_peak_label and idle_peak_label:
+            if flow_peak_label == idle_peak_label:
+                overlay_message = f"Pico de fluxo e ociosidade no mesmo horário ({flow_peak_label})."
+            else:
+                overlay_message = (
+                    f"Pico de fluxo às {flow_peak_label} e pico de ociosidade às {idle_peak_label}."
+                )
+
+        payload = {
+            "store_id": str(store.id),
+            "store_name": store.name,
+            "timezone": tz.key,
+            "period": period,
+            "generated_at": timezone.now().isoformat(),
+            "series": {
+                "flow_by_hour": traffic_by_hour,
+                "idle_index_by_hour": idle_index_by_hour,
+            },
+            "kpis": {
+                "avg_dwell_seconds": traffic_avg_dwell,
+                "avg_queue_seconds": conversion_avg_queue,
+                "avg_conversion_rate": conversion_avg_rate,
+                "queue_now_seconds": queue_now_seconds,
+                "queue_now_people": queue_now_people,
+                "queue_now_bucket": latest_bucket.isoformat() if latest_bucket else None,
+                "queue_now_estimated": True,
+            },
+            "overlay": {
+                "flow_peak_hour": flow_peak_label,
+                "idle_peak_hour": idle_peak_label,
+                "message": overlay_message,
+            },
+            "meta": {
+                "idle_index_estimated": True,
+                "idle_index_method": "staff_active_est_normalized",
+                "queue_now_method": "last_bucket_queue_avg_seconds",
+            },
+        }
+        return Response(payload)
+
     @action(detail=True, methods=["get"], url_path="overview")
     def overview(self, request, pk=None):
         store = self.get_object()

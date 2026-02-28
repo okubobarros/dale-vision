@@ -51,6 +51,23 @@ vi.mock("../../services/stores", () => ({
       cameras: [],
       store_status: "offline",
     }),
+    getStoreCeoDashboard: vi.fn().mockResolvedValue({
+      store_id: "store-1",
+      store_name: "Loja 1",
+      timezone: "America/Sao_Paulo",
+      period: "day",
+      generated_at: "2026-02-01T10:00:00Z",
+      series: { flow_by_hour: [], idle_index_by_hour: [] },
+      kpis: {
+        avg_dwell_seconds: 0,
+        avg_queue_seconds: 0,
+        avg_conversion_rate: 0,
+        queue_now_seconds: 0,
+        queue_now_people: 0,
+      },
+      overlay: {},
+      meta: {},
+    }),
   },
 }))
 

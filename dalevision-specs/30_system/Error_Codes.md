@@ -15,10 +15,15 @@ Compatibilidade temporária:
 
 ## Códigos mínimos
 
-### PAYWALL_TRIAL_LIMIT
-- Quando: trial expirado ou uso bloqueado por paywall de trial.
-- HTTP: 402
+### TRIAL_EXPIRED
+- Quando: trial expirado e sem assinatura ativa.
+- HTTP: 402 (ou 403, quando necessário)
 - Mensagem UX sugerida: "Seu trial terminou. Assine um plano para continuar."
+
+### PAYWALL_TRIAL_LIMIT
+- Quando: limite de trial atingido (lojas/câmeras) antes da expiração.
+- HTTP: 402
+- Mensagem UX sugerida: "Limite do trial atingido. Assine um plano para continuar."
 
 ### LIMIT_CAMERAS_REACHED
 - Quando: limite de câmeras do trial atingido.

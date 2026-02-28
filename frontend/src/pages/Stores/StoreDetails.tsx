@@ -68,7 +68,7 @@ const StoreDetails = () => {
   })
 
   const metrics = data?.metrics_summary?.totals
-  const cameras = data?.cameras ?? []
+  const cameras = useMemo(() => data?.cameras ?? [], [data?.cameras])
   const employees = data?.employees ?? []
   const alerts = data?.last_alerts ?? []
 

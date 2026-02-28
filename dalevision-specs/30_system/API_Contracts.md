@@ -18,14 +18,17 @@
 - `GET /api/accounts/me/`
 - `POST /api/accounts/supabase/`
 - `GET /api/me/setup-state/`
+- `GET /api/v1/me/status/`
 - `GET /api/health/auth/`
 - `GET /api/health/schema/`
 
 - `GET /api/v1/onboarding/progress/`
 - `POST /api/v1/onboarding/step/complete/`
+- `GET /api/v1/onboarding/next-step/` (query: `store_id`)
 
 - `GET|POST /api/v1/stores/`
 - `GET|PUT|PATCH|DELETE /api/v1/stores/{store_id}/`
+- `GET /api/v1/stores/{store_id}/overview/`
 - `GET|POST /api/v1/employees/`
 - `GET /api/v1/stores/{store_id}/edge-status/`
 - `GET /api/v1/stores/{store_id}/edge-setup/`
@@ -34,9 +37,11 @@
 - `GET /api/v1/stores/{store_id}/edge-credentials/`
 - `GET /api/v1/stores/{store_id}/limits/`
 - `GET /api/v1/stores/{store_id}/dashboard/`
+- `GET /api/v1/stores/{store_id}/ceo-dashboard/` (query: `period=day|7d`)
 - `GET /api/v1/stores/network_dashboard/`
 - `GET|POST /api/v1/stores/{store_id}/cameras/`
 - `PATCH /api/v1/stores/{store_id}/cameras/{camera_id}/` (ativa/desativa câmera)
+- `GET /api/v1/stores/{store_id}/metrics/summary/`
 
 - `GET|POST /api/v1/cameras/`
 - `GET|PUT|PATCH|DELETE /api/v1/cameras/{camera_id}/`
@@ -50,6 +55,9 @@
 - `GET /api/v1/camera-health-logs/`
 
 - `GET /api/v1/system/storage-status/` (staff-only)
+
+- `GET /api/v1/report/summary/`
+- `GET /api/v1/report/export/` (query: `format=csv|pdf`, `store_id`, `period`, `from`, `to`)
 
 - `GET|POST /api/alerts/alert-rules/`
 - `GET|PUT|PATCH|DELETE /api/alerts/alert-rules/{id}/`
@@ -83,10 +91,8 @@ Campos opcionais:
 Observação: detalhes de validação e regras de ingestão devem referenciar `SPEC-007-Event-Pipeline.md`.
 
 ## Endpoints TBD (não implementar sem definição)
-- Relatórios semanais por Store (SPEC-005)
 - Relatórios mensais por Org (SPEC-005)
 - ROI Dashboard (SPEC-005)
-- Exportação de relatórios (SPEC-005)
 
 ## Perguntas abertas
 - Existe OpenAPI oficial atualizado além do Swagger gerado?

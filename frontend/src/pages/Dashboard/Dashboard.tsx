@@ -3,7 +3,12 @@ import { useQuery } from "@tanstack/react-query"
 import { Link, useLocation } from "react-router-dom"
 import toast from "react-hot-toast"
 import { useAuth } from "../../contexts/useAuth"
-import { storesService, type StoreSummary, type StoreEdgeStatus } from "../../services/stores"
+import {
+  storesService,
+  type StoreSummary,
+  type StoreEdgeStatus,
+  type StoreCeoDashboard,
+} from "../../services/stores"
 import type { StoreDashboard } from "../../types/dashboard"
 import { camerasService } from "../../services/cameras"
 import { formatReason, formatTimestamp } from "../../utils/edgeReasons"
@@ -117,6 +122,7 @@ const formatTimeSafe = (iso?: string | null) => {
 }
 
 const ALL_STORES_VALUE = "all"
+const CEO_PERIOD: "day" | "7d" = "day"
 
 
 const Dashboard = () => {
@@ -182,6 +188,14 @@ const Dashboard = () => {
     return selectedStoreOverride || ALL_STORES_VALUE
   }, [selectedStoreOverride, stores])
 
+  const selectedStoreItem = useMemo(
+    () => (stores ?? []).find((s) => s.id === selectedStore) ?? null,
+    [stores, selectedStore]
+  )
+  const selectedStoreStatus = selectedStoreItem?.status ?? null
+  const isTrialCeoMode =
+    selectedStore !== ALL_STORES_VALUE && selectedStoreStatus === "trial"
+
   const {
     data: dashboard,
     isLoading: isLoadingDashboard,
@@ -189,7 +203,7 @@ const Dashboard = () => {
   } = useQuery<StoreDashboard>({
     queryKey: ["store-dashboard", selectedStore],
     queryFn: () => storesService.getStoreDashboard(selectedStore),
-    enabled: canFetchAuth && selectedStore !== ALL_STORES_VALUE,
+    enabled: canFetchAuth && selectedStore !== ALL_STORES_VALUE && !isTrialCeoMode,
     staleTime: 30000,
   })
   const dashboardError =
@@ -229,10 +243,6 @@ const Dashboard = () => {
     },
     refetchIntervalInBackground: false,
   })
-  const selectedStoreItem = useMemo(
-    () => (stores ?? []).find((s) => s.id === selectedStore) ?? null,
-    [stores, selectedStore]
-  )
   const selectedStoreRole = selectedStoreItem?.role ?? null
   const canManageStore = selectedStoreRole
     ? ["owner", "admin", "manager"].includes(selectedStoreRole)
@@ -240,7 +250,6 @@ const Dashboard = () => {
   const storeLastSeenAt = null
   const lastSeenAt = storeLastSeenAt ?? getLastSeenAt(edgeStatus)
   const isEdgeOnlineByLastSeen = isRecentTimestamp(lastSeenAt, ONLINE_MAX_AGE_SEC)
-  const selectedStoreStatus = selectedStoreItem?.status ?? null
   const selectedStorePlan =
     selectedStoreItem?.plan ??
     (selectedStoreStatus === "trial" ? "trial" : null)
@@ -262,6 +271,20 @@ const Dashboard = () => {
   }, {
     enabled: canFetchAuth && Boolean(selectedStore && selectedStore !== ALL_STORES_VALUE),
   })
+
+  const {
+    data: ceoDashboard,
+    isLoading: ceoLoading,
+    error: ceoErrorRaw,
+  } = useQuery<StoreCeoDashboard>({
+    queryKey: ["store-ceo-dashboard", selectedStore, CEO_PERIOD],
+    queryFn: () => storesService.getStoreCeoDashboard(selectedStore, { period: CEO_PERIOD }),
+    enabled: canFetchAuth && isTrialCeoMode,
+    staleTime: 30000,
+    retry: 1,
+  })
+  const ceoError =
+    ceoErrorRaw instanceof Error ? ceoErrorRaw.message : null
 
   const resolveEvent = useResolveEvent()
   const ignoreEvent = useIgnoreEvent()
@@ -564,6 +587,32 @@ const Dashboard = () => {
     statusCards
   )
   const emptySubtitle = "Conecte uma câmera para começar"
+
+  const [evidenceOpen, setEvidenceOpen] = useState(false)
+  const [selectedEvidenceHour, setSelectedEvidenceHour] = useState<string | null>(null)
+  const evidenceEvents = (events ?? []).slice(0, 6)
+
+  const openEvidence = (hourLabel?: string | null) => {
+    setSelectedEvidenceHour(hourLabel || null)
+    setEvidenceOpen(true)
+  }
+
+  const closeEvidence = () => {
+    setEvidenceOpen(false)
+  }
+
+  const ceoFlow = ceoDashboard?.series?.flow_by_hour ?? []
+  const ceoIdle = ceoDashboard?.series?.idle_index_by_hour ?? []
+  const maxFootfall = ceoFlow.length
+    ? Math.max(...ceoFlow.map((item) => item.footfall), 1)
+    : 1
+  const maxIdle = ceoIdle.length
+    ? Math.max(...ceoIdle.map((item) => item.idle_index), 1)
+    : 1
+  const ceoPeakIdle = ceoIdle.reduce(
+    (acc, cur) => (cur.idle_index > acc.idle_index ? cur : acc),
+    { idle_index: -1, ts_bucket: null }
+  )
   const nextStepBanner = showNextStepBanner ? (
     <div className="bg-white rounded-xl shadow-sm border border-gray-100 p-4 sm:p-6">
       <h3 className="text-lg font-bold text-gray-800">Próximo passo</h3>
@@ -701,7 +750,7 @@ const Dashboard = () => {
       : "bg-gray-100 text-gray-800"
 
   const showStoreIndicators =
-    Boolean(selectedStore) && selectedStore !== ALL_STORES_VALUE
+    Boolean(selectedStore) && selectedStore !== ALL_STORES_VALUE && !isTrialCeoMode
   const hasRealDashboardData = Boolean(dashboard?.metrics || dashboard?.insights)
 
   const eventStatusClass = (status: string) =>
@@ -921,88 +970,210 @@ const Dashboard = () => {
 
       {selectedStore !== ALL_STORES_VALUE && (
         <div className="space-y-4 sm:space-y-6">
-          <div className="bg-white rounded-xl shadow-sm border border-gray-100 p-4 sm:p-6">
-            <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3">
-              <div>
-                <h2 className="text-lg sm:text-xl font-bold text-gray-800">
-                  Store Health
-                </h2>
-                <p className="text-sm text-gray-500 mt-1">
-                  Última comunicação:{" "}
-                  <span className="font-semibold text-gray-700">
-                    {formatLastSeenDisplay(lastSeenAt)}
-                  </span>
-                </p>
-                    {edgeStatus?.store_status_reason && (
-                      <p className="text-xs text-gray-500 mt-1">
-                        {formatReason(edgeStatus.store_status_reason)}
-                      </p>
-                    )}
-                    {edgeStatus?.last_error && (
-                      <p className="text-xs text-red-600 mt-2">
-                        Erro: {edgeStatus.last_error}
-                      </p>
-                    )}
+          {isTrialCeoMode && (
+            <div className="space-y-4 sm:space-y-6">
+              <div className="bg-white rounded-xl shadow-sm border border-gray-100 p-4 sm:p-6">
+                <div className="flex items-center justify-between gap-3 mb-4">
+                  <div>
+                    <h2 className="text-lg sm:text-xl font-bold text-gray-800">
+                      Pulso da Produtividade (RH)
+                    </h2>
+                    <p className="text-sm text-gray-500">
+                      Índice de ociosidade por hora (estimado).
+                    </p>
                   </div>
-                  <span
-                    className={`inline-flex items-center px-3 py-1 rounded-full text-xs sm:text-sm font-semibold ${edgeStatusClass}`}
+                  <button
+                    type="button"
+                    onClick={() => openEvidence(ceoPeakIdle?.ts_bucket || null)}
+                    className="inline-flex items-center justify-center rounded-lg border border-gray-200 px-3 py-2 text-xs font-semibold text-gray-700 hover:bg-gray-50"
                   >
-                    {edgeStatusLabel}
-                  </span>
+                    Ver evidências
+                  </button>
                 </div>
 
-                <div className="mt-4 grid grid-cols-1 sm:grid-cols-3 gap-3">
-                  <div className="rounded-lg border border-gray-100 px-3 py-2">
-                    <p className="text-xs text-gray-500">Câmeras online</p>
-                    <p className="text-sm font-semibold text-gray-800">
-                      {edgeStatusLoading
-                        ? "—"
-                        : `${edgeStatus?.cameras_online ?? 0}/${
-                            edgeStatus?.cameras_total ?? 0
-                          }`}
-                    </p>
+                {ceoLoading ? (
+                  <div className="h-40 bg-gray-100 rounded-lg animate-pulse" />
+                ) : ceoError ? (
+                  <div className="text-sm text-red-600">{ceoError}</div>
+                ) : ceoIdle.length === 0 ? (
+                  <div className="text-sm text-gray-500">
+                    Sem dados de ociosidade ainda.
                   </div>
-                  <div className="rounded-lg border border-gray-100 px-3 py-2">
-                    <p className="text-xs text-gray-500">Reason</p>
-                    <p className="text-sm font-semibold text-gray-800">
-                      {edgeStatusLoading
-                        ? "—"
-                        : (formatReason(edgeStatus?.store_status_reason) ?? "—")}
-                    </p>
-                  </div>
-                  <div className="rounded-lg border border-gray-100 px-3 py-2">
-                    <p className="text-xs text-gray-500">Última comunicação</p>
-                    <p className="text-sm font-semibold text-gray-800">
-                      {formatLastSeenDisplay(lastSeenAt)}
-                    </p>
-                  </div>
-                </div>
-
-                <div className="mt-4">
-                  <h3 className="text-sm font-semibold text-gray-700 mb-3">
-                    Câmeras
-                  </h3>
-
-                  {edgeStatusLoading ? (
-                    <div className="text-sm text-gray-500">
-                      Carregando status...
+                ) : (
+                  <div className="relative rounded-xl border border-slate-100 bg-gradient-to-b from-slate-50 to-white p-4">
+                    <div className="absolute inset-4 pointer-events-none flex flex-col justify-between">
+                      {[0, 1, 2, 3].map((line) => (
+                        <div key={line} className="border-t border-dashed border-slate-200/70" />
+                      ))}
                     </div>
-                  ) : edgeStatus && edgeStatus.cameras.length > 0 ? (
-                    <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
-                      {edgeStatus.cameras.map((cam) => (
-                        <div
-                          key={cam.camera_id}
-                          className="flex items-center justify-between border border-gray-100 rounded-lg px-3 py-2"
-                        >
-                          <div className="min-w-0">
-                            <p className="text-sm font-medium text-gray-800 truncate">
-                              {cam.name}
-                            </p>
-                            <p className="text-xs text-gray-500">{cam.camera_id}</p>
-                            <p className="text-[11px] text-gray-400">
-                              Último: {formatTimestamp(cam.camera_last_heartbeat_ts)}
-                            </p>
-                          </div>
+                    <div className="relative flex items-end gap-2 h-40 overflow-x-auto">
+                      {ceoIdle.map((entry, idx) => {
+                        const height = Math.max(10, Math.round((entry.idle_index / maxIdle) * 120))
+                        return (
+                          <button
+                            key={`${entry.ts_bucket}-${idx}`}
+                            type="button"
+                            onClick={() => openEvidence(entry.ts_bucket || null)}
+                            className="flex flex-col items-center gap-2 min-w-[26px] focus:outline-none"
+                          >
+                            <div
+                              className="w-full rounded-md bg-amber-400/80"
+                              style={{ height }}
+                              title={`Ociosidade ${(entry.idle_index * 100).toFixed(0)}%`}
+                            />
+                            <span className="text-[10px] text-gray-500">
+                              {ceoFlow.find((flow) => flow.ts_bucket === entry.ts_bucket)
+                                ?.hour_label || "—"}
+                            </span>
+                          </button>
+                        )
+                      })}
+                    </div>
+                  </div>
+                )}
+              </div>
+
+              <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                <div className="bg-white rounded-xl shadow-sm border border-gray-100 p-4 sm:p-6">
+                  <div className="text-sm text-gray-500">Tempo médio na fila</div>
+                  <div className="text-2xl font-bold text-gray-800 mt-2">
+                    {ceoDashboard ? `${Math.round(ceoDashboard.kpis.avg_queue_seconds / 60)}m` : "—"}
+                  </div>
+                </div>
+                <div className="bg-white rounded-xl shadow-sm border border-gray-100 p-4 sm:p-6">
+                  <div className="text-sm text-gray-500">Pessoas na fila agora</div>
+                  <div className="text-2xl font-bold text-gray-800 mt-2">
+                    {ceoDashboard ? ceoDashboard.kpis.queue_now_people : "—"}
+                  </div>
+                  <div className="text-xs text-gray-400 mt-1">
+                    Estimativa baseada no último bucket
+                  </div>
+                </div>
+              </div>
+
+              <div className="bg-white rounded-xl shadow-sm border border-gray-100 p-4 sm:p-6">
+                <div className="text-sm font-semibold text-gray-800 mb-4">
+                  Pulso do Fluxo (Vendas)
+                </div>
+                {ceoLoading ? (
+                  <div className="h-40 bg-gray-100 rounded-lg animate-pulse" />
+                ) : ceoFlow.length === 0 ? (
+                  <div className="text-sm text-gray-500">Sem dados de fluxo por hora.</div>
+                ) : (
+                  <div className="relative rounded-xl border border-slate-100 bg-gradient-to-b from-slate-50 to-white p-4">
+                    <div className="absolute inset-4 pointer-events-none flex flex-col justify-between">
+                      {[0, 1, 2, 3].map((line) => (
+                        <div key={line} className="border-t border-dashed border-slate-200/70" />
+                      ))}
+                    </div>
+                    <div className="relative flex items-end gap-2 h-40 overflow-x-auto">
+                      {ceoFlow.map((entry, idx) => (
+                        <div key={`${entry.ts_bucket}-${idx}`} className="flex flex-col items-center gap-2 min-w-[26px]">
+                          <div
+                            className="w-full rounded-md bg-blue-500/80"
+                            style={{
+                              height: Math.max(10, Math.round((entry.footfall / maxFootfall) * 120)),
+                            }}
+                            title={`${entry.hour_label} · ${entry.footfall}`}
+                          />
+                          <span className="text-[10px] text-gray-500">{entry.hour_label || "—"}</span>
+                        </div>
+                      ))}
+                    </div>
+                    {ceoDashboard?.overlay?.message && (
+                      <div className="mt-3 text-xs text-gray-500">
+                        {ceoDashboard.overlay.message}
+                      </div>
+                    )}
+                  </div>
+                )}
+              </div>
+            </div>
+          )}
+
+          {!isTrialCeoMode && (
+            <div className="bg-white rounded-xl shadow-sm border border-gray-100 p-4 sm:p-6">
+              <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3">
+                <div>
+                  <h2 className="text-lg sm:text-xl font-bold text-gray-800">
+                    Store Health
+                  </h2>
+                  <p className="text-sm text-gray-500 mt-1">
+                    Última comunicação:{" "}
+                    <span className="font-semibold text-gray-700">
+                      {formatLastSeenDisplay(lastSeenAt)}
+                    </span>
+                  </p>
+                  {edgeStatus?.store_status_reason && (
+                    <p className="text-xs text-gray-500 mt-1">
+                      {formatReason(edgeStatus.store_status_reason)}
+                    </p>
+                  )}
+                  {edgeStatus?.last_error && (
+                    <p className="text-xs text-red-600 mt-2">
+                      Erro: {edgeStatus.last_error}
+                    </p>
+                  )}
+                </div>
+                <span
+                  className={`inline-flex items-center px-3 py-1 rounded-full text-xs sm:text-sm font-semibold ${edgeStatusClass}`}
+                >
+                  {edgeStatusLabel}
+                </span>
+              </div>
+
+              <div className="mt-4 grid grid-cols-1 sm:grid-cols-3 gap-3">
+                <div className="rounded-lg border border-gray-100 px-3 py-2">
+                  <p className="text-xs text-gray-500">Câmeras online</p>
+                  <p className="text-sm font-semibold text-gray-800">
+                    {edgeStatusLoading
+                      ? "—"
+                      : `${edgeStatus?.cameras_online ?? 0}/${
+                          edgeStatus?.cameras_total ?? 0
+                        }`}
+                  </p>
+                </div>
+                <div className="rounded-lg border border-gray-100 px-3 py-2">
+                  <p className="text-xs text-gray-500">Reason</p>
+                  <p className="text-sm font-semibold text-gray-800">
+                    {edgeStatusLoading
+                      ? "—"
+                      : (formatReason(edgeStatus?.store_status_reason) ?? "—")}
+                  </p>
+                </div>
+                <div className="rounded-lg border border-gray-100 px-3 py-2">
+                  <p className="text-xs text-gray-500">Última comunicação</p>
+                  <p className="text-sm font-semibold text-gray-800">
+                    {formatLastSeenDisplay(lastSeenAt)}
+                  </p>
+                </div>
+              </div>
+
+              <div className="mt-4">
+                <h3 className="text-sm font-semibold text-gray-700 mb-3">
+                  Câmeras
+                </h3>
+
+                {edgeStatusLoading ? (
+                  <div className="text-sm text-gray-500">
+                    Carregando status...
+                  </div>
+                ) : edgeStatus && edgeStatus.cameras.length > 0 ? (
+                  <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+                    {edgeStatus.cameras.map((cam) => (
+                      <div
+                        key={cam.camera_id}
+                        className="flex items-center justify-between border border-gray-100 rounded-lg px-3 py-2"
+                      >
+                        <div className="min-w-0">
+                          <p className="text-sm font-medium text-gray-800 truncate">
+                            {cam.name}
+                          </p>
+                          <p className="text-xs text-gray-500">{cam.camera_id}</p>
+                          <p className="text-[11px] text-gray-400">
+                            Último: {formatTimestamp(cam.camera_last_heartbeat_ts)}
+                          </p>
+                        </div>
                         <div className="flex flex-col items-end gap-1">
                           <span
                             className={`px-2 py-1 text-xs rounded-full ${
@@ -1023,16 +1194,17 @@ const Dashboard = () => {
                             </span>
                           )}
                         </div>
-                        </div>
-                      ))}
-                    </div>
-                  ) : (
-                    <div className="text-sm text-gray-500">
-                      Nenhuma câmera encontrada.
-                    </div>
-                  )}
+                      </div>
+                    ))}
+                  </div>
+                ) : (
+                  <div className="text-sm text-gray-500">
+                    Nenhuma câmera encontrada.
+                  </div>
+                )}
+              </div>
             </div>
-          </div>
+          )}
 
           <div className="bg-white rounded-xl shadow-sm border border-gray-100 p-4 sm:p-6">
                 <div className="flex items-center justify-between gap-3 mb-4">
@@ -1219,54 +1391,115 @@ const Dashboard = () => {
               </>
             )
           ) : (
-            <div className="bg-white rounded-xl shadow-sm border border-gray-100 p-6 text-center text-gray-500">
-              Selecione uma loja para ver os indicadores
-            </div>
+            !isTrialCeoMode && (
+              <div className="bg-white rounded-xl shadow-sm border border-gray-100 p-6 text-center text-gray-500">
+                Selecione uma loja para ver os indicadores
+              </div>
+            )
           )}
 
-          {/* Charts */}
-          <div className="grid grid-cols-1 lg:grid-cols-2 gap-4 sm:gap-6">
-            <div className="bg-white rounded-xl shadow-sm border border-gray-100 p-6">
-              <div className="text-sm font-semibold text-gray-800">Tendência</div>
-              <div className="mt-4 text-sm text-gray-600">
-                Sem dados ainda. Conecte uma câmera para começar.
+          {showStoreIndicators && (
+            <>
+              {/* Charts */}
+              <div className="grid grid-cols-1 lg:grid-cols-2 gap-4 sm:gap-6">
+                <div className="bg-white rounded-xl shadow-sm border border-gray-100 p-6">
+                  <div className="text-sm font-semibold text-gray-800">Tendência</div>
+                  <div className="mt-4 text-sm text-gray-600">
+                    Sem dados ainda. Conecte uma câmera para começar.
+                  </div>
+                </div>
+                <div className="bg-white rounded-xl shadow-sm border border-gray-100 p-6">
+                  <div className="text-sm font-semibold text-gray-800">Distribuição</div>
+                  <div className="mt-4 text-sm text-gray-600">
+                    Sem dados ainda. Conecte uma câmera para começar.
+                  </div>
+                </div>
               </div>
-            </div>
-            <div className="bg-white rounded-xl shadow-sm border border-gray-100 p-6">
-              <div className="text-sm font-semibold text-gray-800">Distribuição</div>
-              <div className="mt-4 text-sm text-gray-600">
-                Sem dados ainda. Conecte uma câmera para começar.
+
+              {/* Insights + Recomendações */}
+              <div className="grid grid-cols-1 lg:grid-cols-2 gap-4 sm:gap-8">
+                <div className="bg-white rounded-xl shadow-sm p-4 sm:p-6 border border-gray-100">
+                  <h2 className="text-lg sm:text-xl font-bold text-gray-800 mb-4 sm:mb-6">
+                    📊 Insights da Loja
+                  </h2>
+
+                  <div className="rounded-lg border border-gray-100 bg-gray-50 p-4 text-sm text-gray-600">
+                    Sem dados ainda. Conecte uma câmera para começar.
+                  </div>
+                </div>
+
+                <div className="bg-white rounded-xl shadow-sm p-4 sm:p-6 border border-gray-100">
+                  <div className="flex items-center justify-between gap-3 mb-4 sm:mb-6">
+                    <h2 className="text-lg sm:text-xl font-bold text-gray-800">
+                      💡 Recomendações IA
+                    </h2>
+                    <span className="px-3 py-1 bg-gray-100 text-gray-600 text-xs sm:text-sm font-semibold rounded-full">
+                      0 sugestões
+                    </span>
+                  </div>
+
+                  <div className="rounded-lg border border-gray-100 bg-gray-50 p-4 text-sm text-gray-600">
+                    Sem recomendações ainda. Conecte uma câmera para começar.
+                  </div>
+                </div>
               </div>
+            </>
+          )}
+      {evidenceOpen && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/40 p-4">
+          <div className="bg-white rounded-xl shadow-xl max-w-3xl w-full p-6">
+            <div className="flex items-start justify-between gap-3">
+              <div>
+                <h3 className="text-lg font-bold text-gray-800">
+                  Evidências do pico de ociosidade
+                </h3>
+                <p className="text-sm text-gray-500 mt-1">
+                  {selectedEvidenceHour
+                    ? `Horário selecionado: ${new Date(selectedEvidenceHour).toLocaleTimeString("pt-BR", { hour: "2-digit", minute: "2-digit" })}`
+                    : "Horário selecionado"}
+                </p>
+              </div>
+              <button
+                type="button"
+                onClick={closeEvidence}
+                className="text-gray-400 hover:text-gray-600"
+              >
+                ✕
+              </button>
             </div>
+
+            {evidenceEvents.length === 0 ? (
+              <div className="mt-6 text-sm text-gray-500">
+                Nenhum evento registrado. Evidências reais aparecem após ativar CV.
+              </div>
+            ) : (
+              <div className="mt-6 grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4">
+                {evidenceEvents.map((event) => (
+                  <div key={event.id} className="rounded-xl border border-gray-100 overflow-hidden">
+                    <div className="relative aspect-video bg-slate-200">
+                      <div className="absolute inset-0 bg-slate-300 blur-md" />
+                      <div className="absolute inset-0 flex items-center justify-center text-[11px] text-slate-600 text-center px-3">
+                        Evidência disponível após ativar CV
+                      </div>
+                    </div>
+                    <div className="p-3">
+                      <div className="text-xs text-gray-400">
+                        {formatTimeSafe(event.occurred_at || event.created_at)}
+                      </div>
+                      <div className="text-sm font-semibold text-gray-800 mt-1 line-clamp-2">
+                        {event.title}
+                      </div>
+                      <div className="mt-2 inline-flex items-center rounded-full bg-gray-100 px-2 py-0.5 text-[11px] text-gray-600">
+                        {event.type}
+                      </div>
+                    </div>
+                  </div>
+                ))}
+              </div>
+            )}
           </div>
-
-          {/* Insights + Recomendações */}
-          <div className="grid grid-cols-1 lg:grid-cols-2 gap-4 sm:gap-8">
-            <div className="bg-white rounded-xl shadow-sm p-4 sm:p-6 border border-gray-100">
-              <h2 className="text-lg sm:text-xl font-bold text-gray-800 mb-4 sm:mb-6">
-                📊 Insights da Loja
-              </h2>
-
-              <div className="rounded-lg border border-gray-100 bg-gray-50 p-4 text-sm text-gray-600">
-                Sem dados ainda. Conecte uma câmera para começar.
-              </div>
-            </div>
-
-            <div className="bg-white rounded-xl shadow-sm p-4 sm:p-6 border border-gray-100">
-              <div className="flex items-center justify-between gap-3 mb-4 sm:mb-6">
-                <h2 className="text-lg sm:text-xl font-bold text-gray-800">
-                  💡 Recomendações IA
-                </h2>
-                <span className="px-3 py-1 bg-gray-100 text-gray-600 text-xs sm:text-sm font-semibold rounded-full">
-                  0 sugestões
-                </span>
-              </div>
-
-              <div className="rounded-lg border border-gray-100 bg-gray-50 p-4 text-sm text-gray-600">
-                Sem recomendações ainda. Conecte uma câmera para começar.
-              </div>
-            </div>
-          </div>
+        </div>
+      )}
       <EdgeSetupModal
         open={edgeSetupOpen && canManageStore}
         onClose={() => setEdgeSetupOpen(false)}
