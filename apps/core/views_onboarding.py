@@ -1,6 +1,7 @@
 import logging
 from datetime import timedelta
 from zoneinfo import ZoneInfo
+from uuid import UUID
 
 from django.conf import settings
 from django.db import connection
@@ -303,83 +304,115 @@ class OnboardingNextStepView(APIView):
 
     def get(self, request):
         store_id = request.query_params.get("store_id")
+        if not store_id:
+            return Response(
+                {"ok": False, "error": "store_id_invalid"},
+                status=status.HTTP_400_BAD_REQUEST,
+            )
+        try:
+            UUID(str(store_id))
+        except Exception:
+            return Response(
+                {"ok": False, "error": "store_id_invalid"},
+                status=status.HTTP_400_BAD_REQUEST,
+            )
+
         store = None
         org = None
-
-        if store_id:
+        try:
             store = Store.objects.filter(id=store_id).first()
             if not store:
-                return Response({"detail": "Store não encontrada."}, status=status.HTTP_404_NOT_FOUND)
+                return Response(
+                    {"ok": False, "error": "store_not_found"},
+                    status=status.HTTP_404_NOT_FOUND,
+                )
             if not _store_access_allowed(request.user, store_id):
-                return Response({"detail": "Sem acesso à store."}, status=status.HTTP_403_FORBIDDEN)
+                return Response(
+                    {"ok": False, "error": "forbidden"},
+                    status=status.HTTP_403_FORBIDDEN,
+                )
             org = Organization.objects.filter(id=store.org_id).first()
-        else:
-            org_ids = get_user_org_ids(request.user)
-            if not org_ids:
-                payload = _normalize_stage_payload("no_store", None)
-                payload["health"] = {
-                    "edge_status": "unknown",
-                    "cameras_total": 0,
-                    "cameras_online": 0,
-                    "cameras_offline": 0,
-                }
-                return Response(payload)
-            store = Store.objects.filter(org_id__in=org_ids).order_by("-updated_at").first()
-            if store:
-                org = Organization.objects.filter(id=store.org_id).first()
-            else:
-                payload = _normalize_stage_payload("no_store", None)
-                payload["health"] = {
-                    "edge_status": "unknown",
-                    "cameras_total": 0,
-                    "cameras_online": 0,
-                    "cameras_offline": 0,
-                }
-                return Response(payload)
+        except Exception:
+            logger.exception(
+                "[ONBOARDING] next-step lookup failed user_id=%s store_id=%s",
+                getattr(request.user, "id", None),
+                str(store_id),
+            )
+            return Response(
+                {"ok": True, "next_step": None},
+                status=status.HTTP_200_OK,
+            )
 
-        org_tz = _get_org_timezone(org)
-        now_local = timezone.localtime(timezone.now(), org_tz)
-        recent_minutes = int(getattr(settings, "ONBOARDING_RECENT_MINUTES", 15))
-        since_ts = now_local - timedelta(minutes=recent_minutes)
+        try:
+            org_tz = _get_org_timezone(org)
+            now_local = timezone.localtime(timezone.now(), org_tz)
+            recent_minutes = int(getattr(settings, "ONBOARDING_RECENT_MINUTES", 15))
+            since_ts = now_local - timedelta(minutes=recent_minutes)
 
-        stage = "active"
-        active_cameras_count = _get_active_cameras(store.id).count()
-        if active_cameras_count == 0:
-            stage = "add_cameras"
-        elif _has_unvalidated_cameras(store.id):
-            stage = "validate_cameras"
-        elif _has_missing_roi(store.id):
-            stage = "setup_roi"
-        elif not _has_recent_metrics(store.id, since_ts):
-            stage = "collecting_data"
+            stage = "active"
+            active_cameras_count = _get_active_cameras(store.id).count()
+            if active_cameras_count == 0:
+                stage = "add_cameras"
+            elif _has_unvalidated_cameras(store.id):
+                stage = "validate_cameras"
+            elif _has_missing_roi(store.id):
+                stage = "setup_roi"
+            elif not _has_recent_metrics(store.id, since_ts):
+                stage = "collecting_data"
 
-        if store is None:
-            stage = "no_store"
-
-        if stage != "no_store":
             _upsert_onboarding_progress(str(store.org_id), stage, str(store.id))
 
-        stage_payload = _normalize_stage_payload(stage, str(store.id) if store else None)
+            stage_payload = _normalize_stage_payload(stage, str(store.id))
+            try:
+                next_step_service = OnboardingProgressService(str(store.org_id))
+                next_step = next_step_service.next_step()
+            except Exception:
+                logger.exception(
+                    "[ONBOARDING] next-step compute failed user_id=%s store_id=%s",
+                    getattr(request.user, "id", None),
+                    str(store_id),
+                )
+                next_step = None
+            completed = next_step is None
 
-        health_payload = {
-            "edge_status": "unknown",
-            "cameras_total": 0,
-            "cameras_online": 0,
-            "cameras_offline": 0,
-        }
-        if store:
-            edge_payload, _reason = compute_store_edge_status_snapshot(store.id)
-            cameras_total = int(edge_payload.get("cameras_total") or 0)
-            cameras_online = int(edge_payload.get("cameras_online") or 0)
-            cameras_offline = int(edge_payload.get("cameras_offline") or 0)
-            if cameras_total and cameras_offline == 0:
-                cameras_offline = max(cameras_total - cameras_online, 0)
             health_payload = {
-                "edge_status": edge_payload.get("store_status") or "unknown",
-                "cameras_total": cameras_total,
-                "cameras_online": cameras_online,
-                "cameras_offline": cameras_offline,
+                "edge_status": "unknown",
+                "cameras_total": 0,
+                "cameras_online": 0,
+                "cameras_offline": 0,
             }
+            try:
+                edge_payload, _reason = compute_store_edge_status_snapshot(store.id)
+                cameras_total = int(edge_payload.get("cameras_total") or 0)
+                cameras_online = int(edge_payload.get("cameras_online") or 0)
+                cameras_offline = int(edge_payload.get("cameras_offline") or 0)
+                if cameras_total and cameras_offline == 0:
+                    cameras_offline = max(cameras_total - cameras_online, 0)
+                health_payload = {
+                    "edge_status": edge_payload.get("store_status") or "unknown",
+                    "cameras_total": cameras_total,
+                    "cameras_online": cameras_online,
+                    "cameras_offline": cameras_offline,
+                }
+            except Exception:
+                logger.exception(
+                    "[ONBOARDING] next-step health failed user_id=%s store_id=%s",
+                    getattr(request.user, "id", None),
+                    str(store_id),
+                )
 
-        stage_payload["health"] = health_payload
-        return Response(stage_payload)
+            stage_payload["health"] = health_payload
+            stage_payload["ok"] = True
+            stage_payload["next_step"] = next_step
+            stage_payload["completed"] = completed
+            return Response(stage_payload)
+        except Exception:
+            logger.exception(
+                "[ONBOARDING] next-step failed user_id=%s store_id=%s",
+                getattr(request.user, "id", None),
+                str(store_id),
+            )
+            return Response(
+                {"ok": True, "next_step": None},
+                status=status.HTTP_200_OK,
+            )

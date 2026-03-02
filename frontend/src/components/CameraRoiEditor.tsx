@@ -49,6 +49,23 @@ type DrawRect = {
   height: number
 }
 
+const normalizeSnapshotImage = (
+  snapshot: CameraSnapshotResponse | null | undefined
+): { imageSrc: string | null } => {
+  if (!snapshot) return { imageSrc: null }
+  const directUrl =
+    snapshot.snapshot_url || snapshot.signed_url || snapshot.url || null
+  if (directUrl) return { imageSrc: directUrl }
+  const base64 = snapshot.snapshot_base64
+  if (base64 && typeof base64 === "string") {
+    const trimmed = base64.trim()
+    if (!trimmed) return { imageSrc: null }
+    if (trimmed.startsWith("data:")) return { imageSrc: trimmed }
+    return { imageSrc: `data:image/jpeg;base64,${trimmed}` }
+  }
+  return { imageSrc: null }
+}
+
 const extractShapesFromConfig = (configJson: unknown): RoiShape[] => {
   if (!configJson) return []
   if (Array.isArray(configJson)) return configJson as RoiShape[]
@@ -101,8 +118,7 @@ const CameraRoiEditor = ({ open, camera, canEditRoi = false, onClose }: CameraRo
       return count < 2
     },
   })
-  const snapshotUrl =
-    snapshotData?.snapshot_url || snapshotData?.signed_url || null
+  const { imageSrc } = normalizeSnapshotImage(snapshotData)
   const snapshotErrorResponse = snapshotError as
     | { response?: { status?: number; data?: { code?: string; message?: string } } }
     | undefined
@@ -262,7 +278,7 @@ const CameraRoiEditor = ({ open, camera, canEditRoi = false, onClose }: CameraRo
   }, [open, updateCanvasSize])
 
   useEffect(() => {
-    if (!snapshotUrl) {
+    if (!imageSrc) {
       backgroundImageRef.current = null
       imageSizeRef.current = null
       if (open) {
@@ -289,15 +305,19 @@ const CameraRoiEditor = ({ open, camera, canEditRoi = false, onClose }: CameraRo
         drawCanvas()
       }
     }
-    img.src = snapshotUrl
+    img.src = imageSrc
     return () => {
       active = false
     }
-  }, [drawCanvas, open, snapshotUrl, updateCanvasSize])
+  }, [drawCanvas, imageSrc, open, updateCanvasSize])
 
   const handlePointerDown = useCallback(
     (event: PointerEvent<HTMLCanvasElement>) => {
       if (!cameraId || !canEditRoi) return
+      if (!imageSrc) {
+        setError("Envie um snapshot antes de desenhar o ROI.")
+        return
+      }
       if (!zoneName.trim()) {
         setError("Informe o nome da zona antes de desenhar.")
         return
@@ -323,7 +343,7 @@ const CameraRoiEditor = ({ open, camera, canEditRoi = false, onClose }: CameraRo
         setDraftPoints((prev) => [...prev, point])
       }
     },
-    [cameraId, canEditRoi, drawRect, mode, zoneName]
+    [cameraId, canEditRoi, drawRect, imageSrc, mode, zoneName]
   )
 
   const handlePointerMove = useCallback(
@@ -586,7 +606,7 @@ const CameraRoiEditor = ({ open, camera, canEditRoi = false, onClose }: CameraRo
                 onPointerMove={handlePointerMove}
                 onPointerUp={handlePointerUp}
                 className={`w-full rounded-lg border border-gray-200 bg-white ${
-                  !canEditRoi
+                  !canEditRoi || !imageSrc
                     ? "cursor-not-allowed opacity-80"
                     : isDrawing
                     ? "cursor-grabbing"
@@ -660,15 +680,15 @@ const CameraRoiEditor = ({ open, camera, canEditRoi = false, onClose }: CameraRo
                 <div className="text-xs text-gray-500">
                   Sem snapshot ainda. Faça upload ou gere via Edge.
                 </div>
-              ) : snapshotUrl ? (
+              ) : imageSrc ? (
                 <img
-                  src={snapshotUrl}
+                  src={imageSrc}
                   alt="Snapshot atual"
                   className="w-full rounded-lg border border-gray-200"
                 />
               ) : (
                 <div className="text-xs text-gray-500">
-                  {snapshotMessage || "Nenhum snapshot disponível."}
+                  {snapshotMessage || "Snapshot sem imagem disponível."}
                 </div>
               )}
               <div className="flex items-center gap-2">

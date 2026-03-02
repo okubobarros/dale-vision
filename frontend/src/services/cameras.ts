@@ -61,6 +61,8 @@ export interface CameraSnapshotResponse {
   storage_key?: string
   snapshot_url?: string | null
   signed_url?: string | null
+  url?: string | null
+  snapshot_base64?: string | null
   expires_in?: number
 }
 
