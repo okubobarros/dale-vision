@@ -18,6 +18,7 @@ from django.conf import settings
 from django.utils.dateparse import parse_datetime
 from apps.core.models import Store, OrgMember, Organization, Camera, Employee, DetectionEvent
 from apps.edge.models import EdgeToken
+from apps.edge.auth import validate_store_token
 from apps.cameras.limits import (
     enforce_trial_camera_limit,
     count_active_cameras,
@@ -783,12 +784,11 @@ class StoreViewSet(viewsets.ModelViewSet):
             if request.user and request.user.is_authenticated:
                 require_store_role(request.user, str(store.id), ALLOWED_READ_ROLES)
             else:
-                provided = request.headers.get("X-EDGE-TOKEN") or ""
-                if not _validate_edge_token_for_store(str(store.id), provided):
+                if not validate_store_token(request, str(store.id)):
                     return _error_response(
                         "FORBIDDEN",
                         "Edge token inválido para esta loja.",
-                        status.HTTP_403_FORBIDDEN,
+                        status.HTTP_401_UNAUTHORIZED,
                         deprecated_detail="Edge token inválido para esta loja.",
                     )
             cameras_qs = Camera.objects.select_related("store").filter(store_id=store.id).order_by("-updated_at")

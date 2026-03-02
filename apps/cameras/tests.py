@@ -11,6 +11,7 @@ from apps.cameras.limits import enforce_trial_camera_limit, TRIAL_CAMERA_LIMIT_M
 from apps.cameras.roi import create_roi_config, get_latest_published_roi_config
 from apps.cameras.permissions import require_store_role, filter_cameras_for_user
 from apps.cameras.views import CameraViewSet
+from apps.cameras.services import rtsp_probe
 from apps.cameras.serializers import CameraSerializer
 from backend.utils.entitlements import TrialExpiredError
 
@@ -164,7 +165,7 @@ class CameraHealthEndpointTests(SimpleTestCase):
     def setUp(self):
         self.factory = APIRequestFactory()
 
-    @patch("apps.cameras.views._validate_edge_token_for_store", return_value=True)
+    @patch("apps.cameras.views.validate_store_token", return_value=True)
     @patch("apps.cameras.views.CameraHealthLog")
     def test_health_updates_camera_and_creates_log(self, health_log_mock, _token_mock):
         cam = MagicMock()
@@ -192,6 +193,26 @@ class CameraHealthEndpointTests(SimpleTestCase):
         health_log_mock.objects.create.assert_called_once()
         cam.save.assert_called_once()
 
+    @patch("apps.cameras.views.validate_store_token", return_value=False)
+    def test_health_returns_401_when_token_invalid(self, _token_mock):
+        cam = MagicMock()
+        cam.id = "cam-1"
+        cam.store_id = "store-1"
+
+        view = CameraViewSet.as_view({"post": "health"})
+        request = self.factory.post(
+            "/api/v1/cameras/cam-1/health/",
+            {"status": "online"},
+            format="json",
+            HTTP_AUTHORIZATION="Bearer bad",
+        )
+        force_authenticate(request, user=MagicMock(is_authenticated=False))
+
+        with patch.object(CameraViewSet, "get_object", return_value=cam):
+            response = view(request, pk="cam-1")
+
+        self.assertEqual(response.status_code, 401)
+
 
 class CameraSerializerUpdateTests(SimpleTestCase):
     def test_update_skips_blank_credentials(self):
@@ -211,6 +232,51 @@ class CameraSerializerUpdateTests(SimpleTestCase):
         self.assertEqual(instance.password, "secret")
         self.assertEqual(instance.name, "Nova")
         instance.save.assert_called_once()
+
+
+class CameraRtspProbeTests(SimpleTestCase):
+    def test_rtsp_probe_fallback_without_cv2(self):
+        def import_side_effect(name, *args, **kwargs):
+            if name == "cv2":
+                raise ImportError("no cv2")
+            return original_import(name, *args, **kwargs)
+
+        original_import = __import__
+        with patch("builtins.__import__", side_effect=import_side_effect):
+            with patch("apps.cameras.services.socket.create_connection") as conn_mock:
+                conn_mock.return_value = MagicMock(close=MagicMock())
+                result = rtsp_probe("rtsp://127.0.0.1:554/stream", timeout_sec=0.01)
+
+        self.assertTrue(result.get("ok"))
+        self.assertEqual(result.get("fps_est"), None)
+        self.assertEqual(result.get("frames_read"), None)
+        self.assertEqual(result.get("extra", {}).get("mode"), "fallback_no_cv2")
+
+    def test_rtsp_probe_with_cv2_mock(self):
+        class FakeCap:
+            def read(self):
+                return True, object()
+
+            def release(self):
+                return None
+
+        class FakeCv2:
+            @staticmethod
+            def VideoCapture(_url):
+                return FakeCap()
+
+        def import_side_effect(name, *args, **kwargs):
+            if name == "cv2":
+                return FakeCv2
+            return original_import(name, *args, **kwargs)
+
+        original_import = __import__
+        with patch("builtins.__import__", side_effect=import_side_effect):
+            result = rtsp_probe("rtsp://127.0.0.1:554/stream", timeout_sec=0.01)
+
+        self.assertTrue(result.get("ok"))
+        self.assertIsNotNone(result.get("fps_est"))
+        self.assertIsNotNone(result.get("frames_read"))
 
     def test_update_skips_null_credentials(self):
         instance = MagicMock()

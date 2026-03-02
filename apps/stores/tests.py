@@ -65,6 +65,71 @@ class StoreCamerasEndpointTests(SimpleTestCase):
         store.org_id = "org-1"
         return store
 
+    @patch("apps.stores.views.CameraSerializer")
+    @patch("apps.stores.views.Camera")
+    @patch("apps.stores.views.validate_store_token", return_value=True)
+    def test_get_cameras_allows_edge_token(
+        self,
+        _token_mock,
+        camera_model,
+        serializer_mock,
+    ):
+        store = self._mock_store("11111111-1111-1111-1111-111111111111")
+        qs = MagicMock()
+        qs.order_by.return_value = qs
+        camera_model.objects.select_related.return_value.filter.return_value = qs
+        serializer_mock.return_value.data = [{"id": "cam-1"}]
+
+        view = StoreViewSet.as_view({"get": "cameras"})
+        request = self.factory.get(
+            f"/api/v1/stores/{store.id}/cameras/",
+            HTTP_AUTHORIZATION="Bearer edge-token",
+        )
+
+        with patch.object(StoreViewSet, "get_object", return_value=store):
+            response = view(request, pk=store.id)
+
+        self.assertEqual(response.status_code, 200)
+        self.assertEqual(response.data, [{"id": "cam-1"}])
+
+    @patch("apps.stores.views.validate_store_token", return_value=False)
+    def test_get_cameras_invalid_edge_token_returns_401(self, _token_mock):
+        store = self._mock_store("11111111-1111-1111-1111-111111111111")
+        view = StoreViewSet.as_view({"get": "cameras"})
+        request = self.factory.get(
+            f"/api/v1/stores/{store.id}/cameras/",
+            HTTP_AUTHORIZATION="Bearer bad-token",
+        )
+
+        with patch.object(StoreViewSet, "get_object", return_value=store):
+            response = view(request, pk=store.id)
+
+        self.assertEqual(response.status_code, 401)
+
+    @patch("apps.stores.views.CameraSerializer")
+    @patch("apps.stores.views.Camera")
+    @patch("apps.stores.views.require_store_role")
+    def test_get_cameras_jwt_still_allowed(
+        self,
+        _require_role,
+        camera_model,
+        serializer_mock,
+    ):
+        store = self._mock_store("11111111-1111-1111-1111-111111111111")
+        qs = MagicMock()
+        qs.order_by.return_value = qs
+        camera_model.objects.select_related.return_value.filter.return_value = qs
+        serializer_mock.return_value.data = [{"id": "cam-1"}]
+
+        view = StoreViewSet.as_view({"get": "cameras"})
+        request = self.factory.get(f"/api/v1/stores/{store.id}/cameras/")
+        force_authenticate(request, user=self.user)
+
+        with patch.object(StoreViewSet, "get_object", return_value=store):
+            response = view(request, pk=store.id)
+
+        self.assertEqual(response.status_code, 200)
+
     @patch("apps.stores.views.OnboardingProgressService")
     @patch("apps.stores.views.enforce_trial_camera_limit")
     @patch("apps.stores.views.enforce_can_use_product")

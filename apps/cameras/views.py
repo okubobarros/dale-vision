@@ -14,6 +14,7 @@ from django.db import transaction
 from django.db.models import Q
 from apps.core.models import AuditLog, Camera, CameraHealthLog, OrgMember, Store, StoreManager
 from apps.edge.models import EdgeToken
+from apps.edge.auth import validate_store_token
 from .serializers import (
     CameraSerializer,
     CameraHealthLogSerializer,
@@ -667,11 +668,10 @@ class CameraViewSet(viewsets.ModelViewSet):
         if request.user and request.user.is_authenticated:
             require_store_role(request.user, str(cam.store_id), ALLOWED_MANAGE_ROLES)
         else:
-            provided = request.headers.get("X-EDGE-TOKEN") or ""
-            if not _validate_edge_token_for_store(str(cam.store_id), provided):
+            if not validate_store_token(request, str(cam.store_id)):
                 return Response(
                     {"detail": "Edge token inválido para esta loja."},
-                    status=status.HTTP_403_FORBIDDEN,
+                    status=status.HTTP_401_UNAUTHORIZED,
                 )
 
         payload = request.data or {}
@@ -806,6 +806,7 @@ class CameraViewSet(viewsets.ModelViewSet):
         frames_read = result.get("frames_read")
         fps_est = result.get("fps_est")
         error_msg = result.get("error_msg")
+        extra = result.get("extra")
 
         if ok:
             cam.status = "online"
@@ -841,9 +842,10 @@ class CameraViewSet(viewsets.ModelViewSet):
                 "latency_ms": latency_ms,
                 "fps_est": fps_est,
                 "frames_read": frames_read,
-                "error_msg": None if ok else (error_msg or "Falha ao testar RTSP."),
+                "error_msg": "" if ok else (error_msg or "Falha ao testar RTSP."),
+                "extra": extra,
             },
-            status=status.HTTP_200_OK if ok else status.HTTP_502_BAD_GATEWAY,
+            status=status.HTTP_200_OK,
         )
 
     @action(detail=True, methods=["post"], url_path="test-connection")

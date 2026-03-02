@@ -1,5 +1,7 @@
 import time
 import tempfile
+import socket
+from urllib.parse import urlparse
 from django.utils import timezone
 
 def rtsp_snapshot(rtsp_url: str, timeout_sec: int = 6) -> dict:
@@ -49,7 +51,7 @@ def rtsp_probe(rtsp_url: str, timeout_sec: int = 4) -> dict:
     try:
         import cv2  # optional dependency
     except Exception:
-        return {"ok": False, "error_msg": "OpenCV (cv2) não está instalado."}
+        return _tcp_probe(rtsp_url, timeout_sec=3)
 
     start = time.time()
     cap = cv2.VideoCapture(rtsp_url)
@@ -80,3 +82,41 @@ def rtsp_probe(rtsp_url: str, timeout_sec: int = 4) -> dict:
         "fps_est": fps_est,
         "frames_read": frames,
     }
+
+
+def _tcp_probe(rtsp_url: str, timeout_sec: int = 3) -> dict:
+    parsed = urlparse(rtsp_url if "://" in rtsp_url else f"rtsp://{rtsp_url}")
+    host = parsed.hostname
+    port = parsed.port or 554
+    start = time.time()
+    if not host:
+        return {
+            "ok": False,
+            "latency_ms": None,
+            "fps_est": None,
+            "frames_read": None,
+            "error_msg": "tcp_connect_failed:invalid_host",
+            "extra": {"mode": "fallback_no_cv2"},
+        }
+    try:
+        sock = socket.create_connection((host, port), timeout=timeout_sec)
+        sock.close()
+        latency_ms = int((time.time() - start) * 1000)
+        return {
+            "ok": True,
+            "latency_ms": latency_ms,
+            "fps_est": None,
+            "frames_read": None,
+            "error_msg": "",
+            "extra": {"mode": "fallback_no_cv2"},
+        }
+    except Exception as exc:
+        latency_ms = int((time.time() - start) * 1000)
+        return {
+            "ok": False,
+            "latency_ms": latency_ms,
+            "fps_est": None,
+            "frames_read": None,
+            "error_msg": f"tcp_connect_failed:{exc}",
+            "extra": {"mode": "fallback_no_cv2"},
+        }
