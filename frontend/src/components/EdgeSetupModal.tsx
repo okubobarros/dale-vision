@@ -43,7 +43,6 @@ const UPDATE_CHANNEL = "stable"
 const UPDATE_GITHUB_REPO = "daleship/dalevision-edge-agent"
 const UPDATE_INTERVAL_SECONDS = 21600
 const VISION_ENABLED = 1
-const VISION_BUCKET_SECONDS = 30
 const VISION_POLL_SECONDS = 5
 const VISION_SNAPSHOT_TIMEOUT_SECONDS = 10
 
@@ -316,9 +315,14 @@ const EdgeSetupModal = ({ open, onClose, defaultStoreId }: EdgeSetupModalProps) 
       `UPDATE_GITHUB_REPO=${UPDATE_GITHUB_REPO}`,
       `UPDATE_INTERVAL_SECONDS=${UPDATE_INTERVAL_SECONDS}`,
       `VISION_ENABLED=${VISION_ENABLED}`,
-      `VISION_BUCKET_SECONDS=${VISION_BUCKET_SECONDS}`,
       `VISION_POLL_SECONDS=${VISION_POLL_SECONDS}`,
       `VISION_SNAPSHOT_TIMEOUT_SECONDS=${VISION_SNAPSHOT_TIMEOUT_SECONDS}`,
+      ``,
+      `# Avançado (opcional)`,
+      `# VISION_MODEL_PATH=C:\\ProgramData\\DaleVision\\models\\yolov8n.pt`,
+      `# VISION_FRAME_STRIDE=2`,
+      `# VISION_BUCKET_SECONDS=10`,
+      `# CAMERA_SYNC_FATAL=0  (apenas debug; em produção manter default)`,
     ],
     [agentId, buildDashboardUrl, resolvedCloudBaseUrl]
   )
@@ -844,12 +848,18 @@ const EdgeSetupModal = ({ open, onClose, defaultStoreId }: EdgeSetupModalProps) 
                 <div>
                   1) Copie todo o conteúdo abaixo clicando no botao Copiar dados para .env.
                 </div>
+                <div>
+                  O bloco “Avançado (opcional)” pode ficar comentado.
+                </div>
+                <div>
+                  Role para baixo para ver o conteúdo completo.
+                </div>
 
               </div>
               <textarea
                 value={envContent}
                 readOnly
-                rows={6}
+                rows={10}
                 className="w-full rounded-lg border border-gray-200 bg-white px-3 py-2 text-xs font-mono text-gray-700"
               />
               <button
@@ -863,7 +873,7 @@ const EdgeSetupModal = ({ open, onClose, defaultStoreId }: EdgeSetupModalProps) 
               <div className="text-xs text-gray-500 mb-3 space-y-1">
                 <div>
                   2) Procure o arquivo <span className="font-mono">.env</span> na pasta extraída e substitua o conteúdo
-                  pelo texto copiado.
+                  pelo texto copiado (o bloco Avançado é opcional).
                 </div>
                 <div>3) Salve o arquivo antes de fechar.</div>
               </div>
