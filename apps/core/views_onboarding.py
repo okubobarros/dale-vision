@@ -233,27 +233,69 @@ class OnboardingStepCompleteView(APIView):
 
     def post(self, request):
         payload = request.data or {}
-        step = payload.get("step")
+        step = payload.get("step") or payload.get("step_key") or payload.get("step_id")
+        if isinstance(step, str):
+            step = step.strip()
         meta = payload.get("meta") or {}
         store_id = payload.get("store_id")
+
         if not step:
             return Response({"detail": "step obrigatório."}, status=status.HTTP_400_BAD_REQUEST)
-
-        if store_id:
-            service = get_service_for_user_store(request.user, store_id)
-            if not service:
-                return Response({"detail": "Sem acesso à store."}, status=status.HTTP_403_FORBIDDEN)
-        else:
-            org_ids = get_user_org_ids(request.user)
-            if not org_ids:
-                return Response({"detail": "Usuário sem org."}, status=status.HTTP_400_BAD_REQUEST)
-            service = OnboardingProgressService(str(org_ids[0]))
+        if step not in STEPS_ORDER:
+            return Response({"detail": "step inválido."}, status=status.HTTP_400_BAD_REQUEST)
+        if meta is not None and not isinstance(meta, dict):
+            return Response({"detail": "meta inválido."}, status=status.HTTP_400_BAD_REQUEST)
 
         try:
-            result = service.complete_step(step, meta=meta)
+            if store_id:
+                service = get_service_for_user_store(request.user, store_id)
+                if not service:
+                    return Response({"detail": "Sem acesso à store."}, status=status.HTTP_403_FORBIDDEN)
+            else:
+                org_ids = get_user_org_ids(request.user)
+                if not org_ids:
+                    return Response({"detail": "Usuário sem org."}, status=status.HTTP_400_BAD_REQUEST)
+                service = OnboardingProgressService(str(org_ids[0]))
+
+            existing = OnboardingProgress.objects.filter(
+                org_id=service.org_id,
+                step=step,
+                completed=True,
+            ).first()
+            if existing:
+                return Response(
+                    {
+                        "ok": True,
+                        "already_completed": True,
+                        "step": step,
+                        "next_step": service.next_step(),
+                    },
+                    status=status.HTTP_200_OK,
+                )
+
+            result = service.complete_step(step, meta=meta or {})
+            return Response(
+                {
+                    "ok": True,
+                    "already_completed": False,
+                    "step": result.get("step"),
+                    "completed": result.get("completed"),
+                    "completed_at": result.get("completed_at"),
+                    "status": result.get("status"),
+                    "progress_percent": result.get("progress_percent"),
+                    "meta": result.get("meta") or {},
+                    "next_step": service.next_step(),
+                },
+                status=status.HTTP_200_OK,
+            )
         except ValueError:
             return Response({"detail": "step inválido."}, status=status.HTTP_400_BAD_REQUEST)
-        return Response(result)
+        except Exception:
+            logger.exception("[ONBOARDING] step complete failed payload=%s", payload)
+            return Response(
+                {"ok": False, "detail": "Não foi possível completar o step."},
+                status=status.HTTP_200_OK,
+            )
 
 
 class OnboardingNextStepView(APIView):
