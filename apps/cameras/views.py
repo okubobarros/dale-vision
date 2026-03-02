@@ -21,7 +21,7 @@ from .serializers import (
 )
 from .models import CameraSnapshot, CameraHealth, CameraROIConfig
 from apps.core.integrations import supabase_storage
-from .services import rtsp_snapshot
+from .services import rtsp_snapshot, rtsp_probe
 from .limits import enforce_trial_camera_limit
 from .roi import get_latest_roi_config, get_latest_published_roi_config, create_roi_config
 from .permissions import (
@@ -765,20 +765,11 @@ class CameraViewSet(viewsets.ModelViewSet):
             }
         )
 
-    @action(detail=True, methods=["post"], url_path="test-connection")
+    @action(detail=True, methods=["post"], url_path="test_connection")
     def test_connection(self, request, pk=None):
         try:
             cam = self.get_object()
             require_store_role(request.user, str(cam.store_id), ALLOWED_MANAGE_ROLES)
-            return Response(
-                {
-                    "ok": True,
-                    "camera_id": str(cam.id),
-                    "store_id": str(cam.store_id),
-                    "queued": True,
-                },
-                status=status.HTTP_202_ACCEPTED,
-            )
         except (PermissionDenied, DjangoPermissionDenied) as exc:
             return _error_response(
                 "PERMISSION_DENIED",
@@ -787,13 +778,77 @@ class CameraViewSet(viewsets.ModelViewSet):
                 deprecated_detail=str(exc) or "Sem permissão.",
             )
         except Exception as exc:
-            logger.exception("[CAMERA] test-connection failed camera_id=%s error=%s", str(pk), exc)
+            logger.exception("[CAMERA] test_connection get_object failed camera_id=%s error=%s", str(pk), exc)
             return _error_response(
                 "CAMERA_TEST_FAILED",
                 "Não foi possível testar a conexão da câmera.",
                 status.HTTP_500_INTERNAL_SERVER_ERROR,
                 deprecated_detail="Não foi possível testar a conexão da câmera.",
             )
+
+        if not cam.rtsp_url:
+            return _error_response(
+                "CAMERA_RTSP_MISSING",
+                "RTSP não informado para esta câmera.",
+                status.HTTP_400_BAD_REQUEST,
+                deprecated_detail="RTSP não informado para esta câmera.",
+            )
+
+        try:
+            result = rtsp_probe(cam.rtsp_url)
+        except Exception as exc:
+            logger.exception("[CAMERA] test_connection probe failed camera_id=%s error=%s", str(cam.id), exc)
+            result = {"ok": False, "error_msg": "Falha ao testar RTSP."}
+
+        now = timezone.now()
+        ok = bool(result.get("ok"))
+        latency_ms = result.get("latency_ms")
+        frames_read = result.get("frames_read")
+        fps_est = result.get("fps_est")
+        error_msg = result.get("error_msg")
+
+        if ok:
+            cam.status = "online"
+            cam.last_seen_at = now
+            cam.last_error = None
+            cam.updated_at = now
+            cam.save(update_fields=["status", "last_seen_at", "last_error", "updated_at"])
+            CameraHealthLog.objects.create(
+                camera_id=cam.id,
+                checked_at=now,
+                status="online",
+                latency_ms=latency_ms,
+                snapshot_url=None,
+                error=None,
+            )
+        else:
+            cam.status = "error"
+            cam.last_error = error_msg or "Falha ao testar RTSP."
+            cam.updated_at = now
+            cam.save(update_fields=["status", "last_error", "updated_at"])
+            CameraHealthLog.objects.create(
+                camera_id=cam.id,
+                checked_at=now,
+                status="error",
+                latency_ms=latency_ms,
+                snapshot_url=None,
+                error=error_msg,
+            )
+
+        return Response(
+            {
+                "ok": ok,
+                "latency_ms": latency_ms,
+                "fps_est": fps_est,
+                "frames_read": frames_read,
+                "error_msg": None if ok else (error_msg or "Falha ao testar RTSP."),
+            },
+            status=status.HTTP_200_OK if ok else status.HTTP_502_BAD_GATEWAY,
+        )
+
+    @action(detail=True, methods=["post"], url_path="test-connection")
+    def test_connection_legacy(self, request, pk=None):
+        return self.test_connection(request, pk=pk)
 
     @action(
         detail=True,

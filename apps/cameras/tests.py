@@ -11,6 +11,7 @@ from apps.cameras.limits import enforce_trial_camera_limit, TRIAL_CAMERA_LIMIT_M
 from apps.cameras.roi import create_roi_config, get_latest_published_roi_config
 from apps.cameras.permissions import require_store_role, filter_cameras_for_user
 from apps.cameras.views import CameraViewSet
+from apps.cameras.serializers import CameraSerializer
 from backend.utils.entitlements import TrialExpiredError
 
 
@@ -190,6 +191,39 @@ class CameraHealthEndpointTests(SimpleTestCase):
         self.assertEqual(response.status_code, 200)
         health_log_mock.objects.create.assert_called_once()
         cam.save.assert_called_once()
+
+
+class CameraSerializerUpdateTests(SimpleTestCase):
+    def test_update_skips_blank_credentials(self):
+        instance = MagicMock()
+        instance.username = "admin"
+        instance.password = "secret"
+        instance.name = "Old"
+        instance.save = MagicMock()
+
+        serializer = CameraSerializer()
+        serializer.update(
+            instance,
+            {"username": "   ", "password": "", "name": "Nova"},
+        )
+
+        self.assertEqual(instance.username, "admin")
+        self.assertEqual(instance.password, "secret")
+        self.assertEqual(instance.name, "Nova")
+        instance.save.assert_called_once()
+
+    def test_update_skips_null_credentials(self):
+        instance = MagicMock()
+        instance.username = "admin"
+        instance.password = "secret"
+        instance.save = MagicMock()
+
+        serializer = CameraSerializer()
+        serializer.update(instance, {"username": None, "password": None})
+
+        self.assertEqual(instance.username, "admin")
+        self.assertEqual(instance.password, "secret")
+        instance.save.assert_called_once()
 
 
 class CameraRoiLatestEndpointTests(SimpleTestCase):

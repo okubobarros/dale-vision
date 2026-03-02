@@ -100,6 +100,18 @@ class CameraSerializer(serializers.ModelSerializer):
             "snapshot_url": latest.get("snapshot_url"),
         }
 
+    def update(self, instance, validated_data):
+        for field in ("username", "password"):
+            if field not in validated_data:
+                continue
+            value = validated_data.get(field)
+            if value is None:
+                validated_data.pop(field, None)
+                continue
+            if isinstance(value, str) and value.strip() == "":
+                validated_data.pop(field, None)
+        return super().update(instance, validated_data)
+
 class CameraHealthLogSerializer(serializers.ModelSerializer):
     class Meta:
         model = CameraHealthLog

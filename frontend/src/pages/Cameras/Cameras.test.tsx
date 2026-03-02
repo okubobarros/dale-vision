@@ -254,8 +254,10 @@ describe("Cameras create camera", () => {
     ])
     vi.mocked(camerasService.testConnection).mockResolvedValueOnce({
       ok: true,
-      queued: true,
-      status: 202,
+      latency_ms: 120,
+      fps_est: 8.5,
+      frames_read: 10,
+      error_msg: null,
     })
 
     renderWithProviders(<Cameras />)
@@ -266,7 +268,7 @@ describe("Cameras create camera", () => {
     await user.click(testButton)
 
     expect(camerasService.testConnection).toHaveBeenCalledWith("cam-1")
-    expect(await screen.findByRole("button", { name: /Testando/i })).toBeInTheDocument()
+    expect(await screen.findByText(/Conexão confirmada/i)).toBeInTheDocument()
   })
 
   it("hides ROI button for viewer role when not staff", async () => {

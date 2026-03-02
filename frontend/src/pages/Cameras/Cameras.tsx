@@ -31,8 +31,6 @@ const isPrivateIp = (ip: string) => {
 
 const isPrivateHost = (host: string) => isPrivateIp(host) || host === "localhost"
 const EDGE_HEARTBEAT_FRESH_SECONDS = 120
-const TEST_POLL_INTERVAL_MS = 2000
-const TEST_POLL_TIMEOUT_MS = 30000
 const TEST_COOLDOWN_MS = 8000
 
 const FIELD_LABELS: Record<string, string> = {
@@ -74,10 +72,7 @@ const Cameras = () => {
   const [testMessage, setTestMessage] = useState<string | null>(null)
   const [testError, setTestError] = useState<string | null>(null)
   const [testCooldownCameraId, setTestCooldownCameraId] = useState<string | null>(null)
-  const testTimerRef = useRef<ReturnType<typeof setInterval> | null>(null)
-  const testStartedAtRef = useRef<number | null>(null)
   const testCooldownTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null)
-  const testBaselineRef = useRef<Camera | null>(null)
   const onboardingMode = initialOnboardingMode
   const queryClient = useQueryClient()
   const diagnoseUrl = "/app/edge-help"
@@ -310,7 +305,6 @@ const Cameras = () => {
     onMutate: async (cameraId: string) => {
       await queryClient.cancelQueries({ queryKey: ["store-cameras", selectedStore] })
       if (testingCameraId === cameraId) {
-        stopTestPolling()
         setTestingCameraId(null)
         setTestMessage(null)
         setTestError(null)
@@ -328,7 +322,6 @@ const Cameras = () => {
       queryClient.invalidateQueries({ queryKey: ["store-cameras", selectedStore] })
       queryClient.invalidateQueries({ queryKey: ["store-limits", selectedStore] })
       if (testingCameraId) {
-        stopTestPolling()
         setTestingCameraId(null)
         setTestMessage(null)
         setTestError(null)
@@ -413,134 +406,26 @@ const Cameras = () => {
     ]
   }, [cameras])
 
-  const stopTestPolling = useCallback(() => {
-    if (testTimerRef.current) {
-      clearInterval(testTimerRef.current)
-      testTimerRef.current = null
-    }
-    testStartedAtRef.current = null
-    testBaselineRef.current = null
-  }, [])
-
-  const hasTestUpdate = useCallback((latest: Camera, baseline: Camera | null) => {
-    const latestStatus = latest.status ?? null
-    const latestSnapshot = latest.last_snapshot_url ?? null
-    const latestError = latest.last_error ?? null
-    const latestSeen = latest.last_seen_at ?? null
-    const latestTestStatus = latest.last_test_status ?? null
-    const latestTestAt = latest.last_test_at ?? null
-    const latestTestError = latest.last_test_error ?? null
-    const latestErrorReason = latest.error_reason ?? null
-
-    if (!baseline) {
-      return Boolean(
-        latestTestAt ||
-          latestTestStatus ||
-          latestTestError ||
-          latestSnapshot ||
-          latestError ||
-          latestErrorReason ||
-          latestStatus ||
-          latestSeen
-      )
-    }
-
-    return (
-      (baseline.last_seen_at ?? null) !== latestSeen ||
-      (baseline.status ?? null) !== latestStatus ||
-      (baseline.last_snapshot_url ?? null) !== latestSnapshot ||
-      (baseline.last_error ?? null) !== latestError ||
-      (baseline.last_test_status ?? null) !== latestTestStatus ||
-      (baseline.last_test_at ?? null) !== latestTestAt ||
-      (baseline.last_test_error ?? null) !== latestTestError ||
-      (baseline.error_reason ?? null) !== latestErrorReason
-    )
-  }, [])
-
-  const getTestOutcome = useCallback((latest: Camera) => {
-    const status = latest.status ?? null
-    const lastError = latest.last_error ?? null
-    const lastTestStatus = latest.last_test_status ?? null
-    const lastTestError = latest.last_test_error ?? null
-    const errorReason = latest.error_reason ?? null
-    const normalizedStatus = String(lastTestStatus || status || "").toLowerCase()
-    const failed =
-      Boolean(lastError || lastTestError || errorReason) ||
-      ["error", "failed", "offline"].includes(normalizedStatus)
-    const success =
-      !failed &&
-      (normalizedStatus.includes("ok") ||
-        normalizedStatus.includes("success") ||
-        normalizedStatus.includes("online") ||
-        status === "online")
-    return {
-      failed,
-      success,
-      detail: lastTestError || lastError || errorReason || null,
-    }
-  }, [])
-
-  const startTestPolling = useCallback(
-    (cameraId: string) => {
-      stopTestPolling()
-      setTestingCameraId(cameraId)
-      setTestMessage("Teste em andamento...")
-      setTestError(null)
-      testStartedAtRef.current = Date.now()
-
-      testTimerRef.current = setInterval(async () => {
-        const startedAt = testStartedAtRef.current || Date.now()
-        const elapsed = Date.now() - startedAt
-        if (elapsed > TEST_POLL_TIMEOUT_MS) {
-          stopTestPolling()
-          setTestingCameraId(null)
-          const message =
-            "Teste assíncrono iniciado. Rode o Edge Agent na rede do CFTV para validar."
-          setTestMessage(message)
-          toast(message)
-          return
-        }
-
-        try {
-          const latest = await camerasService.getCamera(cameraId)
-          if (!hasTestUpdate(latest, testBaselineRef.current)) return
-          const outcome = getTestOutcome(latest)
-          stopTestPolling()
-          setTestingCameraId(null)
-          if (outcome.failed) {
-            const message = outcome.detail || "Falha ao conectar na câmera."
-            setTestError(message)
-            toast.error(message)
-          } else if (outcome.success) {
-            setTestMessage("Conexão confirmada.")
-            toast.success("Conexão confirmada.")
-          } else {
-            setTestMessage("Teste concluído. Verifique os detalhes da câmera.")
-          }
-          queryClient.invalidateQueries({ queryKey: ["store-cameras", selectedStore] })
-        } catch (err) {
-          const status = (err as { response?: { status?: number } })?.response?.status
-          if (status === 404) {
-            stopTestPolling()
-            setTestingCameraId(null)
-            setTestError("Câmera não encontrada. Atualize a lista.")
-          }
-        }
-      }, TEST_POLL_INTERVAL_MS)
-    },
-    [getTestOutcome, hasTestUpdate, queryClient, selectedStore, stopTestPolling]
-  )
-
   const handleTestConnection = useCallback(
     async (cameraId: string) => {
+      setTestingCameraId(cameraId)
       setTestError(null)
       setTestMessage(null)
       try {
-        testBaselineRef.current =
-          cameras?.find((camera) => camera.id === cameraId) ?? null
-        await camerasService.testConnection(cameraId)
-        toast.success("Teste iniciado")
-        setTestMessage("Teste em andamento...")
+        const result = await camerasService.testConnection(cameraId)
+        if (result.ok) {
+          const latencyLabel =
+            result.latency_ms !== null && result.latency_ms !== undefined
+              ? ` (${result.latency_ms} ms)`
+              : ""
+          setTestMessage(`Conexão confirmada${latencyLabel}.`)
+          toast.success("Conexão confirmada.")
+        } else {
+          const message = result.error_msg || "Falha ao conectar na câmera."
+          setTestError(message)
+          toast.error(message)
+        }
+        queryClient.invalidateQueries({ queryKey: ["store-cameras", selectedStore] })
         setTestCooldownCameraId(cameraId)
         if (testCooldownTimerRef.current) {
           clearTimeout(testCooldownTimerRef.current)
@@ -548,24 +433,24 @@ const Cameras = () => {
         testCooldownTimerRef.current = setTimeout(() => {
           setTestCooldownCameraId(null)
         }, TEST_COOLDOWN_MS)
-        startTestPolling(cameraId)
       } catch (err) {
         const detail = (err as { message?: string })?.message
         setTestError(detail || "Falha ao solicitar teste.")
+      } finally {
+        setTestingCameraId(null)
       }
     },
-    [cameras, startTestPolling]
+    [queryClient, selectedStore]
   )
 
   useEffect(() => {
     return () => {
-      stopTestPolling()
       if (testCooldownTimerRef.current) {
         clearTimeout(testCooldownTimerRef.current)
         testCooldownTimerRef.current = null
       }
     }
-  }, [stopTestPolling])
+  }, [])
 
   return (
     <div className="p-6 space-y-6">
@@ -1130,6 +1015,9 @@ type CameraModalProps = {
                     : "border-gray-200"
                 }`}
               />
+              <p className="text-xs text-gray-500 mt-1">
+                Deixe em branco para manter as credenciais atuais.
+              </p>
             </div>
               <div>
                 <label className="text-sm font-medium text-gray-700">Senha</label>
@@ -1155,6 +1043,9 @@ type CameraModalProps = {
                     {showPassword ? "Ocultar" : "Mostrar"}
                   </button>
                 </div>
+                <p className="text-xs text-gray-500 mt-1">
+                  Deixe em branco para manter as credenciais atuais.
+                </p>
               </div>
             {connectionType === "nvr" && (
               <div>
@@ -1352,7 +1243,7 @@ type CameraModalProps = {
             onClick={() => {
               const cleanedIp = form.ip.trim()
               const cleanedUsername = form.username.trim()
-              const cleanedPassword = form.password
+              const cleanedPassword = form.password.trim()
               const cleanedBrand = form.brand.trim()
               const cleanedRtsp = rtspUrl.trim()
               const inferredRtsp =
@@ -1375,12 +1266,16 @@ type CameraModalProps = {
               const payload: CreateCameraPayload = {
                 name: form.name,
                 ip: cleanedIp || undefined,
-                username: cleanedUsername || undefined,
-                password: cleanedPassword || undefined,
                 brand: cleanedBrand || undefined,
                 external_id: inferredExternalId,
                 active: form.active,
                 rtsp_url: inferredRtsp,
+              }
+              if (cleanedUsername) {
+                payload.username = cleanedUsername
+              }
+              if (cleanedPassword) {
+                payload.password = cleanedPassword
               }
               onSave(payload)
             }}
