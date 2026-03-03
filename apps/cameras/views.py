@@ -769,6 +769,13 @@ class CameraViewSet(viewsets.ModelViewSet):
                     str(cam.store_id),
                     str(cam.id),
                 )
+            try:
+                Store.objects.filter(id=cam.store_id).update(
+                    last_error=None,
+                    updated_at=timezone.now(),
+                )
+            except Exception:
+                pass
 
         return Response(
             {

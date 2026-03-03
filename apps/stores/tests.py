@@ -563,12 +563,14 @@ class EdgeStatusNoCamerasTests(SimpleTestCase):
 
     @patch("apps.stores.views_edge_status._get_last_edge_heartbeat_receipt")
     @patch("apps.stores.views_edge_status._get_last_heartbeat")
+    @patch("apps.stores.views_edge_status._get_latest_camera_health")
     @patch("apps.stores.views_edge_status.Camera")
     @patch("apps.stores.views_edge_status.Store")
     def test_with_cameras_keeps_current_behavior(
         self,
         store_mock,
         camera_mock,
+        latest_health_mock,
         last_heartbeat_mock,
         last_edge_receipt_mock,
     ):
@@ -584,6 +586,12 @@ class EdgeStatusNoCamerasTests(SimpleTestCase):
         camera_mock.objects.filter.return_value.order_by.return_value = [cam]
         last_heartbeat_mock.return_value = cam.last_seen_at
 
+        health_log = MagicMock()
+        health_log.status = "online"
+        health_log.checked_at = timezone.now() - timezone.timedelta(seconds=30)
+        health_log.created_at = None
+        latest_health_mock.return_value = health_log
+
         payload, _reason = views_edge_status.compute_store_edge_status_snapshot(store_id)
 
         self.assertEqual(payload.get("store_status"), "online")
@@ -592,12 +600,14 @@ class EdgeStatusNoCamerasTests(SimpleTestCase):
 
     @patch("apps.stores.views_edge_status._get_last_edge_heartbeat_receipt")
     @patch("apps.stores.views_edge_status._get_last_heartbeat")
+    @patch("apps.stores.views_edge_status._get_latest_camera_health")
     @patch("apps.stores.views_edge_status.Camera")
     @patch("apps.stores.views_edge_status.Store")
     def test_with_cameras_stale_heartbeat_is_offline(
         self,
         store_mock,
         camera_mock,
+        latest_health_mock,
         last_heartbeat_mock,
         last_edge_receipt_mock,
     ):
@@ -614,12 +624,66 @@ class EdgeStatusNoCamerasTests(SimpleTestCase):
         camera_mock.objects.filter.return_value.order_by.return_value = [cam]
         last_heartbeat_mock.return_value = old_ts
 
+        health_log = MagicMock()
+        health_log.status = "error"
+        health_log.checked_at = old_ts
+        health_log.created_at = None
+        latest_health_mock.return_value = health_log
+
         payload, _reason = views_edge_status.compute_store_edge_status_snapshot(store_id)
 
         self.assertEqual(payload.get("store_status"), "offline")
         self.assertEqual(payload.get("store_status_reason"), "heartbeat_expired")
         self.assertFalse(payload.get("online"))
         last_edge_receipt_mock.assert_called_once_with(store_id)
+
+
+class EdgeStatusCameraHealthRecencyTests(SimpleTestCase):
+    def _mock_store(self, store_id):
+        store = MagicMock()
+        store.id = store_id
+        store.last_error = "rtsp_timeout"
+        return store
+
+    @patch("apps.stores.views_edge_status._get_last_edge_heartbeat_receipt", return_value=None)
+    @patch("apps.stores.views_edge_status._get_last_heartbeat", return_value=None)
+    @patch("apps.stores.views_edge_status._get_latest_error", return_value="rtsp_timeout")
+    @patch("apps.stores.views_edge_status._get_latest_camera_health")
+    @patch("apps.stores.views_edge_status.Camera")
+    @patch("apps.stores.views_edge_status.Store")
+    def test_recent_online_health_clears_store_error(
+        self,
+        store_mock,
+        camera_mock,
+        latest_health_mock,
+        _latest_error_mock,
+        _last_heartbeat_mock,
+        _last_edge_receipt_mock,
+    ):
+        store_id = str(uuid.uuid4())
+        store_mock.objects.filter.return_value.first.return_value = self._mock_store(store_id)
+
+        cam = MagicMock()
+        cam.id = uuid.uuid4()
+        cam.external_id = "cam-1"
+        cam.name = "Camera 1"
+        cam.last_seen_at = None
+        cam.last_snapshot_url = None
+        camera_mock.objects.filter.return_value.order_by.return_value = [cam]
+
+        health_log = MagicMock()
+        health_log.status = "online"
+        health_log.checked_at = timezone.now() - timezone.timedelta(seconds=30)
+        health_log.created_at = None
+        latest_health_mock.return_value = health_log
+
+        payload, _reason = views_edge_status.compute_store_edge_status_snapshot(store_id)
+
+        self.assertEqual(payload.get("store_status"), "online")
+        self.assertEqual(payload.get("store_status_reason"), "all_cameras_online")
+        self.assertIsNone(payload.get("last_error"))
+        self.assertEqual(payload.get("cameras")[0].get("status"), "online")
+        self.assertEqual(payload.get("cameras")[0].get("reason"), "health_recent")
 
 
 class EdgeHeartbeatIngestTests(SimpleTestCase):

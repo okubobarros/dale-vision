@@ -15,6 +15,7 @@ from apps.core.services.onboarding_progress import OnboardingProgressService
 ONLINE_SEC = 120
 DEGRADED_SEC = 300
 EDGE_ONLINE_THRESHOLD_SECONDS = 90
+CAMERA_HEALTH_RECENT_SECONDS = 120
 _CAMERA_ACTIVE_COLUMN_EXISTS = None
 
 
@@ -34,6 +35,11 @@ def classify_age(dt):
     if age <= DEGRADED_SEC:
         return ("degraded", int(age), "stale_heartbeat")
     return ("offline", int(age), "heartbeat_expired")
+
+
+def _health_recent_threshold(now=None):
+    now = now or timezone.now()
+    return now - timezone.timedelta(seconds=CAMERA_HEALTH_RECENT_SECONDS)
 
 
 def _empty_payload(store_id, reason: str, detail: str = None, ok: bool = False):
@@ -114,6 +120,8 @@ def compute_store_edge_status_snapshot(store_id):
         return (_empty_payload(store_id, "store_not_found"), "store_not_found")
 
     try:
+        now = timezone.now()
+        recent_threshold = _health_recent_threshold(now)
         try:
             cameras = Camera.objects.filter(store_id=store_id, active=True).order_by("name")
         except FieldError:
@@ -128,12 +136,28 @@ def compute_store_edge_status_snapshot(store_id):
         for cam in cameras:
             cameras_total += 1
             last_ts = getattr(cam, "last_seen_at", None)
-            if not last_ts:
-                last_log = _get_latest_camera_health(cam.id)
-                if last_log is not None:
-                    last_ts = getattr(last_log, "checked_at", None) or getattr(last_log, "created_at", None)
+            last_log = _get_latest_camera_health(cam.id)
+            log_ts = None
+            if last_log is not None:
+                log_ts = getattr(last_log, "checked_at", None) or getattr(last_log, "created_at", None)
 
-            cam_status, cam_age_seconds, cam_reason = classify_age(last_ts)
+            if log_ts and log_ts >= recent_threshold:
+                cam_age_seconds = int((now - log_ts).total_seconds())
+                cam_status = getattr(last_log, "status", None) or "unknown"
+                cam_reason = "health_recent"
+                last_ts = log_ts
+            else:
+                if log_ts:
+                    cam_age_seconds = int((now - log_ts).total_seconds())
+                    cam_status = "offline"
+                    cam_reason = "health_stale"
+                else:
+                    cam_status = "unknown"
+                    cam_reason = "no_recent_health"
+                    if last_ts:
+                        cam_age_seconds = int((now - last_ts).total_seconds())
+                    else:
+                        cam_age_seconds = None
 
             if cam_status == "online":
                 cameras_online += 1
@@ -193,13 +217,10 @@ def compute_store_edge_status_snapshot(store_id):
                 store_status_reason = hb_reason
 
         if cameras_total != 0:
-            if last_heartbeat:
-                store_status_age_seconds = hb_age_seconds
-            else:
-                store_status_age_seconds = min(camera_age_seconds) if camera_age_seconds else None
-        last_error = _get_latest_error(store_id)
-        if not last_error:
-            last_error = store.last_error
+            store_status_age_seconds = min(camera_age_seconds) if camera_age_seconds else None
+        last_error = None
+        if store_status_reason != "all_cameras_online":
+            last_error = _get_latest_error(store_id, recent_threshold=recent_threshold)
     except (ProgrammingError, OperationalError):
         return (_empty_payload(store.id, "db_unavailable", "db_unavailable"), "db_unavailable")
     except Exception:
@@ -341,12 +362,18 @@ def _get_latest_camera_health(camera_id):
         return None
 
 
-def _get_latest_error(store_id):
+def _get_latest_error(store_id, *, recent_threshold=None):
+    if recent_threshold is None:
+        recent_threshold = _health_recent_threshold()
     try:
         camera_ids = _get_active_camera_ids(store_id)
         if not camera_ids:
             return None
-        qs = CameraHealthLog.objects.filter(camera_id__in=camera_ids, error__isnull=False)
+        qs = CameraHealthLog.objects.filter(
+            camera_id__in=camera_ids,
+            error__isnull=False,
+            checked_at__gte=recent_threshold,
+        )
         last_error_row = (
             qs.exclude(error="")
             .order_by("-checked_at")
@@ -362,7 +389,11 @@ def _get_latest_error(store_id):
         camera_ids = _get_active_camera_ids(store_id)
         if not camera_ids:
             return None
-        qs = CameraHealthLog.objects.filter(camera_id__in=camera_ids, error__isnull=False)
+        qs = CameraHealthLog.objects.filter(
+            camera_id__in=camera_ids,
+            error__isnull=False,
+            created_at__gte=recent_threshold,
+        )
         last_error_row = (
             qs.exclude(error="")
             .order_by("-created_at")
@@ -373,7 +404,11 @@ def _get_latest_error(store_id):
             return last_error_row["error"]
     except FieldError:
         try:
-            qs = CameraHealthLog.objects.filter(camera__store_id=store_id, error__isnull=False)
+            qs = CameraHealthLog.objects.filter(
+                camera__store_id=store_id,
+                error__isnull=False,
+                created_at__gte=recent_threshold,
+            )
             qs = _filter_active_health_qs(qs)
             last_error_row = (
                 qs.exclude(error="")
