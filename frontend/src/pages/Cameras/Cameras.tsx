@@ -395,13 +395,14 @@ const Cameras = () => {
 
   const stepStates = useMemo(() => {
     const hasCamera = (cameras?.length || 0) > 0
-    const healthOk = (cameras || []).some(
-      (cam) => cam.status === "online" || cam.status === "degraded"
-    )
+    const healthOk = (cameras || []).some((cam) => {
+      const status = cam.camera_health?.status ?? cam.status
+      return status === "online" || status === "degraded"
+    })
     const roiDone = false
     return [
       { label: "Adicionar câmera", done: hasCamera },
-      { label: "Verificar conexão", done: healthOk },
+      { label: "Verificar status no Edge", done: healthOk },
       { label: "Desenhar ROI", done: roiDone },
     ]
   }, [cameras])
@@ -412,20 +413,31 @@ const Cameras = () => {
       setTestError(null)
       setTestMessage(null)
       try {
-        const result = await camerasService.testConnection(cameraId)
-        if (result.ok) {
+        await queryClient.refetchQueries({ queryKey: ["store-cameras", selectedStore] })
+        const current = queryClient.getQueryData<Camera[]>([
+          "store-cameras",
+          selectedStore,
+        ])
+        const camera = current?.find((cam) => cam.id === cameraId)
+        const health = camera?.camera_health
+        const status = health?.status ?? camera?.status ?? "unknown"
+        const latency = health?.latency_ms ?? null
+        const error = health?.error ?? null
+        const checkedAt = health?.checked_at ?? camera?.last_seen_at ?? null
+
+        if (status === "online" || status === "degraded") {
           const latencyLabel =
-            result.latency_ms !== null && result.latency_ms !== undefined
-              ? ` (${result.latency_ms} ms)`
-              : ""
-          setTestMessage(`Conexão confirmada${latencyLabel}.`)
-          toast.success("Conexão confirmada.")
+            latency !== null && latency !== undefined ? ` (${latency} ms)` : ""
+          const timeLabel = checkedAt ? ` em ${formatTimestamp(checkedAt)}` : ""
+          setTestMessage(`Status do Edge: ${formatStatusLabel(status)}${latencyLabel}${timeLabel}.`)
+          toast.success("Status do Edge atualizado.")
+        } else if (error) {
+          setTestError(`Edge reportou erro: ${error}`)
+          toast.error("Edge reportou erro.")
         } else {
-          const message = result.error_msg || "Falha ao conectar na câmera."
-          setTestError(message)
-          toast.error(message)
+          setTestError("Sem status recente do Edge. Aguarde o heartbeat do agente.")
         }
-        queryClient.invalidateQueries({ queryKey: ["store-cameras", selectedStore] })
+
         setTestCooldownCameraId(cameraId)
         if (testCooldownTimerRef.current) {
           clearTimeout(testCooldownTimerRef.current)
@@ -435,7 +447,7 @@ const Cameras = () => {
         }, TEST_COOLDOWN_MS)
       } catch (err) {
         const detail = (err as { message?: string })?.message
-        setTestError(detail || "Falha ao solicitar teste.")
+        setTestError(detail || "Falha ao atualizar status do Edge.")
       } finally {
         setTestingCameraId(null)
       }
@@ -514,7 +526,7 @@ const Cameras = () => {
             <div>1. Você precisa estar na mesma rede do NVR/câmeras (ex.: PC 192.168.15.x).</div>
             <div>2. Digite o IP do NVR + usuário/senha.</div>
             <div>3. Selecione o canal (NVR) ou informe o RTSP.</div>
-            <div>4. Clique em Verificar conexão.</div>
+            <div>4. Aguarde o status do Edge aparecer na lista.</div>
           </div>
         </div>
       )}
@@ -611,7 +623,7 @@ const Cameras = () => {
               </p>
               {!canManageStore && (
                 <p className="text-xs text-amber-700 mt-2">
-                  Acesso somente leitura. Você não pode editar ou testar câmeras nesta loja.
+                  Acesso somente leitura. Você não pode editar ou atualizar status nesta loja.
                 </p>
               )}
             </div>
@@ -650,13 +662,16 @@ const Cameras = () => {
                   camera.store_name ||
                   stores?.find((store) => store.id === camera.store)?.name ||
                   null
-                const normalizedStatus = String(camera.status || "unknown").toLowerCase()
+                const statusValue = camera.camera_health?.status ?? camera.status ?? "unknown"
+                const normalizedStatus = String(statusValue || "unknown").toLowerCase()
                 const isAwaitingValidation =
                   normalizedStatus === "unknown" || normalizedStatus === "awaiting_validation"
                 const latencyValue =
                   camera.camera_health?.latency_ms ?? camera.latency_ms ?? null
                 const errorValue =
                   camera.camera_health?.error ?? camera.last_error ?? null
+                const checkedAt =
+                  camera.camera_health?.checked_at ?? camera.last_seen_at ?? null
                 const snapshotUrl =
                   camera.camera_health?.snapshot_url ?? camera.last_snapshot_url ?? null
                 const showInlineTestResult =
@@ -679,18 +694,18 @@ const Cameras = () => {
                       )}
                       <span
                         className={`inline-flex items-center rounded-full border px-2 py-0.5 text-[11px] font-semibold uppercase tracking-wide ${
-                          camera.status === "online"
+                          statusValue === "online"
                             ? "border-emerald-200 bg-emerald-50 text-emerald-800"
-                            : camera.status === "degraded"
+                            : statusValue === "degraded"
                             ? "border-yellow-200 bg-yellow-50 text-yellow-800"
-                            : camera.status === "error"
+                            : statusValue === "error"
                             ? "border-red-200 bg-red-50 text-red-800"
-                            : camera.status === "offline"
+                            : statusValue === "offline"
                             ? "border-rose-200 bg-rose-50 text-rose-800"
                             : "border-slate-200 bg-slate-50 text-slate-700"
                         }`}
                       >
-                        {formatStatusLabel(camera.status ?? "unknown")}
+                        {formatStatusLabel(statusValue)}
                       </span>
                     </div>
                     <p className="text-xs text-gray-500 mt-1">
@@ -699,9 +714,9 @@ const Cameras = () => {
                     <p className="text-xs text-gray-500 mt-1">
                       RTSP: {camera.rtsp_url_masked ?? "não informado"}
                     </p>
-                    {camera.last_seen_at && (
+                    {checkedAt && (
                       <p className="text-xs text-gray-500 mt-1">
-                        Última verificação: {formatTimestamp(camera.last_seen_at)}
+                        Última verificação: {formatTimestamp(checkedAt)}
                       </p>
                     )}
                     {latencyValue !== null && latencyValue !== undefined && (
@@ -756,7 +771,7 @@ const Cameras = () => {
                           : "border-emerald-200 text-emerald-700 hover:bg-emerald-50"
                       }`}
                     >
-                      {testingCameraId === camera.id ? "Testando..." : "Testar conexão"}
+                      {testingCameraId === camera.id ? "Atualizando..." : "Atualizar status (Edge)"}
                     </button>
                       {canEditRoi && (
                         <button
@@ -1206,7 +1221,7 @@ type CameraModalProps = {
           )}
           {!camera && (
             <p className="mt-2 text-xs text-gray-500">
-              Após salvar, clique em Verificar conexão para confirmar.
+              Após salvar, aguarde o status do Edge ser atualizado.
             </p>
           )}
           {testMessage && (
@@ -1234,7 +1249,7 @@ type CameraModalProps = {
                 testing ? "bg-gray-300 cursor-not-allowed" : "bg-emerald-600 hover:bg-emerald-700"
               }`}
             >
-              {testing ? "Testando..." : "Verificar conexão"}
+              {testing ? "Atualizando..." : "Atualizar status (Edge)"}
             </button>
           )}
           <button

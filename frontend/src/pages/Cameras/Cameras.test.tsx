@@ -242,33 +242,42 @@ describe("Cameras create camera", () => {
     expect(payload).not.toHaveProperty("subtype")
   })
 
-  it("shows testing state and calls test-connection", async () => {
+  it("shows edge status refresh when clicking update", async () => {
     const { camerasService } = await import("../../services/cameras")
-    vi.mocked(camerasService.getStoreCameras).mockResolvedValueOnce([
-      {
-        id: "cam-1",
-        store: "store-1",
-        name: "Entrada",
-        status: "offline",
-      },
-    ])
-    vi.mocked(camerasService.testConnection).mockResolvedValueOnce({
-      ok: true,
-      latency_ms: 120,
-      fps_est: 8.5,
-      frames_read: 10,
-      error_msg: null,
-    })
+    vi.mocked(camerasService.getStoreCameras)
+      .mockResolvedValueOnce([
+        {
+          id: "cam-1",
+          store: "store-1",
+          name: "Entrada",
+          status: "offline",
+        },
+      ])
+      .mockResolvedValueOnce([
+        {
+          id: "cam-1",
+          store: "store-1",
+          name: "Entrada",
+          status: "online",
+          camera_health: {
+            status: "online",
+            latency_ms: 120,
+            checked_at: "2026-03-03T10:00:00Z",
+          },
+        },
+      ])
 
     renderWithProviders(<Cameras />)
     const user = userEvent.setup()
 
     expect(await screen.findByText("Entrada")).toBeInTheDocument()
-    const testButton = await screen.findByRole("button", { name: /Testar conexão/i })
+    const testButton = await screen.findByRole("button", { name: /Atualizar status/i })
     await user.click(testButton)
 
-    expect(camerasService.testConnection).toHaveBeenCalledWith("cam-1")
-    expect(await screen.findByText(/Conexão confirmada/i)).toBeInTheDocument()
+    await waitFor(() => {
+      expect(camerasService.getStoreCameras).toHaveBeenCalledTimes(2)
+    })
+    expect(await screen.findByText(/Status do Edge/i)).toBeInTheDocument()
   })
 
   it("hides ROI button for viewer role when not staff", async () => {
