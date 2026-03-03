@@ -3,8 +3,10 @@ import logging
 from typing import Optional
 
 from django.utils import timezone
+from rest_framework.authentication import get_authorization_header
 from apps.edge.models import EdgeToken
 from apps.core.models import Store
+from apps.accounts.auth_supabase import SupabaseJWTAuthentication
 
 logger = logging.getLogger(__name__)
 
@@ -22,6 +24,19 @@ def _extract_store_token(request) -> Optional[str]:
     if auth_header.lower().startswith("bearer "):
         return auth_header.split(" ", 1)[1].strip()
     return request.headers.get("X-EDGE-TOKEN") or None
+
+
+class EdgeAwareJWTAuthentication(SupabaseJWTAuthentication):
+    def authenticate(self, request):
+        auth = get_authorization_header(request).split()
+        if not auth or auth[0].lower() != b"bearer":
+            return None
+        if len(auth) < 2:
+            return None
+        token = auth[1].decode("utf-8", errors="ignore")
+        if token.count(".") < 2:
+            return None
+        return super().authenticate(request)
 
 
 def validate_store_token(request, store_id: str) -> bool:

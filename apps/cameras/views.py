@@ -9,12 +9,13 @@ from rest_framework.response import Response
 from rest_framework.exceptions import NotFound, ValidationError, PermissionDenied
 from django.core.exceptions import PermissionDenied as DjangoPermissionDenied
 from rest_framework.parsers import MultiPartParser, FormParser
+from knox.auth import TokenAuthentication
 
 from django.db import transaction
 from django.db.models import Q
 from apps.core.models import AuditLog, Camera, CameraHealthLog, OrgMember, Store, StoreManager
 from apps.edge.models import EdgeToken
-from apps.edge.auth import validate_store_token
+from apps.edge.auth import validate_store_token, EdgeAwareJWTAuthentication
 from .serializers import (
     CameraSerializer,
     CameraHealthLogSerializer,
@@ -662,7 +663,13 @@ class CameraViewSet(viewsets.ModelViewSet):
             )
         return Response(CameraROIConfigSerializer(latest).data)
 
-    @action(detail=True, methods=["post"], url_path="health", permission_classes=[permissions.AllowAny])
+    @action(
+        detail=True,
+        methods=["post"],
+        url_path="health",
+        permission_classes=[permissions.AllowAny],
+        authentication_classes=[EdgeAwareJWTAuthentication, TokenAuthentication],
+    )
     def health(self, request, pk=None):
         cam = self.get_object()
         if request.user and request.user.is_authenticated:

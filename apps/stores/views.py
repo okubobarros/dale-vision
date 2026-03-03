@@ -6,6 +6,7 @@ from zoneinfo import ZoneInfo
 import time
 from django.core.cache import cache
 from rest_framework import viewsets, status, permissions
+from knox.auth import TokenAuthentication
 from rest_framework.decorators import action
 from rest_framework.exceptions import PermissionDenied, ValidationError, NotFound
 from rest_framework.response import Response
@@ -18,7 +19,7 @@ from django.conf import settings
 from django.utils.dateparse import parse_datetime
 from apps.core.models import Store, OrgMember, Organization, Camera, Employee, DetectionEvent
 from apps.edge.models import EdgeToken
-from apps.edge.auth import validate_store_token
+from apps.edge.auth import validate_store_token, EdgeAwareJWTAuthentication
 from apps.cameras.limits import (
     enforce_trial_camera_limit,
     count_active_cameras,
@@ -769,7 +770,13 @@ class StoreViewSet(viewsets.ModelViewSet):
             }
         )
 
-    @action(detail=True, methods=["get", "post"], url_path="cameras", permission_classes=[permissions.AllowAny])
+    @action(
+        detail=True,
+        methods=["get", "post"],
+        url_path="cameras",
+        permission_classes=[permissions.AllowAny],
+        authentication_classes=[EdgeAwareJWTAuthentication, TokenAuthentication],
+    )
     def cameras(self, request, pk=None):
         try:
             store = self.get_object()

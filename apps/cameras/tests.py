@@ -184,7 +184,7 @@ class CameraHealthEndpointTests(SimpleTestCase):
             format="json",
             HTTP_X_EDGE_TOKEN="edge-token",
         )
-        force_authenticate(request, user=MagicMock(is_authenticated=True))
+        force_authenticate(request, user=MagicMock(is_authenticated=False))
 
         with patch.object(CameraViewSet, "get_object", return_value=cam):
             response = view(request, pk="cam-1")
