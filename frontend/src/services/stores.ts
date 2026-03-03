@@ -376,7 +376,7 @@ export const storesService = {
     try {
       const response = await api.get("/v1/stores/", {
         params: { view: "min" },
-        timeout: 20000,
+        timeoutCategory: "critical",
       });
       const payload = response.data;
       const stores = Array.isArray(payload)
@@ -400,7 +400,7 @@ export const storesService = {
     try {
       const response = await api.get("/v1/stores/", {
         params: { view: "summary" },
-        timeout: 20000,
+        timeoutCategory: "critical",
       });
       const payload = response.data;
       const stores = Array.isArray(payload)
@@ -446,7 +446,9 @@ export const storesService = {
   async getStoreDashboard(storeId: string): Promise<StoreDashboard> {
     console.log(`🔄 Buscando dashboard para loja ${storeId}`);
     try {
-      const response = await api.get(`/v1/stores/${storeId}/dashboard/`);
+      const response = await api.get(`/v1/stores/${storeId}/dashboard/`, {
+        timeoutCategory: "critical",
+      });
       console.log('✅ Dashboard response:', response.data);
       return response.data;
     } catch (error) {

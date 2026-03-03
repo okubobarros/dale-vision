@@ -291,12 +291,12 @@ const Dashboard = () => {
   const ignoreEvent = useIgnoreEvent()
 
   const shouldFetchOnboardingNextStep =
-    canFetchAuth && (selectedStore !== ALL_STORES_VALUE || (stores ?? []).length === 0)
+    canFetchAuth && !storesLoading && selectedStore !== ALL_STORES_VALUE
   const {
     data: onboardingNextStep,
     isLoading: onboardingNextStepLoading,
     error: onboardingNextStepErrorRaw,
-  } = useQuery<OnboardingNextStepResponse>({
+  } = useQuery<OnboardingNextStepResponse | null>({
     queryKey: ["onboarding-next-step", selectedStore],
     queryFn: () =>
       onboardingService.getNextStep(

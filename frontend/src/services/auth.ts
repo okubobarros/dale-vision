@@ -33,7 +33,7 @@ export interface User {
 
 const bootstrapSupabaseAccount = async (): Promise<void> => {
   try {
-    await api.post("/accounts/supabase/", {}, { timeout: 5000 })
+    await api.post("/accounts/supabase/", {}, { timeoutCategory: "best-effort" })
   } catch (error: unknown) {
     if (import.meta.env.DEV) {
       const err = error as { code?: string; message?: string; response?: { status?: number } }

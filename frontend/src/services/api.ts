@@ -11,9 +11,9 @@ import { API_BASE_URL } from "../lib/api"
 import { clearAuthStorage, getAccessToken } from "./authStorage"
 import { refreshSupabaseSession } from "./authSession"
 
-const DEFAULT_TIMEOUT_MS = import.meta.env.PROD ? 60000 : 30000
+const DEFAULT_TIMEOUT_MS = 10000
 const LONG_TIMEOUT_MS = 120000
-const SHORT_TIMEOUT_MS = 5000
+const BEST_EFFORT_TIMEOUT_MS = 3000
 const RETRY_BACKOFF_MS = [1000, 3000]
 const TRIAL_EXPIRED_CODE = "TRIAL_EXPIRED"
 const SUBSCRIPTION_REQUIRED_CODE = "SUBSCRIPTION_REQUIRED"
@@ -22,12 +22,16 @@ const TRIAL_EXPIRED_EVENT = "dv-trial-expired"
 
 const isLongTimeoutPath = (url?: string) => {
   const u = String(url || "")
-  return /(^|\/)alerts\//.test(u) || /(^|\/)v1\/stores\//.test(u)
+  return /(^|\/)alerts\//.test(u) || /(^|\/)v1\/report\/export\//.test(u)
 }
 
-const isShortTimeoutPath = (url?: string) => {
+const isBestEffortPath = (url?: string) => {
   const u = String(url || "")
-  return /(^|\/)accounts\/supabase\/?$/.test(u)
+  return (
+    /(^|\/)accounts\/supabase\/?$/.test(u) ||
+    /(^|\/)v1\/onboarding\/next-step\/?/.test(u) ||
+    /(^|\/)v1\/onboarding\/progress\/?/.test(u)
+  )
 }
 
 const api = axios.create({
@@ -43,7 +47,12 @@ if (import.meta.env.DEV) {
   console.log("[API] API_BASE_URL =", API_BASE_URL)
 }
 
-type RetriableConfig = AxiosRequestConfig & { _retryCount?: number }
+type TimeoutCategory = "default" | "critical" | "best-effort" | "long"
+type RetriableConfig = AxiosRequestConfig & {
+  _retryCount?: number
+  _requestStart?: number
+  timeoutCategory?: TimeoutCategory
+}
 type AuthRetryConfig = RetriableConfig & { _retryAuth?: boolean }
 
 const isAxiosHeaders = (
@@ -161,18 +170,26 @@ const notifyTrialExpired = () => {
 // Request interceptor
 api.interceptors.request.use(
   (config) => {
-    const timeout = isShortTimeoutPath(config.url)
-      ? SHORT_TIMEOUT_MS
-      : isLongTimeoutPath(config.url)
-      ? LONG_TIMEOUT_MS
-      : DEFAULT_TIMEOUT_MS
+    const category =
+      config.timeoutCategory ??
+      (isLongTimeoutPath(config.url)
+        ? "long"
+        : isBestEffortPath(config.url)
+        ? "best-effort"
+        : "default")
+    const timeout =
+      category === "long"
+        ? LONG_TIMEOUT_MS
+        : category === "best-effort"
+        ? BEST_EFFORT_TIMEOUT_MS
+        : DEFAULT_TIMEOUT_MS
     const existingTimeout = Number(config.timeout || 0)
-    if (!existingTimeout) {
+    if (!existingTimeout || config.timeoutCategory) {
       config.timeout = timeout
-    } else if (isShortTimeoutPath(config.url) && existingTimeout > timeout) {
-      config.timeout = timeout
-    } else if (isLongTimeoutPath(config.url) && existingTimeout < timeout) {
-      config.timeout = timeout
+    }
+
+    if (import.meta.env.DEV) {
+      ;(config as RetriableConfig)._requestStart = Date.now()
     }
 
     const token = getAccessToken()
@@ -203,6 +220,18 @@ api.interceptors.request.use(
 // Response interceptor
 api.interceptors.response.use(
   (response) => {
+    if (import.meta.env.DEV) {
+      const requestStart = (response.config as RetriableConfig)._requestStart
+      if (requestStart) {
+        const durationMs = Date.now() - requestStart
+        console.log("⏱️ API Timing:", {
+          url: response.config.url,
+          method: response.config.method,
+          status: response.status,
+          durationMs,
+        })
+      }
+    }
     console.log("🟢 API Response:", {
       url: response.config.url,
       status: response.status,
@@ -215,6 +244,17 @@ api.interceptors.response.use(
       return Promise.reject(error)
     }
     const axiosError = error as AxiosError<unknown>
+    if (import.meta.env.DEV) {
+      const requestStart = (axiosError.config as RetriableConfig | undefined)?._requestStart
+      if (requestStart) {
+        const durationMs = Date.now() - requestStart
+        console.log("⏱️ API Timing (error):", {
+          url: axiosError.config?.url,
+          method: axiosError.config?.method,
+          durationMs,
+        })
+      }
+    }
     const isTimeout =
       axiosError.code === "ECONNABORTED" ||
       String(axiosError.message || "").toLowerCase().includes("timeout")

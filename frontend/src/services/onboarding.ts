@@ -1,3 +1,4 @@
+import axios from "axios"
 import api from "./api"
 
 export type OnboardingStep =
@@ -68,9 +69,31 @@ export const onboardingService = {
     return response.data
   },
 
-  async getNextStep(storeId?: string): Promise<OnboardingNextStepResponse> {
-    const params = storeId ? `?store_id=${storeId}` : ""
-    const response = await api.get(`/v1/onboarding/next-step/${params}`)
-    return response.data
+  async getNextStep(storeId?: string): Promise<OnboardingNextStepResponse | null> {
+    if (!storeId) {
+      if (import.meta.env.DEV) {
+        console.warn("[onboarding] next-step skipped: missing store_id")
+      }
+      return null
+    }
+    const params = `?store_id=${storeId}`
+    try {
+      const response = await api.get(`/v1/onboarding/next-step/${params}`, {
+        timeoutCategory: "best-effort",
+      })
+      return response.data
+    } catch (error) {
+      if (axios.isAxiosError(error)) {
+        const status = error.response?.status
+        const data = error.response?.data as { error?: string } | undefined
+        if (status === 400 && data?.error === "store_id_invalid") {
+          if (import.meta.env.DEV) {
+            console.warn("[onboarding] next-step store_id_invalid - ignored")
+          }
+          return null
+        }
+      }
+      throw error
+    }
   },
 }

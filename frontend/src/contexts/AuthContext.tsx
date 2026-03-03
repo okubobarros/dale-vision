@@ -18,15 +18,22 @@ export const AuthProvider: React.FC<AuthProviderProps> = ({ children }) => {
   const [authReady, setAuthReady] = useState(false)
 
   useEffect(() => {
+    let active = true
     const { user: currentUser, token: currentToken } = authService.rehydrate()
 
-    setUser(currentUser)
-    setToken(currentToken)
-    setIsLoading(false)
-    setAuthReady(true)
+    if (active) {
+      setUser(currentUser)
+      setToken(currentToken)
+      setIsLoading(false)
+      setAuthReady(true)
+    }
 
     console.log("AuthProvider - Usuário carregado:", currentUser)
     console.log("AuthProvider - Token existe:", !!currentToken)
+
+    return () => {
+      active = false
+    }
   }, [])
 
   const refreshAuth = useCallback(() => {
@@ -98,13 +105,18 @@ export const AuthProvider: React.FC<AuthProviderProps> = ({ children }) => {
   })
 
   useEffect(() => {
+    let active = true
     const unsubscribe = subscribeAuthChanges(() => {
+      if (!active) return
       const { user: nextUser, token: nextToken } = authService.rehydrate()
       setUser(nextUser)
       setToken(nextToken)
       setAuthReady(true)
     })
-    return () => unsubscribe()
+    return () => {
+      active = false
+      unsubscribe()
+    }
   }, [])
 
   return <AuthContext.Provider value={value}>{children}</AuthContext.Provider>
