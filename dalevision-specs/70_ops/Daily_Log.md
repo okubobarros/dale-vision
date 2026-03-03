@@ -78,3 +78,17 @@ Registrar decisões e eventos do dia.
   - Padronizar logs de instalacao em `logs\service_install.log` e `logs\service_install.ps1.log`.
 - Próximos passos:
   - Nenhum imediato.
+
+## 2026-03-03
+- Data: 2026-03-03
+- Highlights:
+  - Axios no frontend passou a usar timeouts por categoria: 10s default/critical, 3s best-effort e long apenas para alerts/export.
+  - `/api/v1/me/status/` agora tem retry com backoff e fallback seguro (sem derrubar auth) em caso de timeout.
+  - Onboarding `next-step` só é chamado após stores carregarem e com `store_id`; `store_id_invalid` (400) é tratado como noop.
+  - Logs de timing por request adicionados apenas em dev.
+- Bloqueios:
+  - Nenhum.
+- Decisões:
+  - Endpoints best-effort devem falhar rápido (≈3s) para não travar login/boot do app.
+- Próximos passos:
+  - Monitorar estabilidade do login e tempo de hidratação no app.

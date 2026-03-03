@@ -24,7 +24,7 @@
 
 - `GET /api/v1/onboarding/progress/`
 - `POST /api/v1/onboarding/step/complete/`
-- `GET /api/v1/onboarding/next-step/` (query: `store_id`)
+- `GET /api/v1/onboarding/next-step/` (query: `store_id`, obrigatório)
 
 - `GET|POST /api/v1/stores/`
 - `GET|PUT|PATCH|DELETE /api/v1/stores/{store_id}/`
@@ -107,3 +107,4 @@ Observação: detalhes de validação e regras de ingestão devem referenciar `S
 - `GET /api/me/setup-state/` pode retornar `X-Schema-Warnings: ORG_SCHEMA_OUTDATED` quando o schema do banco estiver desatualizado (ex.: ausência de `organizations.trial_ends_at`).
 - `GET /api/v1/cameras/{camera_id}/snapshot/` retorna `snapshot_url` (signed URL curta), `storage_key` (quando existir) e `expires_in`.
 - `GET /api/v1/system/storage-status/` retorna flags sem segredos: `configured`, `bucket`, `supabase_url_present`, `service_role_present`.
+- `GET /api/v1/onboarding/next-step/` retorna `400` com `error=store_id_invalid` quando `store_id` ausente ou inválido.
