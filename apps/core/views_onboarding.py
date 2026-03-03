@@ -118,7 +118,7 @@ def _get_active_cameras(store_id: str):
 def _has_unvalidated_cameras(store_id: str) -> bool:
     qs = _get_active_cameras(store_id)
     return qs.filter(
-        Q(status__in=["unknown", "awaiting_validation"]) | Q(last_seen_at__isnull=True)
+        Q(status__in=["unknown"]) | Q(last_seen_at__isnull=True)
     ).exists()
 
 

@@ -232,3 +232,40 @@ class OnboardingNextStepViewTests(SimpleTestCase):
         self.assertEqual(response.status_code, 200)
         self.assertTrue(response.data.get("ok"))
         self.assertEqual(response.data.get("stage"), "active")
+
+    @patch("apps.core.views_onboarding.OnboardingProgressService")
+    @patch("apps.core.views_onboarding._upsert_onboarding_progress")
+    @patch("apps.core.views_onboarding.compute_store_edge_status_snapshot", return_value=({"store_status": "offline"}, None))
+    @patch("apps.core.views_onboarding._has_recent_metrics", return_value=False)
+    @patch("apps.core.views_onboarding._has_missing_roi", return_value=False)
+    @patch("apps.core.views_onboarding._store_access_allowed", return_value=True)
+    @patch("apps.core.views_onboarding.Organization")
+    @patch("apps.core.views_onboarding.Store")
+    @patch("apps.core.views_onboarding.Camera")
+    def test_next_step_handles_unvalidated_query(
+        self,
+        camera_model,
+        store_model,
+        org_model,
+        _access,
+        _has_missing_roi,
+        _has_recent_metrics,
+        _edge_status,
+        _upsert,
+        service_mock,
+    ):
+        store_model.objects.filter.return_value.first.return_value = self.store
+        org_model.objects.filter.return_value.first.return_value = self.org
+        service = MagicMock()
+        service.next_step.return_value = None
+        service_mock.return_value = service
+
+        qs = MagicMock()
+        qs.count.return_value = 1
+        qs.filter.return_value.exists.return_value = False
+        camera_model.objects.filter.return_value = qs
+
+        response = self._call_view(self.store.id)
+
+        self.assertEqual(response.status_code, 200)
+        self.assertTrue(response.data.get("ok"))

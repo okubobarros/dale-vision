@@ -193,6 +193,7 @@ class EdgeEventsIngestView(APIView):
 
         # --- validar camera para eventos que dependem dela ---
         camera_id = data.get("camera_id") or payload.get("camera_id") or data.get("external_id")
+        camera_obj = None
         if camera_id and normalized not in ("edge_heartbeat", "camera_heartbeat", "edge_camera_heartbeat"):
             camera_qs = Camera.objects.filter(store_id=store_id)
             camera_obj = camera_qs.filter(external_id=camera_id).first()
@@ -264,6 +265,57 @@ class EdgeEventsIngestView(APIView):
                 )
 
         # --- persistir heartbeat do edge ---
+        if normalized == "camera_health":
+            if not camera_obj:
+                return Response(
+                    {"detail": "camera not found", "stored": False, "reason": "camera_not_found"},
+                    status=status.HTTP_400_BAD_REQUEST,
+                )
+            status_value = (data.get("status") or payload.get("status") or "unknown").lower()
+            if status_value not in ("online", "degraded", "offline", "unknown", "error"):
+                status_value = "unknown"
+            checked_at = _resolve_edge_ts(data, payload)
+            latency_ms = data.get("latency_ms") or data.get("latency") or payload.get("latency_ms")
+            error = data.get("error") or payload.get("error")
+            if status_value == "online":
+                error = None
+
+            try:
+                Camera.objects.filter(id=camera_obj.id).update(
+                    status=status_value,
+                    last_seen_at=checked_at,
+                    last_error=None if status_value == "online" else error,
+                    updated_at=timezone.now(),
+                )
+            except Exception:
+                logger.exception("[EDGE] camera_health update failed camera_id=%s", str(camera_obj.id))
+
+            try:
+                CameraHealthLog.objects.create(
+                    camera_id=camera_obj.id,
+                    checked_at=checked_at,
+                    status=status_value,
+                    latency_ms=latency_ms,
+                    snapshot_url=None,
+                    error=error,
+                )
+            except Exception:
+                logger.exception("[EDGE] camera_health log failed camera_id=%s", str(camera_obj.id))
+
+            if status_value == "online":
+                try:
+                    Store.objects.filter(id=store_id).update(
+                        last_error=None,
+                        updated_at=timezone.now(),
+                    )
+                except Exception:
+                    pass
+
+            return Response(
+                {"ok": True, "stored": stored, "receipt_id": receipt_id or None},
+                status=status.HTTP_201_CREATED,
+            )
+
         if normalized in ("edge_heartbeat", "camera_heartbeat", "edge_camera_heartbeat"):
             store_obj = Store.objects.filter(id=store_id).first()
             pre_snapshot = None
