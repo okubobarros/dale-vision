@@ -209,6 +209,15 @@ def _resolve_cloud_base_url(request=None) -> str:
     return ""
 
 
+def _edge_debug_enabled() -> bool:
+    raw = str(
+        getattr(settings, "EDGE_DEBUG", None)
+        or os.getenv("EDGE_DEBUG")
+        or "0"
+    ).strip().lower()
+    return raw in ("1", "true", "yes", "on")
+
+
 def _parse_dt(value: str | None, tz) -> datetime | None:
     if not value:
         return None
@@ -678,6 +687,43 @@ class StoreViewSet(viewsets.ModelViewSet):
                 "edge_token": raw_token,
                 "rotated_at": timezone.now().isoformat(),
                 **_edge_token_meta(edge_token),
+            }
+        )
+
+    @action(detail=True, methods=["get"], url_path="edge-token-hint")
+    def edge_token_hint(self, request, pk=None):
+        if not _edge_debug_enabled():
+            raise Http404()
+
+        if not (getattr(request.user, "is_staff", False) or getattr(request.user, "is_superuser", False)):
+            return _error_response(
+                "FORBIDDEN",
+                "Sem permissão.",
+                status.HTTP_403_FORBIDDEN,
+                deprecated_detail="Sem permissão.",
+            )
+
+        store = self.get_object()
+        edge_token = _get_active_edge_token(store.id)
+        if not edge_token:
+            return _error_response(
+                "EDGE_TOKEN_NOT_FOUND",
+                "Nenhum token edge ativo para a store.",
+                status.HTTP_404_NOT_FOUND,
+                details={"store_id": str(store.id)},
+                deprecated_detail="Nenhum token edge ativo para a store.",
+            )
+
+        raw_token = edge_token.token_plaintext or ""
+        token_prefix = raw_token[:6] if raw_token else None
+        token_last4 = raw_token[-4:] if raw_token else None
+        return Response(
+            {
+                "store_id": str(store.id),
+                "token_prefix": token_prefix,
+                "token_last4": token_last4,
+                "token_created_at": edge_token.created_at.isoformat() if edge_token.created_at else None,
+                "token_last_used_at": edge_token.last_used_at.isoformat() if edge_token.last_used_at else None,
             }
         )
 

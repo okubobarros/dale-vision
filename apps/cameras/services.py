@@ -1,6 +1,7 @@
 import time
 import tempfile
 import socket
+from concurrent.futures import ThreadPoolExecutor, TimeoutError as FutureTimeoutError
 from urllib.parse import urlparse
 from django.utils import timezone
 
@@ -82,6 +83,37 @@ def rtsp_probe(rtsp_url: str, timeout_sec: int = 4) -> dict:
         "fps_est": fps_est,
         "frames_read": frames,
     }
+
+
+def rtsp_probe_with_hard_timeout(
+    rtsp_url: str,
+    *,
+    timeout_sec: int = 4,
+    hard_timeout_sec: int = 5,
+) -> dict:
+    executor = ThreadPoolExecutor(max_workers=1)
+    future = executor.submit(rtsp_probe, rtsp_url, timeout_sec)
+    try:
+        return future.result(timeout=hard_timeout_sec)
+    except FutureTimeoutError:
+        return {
+            "ok": False,
+            "latency_ms": None,
+            "fps_est": None,
+            "frames_read": None,
+            "error_msg": "rtsp_timeout",
+            "extra": {"reason": "rtsp_timeout", "hard_timeout_sec": hard_timeout_sec},
+        }
+    except Exception as exc:
+        return {
+            "ok": False,
+            "latency_ms": None,
+            "fps_est": None,
+            "frames_read": None,
+            "error_msg": f"rtsp_probe_failed:{exc}",
+        }
+    finally:
+        executor.shutdown(wait=False, cancel_futures=True)
 
 
 def _tcp_probe(rtsp_url: str, timeout_sec: int = 3) -> dict:

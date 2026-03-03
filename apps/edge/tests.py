@@ -120,6 +120,61 @@ class EdgeEventsAuthTests(TestCase):
         self.assertIn(resp.status_code, (200, 201))
         self.assertTrue(resp.data.get("ok"))
 
+    def test_edge_store_token_allows_event_with_bearer(self):
+        self._skip_if_not_pg()
+        store_id = uuid.uuid4()
+        token = "edge-store-bearer-token"
+        self._create_edge_token(store_id, token)
+        payload = {
+            "event_name": "edge_heartbeat",
+            "receipt_id": "test-receipt-store-bearer-1",
+            "data": {"store_id": str(store_id)},
+        }
+        resp = self.client.post(
+            "/api/edge/events/",
+            payload,
+            format="json",
+            HTTP_AUTHORIZATION=f"Bearer {token}",
+        )
+        self.assertEqual(resp.status_code, 201)
+        self.assertTrue(resp.data.get("ok"))
+
+    def test_edge_store_token_invalid_returns_401(self):
+        self._skip_if_not_pg()
+        payload = {
+            "event_name": "edge_heartbeat",
+            "receipt_id": "test-receipt-invalid-401",
+            "data": {"store_id": str(uuid.uuid4())},
+        }
+        resp = self.client.post(
+            "/api/edge/events/",
+            payload,
+            format="json",
+            HTTP_AUTHORIZATION="Bearer invalid-edge-token",
+        )
+        self.assertEqual(resp.status_code, 401)
+        self.assertEqual(resp.data.get("code"), "edge_token_invalid")
+
+    def test_edge_store_token_store_mismatch_returns_403(self):
+        self._skip_if_not_pg()
+        token_store_id = uuid.uuid4()
+        payload_store_id = uuid.uuid4()
+        token = "edge-store-mismatch-token"
+        self._create_edge_token(token_store_id, token)
+        payload = {
+            "event_name": "edge_heartbeat",
+            "receipt_id": "test-receipt-mismatch-403",
+            "data": {"store_id": str(payload_store_id)},
+        }
+        resp = self.client.post(
+            "/api/edge/events/",
+            payload,
+            format="json",
+            HTTP_AUTHORIZATION=f"Bearer {token}",
+        )
+        self.assertEqual(resp.status_code, 403)
+        self.assertEqual(resp.data.get("code"), "edge_store_mismatch")
+
     def test_user_token_allows_event_with_access(self):
         self._skip_if_not_pg()
         User = get_user_model()
@@ -296,8 +351,8 @@ class EdgeSetupTokenTests(TestCase):
             format="json",
             HTTP_X_EDGE_TOKEN=old_token,
         )
-        self.assertEqual(old_resp.status_code, 403)
-        self.assertEqual(old_resp.data.get("detail"), "Edge token inválido para esta loja.")
+        self.assertEqual(old_resp.status_code, 401)
+        self.assertEqual(old_resp.data.get("code"), "edge_token_invalid")
 
         active_token = EdgeToken.objects.get(store_id=store.id, active=True)
         self.assertIsNone(active_token.last_used_at)
@@ -410,3 +465,23 @@ class EdgeSetupTokenTests(TestCase):
         self.assertTrue(resp.data.get("edge_token"))
         active_tokens = EdgeToken.objects.filter(store_id=store.id, active=True)
         self.assertEqual(active_tokens.count(), 1)
+
+    @override_settings(EDGE_DEBUG="1")
+    def test_edge_token_hint_masks_token(self):
+        self._skip_if_not_pg()
+        user = self._create_staff_user()
+        store = self._store_stub()
+        self.client.force_authenticate(user=user)
+
+        with patch("apps.stores.views.StoreViewSet.get_object", return_value=store):
+            setup_resp = self.client.get(f"/api/v1/stores/{store.id}/edge-setup/")
+        raw_token = setup_resp.data.get("edge_token")
+        self.assertTrue(raw_token)
+
+        with patch("apps.stores.views.StoreViewSet.get_object", return_value=store):
+            hint_resp = self.client.get(f"/api/v1/stores/{store.id}/edge-token-hint/")
+
+        self.assertEqual(hint_resp.status_code, 200)
+        self.assertEqual(hint_resp.data.get("token_prefix"), raw_token[:6])
+        self.assertEqual(hint_resp.data.get("token_last4"), raw_token[-4:])
+        self.assertNotIn("edge_token", hint_resp.data)

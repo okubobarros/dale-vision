@@ -15,7 +15,10 @@ from django.db import transaction
 from django.db.models import Q
 from apps.core.models import AuditLog, Camera, CameraHealthLog, OrgMember, Store, StoreManager
 from apps.edge.models import EdgeToken
-from apps.edge.auth import validate_store_token, EdgeAwareJWTAuthentication
+from apps.edge.auth import (
+    EdgeAwareJWTAuthentication,
+    authenticate_edge_token,
+)
 from .serializers import (
     CameraSerializer,
     CameraHealthLogSerializer,
@@ -23,7 +26,7 @@ from .serializers import (
 )
 from .models import CameraSnapshot, CameraHealth, CameraROIConfig
 from apps.core.integrations import supabase_storage
-from .services import rtsp_snapshot, rtsp_probe
+from .services import rtsp_snapshot, rtsp_probe_with_hard_timeout
 from .limits import enforce_trial_camera_limit
 from .roi import get_latest_roi_config, get_latest_published_roi_config, create_roi_config
 from .permissions import (
@@ -675,10 +678,14 @@ class CameraViewSet(viewsets.ModelViewSet):
         if request.user and request.user.is_authenticated:
             require_store_role(request.user, str(cam.store_id), ALLOWED_MANAGE_ROLES)
         else:
-            if not validate_store_token(request, str(cam.store_id)):
+            auth_result = authenticate_edge_token(request, requested_store_id=str(cam.store_id))
+            if not auth_result.ok:
                 return Response(
-                    {"detail": "Edge token inválido para esta loja."},
-                    status=status.HTTP_401_UNAUTHORIZED,
+                    {
+                        "code": auth_result.code or "edge_token_invalid",
+                        "detail": auth_result.detail or "Edge token inválido.",
+                    },
+                    status=auth_result.status_code or status.HTTP_401_UNAUTHORIZED,
                 )
 
         payload = request.data or {}
@@ -802,7 +809,11 @@ class CameraViewSet(viewsets.ModelViewSet):
             )
 
         try:
-            result = rtsp_probe(cam.rtsp_url)
+            result = rtsp_probe_with_hard_timeout(
+                cam.rtsp_url,
+                timeout_sec=4,
+                hard_timeout_sec=5,
+            )
         except Exception as exc:
             logger.exception("[CAMERA] test_connection probe failed camera_id=%s error=%s", str(cam.id), exc)
             result = {"ok": False, "error_msg": "Falha ao testar RTSP."}
@@ -814,6 +825,7 @@ class CameraViewSet(viewsets.ModelViewSet):
         fps_est = result.get("fps_est")
         error_msg = result.get("error_msg")
         extra = result.get("extra")
+        reason = "rtsp_timeout" if error_msg == "rtsp_timeout" else None
 
         if ok:
             cam.status = "online"
@@ -849,6 +861,7 @@ class CameraViewSet(viewsets.ModelViewSet):
                 "latency_ms": latency_ms,
                 "fps_est": fps_est,
                 "frames_read": frames_read,
+                "reason": reason,
                 "error_msg": "" if ok else (error_msg or "Falha ao testar RTSP."),
                 "extra": extra,
             },

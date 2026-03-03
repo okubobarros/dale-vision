@@ -8,7 +8,6 @@ from django.utils import timezone
 from django.db.utils import OperationalError, ProgrammingError
 from django.db import connection
 import logging
-import os
 
 from rest_framework.views import APIView
 from rest_framework.response import Response
@@ -18,7 +17,8 @@ from rest_framework.permissions import AllowAny
 from knox.auth import TokenAuthentication
 
 from .serializers import EdgeEventSerializer
-from .models import EdgeEventReceipt, EdgeToken
+from .models import EdgeEventReceipt
+from .auth import authenticate_edge_token
 
 from apps.alerts.views import AlertRuleViewSet
 from apps.core.models import Camera, CameraHealthLog
@@ -27,6 +27,7 @@ from apps.stores.services.user_uuid import ensure_user_uuid
 from apps.stores.services.user_orgs import get_user_org_ids
 from apps.stores.views_edge_status import classify_age, compute_store_edge_status_snapshot
 from apps.cameras.limits import enforce_trial_camera_limit
+from apps.cameras.services import rtsp_probe_with_hard_timeout
 from apps.billing.utils import PaywallError
 from .status_events import emit_store_status_changed, emit_camera_status_changed
 from .vision_metrics import insert_event_receipt_if_new, apply_vision_metrics
@@ -124,36 +125,9 @@ class EdgeEventsIngestView(APIView):
         return u
 
     def _is_edge_request(self, request, validated_data=None):
-        provided = request.headers.get("X-EDGE-TOKEN") or ""
-        if not provided:
-            print("[EDGE] missing X-EDGE-TOKEN")
-            return (False, "missing X-EDGE-TOKEN")
-
         payload = validated_data if isinstance(validated_data, dict) else request.data
         store_id = _extract_store_id(payload)
-        if not store_id:
-            print("[EDGE] missing store_id for edge auth")
-            return (False, "missing store_id")
-
-        token_hash = hashlib.sha256(provided.encode("utf-8")).hexdigest()
-        edge_token = EdgeToken.objects.filter(
-            store_id=store_id,
-            token_hash=token_hash,
-            active=True,
-        ).first()
-        if edge_token:
-            EdgeToken.objects.filter(id=edge_token.id).update(last_used_at=timezone.now())
-            print("[EDGE] request autorizado via store token")
-            return (True, None)
-
-        if getattr(settings, "DEBUG", False):
-            expected = getattr(settings, "EDGE_SHARED_TOKEN", None) or os.getenv("EDGE_SHARED_TOKEN")
-            if expected and provided == expected:
-                print("[EDGE] request autorizado via EDGE_SHARED_TOKEN (DEBUG)")
-                return (True, None)
-
-        print("[EDGE] invalid edge token")
-        return (False, "invalid edge token")
+        return authenticate_edge_token(request, requested_store_id=store_id if store_id else None)
 
     def _user_has_store_access(self, user, store_id: str) -> bool:
         org_ids = get_user_org_ids(user)
@@ -180,8 +154,6 @@ class EdgeEventsIngestView(APIView):
 
         if not event_name:
             return Response({"detail": "event_name ausente."}, status=status.HTTP_400_BAD_REQUEST)
-        if not store_id or not _is_uuid(store_id):
-            return Response({"detail": "store_id inválido ou ausente."}, status=status.HTTP_400_BAD_REQUEST)
 
         user_auth = TokenAuthentication().authenticate(request)
         if user_auth:
@@ -194,17 +166,24 @@ class EdgeEventsIngestView(APIView):
             except Exception:
                 return Response({"detail": "Usuário não autenticado."}, status=status.HTTP_403_FORBIDDEN)
         else:
-            ok, err = self._is_edge_request(request, validated)
-            if not ok:
-                if err == "missing store_id":
-                    return Response(
-                        {"detail": "store_id ausente para autenticação do edge."},
-                        status=status.HTTP_400_BAD_REQUEST,
-                    )
+            auth_result = self._is_edge_request(request, validated)
+            if not auth_result.ok:
                 return Response(
-                    {"detail": "Edge token inválido para esta loja."},
-                    status=status.HTTP_403_FORBIDDEN,
+                    {
+                        "code": auth_result.code or "edge_token_invalid",
+                        "detail": auth_result.detail or "Edge token inválido.",
+                    },
+                    status=auth_result.status_code or status.HTTP_401_UNAUTHORIZED,
                 )
+            if not store_id:
+                store_id = auth_result.store_id
+                data = dict(data)
+                data["store_id"] = store_id
+                payload = dict(payload)
+                payload["store_id"] = store_id
+
+        if not store_id or not _is_uuid(store_id):
+            return Response({"detail": "store_id inválido ou ausente."}, status=status.HTTP_400_BAD_REQUEST)
 
         # --- update store last_seen_at for heartbeat events (idempotent) ---
         if normalized in ("edge_heartbeat", "camera_heartbeat", "edge_camera_heartbeat"):
@@ -526,4 +505,89 @@ class EdgeEventsIngestView(APIView):
         return Response(
             {"ok": True, "receipt_id": receipt_id or None, "stored": stored, "deduped": deduped or False},
             status=status.HTTP_201_CREATED if stored else status.HTTP_200_OK,
+        )
+
+
+class EdgeCameraTestConnectionView(APIView):
+    """
+    POST /api/edge/cameras/{id}/test_connection/
+    O agente edge executa o teste local e publica resultado no cloud.
+    """
+
+    authentication_classes = []
+    permission_classes = [AllowAny]
+
+    def post(self, request, camera_id):
+        camera = Camera.objects.filter(id=camera_id).first()
+        if not camera:
+            return Response({"detail": "camera not found"}, status=status.HTTP_404_NOT_FOUND)
+
+        auth_result = authenticate_edge_token(request, requested_store_id=str(camera.store_id))
+        if not auth_result.ok:
+            return Response(
+                {
+                    "code": auth_result.code or "edge_token_invalid",
+                    "detail": auth_result.detail or "Edge token inválido.",
+                },
+                status=auth_result.status_code or status.HTTP_401_UNAUTHORIZED,
+            )
+
+        payload = request.data or {}
+        if "ok" in payload:
+            ok = bool(payload.get("ok"))
+            latency_ms = payload.get("latency_ms")
+            fps_est = payload.get("fps_est")
+            frames_read = payload.get("frames_read")
+            error_msg = payload.get("error_msg") or ""
+            reason = payload.get("reason")
+        else:
+            if not camera.rtsp_url:
+                return Response({"detail": "camera rtsp_url missing"}, status=status.HTTP_400_BAD_REQUEST)
+            probe = rtsp_probe_with_hard_timeout(camera.rtsp_url, timeout_sec=4, hard_timeout_sec=5)
+            ok = bool(probe.get("ok"))
+            latency_ms = probe.get("latency_ms")
+            fps_est = probe.get("fps_est")
+            frames_read = probe.get("frames_read")
+            error_msg = probe.get("error_msg") or ""
+            reason = "rtsp_timeout" if error_msg == "rtsp_timeout" else None
+
+        checked_at = _parse_edge_ts(payload.get("ts")) or timezone.now()
+        if ok:
+            camera.status = "online"
+            camera.last_seen_at = checked_at
+            camera.last_error = None
+            camera.updated_at = timezone.now()
+            camera.save(update_fields=["status", "last_seen_at", "last_error", "updated_at"])
+            CameraHealthLog.objects.create(
+                camera_id=camera.id,
+                checked_at=checked_at,
+                status="online",
+                latency_ms=latency_ms,
+                snapshot_url=None,
+                error=None,
+            )
+        else:
+            camera.status = "error"
+            camera.last_error = error_msg or "Falha ao testar RTSP."
+            camera.updated_at = timezone.now()
+            camera.save(update_fields=["status", "last_error", "updated_at"])
+            CameraHealthLog.objects.create(
+                camera_id=camera.id,
+                checked_at=checked_at,
+                status="error",
+                latency_ms=latency_ms,
+                snapshot_url=None,
+                error=error_msg or "Falha ao testar RTSP.",
+            )
+
+        return Response(
+            {
+                "ok": ok,
+                "reason": reason,
+                "latency_ms": latency_ms,
+                "fps_est": fps_est,
+                "frames_read": frames_read,
+                "error_msg": "" if ok else (error_msg or "Falha ao testar RTSP."),
+            },
+            status=status.HTTP_200_OK,
         )

@@ -1,6 +1,7 @@
 import hashlib
 import logging
 from typing import Optional
+from dataclasses import dataclass
 
 from django.utils import timezone
 from rest_framework.authentication import get_authorization_header
@@ -26,6 +27,15 @@ def _extract_store_token(request) -> Optional[str]:
     return request.headers.get("X-EDGE-TOKEN") or None
 
 
+@dataclass
+class EdgeTokenAuthResult:
+    ok: bool
+    status_code: int
+    code: Optional[str] = None
+    detail: Optional[str] = None
+    store_id: Optional[str] = None
+
+
 class EdgeAwareJWTAuthentication(SupabaseJWTAuthentication):
     def authenticate(self, request):
         auth = get_authorization_header(request).split()
@@ -39,23 +49,54 @@ class EdgeAwareJWTAuthentication(SupabaseJWTAuthentication):
         return super().authenticate(request)
 
 
-def validate_store_token(request, store_id: str) -> bool:
+def authenticate_edge_token(request, requested_store_id: Optional[str] = None) -> EdgeTokenAuthResult:
     token = _extract_store_token(request)
-    if not token or not store_id:
-        return False
+    if not token:
+        return EdgeTokenAuthResult(
+            ok=False,
+            status_code=401,
+            code="edge_token_invalid",
+            detail="Edge token inválido.",
+        )
+
     token_hash = hashlib.sha256(token.encode("utf-8")).hexdigest()
     edge_token = EdgeToken.objects.filter(
-        store_id=store_id,
         token_hash=token_hash,
         active=True,
     ).first()
     if not edge_token:
+        logger.warning("[EDGE-AUTH] invalid token token=%s", _mask_token(token))
+        return EdgeTokenAuthResult(
+            ok=False,
+            status_code=401,
+            code="edge_token_invalid",
+            detail="Edge token inválido.",
+        )
+
+    token_store_id = str(edge_token.store_id)
+    if requested_store_id and str(requested_store_id) != token_store_id:
         logger.warning(
-            "[EDGE-AUTH] invalid token store_id=%s token=%s",
-            str(store_id),
+            "[EDGE-AUTH] store mismatch requested=%s token_store=%s token=%s",
+            str(requested_store_id),
+            token_store_id,
             _mask_token(token),
         )
-        return False
+        return EdgeTokenAuthResult(
+            ok=False,
+            status_code=403,
+            code="edge_store_mismatch",
+            detail="Edge token não pertence à store informada.",
+            store_id=token_store_id,
+        )
+
     EdgeToken.objects.filter(id=edge_token.id).update(last_used_at=timezone.now())
-    request.store = Store.objects.filter(id=store_id).first()
-    return True
+    request.edge_store_id = token_store_id
+    request.store = Store.objects.filter(id=token_store_id).first()
+    return EdgeTokenAuthResult(ok=True, status_code=200, store_id=token_store_id)
+
+
+def validate_store_token(request, store_id: str) -> bool:
+    if not store_id:
+        return False
+    result = authenticate_edge_token(request, requested_store_id=str(store_id))
+    return bool(result.ok)

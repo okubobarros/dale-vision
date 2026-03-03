@@ -6,12 +6,14 @@ from django.core.exceptions import PermissionDenied
 from django.core.files.uploadedfile import SimpleUploadedFile
 from apps.billing.utils import PaywallError
 from unittest.mock import MagicMock, patch
+from types import SimpleNamespace
+import time
 
 from apps.cameras.limits import enforce_trial_camera_limit, TRIAL_CAMERA_LIMIT_MESSAGE
 from apps.cameras.roi import create_roi_config, get_latest_published_roi_config
 from apps.cameras.permissions import require_store_role, filter_cameras_for_user
 from apps.cameras.views import CameraViewSet
-from apps.cameras.services import rtsp_probe
+from apps.cameras.services import rtsp_probe, rtsp_probe_with_hard_timeout
 from apps.cameras.serializers import CameraSerializer
 from backend.utils.entitlements import TrialExpiredError
 
@@ -165,7 +167,10 @@ class CameraHealthEndpointTests(SimpleTestCase):
     def setUp(self):
         self.factory = APIRequestFactory()
 
-    @patch("apps.cameras.views.validate_store_token", return_value=True)
+    @patch(
+        "apps.cameras.views.authenticate_edge_token",
+        return_value=SimpleNamespace(ok=True, status_code=200, code=None, detail=None),
+    )
     @patch("apps.cameras.views.CameraHealthLog")
     def test_health_updates_camera_and_creates_log(self, health_log_mock, _token_mock):
         cam = MagicMock()
@@ -193,7 +198,15 @@ class CameraHealthEndpointTests(SimpleTestCase):
         health_log_mock.objects.create.assert_called_once()
         cam.save.assert_called_once()
 
-    @patch("apps.cameras.views.validate_store_token", return_value=False)
+    @patch(
+        "apps.cameras.views.authenticate_edge_token",
+        return_value=SimpleNamespace(
+            ok=False,
+            status_code=401,
+            code="edge_token_invalid",
+            detail="Edge token inválido.",
+        ),
+    )
     def test_health_returns_401_when_token_invalid(self, _token_mock):
         cam = MagicMock()
         cam.id = "cam-1"
@@ -212,6 +225,7 @@ class CameraHealthEndpointTests(SimpleTestCase):
             response = view(request, pk="cam-1")
 
         self.assertEqual(response.status_code, 401)
+        self.assertEqual(response.data.get("code"), "edge_token_invalid")
 
 
 class CameraSerializerUpdateTests(SimpleTestCase):
@@ -232,6 +246,38 @@ class CameraSerializerUpdateTests(SimpleTestCase):
         self.assertEqual(instance.password, "secret")
         self.assertEqual(instance.name, "Nova")
         instance.save.assert_called_once()
+
+
+class CameraTestConnectionTimeoutEndpointTests(SimpleTestCase):
+    def setUp(self):
+        self.factory = APIRequestFactory()
+
+    @patch("apps.cameras.views.require_store_role")
+    @patch("apps.cameras.services.rtsp_probe")
+    def test_test_connection_timeout_returns_under_six_seconds(self, probe_mock, _role_mock):
+        def _slow_probe(*_args, **_kwargs):
+            time.sleep(10)
+            return {"ok": True}
+
+        probe_mock.side_effect = _slow_probe
+        cam = MagicMock()
+        cam.id = "cam-1"
+        cam.store_id = "store-1"
+        cam.rtsp_url = "rtsp://10.0.0.10:554/stream"
+
+        view = CameraViewSet.as_view({"post": "test_connection"})
+        request = self.factory.post("/api/v1/cameras/cam-1/test_connection/", {}, format="json")
+        force_authenticate(request, user=MagicMock(is_authenticated=True))
+
+        started = time.monotonic()
+        with patch.object(CameraViewSet, "get_object", return_value=cam):
+            response = view(request, pk="cam-1")
+        elapsed = time.monotonic() - started
+
+        self.assertEqual(response.status_code, 200)
+        self.assertFalse(response.data.get("ok"))
+        self.assertEqual(response.data.get("reason"), "rtsp_timeout")
+        self.assertLess(elapsed, 6.0)
 
 
 class CameraRtspProbeTests(SimpleTestCase):
@@ -290,6 +336,25 @@ class CameraRtspProbeTests(SimpleTestCase):
         self.assertEqual(instance.username, "admin")
         self.assertEqual(instance.password, "secret")
         instance.save.assert_called_once()
+
+    @patch("apps.cameras.services.rtsp_probe")
+    def test_rtsp_probe_hard_timeout_returns_fast(self, probe_mock):
+        def _slow_probe(*_args, **_kwargs):
+            time.sleep(10)
+            return {"ok": True}
+
+        probe_mock.side_effect = _slow_probe
+        started = time.monotonic()
+        result = rtsp_probe_with_hard_timeout(
+            "rtsp://127.0.0.1:554/stream",
+            timeout_sec=4,
+            hard_timeout_sec=1,
+        )
+        elapsed = time.monotonic() - started
+
+        self.assertFalse(result.get("ok"))
+        self.assertEqual(result.get("error_msg"), "rtsp_timeout")
+        self.assertLess(elapsed, 2.5)
 
 
 class CameraRoiLatestEndpointTests(SimpleTestCase):
