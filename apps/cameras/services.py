@@ -1,9 +1,10 @@
 import time
 import tempfile
 import socket
-from concurrent.futures import ThreadPoolExecutor, TimeoutError as FutureTimeoutError
+import multiprocessing as mp
 from urllib.parse import urlparse
 from django.utils import timezone
+from django.conf import settings
 
 def rtsp_snapshot(rtsp_url: str, timeout_sec: int = 6) -> dict:
     """
@@ -89,15 +90,109 @@ def rtsp_probe_with_hard_timeout(
     rtsp_url: str,
     *,
     timeout_sec: int = 4,
-    hard_timeout_sec: int = 5,
+    hard_timeout_sec: int = 6,
 ) -> dict:
+    # Use a separate process by default to avoid OpenCV/FFmpeg blocking the GIL.
+    use_process = getattr(settings, "CAMERA_RTSP_PROBE_USE_PROCESS", True)
+    if not use_process:
+        return _rtsp_probe_with_thread_timeout(
+            rtsp_url,
+            timeout_sec=timeout_sec,
+            hard_timeout_sec=hard_timeout_sec,
+        )
+
+    start = time.monotonic()
+    ctx = mp.get_context("spawn")
+    result_queue = ctx.Queue(maxsize=1)
+    proc = ctx.Process(
+        target=_rtsp_probe_worker,
+        args=(rtsp_url, timeout_sec, result_queue),
+        name="rtsp_probe_worker",
+    )
+    proc.daemon = True
+    proc.start()
+    proc.join(timeout=hard_timeout_sec)
+
+    if proc.is_alive():
+        proc.terminate()
+        proc.join(timeout=1)
+        elapsed_ms = int((time.monotonic() - start) * 1000)
+        return {
+            "ok": False,
+            "status": "timeout",
+            "elapsed_ms": elapsed_ms,
+            "detail": "rtsp_probe_timeout",
+            "latency_ms": None,
+            "fps_est": None,
+            "frames_read": None,
+            "error_msg": "rtsp_timeout",
+            "extra": {"reason": "rtsp_timeout", "hard_timeout_sec": hard_timeout_sec},
+        }
+
+    try:
+        result = result_queue.get_nowait()
+    except Exception as exc:
+        elapsed_ms = int((time.monotonic() - start) * 1000)
+        return {
+            "ok": False,
+            "status": "error",
+            "elapsed_ms": elapsed_ms,
+            "detail": "rtsp_probe_no_result",
+            "latency_ms": None,
+            "fps_est": None,
+            "frames_read": None,
+            "error_msg": f"rtsp_probe_no_result:{exc}",
+        }
+
+    elapsed_ms = int((time.monotonic() - start) * 1000)
+    result.setdefault("elapsed_ms", elapsed_ms)
+    result.setdefault("status", "ok" if result.get("ok") else "error")
+    return result
+
+
+def _rtsp_probe_worker(rtsp_url: str, timeout_sec: int, result_queue) -> None:
+    start = time.monotonic()
+    try:
+        result = rtsp_probe(rtsp_url, timeout_sec)
+    except Exception as exc:
+        result = {
+            "ok": False,
+            "latency_ms": None,
+            "fps_est": None,
+            "frames_read": None,
+            "error_msg": f"rtsp_probe_failed:{exc}",
+        }
+    result.setdefault("elapsed_ms", int((time.monotonic() - start) * 1000))
+    try:
+        result_queue.put(result)
+    except Exception:
+        pass
+
+
+def _rtsp_probe_with_thread_timeout(
+    rtsp_url: str,
+    *,
+    timeout_sec: int = 4,
+    hard_timeout_sec: int = 6,
+) -> dict:
+    from concurrent.futures import ThreadPoolExecutor, TimeoutError as FutureTimeoutError
+
+    start = time.monotonic()
     executor = ThreadPoolExecutor(max_workers=1)
     future = executor.submit(rtsp_probe, rtsp_url, timeout_sec)
     try:
-        return future.result(timeout=hard_timeout_sec)
+        result = future.result(timeout=hard_timeout_sec)
+        elapsed_ms = int((time.monotonic() - start) * 1000)
+        result.setdefault("elapsed_ms", elapsed_ms)
+        result.setdefault("status", "ok" if result.get("ok") else "error")
+        return result
     except FutureTimeoutError:
+        elapsed_ms = int((time.monotonic() - start) * 1000)
         return {
             "ok": False,
+            "status": "timeout",
+            "elapsed_ms": elapsed_ms,
+            "detail": "rtsp_probe_timeout",
             "latency_ms": None,
             "fps_est": None,
             "frames_read": None,
@@ -105,8 +200,12 @@ def rtsp_probe_with_hard_timeout(
             "extra": {"reason": "rtsp_timeout", "hard_timeout_sec": hard_timeout_sec},
         }
     except Exception as exc:
+        elapsed_ms = int((time.monotonic() - start) * 1000)
         return {
             "ok": False,
+            "status": "error",
+            "elapsed_ms": elapsed_ms,
+            "detail": "rtsp_probe_failed",
             "latency_ms": None,
             "fps_est": None,
             "frames_read": None,

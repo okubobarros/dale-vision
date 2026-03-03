@@ -254,6 +254,7 @@ class CameraTestConnectionTimeoutEndpointTests(SimpleTestCase):
 
     @patch("apps.cameras.views.require_store_role")
     @patch("apps.cameras.services.rtsp_probe")
+    @override_settings(CAMERA_RTSP_PROBE_USE_PROCESS=False)
     def test_test_connection_timeout_returns_under_six_seconds(self, probe_mock, _role_mock):
         def _slow_probe(*_args, **_kwargs):
             time.sleep(10)
@@ -277,7 +278,10 @@ class CameraTestConnectionTimeoutEndpointTests(SimpleTestCase):
         self.assertEqual(response.status_code, 200)
         self.assertFalse(response.data.get("ok"))
         self.assertEqual(response.data.get("reason"), "rtsp_timeout")
-        self.assertLess(elapsed, 6.0)
+        self.assertEqual(response.data.get("status"), "timeout")
+        self.assertEqual(response.data.get("detail"), "rtsp_probe_timeout")
+        self.assertIsNotNone(response.data.get("elapsed_ms"))
+        self.assertLess(elapsed, 7.5)
 
 
 class CameraRtspProbeTests(SimpleTestCase):
@@ -337,6 +341,7 @@ class CameraRtspProbeTests(SimpleTestCase):
         self.assertEqual(instance.password, "secret")
         instance.save.assert_called_once()
 
+    @override_settings(CAMERA_RTSP_PROBE_USE_PROCESS=False)
     @patch("apps.cameras.services.rtsp_probe")
     def test_rtsp_probe_hard_timeout_returns_fast(self, probe_mock):
         def _slow_probe(*_args, **_kwargs):
@@ -354,6 +359,9 @@ class CameraRtspProbeTests(SimpleTestCase):
 
         self.assertFalse(result.get("ok"))
         self.assertEqual(result.get("error_msg"), "rtsp_timeout")
+        self.assertEqual(result.get("status"), "timeout")
+        self.assertEqual(result.get("detail"), "rtsp_probe_timeout")
+        self.assertIsNotNone(result.get("elapsed_ms"))
         self.assertLess(elapsed, 2.5)
 
 

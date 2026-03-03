@@ -1,5 +1,6 @@
 import hashlib
 import logging
+import time
 from uuid import uuid4
 from django.utils import timezone
 from django.utils.dateparse import parse_datetime
@@ -781,6 +782,7 @@ class CameraViewSet(viewsets.ModelViewSet):
 
     @action(detail=True, methods=["post"], url_path="test_connection")
     def test_connection(self, request, pk=None):
+        started = time.monotonic()
         try:
             cam = self.get_object()
             require_store_role(request.user, str(cam.store_id), ALLOWED_MANAGE_ROLES)
@@ -812,7 +814,7 @@ class CameraViewSet(viewsets.ModelViewSet):
             result = rtsp_probe_with_hard_timeout(
                 cam.rtsp_url,
                 timeout_sec=4,
-                hard_timeout_sec=5,
+                hard_timeout_sec=6,
             )
         except Exception as exc:
             logger.exception("[CAMERA] test_connection probe failed camera_id=%s error=%s", str(cam.id), exc)
@@ -825,6 +827,11 @@ class CameraViewSet(viewsets.ModelViewSet):
         fps_est = result.get("fps_est")
         error_msg = result.get("error_msg")
         extra = result.get("extra")
+        status_value = result.get("status")
+        detail = result.get("detail")
+        elapsed_ms = result.get("elapsed_ms")
+        if elapsed_ms is None:
+            elapsed_ms = int((time.monotonic() - started) * 1000)
         reason = "rtsp_timeout" if error_msg == "rtsp_timeout" else None
 
         if ok:
@@ -855,18 +862,38 @@ class CameraViewSet(viewsets.ModelViewSet):
                 error=error_msg,
             )
 
-        return Response(
-            {
-                "ok": ok,
-                "latency_ms": latency_ms,
-                "fps_est": fps_est,
-                "frames_read": frames_read,
-                "reason": reason,
-                "error_msg": "" if ok else (error_msg or "Falha ao testar RTSP."),
-                "extra": extra,
-            },
-            status=status.HTTP_200_OK,
-        )
+        try:
+            logger.info(
+                "[CAMERA] test_connection camera_id=%s ok=%s status=%s elapsed_ms=%s reason=%s",
+                str(cam.id),
+                ok,
+                status_value or ("ok" if ok else "error"),
+                elapsed_ms,
+                reason,
+            )
+        except Exception:
+            pass
+
+        payload = {
+            "ok": ok,
+            "latency_ms": latency_ms,
+            "fps_est": fps_est,
+            "frames_read": frames_read,
+            "reason": reason,
+            "error_msg": "" if ok else (error_msg or "Falha ao testar RTSP."),
+            "extra": extra,
+            "elapsed_ms": elapsed_ms,
+            "status": status_value or ("ok" if ok else "error"),
+        }
+        if reason == "rtsp_timeout":
+            payload.update(
+                {
+                    "status": "timeout",
+                    "detail": detail or "rtsp_probe_timeout",
+                }
+            )
+
+        return Response(payload, status=status.HTTP_200_OK)
 
     @action(detail=True, methods=["post"], url_path="test-connection")
     def test_connection_legacy(self, request, pk=None):
