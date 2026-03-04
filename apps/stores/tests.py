@@ -536,7 +536,7 @@ class EdgeStatusNoCamerasTests(SimpleTestCase):
         payload, _reason = views_edge_status.compute_store_edge_status_snapshot(store_id)
 
         self.assertFalse(payload.get("online"))
-        self.assertEqual(payload.get("store_status_reason"), "no_cameras")
+        self.assertEqual(payload.get("store_status_reason"), "heartbeat_expired")
         self.assertEqual(payload.get("store_status"), "offline")
 
     @patch("apps.stores.views_edge_status._get_last_heartbeat", return_value=None)
@@ -558,9 +558,41 @@ class EdgeStatusNoCamerasTests(SimpleTestCase):
         payload, _reason = views_edge_status.compute_store_edge_status_snapshot(store_id)
 
         self.assertFalse(payload.get("online"))
-        self.assertEqual(payload.get("store_status_reason"), "no_cameras")
+        self.assertEqual(payload.get("store_status_reason"), "no_heartbeat")
         self.assertEqual(payload.get("store_status"), "offline")
         self.assertIsNone(payload.get("last_heartbeat_at"))
+
+    @patch("apps.stores.views_edge_status._get_latest_camera_health_map", side_effect=Exception("boom"))
+    @patch("apps.stores.views_edge_status.Camera")
+    @patch("apps.stores.views_edge_status.Store")
+    def test_edge_status_fallback_uses_store_last_seen_at_when_present(
+        self,
+        store_mock,
+        camera_mock,
+        _latest_health_mock,
+    ):
+        store_id = str(uuid.uuid4())
+        store = self._mock_store(store_id)
+        store.last_seen_at = timezone.now() - timezone.timedelta(seconds=30)
+        store_mock.objects.filter.return_value.first.return_value = store
+
+        cam = MagicMock()
+        cam.id = uuid.uuid4()
+        cam.external_id = None
+        cam.name = "Camera 1"
+        cam.last_seen_at = None
+        cam.last_snapshot_url = None
+        camera_qs = MagicMock()
+        camera_qs.order_by.return_value = [cam]
+        camera_qs.count.return_value = 1
+        camera_mock.objects.filter.return_value = camera_qs
+
+        payload, _reason = views_edge_status.compute_store_edge_status_snapshot(store_id)
+
+        self.assertEqual(payload.get("store_status_reason"), "edge_status_fallback")
+        self.assertEqual(payload.get("last_comm_at"), store.last_seen_at.isoformat())
+        self.assertEqual(payload.get("cameras_total"), 1)
+        self.assertIsNotNone(payload.get("request_id"))
 
     @patch("apps.stores.views_edge_status._get_last_edge_heartbeat_receipt")
     @patch("apps.stores.views_edge_status._get_last_heartbeat")

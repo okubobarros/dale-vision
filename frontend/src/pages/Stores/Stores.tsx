@@ -30,7 +30,7 @@ const isRecent = (iso?: string | null, maxAgeSec = ONLINE_MAX_AGE_SEC) => {
 };
 
 const formatRelativeTime = (iso?: string | null) => {
-  if (!iso) return 'Nunca';
+  if (!iso) return '—';
   const date = new Date(iso);
   if (Number.isNaN(date.getTime())) return '—';
   const diffSec = Math.floor((Date.now() - date.getTime()) / 1000);
@@ -60,7 +60,7 @@ const formatTimestampFull = (iso?: string | null) => {
 };
 
 const formatLastSeenDisplay = (iso?: string | null) => {
-  if (!iso) return 'Nunca';
+  if (!iso) return '—';
   return formatRelativeTime(iso);
 };
 

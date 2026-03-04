@@ -195,7 +195,7 @@ const StoreDetails = () => {
             <div className="text-lg font-semibold text-gray-800 mt-2">
               {lastSeenAt
                 ? new Date(lastSeenAt).toLocaleString("pt-BR")
-                : "Nunca"}
+                : "—"}
             </div>
             {data.edge_health?.last_error && (
               <div className="text-xs text-red-600 mt-2">

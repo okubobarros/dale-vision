@@ -1,11 +1,13 @@
 from datetime import datetime
 import logging
+import uuid
 from django.core.exceptions import FieldError
 from django.test.testcases import DatabaseOperationForbidden
 from django.db.utils import ProgrammingError, OperationalError
 from django.db.models import Max
 from django.db import connection
 from django.utils import timezone
+from django.conf import settings
 from rest_framework.permissions import IsAuthenticated
 from rest_framework.response import Response
 from rest_framework.views import APIView
@@ -224,7 +226,10 @@ def compute_store_edge_status_snapshot(store_id):
 
         if cameras_total == 0:
             store_status = "online_no_cameras" if comm_status in ("online", "degraded") else "offline"
-            store_status_reason = "no_cameras"
+            if comm_status in ("online", "degraded"):
+                store_status_reason = "no_cameras"
+            else:
+                store_status_reason = comm_reason
             store_status_age_seconds = comm_age_seconds
         elif cameras_online >= 1:
             if cameras_online < cameras_total:
@@ -249,7 +254,8 @@ def compute_store_edge_status_snapshot(store_id):
     except (ProgrammingError, OperationalError):
         return (_empty_payload(store.id, "db_unavailable", "db_unavailable"), "db_unavailable")
     except Exception as exc:
-        logger.exception("[EDGE_STATUS] unexpected_error store_id=%s", store_id)
+        request_id = uuid.uuid4().hex
+        logger.exception("[EDGE_STATUS] unexpected_error store_id=%s request_id=%s", store_id, request_id)
         # Fallback: return minimal status so UI doesn't show "Nunca" when we have store.last_seen_at.
         try:
             fallback_last_comm = _as_datetime(store.last_seen_at)
@@ -258,6 +264,7 @@ def compute_store_edge_status_snapshot(store_id):
                 cameras_total = Camera.objects.filter(store_id=store_id, active=True).count()
             except FieldError:
                 cameras_total = Camera.objects.filter(store_id=store_id).count()
+            debug_error = f"{type(exc).__name__}: {exc}"
             payload = {
                 "ok": False,
                 "online": comm_status in ("online", "degraded"),
@@ -278,7 +285,9 @@ def compute_store_edge_status_snapshot(store_id):
                 "cameras": [],
                 "last_metric_bucket": None,
                 "last_error": None,
-                "detail": "edge_status_fallback",
+                "detail": "unexpected_error",
+                "request_id": request_id,
+                "debug_error": debug_error,
             }
             return (_with_stable_contract(payload), "edge_status_fallback")
         except Exception:
@@ -528,6 +537,11 @@ class StoreEdgeStatusView(APIView):
             )
 
         payload, _reason = compute_store_edge_status_snapshot(store_id)
+        debug_error = payload.pop("debug_error", None)
+        if debug_error:
+            if settings.DEBUG or getattr(request.user, "is_staff", False) or getattr(request.user, "is_superuser", False):
+                if not payload.get("last_error"):
+                    payload["last_error"] = debug_error
         if payload.get("online") and store:
             try:
                 OnboardingProgressService(str(store.org_id)).complete_step(

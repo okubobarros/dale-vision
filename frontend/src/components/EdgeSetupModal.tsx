@@ -93,7 +93,7 @@ const formatApiError = (err: unknown) => {
 }
 
 const formatRelativeTime = (iso?: string | null) => {
-  if (!iso) return "Nunca"
+  if (!iso) return "—"
   const date = new Date(iso)
   if (Number.isNaN(date.getTime())) return "—"
   const diffSec = Math.floor((Date.now() - date.getTime()) / 1000)

@@ -88,7 +88,7 @@ const getLastSeenAt = (status?: StoreEdgeStatus | null) =>
     null
 
 const formatRelativeTime = (iso?: string | null) => {
-  if (!iso) return "Nunca"
+  if (!iso) return "—"
   const date = new Date(iso)
   if (Number.isNaN(date.getTime())) return "—"
   const diffSec = Math.floor((Date.now() - date.getTime()) / 1000)
@@ -113,7 +113,7 @@ const formatTimestampShort = (iso?: string | null) => {
 }
 
 const formatLastSeenDisplay = (iso?: string | null) => {
-  if (!iso) return "Nunca"
+  if (!iso) return "—"
   const relative = formatRelativeTime(iso)
   const absolute = formatTimestampShort(iso)
   return absolute ? `${relative} · ${absolute}` : relative
