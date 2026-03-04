@@ -230,8 +230,8 @@ def compute_store_edge_status_snapshot(store_id):
                 store_status_reason = "all_cameras_online"
         else:
             if comm_status in ("online", "degraded"):
-                store_status = "online"
-                store_status_reason = "edge_heartbeat_only"
+                store_status = "offline"
+                store_status_reason = "camera_health_stale"
             else:
                 store_status = comm_status
                 store_status_reason = comm_reason

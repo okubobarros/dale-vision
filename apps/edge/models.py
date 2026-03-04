@@ -24,3 +24,20 @@ class EdgeToken(models.Model):
     def __str__(self):
         return f"{self.store_id} ({'active' if self.active else 'inactive'})"
 
+
+class EdgeEventMinuteStats(models.Model):
+    store_id = models.UUIDField(db_index=True)
+    event_name = models.CharField(max_length=64, db_index=True)
+    minute_bucket = models.DateTimeField(db_index=True)
+    count = models.IntegerField(default=0)
+    last_event_at = models.DateTimeField(null=True, blank=True)
+    created_at = models.DateTimeField(default=timezone.now)
+    updated_at = models.DateTimeField(default=timezone.now)
+
+    class Meta:
+        db_table = "edge_event_minute_stats"
+        unique_together = (("store_id", "event_name", "minute_bucket"),)
+
+    def __str__(self):
+        return f"{self.store_id} {self.event_name} {self.minute_bucket} ({self.count})"
+

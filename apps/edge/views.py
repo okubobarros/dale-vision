@@ -6,7 +6,7 @@ from django.conf import settings
 from django.contrib.auth import get_user_model
 from django.utils import timezone
 from django.db.utils import OperationalError, ProgrammingError
-from django.db import connection
+from django.db import connection, models
 import logging
 
 from rest_framework.views import APIView
@@ -17,7 +17,7 @@ from rest_framework.permissions import AllowAny
 from knox.auth import TokenAuthentication
 
 from .serializers import EdgeEventSerializer
-from .models import EdgeEventReceipt
+from .models import EdgeEventReceipt, EdgeEventMinuteStats
 from .auth import authenticate_edge_token
 
 from apps.alerts.views import AlertRuleViewSet
@@ -107,6 +107,38 @@ def _touch_store_seen(store_id: str):
         )
     except Exception:
         logger.exception("[WARN] store touch update failed")
+
+
+def _floor_minute(ts_dt):
+    if not ts_dt:
+        return None
+    return ts_dt.replace(second=0, microsecond=0)
+
+
+def _bump_event_minute(store_id: str, event_name: str, ts_dt):
+    minute_bucket = _floor_minute(ts_dt)
+    if not minute_bucket:
+        return
+    try:
+        row, created = EdgeEventMinuteStats.objects.get_or_create(
+            store_id=store_id,
+            event_name=str(event_name or "")[:64],
+            minute_bucket=minute_bucket,
+            defaults={
+                "count": 1,
+                "last_event_at": ts_dt,
+                "created_at": timezone.now(),
+                "updated_at": timezone.now(),
+            },
+        )
+        if not created:
+            EdgeEventMinuteStats.objects.filter(id=row.id).update(
+                count=models.F("count") + 1,
+                last_event_at=ts_dt,
+                updated_at=timezone.now(),
+            )
+    except Exception:
+        logger.exception("[EDGE] event minute stats failed store=%s event=%s", store_id, event_name)
 
 logger = logging.getLogger(__name__)
 
@@ -248,12 +280,48 @@ class EdgeEventsIngestView(APIView):
         if not created:
             deduped = True
             _touch_store_seen(store_id)
+            try:
+                ts_dt = _resolve_edge_ts(data, payload)
+                _bump_event_minute(store_id, event_name, ts_dt)
+            except Exception:
+                pass
+            try:
+                ts_dt = _resolve_edge_ts(data, payload)
+                age_s = int((timezone.now() - ts_dt).total_seconds()) if ts_dt else None
+                logger.info(
+                    "[EDGE] ingest store=%s event=%s age_s=%s stored=%s deduped=%s",
+                    store_id,
+                    event_name,
+                    age_s,
+                    True,
+                    True,
+                )
+            except Exception:
+                pass
             return Response(
                 {"ok": True, "receipt_id": receipt_id or None, "stored": True, "deduped": True},
                 status=status.HTTP_200_OK,
             )
         stored = True
         _touch_store_seen(store_id)
+        try:
+            ts_dt = _resolve_edge_ts(data, payload)
+            _bump_event_minute(store_id, event_name, ts_dt)
+        except Exception:
+            pass
+        try:
+            ts_dt = _resolve_edge_ts(data, payload)
+            age_s = int((timezone.now() - ts_dt).total_seconds()) if ts_dt else None
+            logger.info(
+                "[EDGE] ingest store=%s event=%s age_s=%s stored=%s deduped=%s",
+                store_id,
+                event_name,
+                age_s,
+                True,
+                False,
+            )
+        except Exception:
+            pass
 
         # --- vision metrics (v1) ---
         if event_name == "vision.metrics.v1":
