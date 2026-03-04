@@ -34,3 +34,13 @@
 - Sem dependências, loga `yolo failed` e não gera métricas.
 - Snapshot é suficiente para MVP; RTSP contínuo fica para etapa seguinte.
 - Se `cameras list failed 403`, revisar `STORE_ID` e `EDGE_TOKEN` no `.env` e gerar novo token no wizard.
+
+## Licoes de Integracao (2026-03-03)
+- **Store Health no dashboard** usa `GET /api/v1/stores/{store_id}/edge-status/` e depende de `CameraHealthLog` recente para nao cair em `health_stale`.
+- `camera_health` via `/api/edge/events/` pode retornar `400 camera_not_found` quando `CAMERAS_JSON[].id` nao bate com a camera cadastrada no backend (id UUID, external_id ou nome).
+- Em loja, usar `CAMERAS_JSON` com IDs reais das cameras do app (nao usar `cam-1`, `cam-2` genéricos).
+- Em PowerShell, variavel temporaria exige `$env:CAMERAS_JSON='[...]'`; sintaxe `CAMERAS_JSON=[...]` gera parser error.
+- Falso negativo de RTSP pode ocorrer com DESCRIBE sem handshake Digest; fallback para conectividade simples evita `RTSP401` indevido em alguns NVRs.
+- `--smoke 60` virou gate operacional: sucesso so com `heartbeat_ok=True` e `camera_health_posted == total_cameras`.
+- Fonte de log confiavel para suporte remoto continua sendo `C:\ProgramData\DaleVision\logs\agent.log`.
+- Sempre rotacionar `EDGE_TOKEN` quando houver exposicao em canais de suporte/chat.

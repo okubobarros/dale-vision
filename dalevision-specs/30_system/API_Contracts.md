@@ -51,7 +51,7 @@ Notas de payload (stores):
 - `GET|POST /api/v1/cameras/`
 - `GET|PUT|PATCH|DELETE /api/v1/cameras/{camera_id}/`
 - `POST /api/v1/cameras/{camera_id}/test-snapshot/`
-- `POST /api/v1/cameras/{camera_id}/test-connection/` (202 async)
+- `POST /api/v1/cameras/{camera_id}/test-connection/` (200 sync, <=8s, payload padronizado)
 - `POST /api/v1/cameras/{camera_id}/snapshot/upload/`
 - `GET /api/v1/cameras/{camera_id}/snapshot/`
 - `GET|PUT /api/v1/cameras/{camera_id}/roi/`
@@ -80,23 +80,30 @@ Notas de payload (stores):
 ## Contrato de eventos (v1)
 Aplicável a `POST /api/edge/events/`.
 
-Campos obrigatórios:
-- `receipt_id` (string, idempotência)
-- `event_name` (string, ver SPEC-007)
-- `ts` (timestamp ISO8601)
-- `store_id` (uuid)
-- `org_id` (uuid, quando aplicável)
+Envelope obrigatório:
+- `event_name` (string)
 - `source` (string: `edge` | `backend` | `system`)
+- `data` (json)
 
-Campos opcionais:
-- `camera_id` (uuid)
-- `zone_id` (uuid)
-- `payload` (json)
-- `meta` (json)
+`data` obrigatório:
+- `store_id` (uuid)
+- `ts` (timestamp ISO8601)
 
-Observação: detalhes de validação e regras de ingestão devem referenciar `SPEC-007-Event-Pipeline.md`.
+`data` opcional:
+- `agent_id` (string)
+- `camera_id` (uuid/external_id)
+- `status` (string)
+- `latency_ms` (int)
+- `error` (string)
+- `snapshot_url` (string)
+
+Idempotência:
+- `receipt_id` é opcional no request; se ausente, o backend calcula.
+
+Observação: detalhes completos em `SPEC-007-Event-Pipeline.md`.
 
 ## Endpoints TBD (não implementar sem definição)
+ (não implementar sem definição)
 - Relatórios mensais por Org (SPEC-005)
 - ROI Dashboard (SPEC-005)
 
@@ -108,3 +115,5 @@ Observação: detalhes de validação e regras de ingestão devem referenciar `S
 - `GET /api/v1/cameras/{camera_id}/snapshot/` retorna `snapshot_url` (signed URL curta), `storage_key` (quando existir) e `expires_in`.
 - `GET /api/v1/system/storage-status/` retorna flags sem segredos: `configured`, `bucket`, `supabase_url_present`, `service_role_present`.
 - `GET /api/v1/onboarding/next-step/` retorna `400` com `error=store_id_invalid` quando `store_id` ausente ou inválido.
+
+- `POST /api/v1/cameras/{camera_id}/test-connection/` retorna `{ok, status, elapsed_ms, detail}`; `status="timeout"` e `detail="rtsp_probe_timeout"` quando estoura o limite.

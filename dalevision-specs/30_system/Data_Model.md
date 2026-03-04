@@ -34,3 +34,10 @@
 - Store (campos onboarding):
   - `business_type`, `pos_system`, `hours_weekdays`, `hours_saturday`, `hours_sunday_holiday`
   - `employees_count`, `cameras_count`
+
+- EdgeEventReceipt (dedupe de eventos do edge)
+- EdgeEventMinuteStats (contagem por minuto de eventos do edge)
+
+- Store (saúde/telemetria): `last_seen_at`, `last_error`
+- Camera (saúde): `last_seen_at`, `last_error`, `latency_ms`
+- CameraHealthLog: `checked_at`, `status`, `latency_ms`, `error`

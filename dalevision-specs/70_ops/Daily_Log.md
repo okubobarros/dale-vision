@@ -92,3 +92,28 @@ Registrar decisões e eventos do dia.
   - Endpoints best-effort devem falhar rápido (≈3s) para não travar login/boot do app.
 - Próximos passos:
   - Monitorar estabilidade do login e tempo de hidratação no app.
+
+## 2026-03-04
+- Data: 2026-03-04
+- Highlights:
+  - Store Health passou a usar camera_health recente e last_comm_at (max store/camera/health).
+  - /api/edge/events/ agora atualiza store.last_seen_at para qualquer evento aceito e limpa last_error.
+  - Camera health online limpa camera.last_error e camera_health.error; store não fica preso em erro legado.
+  - Edge-status expõe last_comm_at e evita offline quando há camera_health recente.
+  - test_connection ganhou hard timeout (<=8s) com payload padronizado e logging de elapsed_ms.
+  - Frontend passou a mostrar status real do Edge e removeu dependência do test_connection server-side.
+  - Migration adicionada: onboarding_progress.updated_at (corrige crash no Render).
+  - Edge Agent em modo local (`CAMERAS_JSON`) estabilizado para operar sem dependência de `/api/v1/stores/.../cameras/` e sem endpoints `/api/edge/cameras` inexistentes.
+  - `camera_health` passou a publicar em `/api/edge/events/` com `event_name=camera_health` e logs por ciclo/camera.
+  - Comando `--smoke` validado em Windows com resumo de sucesso/falha.
+  - Fallback de autostart reforçado: quando script de instalacao nao existe, cria task `ONLOGON` com `cd /d` na pasta do agente para garantir leitura do `.env`.
+  - Investigacao de loja identificou causa de `posted 0/N`: backend retornando `400 camera_not_found` por `camera_id` divergente do cadastro real.
+  - Teste RTSP real confirmou canal funcional via `ffplay`; ajuste no checker para reduzir falso `RTSP401` por Digest challenge.
+- Bloqueios:
+  - `camera_health` depende de IDs de camera corretos no `CAMERAS_JSON` (UUID/external_id/nome existentes no backend).
+- Decisões:
+  - Operacao de loja passa a exigir `CAMERAS_JSON` com IDs reais do dashboard.
+  - `--smoke 60` vira critério obrigatório de aceite antes de empacotar/deploy.
+- Próximos passos:
+  - Atualizar `.env` de release com `CAMERAS_JSON` real por loja.
+  - Rodar smoke + conferir `edge-status` no dashboard após cada instalação.

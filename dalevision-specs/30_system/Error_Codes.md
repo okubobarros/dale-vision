@@ -129,3 +129,18 @@ Compatibilidade temporária:
 - Não inventar endpoints novos para suportar erros; quando necessário, usar `details` com o contexto.
 - Para validações de campo, `details` deve conter o mapa de erros por campo no padrão DRF.
 - `GET /api/me/setup-state/` pode retornar header `X-Schema-Warnings` quando detectar schema desatualizado.
+
+### RTSP_PROBE_TIMEOUT
+- Quando: teste de conexão estourou o hard timeout.
+- HTTP: 200 (status=timeout no payload)
+- Mensagem UX sugerida: "Tempo limite ao testar RTSP."
+
+### CAMERA_HEALTH_STALE
+- Quando: camera_health não atualizado dentro da janela.
+- HTTP: 200 (edge-status)
+- Mensagem UX sugerida: "Sem atualização recente do Edge."
+
+### EDGE_HEARTBEAT_ONLY
+- Quando: heartbeat chega, mas camera_health não.
+- HTTP: 200 (edge-status)
+- Mensagem UX sugerida: "Heartbeat recebido sem health das câmeras."

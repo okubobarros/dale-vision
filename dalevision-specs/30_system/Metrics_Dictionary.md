@@ -98,9 +98,13 @@ de dados e a forma de cálculo usada nos relatórios e dashboards.
 - **Cálculo**: status calculado em tempo real no backend.
 
 ### edge_status
-- **Fonte**: `stores.last_seen_at` + `stores.last_error`
-- **Cálculo**: `online` se `last_seen_at` recente (janela de 15min), senão `offline`.
+- **Fonte**: `last_comm_at` (max de `stores.last_seen_at`, `cameras.last_seen_at`, `camera_health_logs.checked_at`)
+- **Cálculo**: `online` se `last_comm_at` dentro da janela; `offline` se `camera_health` estiver stale.
 
 ## Observações
 - Todas as métricas respeitam **org → stores** (escopo multi‑loja).
 - Respeitar timezone da organização ao calcular buckets.
+
+### last_comm_at (última comunicação)
+- **Fonte**: max entre store, camera e camera_health recentes.
+- **Uso**: base para edge-status e dashboard.

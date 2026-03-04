@@ -9,29 +9,27 @@ Estabelecer um pipeline confiável de eventos do **Agent** no **Edge** até **Ba
 - Não criar novos modelos/tabelas fora do `30_system/Data_Model.md`.
 
 ## Event Names v1 (lista fechada)
-- `camera.health`
-- `camera.snapshot`
-- `queue.detected`
-- `idle.detected`
-- `compliance.detected`
-- `vision.metrics.v1`
+- `edge_heartbeat`
+- `camera_health`
+- `vision_metrics` (ou `vision.metrics.v1`)
+- `alert` (quando aplicável)
 
 ## Contrato do evento (v1)
-Campos obrigatórios:
-- `receipt_id` (string, idempotência)
-- `event_name` (string, fechado conforme lista v1)
-- `ts` (timestamp ISO8601)
-- `store_id` (uuid)
-- `org_id` (uuid, quando aplicável)
-- `source` (string: `edge` | `backend` | `system`)
+Envelope:
+- `event_name` (string)
+- `source` (edge|backend|system)
+- `data` (json)
+- `receipt_id` (opcional; backend calcula se ausente)
 
-Campos opcionais:
-- `camera_id` (uuid)
-- `zone_id` (uuid)
-- `payload` (json)
-- `meta` (json)
+`data` obrigatório:
+- `store_id` (uuid)
+- `ts` (ISO8601)
+
+`data` opcional:
+- `agent_id`, `camera_id`, `status`, `latency_ms`, `error`, `snapshot_url`
 
 ### Idempotência
+
 - `receipt_id` é chave única de deduplicação.
 - Retries devem manter o mesmo `receipt_id`.
 - Eventos duplicados são ignorados ou reprocessados sem efeitos colaterais.
