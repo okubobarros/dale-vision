@@ -626,6 +626,10 @@ const Cameras = () => {
                   Acesso somente leitura. Você não pode editar ou atualizar status nesta loja.
                 </p>
               )}
+              <p className="text-xs text-gray-500 mt-2">
+                O status vem do Edge na loja (não é teste do servidor). Se aparecer offline,
+                confirme o agente e a rede local.
+              </p>
             </div>
             <button
               type="button"

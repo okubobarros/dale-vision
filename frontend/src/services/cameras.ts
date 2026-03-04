@@ -202,39 +202,6 @@ export const camerasService = {
     }
   },
 
-  async testConnection(
-    cameraId: string
-  ): Promise<{
-    ok: boolean
-    latency_ms?: number | null
-    fps_est?: number | null
-    frames_read?: number | null
-    error_msg?: string | null
-  }> {
-    try {
-      const response = await api.post(`/v1/cameras/${cameraId}/test_connection/`)
-      const payload =
-        response.data && typeof response.data === "object"
-          ? (response.data as {
-              ok?: boolean
-              latency_ms?: number | null
-              fps_est?: number | null
-              frames_read?: number | null
-              error_msg?: string | null
-            })
-          : {}
-      return {
-        ok: payload.ok ?? false,
-        latency_ms: payload.latency_ms ?? null,
-        fps_est: payload.fps_est ?? null,
-        frames_read: payload.frames_read ?? null,
-        error_msg: payload.error_msg ?? null,
-      }
-    } catch (error) {
-      throw normalizeApiError(error, "Falha ao testar conexão.")
-    }
-  },
-
   async uploadSnapshot(
     cameraId: string,
     file: File

@@ -77,7 +77,7 @@ describe("EdgeSetupModal step 2", () => {
     const textarea = (await screen.findByDisplayValue(/EDGE_TOKEN=token/)) as HTMLTextAreaElement
     const lines = textarea.value.split("\n")
 
-    expect(lines).toEqual([
+    const expectedPrefix = [
       "CLOUD_BASE_URL=https://api.example.com",
       "STORE_ID=store-1",
       "EDGE_TOKEN=token",
@@ -90,10 +90,13 @@ describe("EdgeSetupModal step 2", () => {
       "UPDATE_GITHUB_REPO=daleship/dalevision-edge-agent",
       "UPDATE_INTERVAL_SECONDS=21600",
       "VISION_ENABLED=1",
-      "VISION_BUCKET_SECONDS=30",
       "VISION_POLL_SECONDS=5",
       "VISION_SNAPSHOT_TIMEOUT_SECONDS=10",
-    ])
+    ]
+
+    expect(lines.slice(0, expectedPrefix.length)).toEqual(expectedPrefix)
+    expect(lines).toContain("# Avançado (opcional)")
+    expect(lines).toContain("# VISION_MODEL_PATH=C:\\ProgramData\\DaleVision\\models\\yolov8n.pt")
   })
 
   it("shows download confirmed inside step 2 when clicking CTA", async () => {

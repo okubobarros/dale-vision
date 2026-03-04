@@ -43,7 +43,6 @@ vi.mock("../../services/cameras", () => ({
     updateCamera: vi.fn(),
     deleteCamera: vi.fn(),
     getCamera: vi.fn(),
-    testConnection: vi.fn(),
     getSnapshotUrl: vi.fn(),
     uploadSnapshot: vi.fn(),
   },
@@ -277,7 +276,7 @@ describe("Cameras create camera", () => {
     await waitFor(() => {
       expect(camerasService.getStoreCameras).toHaveBeenCalledTimes(2)
     })
-    expect(await screen.findByText(/Status do Edge/i)).toBeInTheDocument()
+    expect(await screen.findByText(/Status do Edge: Online/i)).toBeInTheDocument()
   })
 
   it("hides ROI button for viewer role when not staff", async () => {
