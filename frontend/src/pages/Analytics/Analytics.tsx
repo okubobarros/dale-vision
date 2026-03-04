@@ -1,6 +1,6 @@
 import { useCallback, useMemo, useState } from "react"
 import { useQuery } from "@tanstack/react-query"
-import { LineChart, type LineChartPoint } from "../../components/Charts/LineChart"
+import { LineChart, type LineChartPoint, type LineSeries } from "../../components/Charts/LineChart"
 import { PieChart, type PieChartPoint } from "../../components/Charts/PieChart"
 import { storesService, type Store } from "../../services/stores"
 
@@ -62,11 +62,14 @@ const Analytics = () => {
   const formatPercent = (value: number) => `${value.toFixed(1)}%`
   const formatMinutes = (value: number) => `${value} min`
 
+  type StatusTone = "good" | "warn" | "bad" | "neutral"
+  type MetricStatus = { tone: StatusTone; label: string }
+
   const getMetricStatus = (
     value: number,
     target: number,
     direction: "higher" | "lower"
-  ) => {
+  ): MetricStatus => {
     if (!summary) {
       return { tone: "neutral", label: "Sem dados" }
     }
@@ -84,7 +87,7 @@ const Analytics = () => {
   const queueStatus = getMetricStatus(queueAvgMin, TARGETS.queueMin, "lower")
   const dwellStatus = getMetricStatus(dwellAvgMin, TARGETS.dwellMin, "lower")
 
-  const statusStyles = {
+  const statusStyles: Record<StatusTone, string> = {
     good: "bg-emerald-50 text-emerald-700 border-emerald-200",
     warn: "bg-amber-50 text-amber-700 border-amber-200",
     bad: "bg-rose-50 text-rose-700 border-rose-200",
@@ -137,7 +140,7 @@ const Analytics = () => {
     })
   }, [summary])
 
-  const metricSeries = useMemo(() => {
+  const metricSeries = useMemo<LineSeries[]>(() => {
     switch (metricView) {
       case "conversoes":
         return [{ key: "conversoes", label: "Conversões", color: "#8b5cf6" }]
@@ -193,7 +196,7 @@ const Analytics = () => {
       const queueTone = getMetricStatus(queueMin, TARGETS.queueMin, "lower").tone
       const dwellTone = getMetricStatus(dwellMin, TARGETS.dwellMin, "lower").tone
       const tones = [conversionTone, queueTone, dwellTone]
-      const status =
+      const status: StatusTone =
         tones.includes("bad") ? "bad" : tones.includes("warn") ? "warn" : tones.includes("good") ? "good" : "neutral"
       return {
         id: store.id,
@@ -209,7 +212,7 @@ const Analytics = () => {
 
   const sortedStoreRows = useMemo(() => {
     const rows = [...storeRows]
-    const statusRank = { bad: 3, warn: 2, good: 1, neutral: 0 }
+    const statusRank: Record<StatusTone, number> = { bad: 3, warn: 2, good: 1, neutral: 0 }
     const getValue = (row: (typeof storeRows)[number]) => {
       switch (sortKey) {
         case "visitors":
@@ -247,7 +250,13 @@ const Analytics = () => {
     [sortKey]
   )
 
-  const metrics = [
+  const metrics: {
+    title: string
+    value: string
+    change: string
+    target: string | null
+    status: MetricStatus
+  }[] = [
     {
       title: "Total de Visitantes",
       value: totalVisitors.toLocaleString("pt-BR"),

@@ -27,7 +27,7 @@ const defaultData: LineChartPoint[] = [
   { label: "20:00", visitantes: 40, conversoes: 15, fila: 2 },
 ]
 
-type LineSeries = {
+export type LineSeries = {
   key: keyof LineChartPoint
   label: string
   color: string

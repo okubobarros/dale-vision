@@ -6,5 +6,6 @@ declare module "axios" {
     _requestStart?: number
     _retryCount?: number
     _retryAuth?: boolean
+    noRetry?: boolean
   }
 }
