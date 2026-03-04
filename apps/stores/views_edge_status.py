@@ -1,4 +1,5 @@
 from datetime import datetime
+import logging
 from django.core.exceptions import FieldError
 from django.test.testcases import DatabaseOperationForbidden
 from django.db.utils import ProgrammingError, OperationalError
@@ -19,6 +20,7 @@ DEGRADED_SEC = 300
 EDGE_ONLINE_THRESHOLD_SECONDS = 90
 CAMERA_HEALTH_RECENT_SECONDS = 120
 _CAMERA_ACTIVE_COLUMN_EXISTS = None
+logger = logging.getLogger(__name__)
 
 
 def _user_has_store_access(user, store_id) -> bool:
@@ -246,8 +248,41 @@ def compute_store_edge_status_snapshot(store_id):
             last_error = _get_latest_error(store_id, recent_threshold=recent_threshold)
     except (ProgrammingError, OperationalError):
         return (_empty_payload(store.id, "db_unavailable", "db_unavailable"), "db_unavailable")
-    except Exception:
-        return (_empty_payload(store.id, "unexpected_error", "unexpected_error"), "unexpected_error")
+    except Exception as exc:
+        logger.exception("[EDGE_STATUS] unexpected_error store_id=%s", store_id)
+        # Fallback: return minimal status so UI doesn't show "Nunca" when we have store.last_seen_at.
+        try:
+            fallback_last_comm = _as_datetime(store.last_seen_at)
+            comm_status, comm_age_seconds, comm_reason = classify_age(fallback_last_comm)
+            try:
+                cameras_total = Camera.objects.filter(store_id=store_id, active=True).count()
+            except FieldError:
+                cameras_total = Camera.objects.filter(store_id=store_id).count()
+            payload = {
+                "ok": False,
+                "online": comm_status in ("online", "degraded"),
+                "store_id": str(store.id),
+                "store_status": comm_status,
+                "store_status_age_seconds": comm_age_seconds,
+                "store_status_reason": "edge_status_fallback",
+                "last_heartbeat": fallback_last_comm.isoformat() if fallback_last_comm else None,
+                "last_comm_at": fallback_last_comm.isoformat() if fallback_last_comm else None,
+                "last_heartbeat_at": fallback_last_comm.isoformat() if fallback_last_comm else None,
+                "agent_id": None,
+                "version": None,
+                "cameras_total": cameras_total,
+                "cameras_online": 0,
+                "cameras_degraded": 0,
+                "cameras_offline": 0,
+                "cameras_unknown": cameras_total,
+                "cameras": [],
+                "last_metric_bucket": None,
+                "last_error": None,
+                "detail": "edge_status_fallback",
+            }
+            return (_with_stable_contract(payload), "edge_status_fallback")
+        except Exception:
+            return (_empty_payload(store.id, "unexpected_error", "unexpected_error"), "unexpected_error")
 
     payload = {
         "ok": True,
