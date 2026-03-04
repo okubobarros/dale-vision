@@ -19,6 +19,7 @@ type EdgeStatusPayload = {
   store_status_reason?: string
   last_heartbeat?: string | null
   last_heartbeat_at?: string | null
+  last_comm_at?: string | null
   last_seen_at?: string | null
   agent_id?: string | null
   version?: string | null
@@ -110,6 +111,7 @@ const formatRelativeTime = (iso?: string | null) => {
 const getLastSeenAt = (payload?: EdgeStatusPayload | null) => {
   if (!payload) return null
   return (
+    payload.last_comm_at ||
     payload.last_seen_at ||
     payload.last_heartbeat_at ||
     payload.last_heartbeat ||
@@ -119,7 +121,13 @@ const getLastSeenAt = (payload?: EdgeStatusPayload | null) => {
 
 const getHeartbeatTimestamp = (payload?: EdgeStatusPayload | null) => {
   if (!payload) return null
-  return payload.last_heartbeat_at || payload.last_heartbeat || payload.last_seen_at || null
+  return (
+    payload.last_comm_at ||
+    payload.last_heartbeat_at ||
+    payload.last_heartbeat ||
+    payload.last_seen_at ||
+    null
+  )
 }
 
 const getAgeSeconds = (iso?: string | null) => {
@@ -357,7 +365,8 @@ const EdgeSetupModal = ({ open, onClose, defaultStoreId }: EdgeSetupModalProps) 
       setEdgeOnline(Boolean(data?.online))
       setEdgeReason(reason || null)
       const lastSeenAt = getLastSeenAt(data)
-      const heartbeatAt = data?.last_heartbeat_at || data?.last_heartbeat || null
+      const heartbeatAt =
+        data?.last_comm_at || data?.last_heartbeat_at || data?.last_heartbeat || null
       setLastSeenAt(lastSeenAt)
       setLastHeartbeatAt(heartbeatAt)
       setPollError(null)

@@ -196,6 +196,7 @@ export interface StoreEdgeStatus {
   store_status_reason?: string | null;
   last_heartbeat: string | null;
   last_heartbeat_at?: string | null;
+  last_comm_at?: string | null;
   last_seen_at?: string | null;
   last_metric_bucket: string | null;
   last_error: string | null;
@@ -354,7 +355,9 @@ const normalizeEdgeStatus = (
   store_status_reason: data?.store_status_reason ?? null,
   last_heartbeat: data?.last_heartbeat ?? null,
   last_heartbeat_at: data?.last_heartbeat_at ?? null,
+  last_comm_at: data?.last_comm_at ?? null,
   last_seen_at:
+    data?.last_comm_at ??
     data?.last_seen_at ??
     data?.last_heartbeat_at ??
     data?.last_heartbeat ??

@@ -46,7 +46,11 @@ const formatRelativeTime = (iso?: string | null) => {
 };
 
 const getLastSeenAt = (status?: StoreEdgeStatus | null) =>
-  status?.last_seen_at || status?.last_heartbeat_at || status?.last_heartbeat || null;
+  status?.last_comm_at ||
+    status?.last_seen_at ||
+    status?.last_heartbeat_at ||
+    status?.last_heartbeat ||
+    null;
 
 const formatTimestampFull = (iso?: string | null) => {
   if (!iso) return '';
@@ -914,7 +918,11 @@ const StoreCard = ({ store, onEdit, trialExpired }: StoreCardProps) => {
     refetchIntervalInBackground: true,
   });
   const edgeHeartbeatAt =
-    edgeStatus?.last_heartbeat_at || edgeStatus?.last_heartbeat || storeLastSeenAt || null;
+    edgeStatus?.last_comm_at ||
+      edgeStatus?.last_heartbeat_at ||
+      edgeStatus?.last_heartbeat ||
+      storeLastSeenAt ||
+      null;
   const lastSeenAt = storeLastSeenAt ?? getLastSeenAt(edgeStatus);
   const lastError = store.last_error ?? edgeStatus?.last_error ?? null;
   const edgeOnlineFromStatus =

@@ -81,7 +81,11 @@ const isRecentTimestamp = (iso?: string | null, maxAgeSec = ONLINE_MAX_AGE_SEC) 
 }
 
 const getLastSeenAt = (status?: StoreEdgeStatus | null) =>
-  status?.last_seen_at || status?.last_heartbeat_at || status?.last_heartbeat || null
+  status?.last_comm_at ||
+    status?.last_seen_at ||
+    status?.last_heartbeat_at ||
+    status?.last_heartbeat ||
+    null
 
 const formatRelativeTime = (iso?: string | null) => {
   if (!iso) return "Nunca"

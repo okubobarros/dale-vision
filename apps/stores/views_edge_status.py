@@ -1,3 +1,4 @@
+from datetime import datetime
 from django.core.exceptions import FieldError
 from django.db.utils import ProgrammingError, OperationalError
 from django.db.models import Max
@@ -40,6 +41,10 @@ def classify_age(dt):
 def _health_recent_threshold(now=None):
     now = now or timezone.now()
     return now - timezone.timedelta(seconds=CAMERA_HEALTH_RECENT_SECONDS)
+
+
+def _as_datetime(value):
+    return value if isinstance(value, datetime) else None
 
 
 def _empty_payload(store_id, reason: str, detail: str = None, ok: bool = False):
@@ -133,13 +138,21 @@ def compute_store_edge_status_snapshot(store_id):
         cameras_offline = 0
         cameras_unknown = 0
         camera_age_seconds = []
+        max_camera_last_seen = None
+        max_health_ts = None
         for cam in cameras:
             cameras_total += 1
-            last_ts = getattr(cam, "last_seen_at", None)
+            last_ts = _as_datetime(getattr(cam, "last_seen_at", None))
+            if last_ts and (max_camera_last_seen is None or last_ts > max_camera_last_seen):
+                max_camera_last_seen = last_ts
             last_log = _get_latest_camera_health(cam.id)
             log_ts = None
             if last_log is not None:
-                log_ts = getattr(last_log, "checked_at", None) or getattr(last_log, "created_at", None)
+                log_ts = _as_datetime(
+                    getattr(last_log, "checked_at", None) or getattr(last_log, "created_at", None)
+                )
+                if log_ts and (max_health_ts is None or log_ts > max_health_ts):
+                    max_health_ts = log_ts
 
             if log_ts and log_ts >= recent_threshold:
                 cam_age_seconds = int((now - log_ts).total_seconds())
@@ -184,9 +197,6 @@ def compute_store_edge_status_snapshot(store_id):
                 }
             )
 
-        last_heartbeat = _get_last_heartbeat(store_id)
-        hb_status, hb_age_seconds, hb_reason = classify_age(last_heartbeat)
-
         edge_heartbeat_at, edge_agent_id, edge_version = _get_edge_heartbeat_fallback(store_id)
         edge_online = False
         edge_age_seconds = None
@@ -194,11 +204,23 @@ def compute_store_edge_status_snapshot(store_id):
             edge_age_seconds = int((timezone.now() - edge_heartbeat_at).total_seconds())
             edge_online = edge_age_seconds <= EDGE_ONLINE_THRESHOLD_SECONDS
 
+        comm_candidates = [
+            dt
+            for dt in (
+                _as_datetime(store.last_seen_at),
+                max_camera_last_seen,
+                max_health_ts,
+                _as_datetime(edge_heartbeat_at),
+            )
+            if dt
+        ]
+        last_comm_at = max(comm_candidates) if comm_candidates else None
+        comm_status, comm_age_seconds, comm_reason = classify_age(last_comm_at)
+
         if cameras_total == 0:
-            last_heartbeat = edge_heartbeat_at
-            store_status = "online_no_cameras" if edge_online else "offline"
+            store_status = "online_no_cameras" if comm_status in ("online", "degraded") else "offline"
             store_status_reason = "no_cameras"
-            store_status_age_seconds = edge_age_seconds
+            store_status_age_seconds = comm_age_seconds
         elif cameras_online >= 1:
             if cameras_online < cameras_total:
                 store_status = "degraded"
@@ -207,14 +229,12 @@ def compute_store_edge_status_snapshot(store_id):
                 store_status = "online"
                 store_status_reason = "all_cameras_online"
         else:
-            if edge_online:
+            if comm_status in ("online", "degraded"):
                 store_status = "online"
                 store_status_reason = "edge_heartbeat_only"
-                last_heartbeat = edge_heartbeat_at
-                store_status_age_seconds = edge_age_seconds
             else:
-                store_status = hb_status
-                store_status_reason = hb_reason
+                store_status = comm_status
+                store_status_reason = comm_reason
 
         if cameras_total != 0:
             store_status_age_seconds = min(camera_age_seconds) if camera_age_seconds else None
@@ -232,7 +252,8 @@ def compute_store_edge_status_snapshot(store_id):
         "store_status": store_status,
         "store_status_age_seconds": store_status_age_seconds,
         "store_status_reason": store_status_reason,
-        "last_heartbeat": last_heartbeat.isoformat() if last_heartbeat else None,
+        "last_heartbeat": last_comm_at.isoformat() if last_comm_at else None,
+        "last_comm_at": last_comm_at.isoformat() if last_comm_at else None,
         "cameras_total": cameras_total,
         "cameras_online": cameras_online,
         "cameras_degraded": cameras_degraded,
@@ -243,8 +264,8 @@ def compute_store_edge_status_snapshot(store_id):
         "last_error": last_error,
     }
     if cameras_total == 0:
-        payload["online"] = edge_online
-        payload["last_heartbeat_at"] = edge_heartbeat_at.isoformat() if edge_heartbeat_at else None
+        payload["online"] = store_status in ("online_no_cameras", "online", "degraded")
+        payload["last_heartbeat_at"] = last_comm_at.isoformat() if last_comm_at else None
         payload["agent_id"] = edge_agent_id
         payload["version"] = edge_version
 

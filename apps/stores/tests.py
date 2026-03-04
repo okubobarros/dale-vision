@@ -1,4 +1,5 @@
 import uuid
+from types import SimpleNamespace
 from django.test import SimpleTestCase
 from django.http import Http404
 from django.core.exceptions import PermissionDenied, ValidationError
@@ -80,10 +81,10 @@ class StoreCamerasEndpointTests(SimpleTestCase):
         camera_model.objects.select_related.return_value.filter.return_value = qs
         serializer_mock.return_value.data = [{"id": "cam-1"}]
 
-        view = StoreViewSet.as_view({"get": "cameras"})
+        view = StoreViewSet.as_view({"get": "cameras"}, **StoreViewSet.cameras.kwargs)
         request = self.factory.get(
             f"/api/v1/stores/{store.id}/cameras/",
-            HTTP_AUTHORIZATION="Bearer edge-token",
+            HTTP_X_EDGE_TOKEN="edge-token",
         )
 
         with patch.object(StoreViewSet, "get_object", return_value=store):
@@ -95,7 +96,7 @@ class StoreCamerasEndpointTests(SimpleTestCase):
     @patch("apps.stores.views.validate_store_token", return_value=False)
     def test_get_cameras_invalid_edge_token_returns_401(self, _token_mock):
         store = self._mock_store("11111111-1111-1111-1111-111111111111")
-        view = StoreViewSet.as_view({"get": "cameras"})
+        view = StoreViewSet.as_view({"get": "cameras"}, **StoreViewSet.cameras.kwargs)
         request = self.factory.get(
             f"/api/v1/stores/{store.id}/cameras/",
             HTTP_AUTHORIZATION="Bearer bad-token",
@@ -121,7 +122,7 @@ class StoreCamerasEndpointTests(SimpleTestCase):
         camera_model.objects.select_related.return_value.filter.return_value = qs
         serializer_mock.return_value.data = [{"id": "cam-1"}]
 
-        view = StoreViewSet.as_view({"get": "cameras"})
+        view = StoreViewSet.as_view({"get": "cameras"}, **StoreViewSet.cameras.kwargs)
         request = self.factory.get(f"/api/v1/stores/{store.id}/cameras/")
         force_authenticate(request, user=self.user)
 
@@ -526,7 +527,7 @@ class EdgeStatusNoCamerasTests(SimpleTestCase):
 
         ts = (
             timezone.now()
-            - timezone.timedelta(seconds=views_edge_status.EDGE_ONLINE_THRESHOLD_SECONDS + 10)
+            - timezone.timedelta(seconds=views_edge_status.DEGRADED_SEC + 10)
         ).isoformat()
         receipt = MagicMock()
         receipt.payload = {"data": {"ts": ts, "agent_id": "agent-2", "version": "2.0.0"}}
@@ -689,7 +690,10 @@ class EdgeStatusCameraHealthRecencyTests(SimpleTestCase):
 class EdgeHeartbeatIngestTests(SimpleTestCase):
     @patch("apps.edge.views.EdgeEventReceipt.objects.get_or_create")
     @patch("apps.edge.views.Store.objects.filter")
-    @patch("apps.edge.views.EdgeEventsIngestView._is_edge_request", return_value=(True, None))
+    @patch(
+        "apps.edge.views.EdgeEventsIngestView._is_edge_request",
+        return_value=SimpleNamespace(ok=True, status_code=200, code=None, detail=None),
+    )
     @patch("apps.edge.views.TokenAuthentication.authenticate", return_value=None)
     @patch("apps.edge.views._update_store_last_seen")
     def test_ingest_updates_store_last_seen(
@@ -721,6 +725,83 @@ class EdgeHeartbeatIngestTests(SimpleTestCase):
         expected_ts = edge_views._parse_edge_ts(ts)
         self.assertEqual(called_store_id, store_id)
         self.assertEqual(called_ts, expected_ts)
+
+
+class EdgeEventsStoreTouchTests(SimpleTestCase):
+    @patch("apps.edge.views.EdgeEventReceipt.objects.get_or_create")
+    @patch("apps.edge.views.Store.objects.filter")
+    @patch(
+        "apps.edge.views.EdgeEventsIngestView._is_edge_request",
+        return_value=SimpleNamespace(ok=True, status_code=200, code=None, detail=None),
+    )
+    def test_edge_event_touches_store_last_seen(
+        self,
+        _edge_auth_mock,
+        store_filter_mock,
+        receipt_get_or_create_mock,
+    ):
+        store_id = str(uuid.uuid4())
+        qs = MagicMock()
+        qs.exists.return_value = True
+        qs.update.return_value = 1
+        store_filter_mock.return_value = qs
+        receipt_get_or_create_mock.return_value = (MagicMock(), True)
+
+        payload = {
+            "event_name": "edge_metric_bucket",
+            "receipt_id": "touch-test-1",
+            "data": {"store_id": store_id, "ts": timezone.now().isoformat()},
+        }
+        factory = APIRequestFactory()
+        request = factory.post("/api/edge/events/", payload, format="json", HTTP_X_EDGE_TOKEN="token")
+        response = EdgeEventsIngestView.as_view()(request)
+
+        self.assertIn(response.status_code, (200, 201))
+        store_filter_mock.assert_called_with(id=store_id)
+        qs.update.assert_called()
+
+
+class EdgeStatusLastCommTests(SimpleTestCase):
+    def _mock_store(self, store_id):
+        store = MagicMock()
+        store.id = store_id
+        store.last_error = None
+        store.last_seen_at = timezone.now() - timezone.timedelta(seconds=600)
+        return store
+
+    @patch("apps.stores.views_edge_status._get_last_edge_heartbeat_receipt", return_value=None)
+    @patch("apps.stores.views_edge_status._get_latest_camera_health")
+    @patch("apps.stores.views_edge_status.Camera")
+    @patch("apps.stores.views_edge_status.Store")
+    def test_recent_camera_health_updates_last_comm(
+        self,
+        store_mock,
+        camera_mock,
+        latest_health_mock,
+        _last_edge_receipt_mock,
+    ):
+        store_id = str(uuid.uuid4())
+        store_mock.objects.filter.return_value.first.return_value = self._mock_store(store_id)
+
+        cam = MagicMock()
+        cam.id = uuid.uuid4()
+        cam.external_id = "cam-1"
+        cam.name = "Camera 1"
+        cam.last_seen_at = timezone.now() - timezone.timedelta(seconds=500)
+        cam.last_snapshot_url = None
+        camera_mock.objects.filter.return_value.order_by.return_value = [cam]
+
+        health_log = MagicMock()
+        health_log.status = "online"
+        health_log.checked_at = timezone.now() - timezone.timedelta(seconds=30)
+        health_log.created_at = None
+        latest_health_mock.return_value = health_log
+
+        payload, _reason = views_edge_status.compute_store_edge_status_snapshot(store_id)
+
+        self.assertEqual(payload.get("store_status"), "online")
+        self.assertEqual(payload.get("store_status_reason"), "all_cameras_online")
+        self.assertEqual(payload.get("last_comm_at"), health_log.checked_at.isoformat())
 
 
 class SubscriptionRequiredEnforcementTests(SimpleTestCase):

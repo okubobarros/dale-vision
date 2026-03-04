@@ -97,6 +97,17 @@ def _update_store_last_seen(store_id: str, ts_dt):
     except Exception:
         logger.exception("[WARN] store last_seen_at update failed")
 
+
+def _touch_store_seen(store_id: str):
+    try:
+        Store.objects.filter(id=store_id).update(
+            last_seen_at=timezone.now(),
+            last_error=None,
+            updated_at=timezone.now(),
+        )
+    except Exception:
+        logger.exception("[WARN] store touch update failed")
+
 logger = logging.getLogger(__name__)
 
 class EdgeEventsIngestView(APIView):
@@ -236,11 +247,13 @@ class EdgeEventsIngestView(APIView):
             )
         if not created:
             deduped = True
+            _touch_store_seen(store_id)
             return Response(
                 {"ok": True, "receipt_id": receipt_id or None, "stored": True, "deduped": True},
                 status=status.HTTP_200_OK,
             )
         stored = True
+        _touch_store_seen(store_id)
 
         # --- vision metrics (v1) ---
         if event_name == "vision.metrics.v1":
