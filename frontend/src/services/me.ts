@@ -8,8 +8,6 @@ export type MeStatus = {
   role?: string | null
 }
 
-const ME_STATUS_RETRY_DELAYS_MS = [500, 1000, 2000]
-
 const isTimeoutError = (error: unknown) => {
   if (!axios.isAxiosError(error)) return false
   return (
@@ -17,11 +15,6 @@ const isTimeoutError = (error: unknown) => {
     String(error.message || "").toLowerCase().includes("timeout")
   )
 }
-
-const sleep = (ms: number) =>
-  new Promise<void>((resolve) => {
-    setTimeout(resolve, ms)
-  })
 
 export type ReportSummary = {
   period: string
@@ -68,27 +61,21 @@ export type ReportRangeParams = {
 
 export const meService = {
   async getStatus(): Promise<MeStatus | null> {
-    for (let attempt = 0; attempt <= ME_STATUS_RETRY_DELAYS_MS.length; attempt += 1) {
-      try {
-        const response = await api.get("/v1/me/status/", {
-          timeoutCategory: "critical",
-        })
-        return response.data as MeStatus
-      } catch (error) {
-        if (!isTimeoutError(error)) {
-          throw error
-        }
-        if (attempt < ME_STATUS_RETRY_DELAYS_MS.length) {
-          await sleep(ME_STATUS_RETRY_DELAYS_MS[attempt])
-          continue
-        }
-        if (import.meta.env.DEV) {
-          console.warn("[me/status] timeout after retries - returning unknown")
-        }
-        return null
+    try {
+      const response = await api.get("/v1/me/status/", {
+        timeoutCategory: "best-effort",
+        noRetry: true,
+      })
+      return response.data as MeStatus
+    } catch (error) {
+      if (!isTimeoutError(error)) {
+        throw error
       }
+      if (import.meta.env.DEV) {
+        console.warn("[me/status] timeout - returning unknown")
+      }
+      return null
     }
-    return null
   },
   async getReportSummary(
     storeId?: string | null,

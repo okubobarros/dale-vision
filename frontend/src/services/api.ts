@@ -52,6 +52,7 @@ type RetriableConfig = AxiosRequestConfig & {
   _retryCount?: number
   _requestStart?: number
   timeoutCategory?: TimeoutCategory
+  noRetry?: boolean
 }
 type AuthRetryConfig = RetriableConfig & { _retryAuth?: boolean }
 
@@ -264,11 +265,11 @@ api.interceptors.response.use(
       | undefined
     const method = String(axiosError.config?.method || "get").toLowerCase()
     const isGet = method === "get"
+    const config = axiosError.config as AuthRetryConfig | undefined
     const shouldRetry =
+      !config?.noRetry &&
       isGet &&
       (isTimeout || (status !== undefined && [502, 503, 504].includes(status)))
-
-    const config = axiosError.config as AuthRetryConfig | undefined
     const retryCount = config?._retryCount ?? 0
 
     if (shouldRetry && config && retryCount < RETRY_BACKOFF_MS.length) {
@@ -294,7 +295,7 @@ api.interceptors.response.use(
       syncApiAuthHeader()
     }
 
-    if (isTimeout && isGet) {
+    if (isTimeout && isGet && config?.timeoutCategory !== "best-effort" && !config?.noRetry) {
       showTimeoutRetryToast(config)
     }
 

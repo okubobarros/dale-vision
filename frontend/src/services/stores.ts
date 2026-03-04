@@ -379,7 +379,8 @@ export const storesService = {
     try {
       const response = await api.get("/v1/stores/", {
         params: { view: "min" },
-        timeoutCategory: "critical",
+        timeoutCategory: "best-effort",
+        noRetry: true,
       });
       const payload = response.data;
       const stores = Array.isArray(payload)
@@ -403,7 +404,8 @@ export const storesService = {
     try {
       const response = await api.get("/v1/stores/", {
         params: { view: "summary" },
-        timeoutCategory: "critical",
+        timeoutCategory: "best-effort",
+        noRetry: true,
       });
       const payload = response.data;
       const stores = Array.isArray(payload)
