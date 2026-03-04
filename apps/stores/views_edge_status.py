@@ -1,5 +1,6 @@
 from datetime import datetime
 from django.core.exceptions import FieldError
+from django.test.testcases import DatabaseOperationForbidden
 from django.db.utils import ProgrammingError, OperationalError
 from django.db.models import Max
 from django.db import connection
@@ -140,12 +141,14 @@ def compute_store_edge_status_snapshot(store_id):
         camera_age_seconds = []
         max_camera_last_seen = None
         max_health_ts = None
+        camera_ids = [str(cam.id) for cam in cameras]
+        latest_health_map = _get_latest_camera_health_map(camera_ids)
         for cam in cameras:
             cameras_total += 1
             last_ts = _as_datetime(getattr(cam, "last_seen_at", None))
             if last_ts and (max_camera_last_seen is None or last_ts > max_camera_last_seen):
                 max_camera_last_seen = last_ts
-            last_log = _get_latest_camera_health(cam.id)
+            last_log = latest_health_map.get(str(cam.id))
             log_ts = None
             if last_log is not None:
                 log_ts = _as_datetime(
@@ -381,6 +384,35 @@ def _get_latest_camera_health(camera_id):
         )
     except FieldError:
         return None
+
+
+def _get_latest_camera_health_map(camera_ids):
+    if not camera_ids:
+        return {}
+    try:
+        qs = (
+            CameraHealthLog.objects
+            .filter(camera_id__in=camera_ids)
+            .order_by("camera_id", "-checked_at")
+            .only("camera_id", "checked_at", "created_at", "status", "error")
+        )
+    except (FieldError, DatabaseOperationForbidden):
+        try:
+            qs = (
+                CameraHealthLog.objects
+                .filter(camera_id__in=camera_ids)
+                .order_by("camera_id", "-created_at")
+                .only("camera_id", "created_at", "status", "error")
+            )
+        except (FieldError, DatabaseOperationForbidden):
+            return {}
+
+    latest = {}
+    for row in qs:
+        cid = str(getattr(row, "camera_id", None))
+        if cid and cid not in latest:
+            latest[cid] = row
+    return latest
 
 
 def _get_latest_error(store_id, *, recent_threshold=None):

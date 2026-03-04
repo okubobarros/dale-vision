@@ -564,7 +564,7 @@ class EdgeStatusNoCamerasTests(SimpleTestCase):
 
     @patch("apps.stores.views_edge_status._get_last_edge_heartbeat_receipt")
     @patch("apps.stores.views_edge_status._get_last_heartbeat")
-    @patch("apps.stores.views_edge_status._get_latest_camera_health")
+    @patch("apps.stores.views_edge_status._get_latest_camera_health_map")
     @patch("apps.stores.views_edge_status.Camera")
     @patch("apps.stores.views_edge_status.Store")
     def test_with_cameras_keeps_current_behavior(
@@ -591,7 +591,7 @@ class EdgeStatusNoCamerasTests(SimpleTestCase):
         health_log.status = "online"
         health_log.checked_at = timezone.now() - timezone.timedelta(seconds=30)
         health_log.created_at = None
-        latest_health_mock.return_value = health_log
+        latest_health_mock.return_value = {str(cam.id): health_log}
 
         payload, _reason = views_edge_status.compute_store_edge_status_snapshot(store_id)
 
@@ -601,7 +601,7 @@ class EdgeStatusNoCamerasTests(SimpleTestCase):
 
     @patch("apps.stores.views_edge_status._get_last_edge_heartbeat_receipt")
     @patch("apps.stores.views_edge_status._get_last_heartbeat")
-    @patch("apps.stores.views_edge_status._get_latest_camera_health")
+    @patch("apps.stores.views_edge_status._get_latest_camera_health_map")
     @patch("apps.stores.views_edge_status.Camera")
     @patch("apps.stores.views_edge_status.Store")
     def test_with_cameras_stale_heartbeat_is_offline(
@@ -629,7 +629,7 @@ class EdgeStatusNoCamerasTests(SimpleTestCase):
         health_log.status = "error"
         health_log.checked_at = old_ts
         health_log.created_at = None
-        latest_health_mock.return_value = health_log
+        latest_health_mock.return_value = {str(cam.id): health_log}
 
         payload, _reason = views_edge_status.compute_store_edge_status_snapshot(store_id)
 
@@ -649,7 +649,7 @@ class EdgeStatusCameraHealthRecencyTests(SimpleTestCase):
     @patch("apps.stores.views_edge_status._get_last_edge_heartbeat_receipt", return_value=None)
     @patch("apps.stores.views_edge_status._get_last_heartbeat", return_value=None)
     @patch("apps.stores.views_edge_status._get_latest_error", return_value="rtsp_timeout")
-    @patch("apps.stores.views_edge_status._get_latest_camera_health")
+    @patch("apps.stores.views_edge_status._get_latest_camera_health_map")
     @patch("apps.stores.views_edge_status.Camera")
     @patch("apps.stores.views_edge_status.Store")
     def test_recent_online_health_clears_store_error(
@@ -676,7 +676,7 @@ class EdgeStatusCameraHealthRecencyTests(SimpleTestCase):
         health_log.status = "online"
         health_log.checked_at = timezone.now() - timezone.timedelta(seconds=30)
         health_log.created_at = None
-        latest_health_mock.return_value = health_log
+        latest_health_mock.return_value = {str(cam.id): health_log}
 
         payload, _reason = views_edge_status.compute_store_edge_status_snapshot(store_id)
 
@@ -770,7 +770,7 @@ class EdgeStatusLastCommTests(SimpleTestCase):
         return store
 
     @patch("apps.stores.views_edge_status._get_last_edge_heartbeat_receipt", return_value=None)
-    @patch("apps.stores.views_edge_status._get_latest_camera_health")
+    @patch("apps.stores.views_edge_status._get_latest_camera_health_map")
     @patch("apps.stores.views_edge_status.Camera")
     @patch("apps.stores.views_edge_status.Store")
     def test_recent_camera_health_updates_last_comm(
@@ -795,7 +795,7 @@ class EdgeStatusLastCommTests(SimpleTestCase):
         health_log.status = "online"
         health_log.checked_at = timezone.now() - timezone.timedelta(seconds=30)
         health_log.created_at = None
-        latest_health_mock.return_value = health_log
+        latest_health_mock.return_value = {str(cam.id): health_log}
 
         payload, _reason = views_edge_status.compute_store_edge_status_snapshot(store_id)
 

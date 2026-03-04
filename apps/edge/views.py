@@ -7,6 +7,7 @@ from django.contrib.auth import get_user_model
 from django.utils import timezone
 from django.db.utils import OperationalError, ProgrammingError
 from django.db import connection, models
+from django.test.testcases import DatabaseOperationForbidden
 import logging
 
 from rest_framework.views import APIView
@@ -137,6 +138,9 @@ def _bump_event_minute(store_id: str, event_name: str, ts_dt):
                 last_event_at=ts_dt,
                 updated_at=timezone.now(),
             )
+    except DatabaseOperationForbidden:
+        # SimpleTestCase blocks DB access; ignore in tests.
+        return
     except Exception:
         logger.exception("[EDGE] event minute stats failed store=%s event=%s", store_id, event_name)
 
