@@ -330,6 +330,7 @@ const EdgeSetupModal = ({ open, onClose, defaultStoreId }: EdgeSetupModalProps) 
       `# VISION_MODEL_PATH=C:\\ProgramData\\DaleVision\\models\\yolov8n.pt`,
       `# VISION_FRAME_STRIDE=2`,
       `# VISION_BUCKET_SECONDS=10`,
+      `# VISION_PROXY_ENABLED=1  (demo rapido: gera métricas básicas sem IA)`,
       `# CAMERA_SYNC_FATAL=0  (apenas debug; em produção manter default)`,
     ],
     [agentId, buildDashboardUrl, resolvedCloudBaseUrl]
