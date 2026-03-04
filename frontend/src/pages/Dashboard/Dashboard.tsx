@@ -134,7 +134,10 @@ const Dashboard = () => {
   const { user, authReady, isAuthenticated } = useAuth()
   const location = useLocation()
   const initialParams = new URLSearchParams(location.search)
-  const initialStoreFromQuery = initialParams.get("store") || ""
+  const initialStoreFromQuery =
+    initialParams.get("store") ||
+    initialParams.get("store_id") ||
+    ""
   const initialOpenEdgeSetup = initialParams.get("openEdgeSetup") === "1"
   const initialFromOnboarding = (() => {
     if (typeof window === "undefined") return false

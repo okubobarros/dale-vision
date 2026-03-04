@@ -39,6 +39,8 @@ class StoreSerializer(serializers.ModelSerializer):
             "trial_started_at",
             "trial_ends_at",
             "blocked_reason",
+            "last_seen_at",
+            "last_error",
             "created_at",
             "updated_at",
         ]
