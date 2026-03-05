@@ -84,6 +84,8 @@ describe("EdgeSetupModal step 2", () => {
       "AGENT_ID=edge-001",
       "HEARTBEAT_INTERVAL_SECONDS=30",
       "CAMERA_HEARTBEAT_INTERVAL_SECONDS=30",
+      "CAMERA_SYNC_ENABLED=1",
+      "CAMERA_SYNC_FATAL=0",
       "DASHBOARD_URL=https://app.dalevision.com/app/cameras?store_id=store-1&onboarding=true",
       "AUTO_UPDATE_ENABLED=0",
       "UPDATE_CHANNEL=stable",

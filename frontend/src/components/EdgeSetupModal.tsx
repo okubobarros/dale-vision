@@ -317,6 +317,8 @@ const EdgeSetupModal = ({ open, onClose, defaultStoreId }: EdgeSetupModalProps) 
       `AGENT_ID=${agentId || DEFAULT_AGENT_ID}`,
       `HEARTBEAT_INTERVAL_SECONDS=${HEARTBEAT_INTERVAL_SECONDS}`,
       `CAMERA_HEARTBEAT_INTERVAL_SECONDS=${CAMERA_HEARTBEAT_INTERVAL_SECONDS}`,
+      `CAMERA_SYNC_ENABLED=1`,
+      `CAMERA_SYNC_FATAL=0`,
       `DASHBOARD_URL=${buildDashboardUrl(storeIdValue)}`,
       `AUTO_UPDATE_ENABLED=${AUTO_UPDATE_ENABLED}`,
       `UPDATE_CHANNEL=${UPDATE_CHANNEL}`,
@@ -331,7 +333,6 @@ const EdgeSetupModal = ({ open, onClose, defaultStoreId }: EdgeSetupModalProps) 
       `# VISION_FRAME_STRIDE=2`,
       `# VISION_BUCKET_SECONDS=10`,
       `# VISION_PROXY_ENABLED=1  (demo rapido: gera métricas básicas sem IA)`,
-      `# CAMERA_SYNC_FATAL=0  (apenas debug; em produção manter default)`,
     ],
     [agentId, buildDashboardUrl, resolvedCloudBaseUrl]
   )
