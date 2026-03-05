@@ -1,7 +1,7 @@
 from datetime import datetime
 import logging
 import uuid
-from django.core.exceptions import FieldError
+from django.core.exceptions import FieldDoesNotExist, FieldError
 from django.test.testcases import DatabaseOperationForbidden
 from django.db.utils import ProgrammingError, OperationalError
 from django.db.models import Max
@@ -438,9 +438,9 @@ def _get_latest_camera_health_map(camera_ids):
             CameraHealthLog.objects
             .filter(camera_id__in=camera_ids)
             .order_by("camera_id", "-checked_at")
-            .only("camera_id", "checked_at", "created_at", "status", "error")
+            .only("camera_id", "checked_at", "status", "error")
         )
-    except (FieldError, DatabaseOperationForbidden):
+    except (FieldError, FieldDoesNotExist, DatabaseOperationForbidden):
         try:
             qs = (
                 CameraHealthLog.objects
@@ -448,7 +448,7 @@ def _get_latest_camera_health_map(camera_ids):
                 .order_by("camera_id", "-created_at")
                 .only("camera_id", "created_at", "status", "error")
             )
-        except (FieldError, DatabaseOperationForbidden):
+        except (FieldError, FieldDoesNotExist, DatabaseOperationForbidden):
             return {}
 
     latest = {}
