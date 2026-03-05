@@ -7,6 +7,7 @@ export interface Camera {
   store: string
   store_name?: string | null
   name: string
+  zone_id?: string | null
   external_id?: string | null
   brand?: string | null
   ip?: string | null
