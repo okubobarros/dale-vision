@@ -5,6 +5,7 @@ from rest_framework.exceptions import ValidationError
 from django.core.exceptions import PermissionDenied
 from django.core.files.uploadedfile import SimpleUploadedFile
 from apps.billing.utils import PaywallError
+from types import SimpleNamespace
 from unittest.mock import MagicMock, patch
 from types import SimpleNamespace
 import time
@@ -368,6 +369,31 @@ class CameraRtspProbeTests(SimpleTestCase):
 class CameraRoiLatestEndpointTests(SimpleTestCase):
     def setUp(self):
         self.factory = APIRequestFactory()
+
+    @patch("apps.cameras.views.authenticate_edge_token")
+    @patch("apps.cameras.views.get_latest_published_roi_config")
+    def test_roi_latest_allows_edge_token(self, roi_latest_mock, auth_mock):
+        cam = MagicMock()
+        cam.id = "cam-1"
+        cam.store_id = "store-1"
+        roi_latest_mock.return_value = None
+        auth_mock.return_value = SimpleNamespace(ok=True, status_code=200, code=None, detail=None)
+
+        request = self.factory.get(
+            "/api/v1/cameras/cam-1/roi/latest",
+            HTTP_X_EDGE_TOKEN="edge-token",
+        )
+        request.user = SimpleNamespace(is_authenticated=False)
+
+        viewset = CameraViewSet()
+        viewset.request = request
+        viewset.kwargs = {"pk": "cam-1"}
+        with patch.object(CameraViewSet, "get_object", return_value=cam):
+            response = viewset.roi_latest(request, pk="cam-1")
+
+        self.assertEqual(response.status_code, 200)
+        auth_mock.assert_called_once()
+        roi_latest_mock.assert_called_once_with("cam-1")
 
     @patch("apps.cameras.views._validate_edge_token_for_store", return_value=True)
     @patch("apps.cameras.views.get_latest_published_roi_config")

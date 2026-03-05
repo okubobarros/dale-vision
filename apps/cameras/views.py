@@ -641,17 +641,26 @@ class CameraViewSet(viewsets.ModelViewSet):
                 pass
         return Response(CameraROIConfigSerializer(created).data)
 
-    @action(detail=True, methods=["get"], url_path="roi/latest", permission_classes=[permissions.AllowAny])
+    @action(
+        detail=True,
+        methods=["get"],
+        url_path="roi/latest",
+        permission_classes=[permissions.AllowAny],
+        authentication_classes=[EdgeAwareJWTAuthentication, TokenAuthentication],
+    )
     def roi_latest(self, request, pk=None):
         cam = self.get_object()
         if request.user and request.user.is_authenticated:
             require_store_role(request.user, str(cam.store_id), ALLOWED_READ_ROLES)
         else:
-            provided = request.headers.get("X-EDGE-TOKEN") or ""
-            if not _validate_edge_token_for_store(str(cam.store_id), provided):
+            auth_result = authenticate_edge_token(request, requested_store_id=str(cam.store_id))
+            if not auth_result.ok:
                 return Response(
-                    {"detail": "Edge token inválido para esta loja."},
-                    status=status.HTTP_403_FORBIDDEN,
+                    {
+                        "code": auth_result.code or "edge_token_invalid",
+                        "detail": auth_result.detail or "Edge token inválido.",
+                    },
+                    status=auth_result.status_code or status.HTTP_401_UNAUTHORIZED,
                 )
 
         latest = get_latest_published_roi_config(str(cam.id))
