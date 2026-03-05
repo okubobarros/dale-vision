@@ -131,6 +131,36 @@ class StoreCamerasEndpointTests(SimpleTestCase):
 
         self.assertEqual(response.status_code, 200)
 
+    @patch("apps.stores.views.CameraSerializer")
+    @patch("apps.stores.views.Camera")
+    @patch("apps.stores.views.require_store_role")
+    @patch("apps.stores.views.validate_store_token", return_value=True)
+    def test_get_cameras_edge_token_takes_precedence_over_user_auth(
+        self,
+        _token_mock,
+        _require_role,
+        camera_model,
+        serializer_mock,
+    ):
+        store = self._mock_store("11111111-1111-1111-1111-111111111111")
+        qs = MagicMock()
+        qs.order_by.return_value = qs
+        camera_model.objects.select_related.return_value.filter.return_value = qs
+        serializer_mock.return_value.data = [{"id": "cam-1"}]
+
+        view = StoreViewSet.as_view({"get": "cameras"}, **StoreViewSet.cameras.kwargs)
+        request = self.factory.get(
+            f"/api/v1/stores/{store.id}/cameras/",
+            HTTP_X_EDGE_TOKEN="edge-token",
+        )
+        force_authenticate(request, user=self.user)
+
+        with patch.object(StoreViewSet, "get_object", return_value=store):
+            response = view(request, pk=store.id)
+
+        self.assertEqual(response.status_code, 200)
+        _require_role.assert_not_called()
+
     @patch("apps.stores.views.OnboardingProgressService")
     @patch("apps.stores.views.enforce_trial_camera_limit")
     @patch("apps.stores.views.enforce_can_use_product")

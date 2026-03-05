@@ -109,6 +109,8 @@ Registrar decisões e eventos do dia.
   - Fallback de autostart reforçado: quando script de instalacao nao existe, cria task `ONLOGON` com `cd /d` na pasta do agente para garantir leitura do `.env`.
   - Investigacao de loja identificou causa de `posted 0/N`: backend retornando `400 camera_not_found` por `camera_id` divergente do cadastro real.
   - Teste RTSP real confirmou canal funcional via `ffplay`; ajuste no checker para reduzir falso `RTSP401` por Digest challenge.
+  - Correção de recorrência no endpoint `GET /api/v1/stores/{store_id}/cameras/`: quando houver `X-EDGE-TOKEN`, a validação do token do Edge agora tem precedência sobre auth de usuário para evitar `403` indevido no sync do agent.
+  - Edge Setup Wizard passou a concluir a verificação de ativação quando houver heartbeat recente com `store_status_reason=camera_health_stale`, evitando bloqueio da etapa por ausência temporária de health das câmeras.
 - Bloqueios:
   - `camera_health` depende de IDs de camera corretos no `CAMERAS_JSON` (UUID/external_id/nome existentes no backend).
 - Decisões:

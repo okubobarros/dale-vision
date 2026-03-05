@@ -834,9 +834,8 @@ class StoreViewSet(viewsets.ModelViewSet):
                 deprecated_detail="Store not found",
             )
         if request.method == "GET":
-            if request.user and request.user.is_authenticated:
-                require_store_role(request.user, str(store.id), ALLOWED_READ_ROLES)
-            else:
+            edge_token = (request.headers.get("X-EDGE-TOKEN") or "").strip()
+            if edge_token:
                 if not validate_store_token(request, str(store.id)):
                     return _error_response(
                         "FORBIDDEN",
@@ -844,6 +843,15 @@ class StoreViewSet(viewsets.ModelViewSet):
                         status.HTTP_401_UNAUTHORIZED,
                         deprecated_detail="Edge token inválido para esta loja.",
                     )
+            elif request.user and request.user.is_authenticated:
+                require_store_role(request.user, str(store.id), ALLOWED_READ_ROLES)
+            else:
+                return _error_response(
+                    "FORBIDDEN",
+                    "Edge token inválido para esta loja.",
+                    status.HTTP_401_UNAUTHORIZED,
+                    deprecated_detail="Edge token inválido para esta loja.",
+                )
             cameras_qs = Camera.objects.select_related("store").filter(store_id=store.id).order_by("-updated_at")
             serializer = CameraSerializer(cameras_qs, many=True)
             return Response(serializer.data)

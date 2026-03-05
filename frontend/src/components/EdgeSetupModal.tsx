@@ -355,7 +355,8 @@ const EdgeSetupModal = ({ open, onClose, defaultStoreId }: EdgeSetupModalProps) 
   const isSetupHeartbeatReady = (payload: EdgeStatusPayload) => {
     if (isEdgeOnline(payload)) return true
     const reason = String(payload?.store_status_reason || "")
-    return reason === "no_cameras" && hasRecentHeartbeat(payload)
+    if (!hasRecentHeartbeat(payload)) return false
+    return reason === "no_cameras" || reason === "camera_health_stale"
   }
 
   const pollEdgeStatus = async (id: string) => {
@@ -388,6 +389,9 @@ const EdgeSetupModal = ({ open, onClose, defaultStoreId }: EdgeSetupModalProps) 
         stopPolling()
         if (reason === "no_cameras") {
           setPollMessage("Sinal recebido (loja sem câmeras cadastradas).")
+          toast.success("Sinal recebido")
+        } else if (reason === "camera_health_stale") {
+          setPollMessage("Sinal recebido. Falta validar saúde das câmeras.")
           toast.success("Sinal recebido")
         } else {
           setPollMessage("Loja Online")
