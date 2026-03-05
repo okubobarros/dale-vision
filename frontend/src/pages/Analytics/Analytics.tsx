@@ -1,10 +1,12 @@
 import { useCallback, useMemo, useState } from "react"
 import { useQuery } from "@tanstack/react-query"
+import { useNavigate } from "react-router-dom"
 import { LineChart, type LineChartPoint, type LineSeries } from "../../components/Charts/LineChart"
 import { PieChart, type PieChartPoint } from "../../components/Charts/PieChart"
 import { storesService, type Store } from "../../services/stores"
 
 const Analytics = () => {
+  const navigate = useNavigate()
   const [period, setPeriod] = useState("7d")
   const [selectedStore, setSelectedStore] = useState<string>("")
   const [metricView, setMetricView] = useState<"visitantes" | "conversoes" | "fila">("visitantes")
@@ -27,6 +29,26 @@ const Analytics = () => {
         return "Últimos 7 dias"
     }
   }, [period])
+
+  const periodDays = useMemo(() => {
+    switch (period) {
+      case "30d":
+        return 30
+      case "90d":
+        return 90
+      default:
+        return 7
+    }
+  }, [period])
+
+  const periodRange = useMemo(() => {
+    const now = new Date()
+    const from = new Date(now)
+    from.setDate(now.getDate() - (periodDays - 1))
+    const to = new Date(now)
+    const formatDate = (date: Date) => date.toISOString().slice(0, 10)
+    return { from: formatDate(from), to: formatDate(to) }
+  }, [periodDays])
 
   const { data: stores } = useQuery<Store[]>({
     queryKey: ["stores"],
@@ -156,6 +178,7 @@ const Analytics = () => {
     const total = summary.zones.reduce((acc, z) => acc + (z.footfall || 0), 0) || 1
     const colors = ["#3b82f6", "#8b5cf6", "#10b981", "#f59e0b", "#6b7280"]
     return summary.zones.map((z, idx) => ({
+      id: z.zone_id,
       name: z.name,
       value: Math.round((z.footfall / total) * 100),
       color: colors[idx % colors.length],
@@ -256,6 +279,7 @@ const Analytics = () => {
     change: string
     target: string | null
     status: MetricStatus
+    metricKey?: "conversion" | "queue" | "dwell"
   }[] = [
     {
       title: "Total de Visitantes",
@@ -270,6 +294,7 @@ const Analytics = () => {
       change: periodLabel,
       target: `Meta ${TARGETS.conversion}%`,
       status: conversionStatus,
+      metricKey: "conversion",
     },
     {
       title: "Fila Média (min)",
@@ -277,6 +302,7 @@ const Analytics = () => {
       change: periodLabel,
       target: `Meta ${TARGETS.queueMin} min`,
       status: queueStatus,
+      metricKey: "queue",
     },
     {
       title: "Permanência Média (min)",
@@ -284,8 +310,50 @@ const Analytics = () => {
       change: periodLabel,
       target: `Meta ${TARGETS.dwellMin} min`,
       status: dwellStatus,
+      metricKey: "dwell",
     },
   ]
+
+  const buildAlertsUrl = useCallback(
+    (metric: "conversion" | "queue" | "dwell") => {
+      if (!defaultStoreId) return null
+      const queryMap = {
+        conversion: "conversion",
+        queue: "queue",
+        dwell: "dwell",
+      } as const
+      const params = new URLSearchParams()
+      params.set("store_id", defaultStoreId)
+      params.set("status", "open")
+      params.set("severity", "critical")
+      params.set("q", queryMap[metric])
+      params.set("from", periodRange.from)
+      params.set("to", periodRange.to)
+      return `/app/alerts?${params.toString()}`
+    },
+    [defaultStoreId, periodRange.from, periodRange.to]
+  )
+
+  const handleMetricClick = useCallback(
+    (metric: "conversion" | "queue" | "dwell") => {
+      const url = buildAlertsUrl(metric)
+      if (!url) return
+      navigate(url)
+    },
+    [buildAlertsUrl, navigate]
+  )
+
+  const handleZoneClick = useCallback(
+    (zone?: PieChartPoint) => {
+      if (!zone?.id || !defaultStoreId) return
+      const params = new URLSearchParams()
+      params.set("store_id", defaultStoreId)
+      params.set("zone_id", zone.id)
+      params.set("openRoi", "1")
+      navigate(`/app/cameras?${params.toString()}`)
+    },
+    [defaultStoreId, navigate]
+  )
 
   return (
     <div className="space-y-6">
@@ -343,10 +411,26 @@ const Analytics = () => {
 
       {/* Cards */}
       <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4 sm:gap-6">
-        {metrics.map((metric) => (
+        {metrics.map((metric) => {
+          const isActionable = metric.status.tone === "bad"
+          const actionMetric = metric.metricKey ?? null
+          const handleClick =
+            isActionable && actionMetric
+              ? () => handleMetricClick(actionMetric)
+              : undefined
+          return (
           <div
             key={metric.title}
-            className="bg-white rounded-xl shadow-sm p-4 sm:p-6 border border-gray-100"
+            className={`bg-white rounded-xl shadow-sm p-4 sm:p-6 border border-gray-100 ${
+              isActionable ? "cursor-pointer hover:border-rose-200" : ""
+            }`}
+            onClick={handleClick}
+            role={isActionable ? "button" : undefined}
+            tabIndex={isActionable ? 0 : -1}
+            onKeyDown={(event) => {
+              if (!handleClick) return
+              if (event.key === "Enter") handleClick()
+            }}
           >
             <div className="flex items-start justify-between gap-3 mb-2">
               <h3 className="text-sm font-medium text-gray-500">
@@ -372,7 +456,7 @@ const Analytics = () => {
               <p className="text-xs text-gray-400 mt-2">{metric.target}</p>
             )}
           </div>
-        ))}
+        )})}
       </div>
 
       <div className="bg-white rounded-2xl border border-gray-100 shadow-sm p-5 sm:p-6">
@@ -441,7 +525,7 @@ const Analytics = () => {
             {loadingSummary || !summary ? (
               <p className="text-gray-500">Sem dados disponíveis</p>
             ) : (
-              <PieChart data={pieData} />
+              <PieChart data={pieData} onSliceClick={(point) => handleZoneClick(point)} />
             )}
           </div>
         </div>

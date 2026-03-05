@@ -1,5 +1,5 @@
 // src/pages/Alerts/Alerts.tsx
-import { useMemo, useState } from "react"
+import { useEffect, useMemo, useState } from "react"
 import { useQuery } from "@tanstack/react-query"
 import { useSearchParams } from "react-router-dom"
 
@@ -83,6 +83,28 @@ export default function Alerts() {
   )
   const [dateFrom, setDateFrom] = useState<string>("")
   const [dateTo, setDateTo] = useState<string>("")
+
+  useEffect(() => {
+    const nextStore = searchParams.get("store_id") || ""
+    const nextQuery = searchParams.get("q") || ""
+    const nextSeverity = searchParams.get("severity") as FilterSeverity | null
+    const nextStatus = searchParams.get("status") as FilterStatus | null
+    const nextFrom = searchParams.get("from") || ""
+    const nextTo = searchParams.get("to") || ""
+    const nextEvent = searchParams.get("event_id")
+
+    setStoreId(nextStore)
+    setQuery(nextQuery)
+    if (nextSeverity && ["all", "critical", "warning", "info"].includes(nextSeverity)) {
+      setSeverityFilter(nextSeverity)
+    }
+    if (nextStatus && ["all", "open", "resolved", "ignored"].includes(nextStatus)) {
+      setStatusFilter(nextStatus)
+    }
+    setDateFrom(nextFrom)
+    setDateTo(nextTo)
+    if (nextEvent) setSelectedEventId(nextEvent)
+  }, [searchParams])
 
   // lojas (CORE UUID) - pra filtro de alerts
   const { data: storesRaw, isLoading: storesLoading } = useQuery({

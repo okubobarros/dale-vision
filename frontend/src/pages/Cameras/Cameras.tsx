@@ -52,6 +52,8 @@ const Cameras = () => {
     initialParams.get("store_id") || initialParams.get("store") || ""
   const initialOpenEdgeSetup =
     initialParams.get("openEdgeSetup") === "1" || initialParams.get("edgeSetup") === "1"
+  const initialZoneId = initialParams.get("zone_id") || ""
+  const initialOpenRoi = initialParams.get("openRoi") === "1"
   const initialOnboardingMode = initialParams.get("onboarding") === "true"
 
   const [selectedStoreOverride, setSelectedStoreOverride] = useState<string | null>(
@@ -73,6 +75,7 @@ const Cameras = () => {
   const [testError, setTestError] = useState<string | null>(null)
   const [testCooldownCameraId, setTestCooldownCameraId] = useState<string | null>(null)
   const testCooldownTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null)
+  const zoneOpenHandled = useRef(false)
   const onboardingMode = initialOnboardingMode
   const queryClient = useQueryClient()
   const diagnoseUrl = "/app/edge-help"
@@ -158,6 +161,23 @@ const Cameras = () => {
     enabled: Boolean(selectedStore),
     staleTime: 15000,
   })
+
+  useEffect(() => {
+    if (!initialOpenRoi || !initialZoneId) return
+    if (zoneOpenHandled.current) return
+    if (!cameras || cameras.length === 0) return
+    const cameraMatch = cameras.find((camera) => camera.zone_id === initialZoneId)
+    zoneOpenHandled.current = true
+    if (!cameraMatch) {
+      toast.error("Nenhuma câmera encontrada para esta zona.")
+      return
+    }
+    if (!canEditRoi) {
+      toast.error("Sem permissão para abrir o ROI desta câmera.")
+      return
+    }
+    setRoiCamera(cameraMatch)
+  }, [initialOpenRoi, initialZoneId, cameras, canEditRoi])
   const edgeOnline =
     Boolean(edgeStatus?.online) ||
     (edgeStatus?.store_status_age_seconds !== null &&

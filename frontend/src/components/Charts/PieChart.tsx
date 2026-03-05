@@ -8,7 +8,12 @@ import {
   Tooltip,
 } from "recharts"
 
-export type PieChartPoint = { name: string; value: number; color: string }
+export type PieChartPoint = {
+  id?: string
+  name: string
+  value: number
+  color: string
+}
 
 const defaultData: PieChartPoint[] = [
   { name: "Entrada", value: 35, color: "#3b82f6" },
@@ -18,7 +23,13 @@ const defaultData: PieChartPoint[] = [
   { name: "Outros", value: 5, color: "#6b7280" },
 ]
 
-export const PieChart = ({ data = defaultData }: { data?: PieChartPoint[] }) => {
+export const PieChart = ({
+  data = defaultData,
+  onSliceClick,
+}: {
+  data?: PieChartPoint[]
+  onSliceClick?: (point: PieChartPoint, index: number) => void
+}) => {
   return (
     <ResponsiveContainer width="100%" height="100%">
       <RechartsPieChart>
@@ -29,6 +40,11 @@ export const PieChart = ({ data = defaultData }: { data?: PieChartPoint[] }) => 
           outerRadius="75%"
           dataKey="value"
           labelLine={false}
+          onClick={(payload, index) => {
+            const entry = (payload as { payload?: PieChartPoint })?.payload
+            if (!entry) return
+            onSliceClick?.(entry, index)
+          }}
         >
           {data.map((entry, index) => (
             <Cell key={`cell-${index}`} fill={entry.color} />
