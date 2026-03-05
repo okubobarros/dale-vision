@@ -170,6 +170,10 @@ const Dashboard = () => {
         return await storesService.getStoresSummary()
       } catch (error) {
         console.warn("⚠️ Falha ao buscar stores summary. Usando view=min.", error)
+        const cachedSummary = storesService.getCachedStoresSummary()
+        if (cachedSummary?.length) {
+          return cachedSummary
+        }
         const minimal = await storesService.getStoresMinimal()
         return minimal.map((store) => ({
           id: store.id,

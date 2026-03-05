@@ -307,6 +307,49 @@ type ApiErrorLike = {
   code?: string;
 };
 
+const STORES_CACHE_KEYS = {
+  summary: "dv_stores_summary_cache_v1",
+  minimal: "dv_stores_min_cache_v1",
+  full: "dv_stores_full_cache_v1",
+} as const
+
+type CachedPayload<T> = {
+  ts: string
+  data: T[]
+}
+
+const readStoresCache = <T>(key: string): T[] | null => {
+  if (typeof window === "undefined") return null
+  try {
+    const raw = localStorage.getItem(key)
+    if (!raw) return null
+    const parsed = JSON.parse(raw) as CachedPayload<T> | T[]
+    const data = Array.isArray((parsed as CachedPayload<T>).data)
+      ? (parsed as CachedPayload<T>).data
+      : Array.isArray(parsed)
+      ? (parsed as T[])
+      : null
+    return data && Array.isArray(data) ? data : null
+  } catch {
+    return null
+  }
+}
+
+const writeStoresCache = <T>(key: string, data: T[]) => {
+  if (typeof window === "undefined") return
+  try {
+    const payload: CachedPayload<T> = { ts: new Date().toISOString(), data }
+    localStorage.setItem(key, JSON.stringify(payload))
+  } catch {
+    // ignore storage errors
+  }
+}
+
+const isAuthError = (error: ApiErrorLike | unknown) => {
+  const status = (error as ApiErrorLike)?.response?.status
+  return status === 401 || status === 403
+}
+
 const normalizeApiError = (error: unknown, fallbackMessage: string) => {
   const err = (error || {}) as ApiErrorLike;
   const detail =
@@ -373,6 +416,15 @@ const normalizeEdgeStatus = (
 });
 
 export const storesService = {
+  getCachedStoresSummary(): StoreSummary[] | null {
+    return readStoresCache<StoreSummary>(STORES_CACHE_KEYS.summary)
+  },
+  getCachedStoresMinimal(): StoreMinimal[] | null {
+    return readStoresCache<StoreMinimal>(STORES_CACHE_KEYS.minimal)
+  },
+  getCachedStores(): Store[] | null {
+    return readStoresCache<Store>(STORES_CACHE_KEYS.full)
+  },
   // Listar lojas com payload mínimo (para telas rápidas)
   async getStoresMinimal(): Promise<StoreMinimal[]> {
     console.log("🔄 Buscando lojas (view=min)...")
@@ -391,9 +443,14 @@ export const storesService = {
         ? payload.results
         : [];
       console.log(`✅ Encontradas ${stores?.length || 0} lojas (min)`);
+      writeStoresCache(STORES_CACHE_KEYS.minimal, stores)
       return stores;
     } catch (error) {
       console.error("❌ Erro ao buscar lojas (min):", error);
+      if (!isAuthError(error)) {
+        const cached = readStoresCache<StoreMinimal>(STORES_CACHE_KEYS.minimal)
+        if (cached?.length) return cached
+      }
       throw normalizeApiError(error, "Falha ao carregar lojas.");
     }
   },
@@ -416,9 +473,14 @@ export const storesService = {
         ? payload.results
         : [];
       console.log(`✅ Encontradas ${stores?.length || 0} lojas (summary)`);
+      writeStoresCache(STORES_CACHE_KEYS.summary, stores)
       return stores;
     } catch (error) {
       console.error("❌ Erro ao buscar lojas (summary):", error);
+      if (!isAuthError(error)) {
+        const cached = readStoresCache<StoreSummary>(STORES_CACHE_KEYS.summary)
+        if (cached?.length) return cached
+      }
       throw normalizeApiError(error, "Falha ao carregar lojas.");
     }
   },
@@ -439,10 +501,15 @@ export const storesService = {
         ? payload.results
         : [];
       console.log(`✅ Encontradas ${stores?.length || 0} lojas`);
+      writeStoresCache(STORES_CACHE_KEYS.full, stores)
 
       return stores;
     } catch (error) {
       console.error('❌ Erro ao buscar lojas:', error);
+      if (!isAuthError(error)) {
+        const cached = readStoresCache<Store>(STORES_CACHE_KEYS.full)
+        if (cached?.length) return cached
+      }
       throw normalizeApiError(error, 'Falha ao carregar lojas.');
     }
   },
