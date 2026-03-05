@@ -21,10 +21,14 @@ def _mask_token(token: str) -> str:
 
 
 def _extract_store_token(request) -> Optional[str]:
+    # Quando ambos headers existem, o token explícito do edge deve vencer.
+    edge_token = (request.headers.get("X-EDGE-TOKEN") or "").strip()
+    if edge_token:
+        return edge_token
     auth_header = request.headers.get("Authorization") or ""
     if auth_header.lower().startswith("bearer "):
         return auth_header.split(" ", 1)[1].strip()
-    return request.headers.get("X-EDGE-TOKEN") or None
+    return None
 
 
 @dataclass

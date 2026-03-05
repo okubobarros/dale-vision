@@ -2,15 +2,36 @@ import hashlib
 import uuid
 from types import SimpleNamespace
 from unittest.mock import MagicMock, patch
-from django.test import TestCase
+from django.test import TestCase, SimpleTestCase
 from django.http import Http404
 from django.test import override_settings
 from django.db import connection
 from django.contrib.auth import get_user_model
-from rest_framework.test import APIClient
+from rest_framework.test import APIClient, APIRequestFactory
 from rest_framework.exceptions import PermissionDenied
 from knox.models import AuthToken
 from apps.edge.models import EdgeToken
+from apps.edge.auth import _extract_store_token
+
+
+class EdgeAuthHeaderPrecedenceTests(SimpleTestCase):
+    def setUp(self):
+        self.factory = APIRequestFactory()
+
+    def test_x_edge_token_takes_precedence_over_authorization_bearer(self):
+        req = self.factory.get(
+            "/api/edge/events/",
+            HTTP_X_EDGE_TOKEN="edge-token-123",
+            HTTP_AUTHORIZATION="Bearer should-not-win",
+        )
+        self.assertEqual(_extract_store_token(req), "edge-token-123")
+
+    def test_authorization_bearer_used_when_x_edge_token_missing(self):
+        req = self.factory.get(
+            "/api/edge/events/",
+            HTTP_AUTHORIZATION="Bearer edge-token-from-bearer",
+        )
+        self.assertEqual(_extract_store_token(req), "edge-token-from-bearer")
 
 
 class EdgeEventsAuthTests(TestCase):
@@ -135,6 +156,26 @@ class EdgeEventsAuthTests(TestCase):
             payload,
             format="json",
             HTTP_AUTHORIZATION=f"Bearer {token}",
+        )
+        self.assertEqual(resp.status_code, 201)
+        self.assertTrue(resp.data.get("ok"))
+
+    def test_edge_store_token_x_header_wins_over_bearer_when_both_present(self):
+        self._skip_if_not_pg()
+        store_id = uuid.uuid4()
+        token = "edge-store-header-priority-token"
+        self._create_edge_token(store_id, token)
+        payload = {
+            "event_name": "edge_heartbeat",
+            "receipt_id": "test-receipt-store-header-priority-1",
+            "data": {"store_id": str(store_id)},
+        }
+        resp = self.client.post(
+            "/api/edge/events/",
+            payload,
+            format="json",
+            HTTP_X_EDGE_TOKEN=token,
+            HTTP_AUTHORIZATION="Bearer invalid.jwt.token",
         )
         self.assertEqual(resp.status_code, 201)
         self.assertTrue(resp.data.get("ok"))
