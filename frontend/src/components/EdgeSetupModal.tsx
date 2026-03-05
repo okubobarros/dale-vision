@@ -46,6 +46,8 @@ const UPDATE_INTERVAL_SECONDS = 21600
 const VISION_ENABLED = 1
 const VISION_POLL_SECONDS = 5
 const VISION_SNAPSHOT_TIMEOUT_SECONDS = 10
+const TOKEN_ROTATED_INSTRUCTION =
+  "Token do Edge rotacionado: atualize o .env no computador da loja com o novo EDGE_TOKEN e reinicie o agente."
 
 const getApiError = (err: unknown): ApiErrorLike => {
   if (err && typeof err === "object") {
@@ -145,6 +147,7 @@ const EdgeSetupModal = ({ open, onClose, defaultStoreId }: EdgeSetupModalProps) 
   const [loadingCreds, setLoadingCreds] = useState(false)
   const [setupError, setSetupError] = useState<string | null>(null)
   const [rotatingToken, setRotatingToken] = useState(false)
+  const [tokenRotated, setTokenRotated] = useState(false)
 
   const [downloadConfirmed, setDownloadConfirmed] = useState(false)
   const [envCopied, setEnvCopied] = useState(false)
@@ -206,6 +209,7 @@ const EdgeSetupModal = ({ open, onClose, defaultStoreId }: EdgeSetupModalProps) 
     setLoadingCreds(false)
     setSetupError(null)
     setRotatingToken(false)
+    setTokenRotated(false)
     setDownloadConfirmed(false)
     setEnvCopied(false)
     setAgentRunningConfirmed(false)
@@ -241,6 +245,7 @@ const EdgeSetupModal = ({ open, onClose, defaultStoreId }: EdgeSetupModalProps) 
     setShowChecklist(false)
     setSetupError(null)
     setRotatingToken(false)
+    setTokenRotated(false)
     stopPolling()
     setAutoRedirectAt(null)
     setRedirectRemainingSec(null)
@@ -408,7 +413,7 @@ const EdgeSetupModal = ({ open, onClose, defaultStoreId }: EdgeSetupModalProps) 
       const isTimeout = apiErr.code === "ECONNABORTED" || msg.includes("timeout")
 
       if (status === 401 || status === 403) {
-        setPollError("Token inválido ou sem permissão.")
+        setPollError("Token inválido ou sem permissão. Atualize o .env com o EDGE_TOKEN atual e reinicie o agente.")
         stopPolling()
         return
       }
@@ -482,6 +487,8 @@ const EdgeSetupModal = ({ open, onClose, defaultStoreId }: EdgeSetupModalProps) 
         return null
       }
       setEnvCopied(false)
+      setTokenRotated(true)
+      setValidationMsg(TOKEN_ROTATED_INSTRUCTION)
       toast.success("Novo token gerado")
       return nextToken
     } catch (err) {
@@ -577,7 +584,7 @@ const EdgeSetupModal = ({ open, onClose, defaultStoreId }: EdgeSetupModalProps) 
       const isTimeout = apiErr.code === "ECONNABORTED" || msg.includes("timeout")
 
       if (status === 401 || status === 403) {
-        setValidationError("Token inválido ou sessão expirada.")
+        setValidationError("Token inválido ou sessão expirada. Se o token foi rotacionado, atualize o .env e reinicie o agente.")
       } else if (status && status >= 500) {
         setValidationError("Servidor indisponível. Tente novamente em instantes.")
       } else if (isTimeout) {
@@ -915,6 +922,11 @@ const EdgeSetupModal = ({ open, onClose, defaultStoreId }: EdgeSetupModalProps) 
               )}
               {!loadingCreds && setupError && (
                 <div className="mt-2 text-xs text-red-600">{setupError}</div>
+              )}
+              {tokenRotated && (
+                <div className="mt-2 rounded-lg border border-amber-300 bg-amber-50 px-3 py-2 text-xs text-amber-800">
+                  {TOKEN_ROTATED_INSTRUCTION}
+                </div>
               )}
               {envCopied && (
                 <div className="mt-2 text-xs text-green-600 font-semibold">.env copiado</div>

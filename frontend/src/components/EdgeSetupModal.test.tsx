@@ -159,6 +159,9 @@ describe("EdgeSetupModal step 2", () => {
     await user.click(await screen.findByRole("button", { name: /Já baixei e extraí/i }))
     const rotateButton = await screen.findByRole("button", { name: /Gerar novo token/i })
     await user.click(rotateButton)
+    expect(
+      (await screen.findAllByText(/Token do Edge rotacionado: atualize o \.env/i)).length
+    ).toBeGreaterThan(0)
     const copyButton = await screen.findByRole("button", {
       name: /Copiar dados para \.env/i,
     })
