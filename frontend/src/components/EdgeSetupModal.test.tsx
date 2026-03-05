@@ -133,6 +133,13 @@ describe("EdgeSetupModal step 2", () => {
     expect(await screen.findByRole("button", { name: /Gerar novo token/i })).toBeInTheDocument()
   })
 
+  it("shows rotate token CTA even when edge_token exists", async () => {
+    renderWithProviders(
+      <EdgeSetupModal open={true} onClose={() => {}} defaultStoreId="store-1" />
+    )
+    expect(await screen.findByRole("button", { name: /Gerar novo token/i })).toBeInTheDocument()
+  })
+
   it("enables copy env after rotating token", async () => {
     const { storesService } = await import("../services/stores")
     vi.mocked(storesService.getEdgeSetup).mockResolvedValueOnce({

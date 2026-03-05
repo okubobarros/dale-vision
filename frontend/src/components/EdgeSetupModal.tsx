@@ -885,6 +885,19 @@ const EdgeSetupModal = ({ open, onClose, defaultStoreId }: EdgeSetupModalProps) 
               >
                 {rotatingToken ? "Gerando token..." : "Copiar dados para .env"}
               </button>
+              <div className="mt-2 flex flex-col sm:flex-row sm:items-center gap-2">
+                <button
+                  type="button"
+                  onClick={handleRotateToken}
+                  disabled={rotatingToken || !storeId}
+                  className="inline-flex w-full sm:w-auto items-center justify-center rounded-lg border border-amber-300 bg-white px-3 py-2 text-xs font-semibold text-amber-800 hover:bg-amber-50 disabled:opacity-60"
+                >
+                  {rotatingToken ? "Gerando..." : "Gerar novo token"}
+                </button>
+                <div className="text-xs text-amber-700">
+                  Use este botão se houver 401/403 no sync de câmeras.
+                </div>
+              </div>
               <div className="text-xs text-gray-500 mb-3 space-y-1">
                 <div>
                   2) Procure o arquivo <span className="font-mono">.env</span> na pasta extraída e substitua o conteúdo
@@ -896,18 +909,8 @@ const EdgeSetupModal = ({ open, onClose, defaultStoreId }: EdgeSetupModalProps) 
                 <div className="mt-2 text-xs text-gray-500">Aguarde as credenciais do Edge...</div>
               )}
               {!loadingCreds && !edgeToken && (
-                <div className="mt-2 flex flex-col sm:flex-row sm:items-center gap-2">
-                  <div className="text-xs text-amber-700">
-                    EDGE_TOKEN ausente. Gere um novo token para continuar.
-                  </div>
-                  <button
-                    type="button"
-                    onClick={handleRotateToken}
-                    disabled={rotatingToken || !storeId}
-                    className="inline-flex w-full sm:w-auto items-center justify-center rounded-lg border border-amber-300 bg-white px-3 py-2 text-xs font-semibold text-amber-800 hover:bg-amber-50 disabled:opacity-60"
-                  >
-                    {rotatingToken ? "Gerando..." : "Gerar novo token"}
-                  </button>
+                <div className="mt-2 text-xs text-amber-700">
+                  EDGE_TOKEN ausente. Gere um novo token para continuar.
                 </div>
               )}
               {!loadingCreds && setupError && (
