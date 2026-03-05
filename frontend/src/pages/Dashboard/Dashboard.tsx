@@ -80,6 +80,13 @@ const isRecentTimestamp = (iso?: string | null, maxAgeSec = ONLINE_MAX_AGE_SEC) 
   return diffSec >= 0 && diffSec <= maxAgeSec
 }
 
+const getConnectivityStatus = (status?: StoreEdgeStatus | null) => {
+  const value = String(status?.connectivity_status || "").toLowerCase()
+  if (value === "online" || value === "degraded" || value === "offline") return value
+  if (typeof status?.online === "boolean") return status.online ? "online" : "offline"
+  return "offline"
+}
+
 const getLastSeenAt = (status?: StoreEdgeStatus | null) =>
   status?.last_comm_at ||
     status?.last_seen_at ||
@@ -261,7 +268,11 @@ const Dashboard = () => {
     : true
   const storeLastSeenAt = null
   const lastSeenAt = storeLastSeenAt ?? getLastSeenAt(edgeStatus)
-  const isEdgeOnlineByLastSeen = isRecentTimestamp(lastSeenAt, ONLINE_MAX_AGE_SEC)
+  const edgeConnectivityStatus = getConnectivityStatus(edgeStatus)
+  const isEdgeConnected =
+    edgeConnectivityStatus === "online" ||
+    edgeConnectivityStatus === "degraded" ||
+    isRecentTimestamp(lastSeenAt, ONLINE_MAX_AGE_SEC)
   const selectedStorePlan =
     selectedStoreItem?.plan ??
     (selectedStoreStatus === "trial" ? "trial" : null)
@@ -337,13 +348,13 @@ const Dashboard = () => {
 
   useEffect(() => {
     if (selectedStore === ALL_STORES_VALUE) return
-    if (!isEdgeOnlineByLastSeen) return
+    if (!isEdgeConnected) return
     try {
       localStorage.removeItem("dv_from_onboarding")
     } catch {
       // ignore storage access issues
     }
-  }, [selectedStore, isEdgeOnlineByLastSeen])
+  }, [selectedStore, isEdgeConnected])
 
   const dismissActivationProgress = () => {
     try {
@@ -372,7 +383,7 @@ const Dashboard = () => {
 
   const shouldShowActivationBanner =
     !activationBannerDismissed &&
-    (showActivationProgress || (selectedStore !== ALL_STORES_VALUE && !isEdgeOnlineByLastSeen))
+    (showActivationProgress || (selectedStore !== ALL_STORES_VALUE && !isEdgeConnected))
 
   const onboardingStage = onboardingNextStep?.stage || null
   const nextStepCta = useMemo(() => {
@@ -399,7 +410,7 @@ const Dashboard = () => {
         Você só precisa de um computador na loja com acesso às câmeras. Nós guiamos o passo a passo.
       </p>
 
-      {selectedStore !== ALL_STORES_VALUE && isEdgeOnlineByLastSeen && (
+      {selectedStore !== ALL_STORES_VALUE && isEdgeConnected && (
         <span className="mt-3 inline-flex items-center rounded-full bg-green-100 px-3 py-1 text-xs font-semibold text-green-700">
           Loja Online
         </span>
@@ -478,9 +489,9 @@ const Dashboard = () => {
   const camerasOnline = health?.cameras_online ?? edgeStatus?.cameras_online ?? 0
   const camerasOffline = health?.cameras_offline ?? Math.max(camerasTotal - camerasOnline, 0)
   const camerasLimit = storeLimits?.limits?.cameras ?? 3
-  const edgeStatusValue = (health?.edge_status || edgeStatus?.store_status || "").toLowerCase()
-  const isEdgeOnlineByHealth = ["online", "degraded", "online_no_cameras"].includes(edgeStatusValue)
-  const edgeOnlineLabel = isEdgeOnlineByHealth
+  const edgeConnectivityValue = getConnectivityStatus(edgeStatus)
+  const isEdgeOnlineByConnectivity = ["online", "degraded"].includes(edgeConnectivityValue)
+  const edgeOnlineLabel = isEdgeOnlineByConnectivity
     ? "Online"
     : "Offline"
   const edgeLastSeenLabel = formatLastSeenDisplay(lastSeenAt)
@@ -493,7 +504,7 @@ const Dashboard = () => {
           title="Status do Edge"
           value={edgeOnlineLabel}
           icon={<span>📡</span>}
-          color={isEdgeOnlineByHealth ? "bg-green-100 text-green-800" : "bg-gray-100 text-gray-700"}
+          color={isEdgeOnlineByConnectivity ? "bg-green-100 text-green-800" : "bg-gray-100 text-gray-700"}
           subtitle={`Último sinal: ${edgeLastSeenLabel}`}
         />
         <MetricCard
@@ -757,9 +768,9 @@ const Dashboard = () => {
     ),
   }
 
-  const edgeStatusLabel = isEdgeOnlineByLastSeen ? "Online" : "Offline"
+  const edgeStatusLabel = isEdgeConnected ? "Online" : "Offline"
 
-  const edgeStatusClass = isEdgeOnlineByLastSeen
+  const edgeStatusClass = isEdgeConnected
     ? "bg-green-100 text-green-800"
     : "bg-gray-100 text-gray-800"
   const selectedStoreStatusLabel =

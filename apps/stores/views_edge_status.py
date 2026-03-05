@@ -57,6 +57,10 @@ def _empty_payload(store_id, reason: str, detail: str = None, ok: bool = False):
         "ok": ok,
         "online": False,
         "store_id": str(store_id),
+        "connectivity_status": "offline",
+        "connectivity_age_seconds": None,
+        "pipeline_status": "no_data",
+        "health_fresh_seconds": CAMERA_HEALTH_RECENT_SECONDS,
         "store_status": "offline",
         "store_status_age_seconds": None,
         "store_status_reason": reason,
@@ -84,6 +88,13 @@ def _with_stable_contract(payload: dict) -> dict:
     payload["ok"] = payload.get("ok", True)
     if "online" not in payload:
         payload["online"] = status in ("online", "degraded", "online_no_cameras")
+    connectivity_status = str(payload.get("connectivity_status") or "").lower()
+    if not connectivity_status:
+        connectivity_status = "online" if payload.get("online") else "offline"
+    payload["connectivity_status"] = connectivity_status
+    payload.setdefault("connectivity_age_seconds", payload.get("store_status_age_seconds"))
+    payload.setdefault("pipeline_status", "no_data")
+    payload.setdefault("health_fresh_seconds", CAMERA_HEALTH_RECENT_SECONDS)
     payload["last_heartbeat_at"] = payload.get("last_heartbeat_at") or heartbeat
     payload.setdefault("agent_id", None)
     payload.setdefault("version", None)
@@ -223,6 +234,8 @@ def compute_store_edge_status_snapshot(store_id):
         ]
         last_comm_at = max(comm_candidates) if comm_candidates else None
         comm_status, comm_age_seconds, comm_reason = classify_age(last_comm_at)
+        connectivity_status = comm_status
+        connectivity_age_seconds = comm_age_seconds
 
         if cameras_total == 0:
             store_status = "online_no_cameras" if comm_status in ("online", "degraded") else "offline"
@@ -231,20 +244,25 @@ def compute_store_edge_status_snapshot(store_id):
             else:
                 store_status_reason = comm_reason
             store_status_age_seconds = comm_age_seconds
+            pipeline_status = "no_data"
         elif cameras_online >= 1:
             if cameras_online < cameras_total:
                 store_status = "degraded"
                 store_status_reason = "partial_camera_coverage"
+                pipeline_status = "healthy"
             else:
                 store_status = "online"
                 store_status_reason = "all_cameras_online"
+                pipeline_status = "healthy"
         else:
             if comm_status in ("online", "degraded"):
                 store_status = "offline"
                 store_status_reason = "camera_health_stale"
+                pipeline_status = "stale"
             else:
                 store_status = comm_status
                 store_status_reason = comm_reason
+                pipeline_status = "no_data"
 
         if cameras_total != 0:
             store_status_age_seconds = min(camera_age_seconds) if camera_age_seconds else None
@@ -269,6 +287,10 @@ def compute_store_edge_status_snapshot(store_id):
                 "ok": False,
                 "online": comm_status in ("online", "degraded"),
                 "store_id": str(store.id),
+                "connectivity_status": comm_status,
+                "connectivity_age_seconds": comm_age_seconds,
+                "pipeline_status": "no_data",
+                "health_fresh_seconds": CAMERA_HEALTH_RECENT_SECONDS,
                 "store_status": comm_status,
                 "store_status_age_seconds": comm_age_seconds,
                 "store_status_reason": "edge_status_fallback",
@@ -296,6 +318,10 @@ def compute_store_edge_status_snapshot(store_id):
     payload = {
         "ok": True,
         "store_id": str(store.id),
+        "connectivity_status": connectivity_status,
+        "connectivity_age_seconds": connectivity_age_seconds,
+        "pipeline_status": pipeline_status,
+        "health_fresh_seconds": CAMERA_HEALTH_RECENT_SECONDS,
         "store_status": store_status,
         "store_status_age_seconds": store_status_age_seconds,
         "store_status_reason": store_status_reason,

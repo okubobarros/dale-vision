@@ -19,6 +19,10 @@ export function formatReason(reason?: string | null): string {
     has_online_camera: "tem câmera online",
     partial_camera_coverage: "cobertura parcial",
     all_cameras_online: "todas online",
+    camera_health_stale: "saúde das câmeras desatualizada",
+    health_stale: "saúde desatualizada",
+    health_recent: "saúde recente",
+    no_recent_health: "sem saúde recente",
   }
   return map[reason] || reason
 }

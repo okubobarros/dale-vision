@@ -536,6 +536,8 @@ class EdgeStatusNoCamerasTests(SimpleTestCase):
         self.assertTrue(payload.get("online"))
         self.assertEqual(payload.get("store_status_reason"), "no_cameras")
         self.assertEqual(payload.get("store_status"), "online_no_cameras")
+        self.assertEqual(payload.get("connectivity_status"), "online")
+        self.assertEqual(payload.get("pipeline_status"), "no_data")
         self.assertIsNotNone(payload.get("last_heartbeat_at"))
         self.assertEqual(payload.get("agent_id"), "agent-1")
         self.assertEqual(payload.get("version"), "1.2.3")
@@ -568,6 +570,8 @@ class EdgeStatusNoCamerasTests(SimpleTestCase):
         self.assertFalse(payload.get("online"))
         self.assertEqual(payload.get("store_status_reason"), "heartbeat_expired")
         self.assertEqual(payload.get("store_status"), "offline")
+        self.assertEqual(payload.get("connectivity_status"), "offline")
+        self.assertEqual(payload.get("pipeline_status"), "no_data")
 
     @patch("apps.stores.views_edge_status._get_last_heartbeat", return_value=None)
     @patch("apps.stores.views_edge_status.Camera")
@@ -698,6 +702,8 @@ class EdgeStatusNoCamerasTests(SimpleTestCase):
         self.assertEqual(payload.get("store_status"), "offline")
         self.assertEqual(payload.get("store_status_reason"), "heartbeat_expired")
         self.assertFalse(payload.get("online"))
+        self.assertEqual(payload.get("connectivity_status"), "offline")
+        self.assertEqual(payload.get("pipeline_status"), "no_data")
         last_edge_receipt_mock.assert_called_once_with(store_id)
 
 
@@ -744,9 +750,50 @@ class EdgeStatusCameraHealthRecencyTests(SimpleTestCase):
 
         self.assertEqual(payload.get("store_status"), "online")
         self.assertEqual(payload.get("store_status_reason"), "all_cameras_online")
+        self.assertEqual(payload.get("connectivity_status"), "online")
+        self.assertEqual(payload.get("pipeline_status"), "healthy")
         self.assertIsNone(payload.get("last_error"))
         self.assertEqual(payload.get("cameras")[0].get("status"), "online")
         self.assertEqual(payload.get("cameras")[0].get("reason"), "health_recent")
+
+    @patch("apps.stores.views_edge_status._get_last_edge_heartbeat_receipt", return_value=None)
+    @patch("apps.stores.views_edge_status._get_latest_error", return_value="rtsp_timeout")
+    @patch("apps.stores.views_edge_status._get_latest_camera_health_map")
+    @patch("apps.stores.views_edge_status.Camera")
+    @patch("apps.stores.views_edge_status.Store")
+    def test_recent_store_signal_with_stale_camera_health_sets_pipeline_stale(
+        self,
+        store_mock,
+        camera_mock,
+        latest_health_mock,
+        _latest_error_mock,
+        _last_edge_receipt_mock,
+    ):
+        store_id = str(uuid.uuid4())
+        store = self._mock_store(store_id)
+        store.last_seen_at = timezone.now() - timezone.timedelta(seconds=30)
+        store_mock.objects.filter.return_value.first.return_value = store
+
+        cam = MagicMock()
+        cam.id = uuid.uuid4()
+        cam.external_id = "cam-stale"
+        cam.name = "Camera stale"
+        cam.last_seen_at = timezone.now() - timezone.timedelta(seconds=30)
+        cam.last_snapshot_url = None
+        camera_mock.objects.filter.return_value.order_by.return_value = [cam]
+
+        stale_log = MagicMock()
+        stale_log.status = "online"
+        stale_log.checked_at = timezone.now() - timezone.timedelta(seconds=500)
+        stale_log.created_at = None
+        latest_health_mock.return_value = {str(cam.id): stale_log}
+
+        payload, _reason = views_edge_status.compute_store_edge_status_snapshot(store_id)
+
+        self.assertEqual(payload.get("store_status"), "offline")
+        self.assertEqual(payload.get("store_status_reason"), "camera_health_stale")
+        self.assertEqual(payload.get("connectivity_status"), "online")
+        self.assertEqual(payload.get("pipeline_status"), "stale")
 
 
 class EdgeHeartbeatIngestTests(SimpleTestCase):

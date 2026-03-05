@@ -191,6 +191,10 @@ export interface StoreEdgeStatus {
   store_id: string;
   ok?: boolean;
   online?: boolean;
+  connectivity_status?: "online" | "degraded" | "offline" | null;
+  connectivity_age_seconds?: number | null;
+  pipeline_status?: "healthy" | "stale" | "no_data" | null;
+  health_fresh_seconds?: number | null;
   store_status?: string;
   store_status_age_seconds?: number | null;
   store_status_reason?: string | null;
@@ -393,6 +397,12 @@ const normalizeEdgeStatus = (
   store_id: data?.store_id ?? storeId,
   ok: data?.ok,
   online: typeof data?.online === "boolean" ? data.online : undefined,
+  connectivity_status:
+    data?.connectivity_status ??
+    (typeof data?.online === "boolean" ? (data.online ? "online" : "offline") : null),
+  connectivity_age_seconds: data?.connectivity_age_seconds ?? data?.store_status_age_seconds ?? null,
+  pipeline_status: data?.pipeline_status ?? null,
+  health_fresh_seconds: data?.health_fresh_seconds ?? null,
   store_status: data?.store_status,
   store_status_age_seconds: data?.store_status_age_seconds ?? null,
   store_status_reason: data?.store_status_reason ?? null,

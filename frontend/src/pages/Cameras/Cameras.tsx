@@ -12,7 +12,7 @@ import {
   type Camera,
   type CreateCameraPayload,
 } from "../../services/cameras"
-import { formatStatusLabel, formatTimestamp } from "../../utils/edgeReasons"
+import { formatReason, formatStatusLabel, formatTimestamp } from "../../utils/edgeReasons"
 import { useAuth } from "../../contexts/useAuth"
 import EdgeSetupModal from "../../components/EdgeSetupModal"
 import CameraRoiEditor from "../../components/CameraRoiEditor"
@@ -179,10 +179,23 @@ const Cameras = () => {
     setRoiCamera(cameraMatch)
   }, [initialOpenRoi, initialZoneId, cameras, canEditRoi])
   const edgeOnline =
-    Boolean(edgeStatus?.online) ||
-    (edgeStatus?.store_status_age_seconds !== null &&
-      edgeStatus?.store_status_age_seconds !== undefined &&
-      edgeStatus.store_status_age_seconds <= EDGE_HEARTBEAT_FRESH_SECONDS)
+    (edgeStatus?.connectivity_status
+      ? ["online", "degraded"].includes(String(edgeStatus.connectivity_status))
+      : Boolean(edgeStatus?.online)) ||
+    (edgeStatus?.connectivity_age_seconds !== null &&
+      edgeStatus?.connectivity_age_seconds !== undefined &&
+      edgeStatus.connectivity_age_seconds <= EDGE_HEARTBEAT_FRESH_SECONDS)
+
+  const edgeCameraMap = useMemo(() => {
+    const map = new Map<string, NonNullable<StoreEdgeStatus["cameras"]>[number]>()
+    const rows = edgeStatus?.cameras ?? []
+    rows.forEach((row) => {
+      if (row?.camera_id) {
+        map.set(String(row.camera_id), row)
+      }
+    })
+    return map
+  }, [edgeStatus?.cameras])
 
   const { data: limits } = useQuery({
     queryKey: ["store-limits", selectedStore],
@@ -682,11 +695,13 @@ const Cameras = () => {
           ) : cameras && cameras.length > 0 ? (
             <div className="space-y-3">
               {cameras.map((camera) => {
+                const realtime = edgeCameraMap.get(String(camera.id))
                 const storeName =
                   camera.store_name ||
                   stores?.find((store) => store.id === camera.store)?.name ||
                   null
-                const statusValue = camera.camera_health?.status ?? camera.status ?? "unknown"
+                const statusValue =
+                  realtime?.status ?? camera.camera_health?.status ?? camera.status ?? "unknown"
                 const normalizedStatus = String(statusValue || "unknown").toLowerCase()
                 const isAwaitingValidation =
                   normalizedStatus === "unknown" || normalizedStatus === "awaiting_validation"
@@ -695,9 +710,13 @@ const Cameras = () => {
                 const errorValue =
                   camera.camera_health?.error ?? camera.last_error ?? null
                 const checkedAt =
-                  camera.camera_health?.checked_at ?? camera.last_seen_at ?? null
+                  realtime?.camera_last_heartbeat_ts ??
+                  camera.camera_health?.checked_at ??
+                  camera.last_seen_at ??
+                  null
                 const snapshotUrl =
                   camera.camera_health?.snapshot_url ?? camera.last_snapshot_url ?? null
+                const realtimeReason = realtime?.reason ?? null
                 const showInlineTestResult =
                   (testingCameraId === camera.id || testCooldownCameraId === camera.id) &&
                   (testMessage || testError || latencyValue || errorValue || snapshotUrl)
@@ -740,7 +759,12 @@ const Cameras = () => {
                     </p>
                     {checkedAt && (
                       <p className="text-xs text-gray-500 mt-1">
-                        Última verificação: {formatTimestamp(checkedAt)}
+                        Último status operacional: {formatTimestamp(checkedAt)}
+                      </p>
+                    )}
+                    {realtimeReason && (
+                      <p className="text-xs text-gray-500 mt-1">
+                        Motivo: {formatReason(realtimeReason)}
                       </p>
                     )}
                     {latencyValue !== null && latencyValue !== undefined && (

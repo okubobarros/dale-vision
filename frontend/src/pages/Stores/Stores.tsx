@@ -52,6 +52,13 @@ const getLastSeenAt = (status?: StoreEdgeStatus | null) =>
     status?.last_heartbeat ||
     null;
 
+const getConnectivityStatus = (status?: StoreEdgeStatus | null) => {
+  const value = String(status?.connectivity_status || "").toLowerCase();
+  if (value === "online" || value === "degraded" || value === "offline") return value;
+  if (typeof status?.online === "boolean") return status.online ? "online" : "offline";
+  return "offline";
+};
+
 const formatTimestampFull = (iso?: string | null) => {
   if (!iso) return '';
   const date = new Date(iso);
@@ -925,10 +932,11 @@ const StoreCard = ({ store, onEdit, trialExpired }: StoreCardProps) => {
       null;
   const lastSeenAt = storeLastSeenAt ?? getLastSeenAt(edgeStatus);
   const lastError = store.last_error ?? edgeStatus?.last_error ?? null;
-  const edgeOnlineFromStatus =
-    typeof edgeStatus?.online === 'boolean' ? edgeStatus.online : undefined;
+  const edgeConnectivityStatus = getConnectivityStatus(edgeStatus);
   const isEdgeOnline =
-    edgeOnlineFromStatus === true ? true : isRecent(edgeHeartbeatAt);
+    edgeConnectivityStatus === "online" ||
+    edgeConnectivityStatus === "degraded" ||
+    isRecent(edgeHeartbeatAt);
   const edgeStatusLabel = isEdgeOnline ? 'Online' : 'Offline';
   const edgeStatusClass = isEdgeOnline
     ? 'bg-green-100 text-green-800'

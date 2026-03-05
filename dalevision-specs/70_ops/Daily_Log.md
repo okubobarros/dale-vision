@@ -119,3 +119,20 @@ Registrar decisões e eventos do dia.
 - Próximos passos:
   - Atualizar `.env` de release com `CAMERAS_JSON` real por loja.
   - Rodar smoke + conferir `edge-status` no dashboard após cada instalação.
+
+## 2026-03-05
+- Data: 2026-03-05
+- Highlights:
+  - Contrato de `edge-status` ampliado com campos explícitos de operação: `connectivity_status`, `connectivity_age_seconds`, `pipeline_status`, `health_fresh_seconds`.
+  - Frontend (Dashboard, Stores e Cameras) passou a usar conectividade como fonte única para badge Online/Offline do Edge, reduzindo divergência entre telas.
+  - Página de câmeras passou a priorizar status operacional por câmera vindo de `edge-status.cameras` (tempo real), mantendo dados históricos como fallback.
+  - Endpoint `GET /api/v1/stores/{store_id}/cameras/` consolidado para priorizar `X-EDGE-TOKEN` quando presente, evitando `403` indevido em sync do agent.
+  - Testes de regressão adicionados/atualizados para cobrir `camera_health_stale` com conectividade online e novo contrato de status.
+- Bloqueios:
+  - Nenhum novo bloqueio técnico identificado no backend; pendente validação em produção após deploy.
+- Decisões:
+  - Diferenciar no produto duas dimensões: conectividade do agente (heartbeat) e saúde do pipeline de câmeras (camera health).
+  - Evitar inferência local no frontend quando o backend já fornece status operacional explícito.
+- Próximos passos:
+  - Deploy conjunto backend/frontend.
+  - Validar em loja real: heartbeat recente + `pipeline_status=stale` deve manter Edge conectado e mostrar mensagem de saúde desatualizada.
