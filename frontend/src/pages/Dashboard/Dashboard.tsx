@@ -392,12 +392,6 @@ const Dashboard = () => {
     return { label: onboardingNextStep.cta_label, href: onboardingNextStep.cta_url }
   }, [canManageStore, onboardingNextStep])
 
-  const showNextStepBanner =
-    canManageStore &&
-    Boolean(nextStepCta) &&
-    selectedStore !== ALL_STORES_VALUE &&
-    onboardingStage !== "active"
-
   const activationBanner = shouldShowActivationBanner ? (
     <div className="bg-white rounded-xl shadow-sm border border-gray-100 p-4 sm:p-6">
       <SetupProgress
@@ -499,7 +493,7 @@ const Dashboard = () => {
 
   const minimalStatusCards =
     selectedStore !== ALL_STORES_VALUE ? (
-      <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+      <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
         <MetricCard
           title="Status do Edge"
           value={edgeOnlineLabel}
@@ -513,17 +507,6 @@ const Dashboard = () => {
           icon={<span>🎥</span>}
           color="bg-blue-100 text-blue-800"
           subtitle={`Total: ${camerasTotal} · Limite: ${camerasLimit}`}
-        />
-        <MetricCard
-          title="Próximo passo"
-          value={canManageStore ? onboardingNextStep?.title || "—" : "Somente leitura"}
-          icon={<span>✅</span>}
-          color="bg-amber-100 text-amber-800"
-          subtitle={
-            canManageStore
-              ? onboardingNextStep?.description || "Continue a configuração guiada"
-              : "Peça ao admin para avançar"
-          }
         />
       </div>
     ) : null
@@ -654,27 +637,6 @@ const Dashboard = () => {
   })
   const evidenceError =
     evidenceErrorRaw instanceof Error ? evidenceErrorRaw.message : null
-  const nextStepBanner = showNextStepBanner ? (
-    <div className="bg-white rounded-xl shadow-sm border border-gray-100 p-4 sm:p-6">
-      <h3 className="text-lg font-bold text-gray-800">Próximo passo</h3>
-      <p className="text-sm text-gray-600 mt-1">
-        {onboardingNextStep?.description ||
-          "Complete a próxima etapa para liberar o primeiro insight do trial."}
-      </p>
-      {nextStepCta && (
-        <div className="mt-4">
-          <Link
-            to={nextStepCta.href}
-            className="inline-flex items-center justify-center rounded-lg bg-blue-600 px-4 py-2 text-sm font-semibold text-white hover:bg-blue-700"
-          >
-            {nextStepCta.label}
-          </Link>
-        </div>
-      )}
-    </div>
-  ) : null
-
-
   const icons = {
     health: (
       <svg
@@ -938,7 +900,6 @@ const Dashboard = () => {
   return (
     <div className="space-y-6 sm:space-y-8">
       {onboardingStateCards}
-      {nextStepBanner}
       {activationBanner}
       {/* Header (mobile-first) */}
       <div className="flex flex-col gap-4">
