@@ -93,6 +93,34 @@ class StoreCamerasEndpointTests(SimpleTestCase):
         self.assertEqual(response.status_code, 200)
         self.assertEqual(response.data, [{"id": "cam-1"}])
 
+    @patch("apps.stores.views.CameraSerializer")
+    @patch("apps.stores.views.Camera")
+    @patch("apps.stores.views.validate_store_token", return_value=True)
+    def test_get_cameras_edge_token_wins_over_invalid_bearer_jwt(
+        self,
+        _token_mock,
+        camera_model,
+        serializer_mock,
+    ):
+        store = self._mock_store("11111111-1111-1111-1111-111111111111")
+        qs = MagicMock()
+        qs.order_by.return_value = qs
+        camera_model.objects.select_related.return_value.filter.return_value = qs
+        serializer_mock.return_value.data = [{"id": "cam-1"}]
+
+        view = StoreViewSet.as_view({"get": "cameras"}, **StoreViewSet.cameras.kwargs)
+        request = self.factory.get(
+            f"/api/v1/stores/{store.id}/cameras/",
+            HTTP_X_EDGE_TOKEN="edge-token",
+            HTTP_AUTHORIZATION="Bearer invalid.jwt.token",
+        )
+
+        with patch.object(StoreViewSet, "get_object", return_value=store):
+            response = view(request, pk=store.id)
+
+        self.assertEqual(response.status_code, 200)
+        self.assertEqual(response.data, [{"id": "cam-1"}])
+
     @patch("apps.stores.views.validate_store_token", return_value=False)
     def test_get_cameras_invalid_edge_token_returns_401(self, _token_mock):
         store = self._mock_store("11111111-1111-1111-1111-111111111111")

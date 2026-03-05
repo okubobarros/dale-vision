@@ -42,6 +42,10 @@ class EdgeTokenAuthResult:
 
 class EdgeAwareJWTAuthentication(SupabaseJWTAuthentication):
     def authenticate(self, request):
+        # Edge requests may send a stale/auxiliary Authorization header.
+        # If an explicit X-EDGE-TOKEN is present, edge-token validation in the view must take precedence.
+        if (request.headers.get("X-EDGE-TOKEN") or "").strip():
+            return None
         auth = get_authorization_header(request).split()
         if not auth or auth[0].lower() != b"bearer":
             return None
