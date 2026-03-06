@@ -41,6 +41,7 @@ describe("EdgeSetupModal step 2", () => {
     expect(screen.getAllByText(/03_INSTALAR_AUTOSTART\.bat/i).length).toBeGreaterThan(0)
     expect(screen.getAllByText(/04_VERIFICAR_STATUS\.bat/i).length).toBeGreaterThan(0)
     expect(screen.getAllByText(/Diagnose\.bat/i).length).toBeGreaterThan(0)
+    expect(screen.getAllByText(/yolov8n\.pt/i).length).toBeGreaterThan(0)
     expect(
       screen.getByRole("button", { name: /Já baixei e extraí/i })
     ).toBeInTheDocument()
@@ -84,6 +85,7 @@ describe("EdgeSetupModal step 2", () => {
       "AGENT_ID=edge-001",
       "HEARTBEAT_INTERVAL_SECONDS=30",
       "CAMERA_HEARTBEAT_INTERVAL_SECONDS=30",
+      "DALE_LOG_DIR=./logs",
       "CAMERA_SYNC_ENABLED=1",
       "CAMERA_SYNC_FATAL=0",
       "DASHBOARD_URL=https://app.dalevision.com/app/cameras?store_id=store-1&onboarding=true",
@@ -94,11 +96,12 @@ describe("EdgeSetupModal step 2", () => {
       "VISION_ENABLED=1",
       "VISION_POLL_SECONDS=5",
       "VISION_SNAPSHOT_TIMEOUT_SECONDS=10",
+      "VISION_MODEL_PATH=yolov8n.pt",
     ]
 
     expect(lines.slice(0, expectedPrefix.length)).toEqual(expectedPrefix)
     expect(lines).toContain("# Avançado (opcional)")
-    expect(lines).toContain("# VISION_MODEL_PATH=C:\\ProgramData\\DaleVision\\models\\yolov8n.pt")
+    expect(lines).toContain("# VISION_MODEL_PATH=yolov8n.pt")
   })
 
   it("shows download confirmed inside step 2 when clicking CTA", async () => {
@@ -110,14 +113,14 @@ describe("EdgeSetupModal step 2", () => {
     expect(screen.getByText(/Download confirmado/i)).toBeInTheDocument()
   })
 
-  it("disables download confirmation when download URL is missing", async () => {
+  it("falls back to latest download URL when env is missing", async () => {
     vi.stubEnv("VITE_EDGE_AGENT_DOWNLOAD_URL", "")
     renderWithProviders(
       <EdgeSetupModal open={true} onClose={() => {}} defaultStoreId="store-1" />
     )
     const confirmButton = await screen.findByRole("button", { name: /Já baixei e extraí/i })
-    expect(confirmButton).toBeDisabled()
-    expect(screen.getByText(/docs do Edge Agent/i)).toBeInTheDocument()
+    expect(confirmButton).not.toBeDisabled()
+    expect(screen.queryByText(/docs do Edge Agent/i)).not.toBeInTheDocument()
   })
 
   it("shows rotate token CTA when edge_token is missing", async () => {

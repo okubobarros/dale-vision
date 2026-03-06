@@ -16,6 +16,9 @@ Instalar e iniciar o edge-agent em ambiente de loja.
      - `VISION_BUCKET_SECONDS=30`
      - `VISION_POLL_SECONDS=5`
      - `VISION_SNAPSHOT_TIMEOUT_SECONDS=10`
+     - `VISION_MODEL_PATH=yolov8n.pt`
+   - Primeiro setup: não preencher `CAMERAS_JSON` (as câmeras vêm do app).
+   - Logs locais: `DALE_LOG_DIR=./logs` (mantém `agent.log` na pasta extraída).
 4. Fase 1 (teste manual): executar `01_TESTE_RAPIDO.bat`
 5. Fase 2 (auto start): executar `02_INSTALAR_AUTOSTART.bat` e reiniciar o PC
 6. Verificar status: `03_VERIFICAR_STATUS.bat`
@@ -39,9 +42,11 @@ Instalar e iniciar o edge-agent em ambiente de loja.
 - `logs/`
 
 ## Notas de instalacao (Windows)
-- `02_INSTALAR_AUTOSTART.bat` copia o bundle para `C:\ProgramData\DaleVision\EdgeAgent\dalevision-edge-agent-windows`.
-- A tarefa agendada passa a apontar para o caminho em `ProgramData`.
+- `02_INSTALAR_AUTOSTART.bat` cria tarefa ONLOGON para o usuario atual.
+- A tarefa agendada aponta para a pasta extraida (mesmo local do `.env`).
 - Nao mover a pasta depois da instalacao. Se mover, rode `04_REMOVER_AUTOSTART.bat` e depois `02_INSTALAR_AUTOSTART.bat`.
+- Validar sempre: `schtasks /Query /TN DaleVisionEdgeAgent /V /FO LIST` e conferir `Task To Run`.
+- Evitar multiplas instancias: somente um agente ativo por maquina/loja.
 
 ## Verificações
 - Edge status `online` ou `degraded`

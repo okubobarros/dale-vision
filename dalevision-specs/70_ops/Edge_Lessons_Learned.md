@@ -1,19 +1,17 @@
 # Lições Aprendidas — Edge Agent (pilotos iniciais)
 
 ## Autostart e instalação
-- **Instalação correta** é sempre em `C:\ProgramData\DaleVision\EdgeAgent\dalevision-edge-agent-windows`.
+- **Instalação correta** é na pasta extraída do ZIP (mesmo local do `.env`).
+- Autostart padrão roda **ONLOGON do usuário**, não em `ProgramData`.
+- Validar sempre o `Task To Run`:
+  - `schtasks /Query /TN DaleVisionEdgeAgent /V /FO LIST`
 - Se tentar apagar a pasta com o agente rodando, o Windows bloqueia (“Pasta em uso”).
 - `04_REMOVER_AUTOSTART.bat` remove a task, mas não mata processos ativos.
-- Limpeza segura (admin):
-  - `taskkill /F /IM dalevision-edge-agent.exe`
-  - `takeown /F C:\ProgramData\DaleVision /R /D Y`
-  - `icacls C:\ProgramData\DaleVision /grant *S-1-5-32-544:(OI)(CI)F /T`
-  - `Remove-Item -Recurse -Force C:\ProgramData\DaleVision`
 
 ## Logs confiáveis
-- Fonte principal: `C:\ProgramData\DaleVision\logs\agent.log`.
-- `run_agent.log` fica em `C:\ProgramData\DaleVision\EdgeAgent\dalevision-edge-agent-windows\logs`.
-- `03_VERIFICAR_STATUS.bat` deve sempre apontar logs de ProgramData (não da pasta Downloads).
+- Fonte principal: `logs\agent.log` dentro da pasta extraída.
+- `run_agent.log` fica em `logs\` da pasta extraída.
+- `03_VERIFICAR_STATUS.bat` deve sempre apontar logs da pasta extraída.
 
 ## Câmeras
 - Câmera “Aguardando validação” é esperado após cadastro.
@@ -34,6 +32,11 @@
 - Sem dependências, loga `yolo failed` e não gera métricas.
 - Snapshot é suficiente para MVP; RTSP contínuo fica para etapa seguinte.
 - Se `cameras list failed 403`, revisar `STORE_ID` e `EDGE_TOKEN` no `.env` e gerar novo token no wizard.
+
+## RTSP e flapping
+- Flapping pode ser causado por **duas instancias do agente** e **dois `.env` distintos**.
+- NVRs limitam conexões RTSP simultaneas; evitar reconnect agressivo em paralelo.
+- Intelbras exige URI ONVIF completa (`unicast=true&proto=Onvif`) e canais corretos.
 
 ## Licoes de Integracao (2026-03-03)
 - **Store Health no dashboard** usa `GET /api/v1/stores/{store_id}/edge-status/` e depende de `CameraHealthLog` recente para nao cair em `health_stale`.

@@ -25,6 +25,10 @@ class StorageSignError(RuntimeError):
     pass
 
 
+class StorageDeleteError(RuntimeError):
+    pass
+
+
 def get_config() -> Optional[StorageConfig]:
     url = getattr(settings, "SUPABASE_URL", None) or os.getenv("SUPABASE_URL")
     key = (
@@ -121,3 +125,26 @@ def create_signed_url(path: str, expires_seconds: int = 600) -> str:
 def get_public_url(path: str) -> str:
     config = require_config()
     return f"{config.url}/storage/v1/object/public/{config.bucket}/{path}"
+
+
+def delete_file(path: str) -> None:
+    if not path:
+        return
+    config = get_config()
+    if not config:
+        raise StorageNotConfigured("Storage not configured")
+    endpoint = f"{config.url}/storage/v1/object/{config.bucket}/{path}"
+    try:
+        resp = requests.delete(
+            endpoint,
+            headers={
+                "Authorization": f"Bearer {config.key}",
+                "apikey": config.key,
+            },
+            timeout=10,
+        )
+    except requests.RequestException as exc:
+        raise StorageDeleteError("delete_failed") from exc
+
+    if resp.status_code not in (200, 204):
+        raise StorageDeleteError(f"delete_failed:{resp.status_code}")

@@ -379,6 +379,12 @@ class CameraViewSet(viewsets.ModelViewSet):
 
     def perform_destroy(self, instance):
         require_store_role(self.request.user, str(instance.store_id), ALLOWED_MANAGE_ROLES)
+        snapshot_keys = list(
+            CameraSnapshot.objects.filter(camera_id=instance.id)
+            .exclude(storage_key__isnull=True)
+            .exclude(storage_key="")
+            .values_list("storage_key", flat=True)
+        )
         _log_staff_action(
             self.request,
             action="staff_camera_delete",
@@ -396,6 +402,25 @@ class CameraViewSet(viewsets.ModelViewSet):
                 CameraHealthLog.objects.filter(camera_id=instance.id).delete()
                 CameraROIConfig.objects.filter(camera_id=instance.id).delete()
                 instance.delete()
+            for storage_key in snapshot_keys:
+                try:
+                    supabase_storage.delete_file(storage_key)
+                except supabase_storage.StorageNotConfigured:
+                    logger.warning(
+                        "[SNAPSHOT] storage_not_configured delete skipped camera_id=%s store_id=%s storage_key=%s",
+                        str(instance.id),
+                        str(instance.store_id),
+                        storage_key,
+                    )
+                    break
+                except Exception as exc:
+                    logger.warning(
+                        "[SNAPSHOT] delete failed camera_id=%s store_id=%s storage_key=%s error=%s",
+                        str(instance.id),
+                        str(instance.store_id),
+                        storage_key,
+                        exc,
+                    )
         except Exception as exc:
             logger.exception(
                 "[CAMERA] delete failed camera_id=%s store_id=%s error=%s",

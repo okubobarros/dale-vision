@@ -136,3 +136,29 @@ Registrar decisões e eventos do dia.
 - Próximos passos:
   - Deploy conjunto backend/frontend.
   - Validar em loja real: heartbeat recente + `pipeline_status=stale` deve manter Edge conectado e mostrar mensagem de saúde desatualizada.
+
+## 2026-03-06
+- Data: 2026-03-06
+- Highlights:
+  - Flapping RTSP em loja foi causado por concorrência: duas instancias do agente + dois `.env` distintos.
+  - Task `DaleVisionEdgeAgent` encontrada com `Task To Run` em `C:\ProgramData\DaleVision\EdgeAgent\...` e `Run As User=SISTEMA`.
+  - RTSP Intelbras exige URI ONVIF completa (`unicast=true&proto=Onvif`) e canais corretos (1,2,3).
+  - Ajustado pacote Windows para autostart por usuario (ONLOGON) e uso da pasta extraida.
+  - `run_agent.cmd` ganhou guard de dupla instancia com normalizacao de path.
+  - README do release atualizado para o novo fluxo (sem ProgramData).
+  - ZIP passou a incluir `yolov8n.pt` e `.env` sugere `VISION_MODEL_PATH=yolov8n.pt`.
+  - Edge Setup Wizard agora usa download `latest` com cache-busting automático.
+  - Wizard orienta primeiro setup sem `CAMERAS_JSON` e lista `yolov8n.pt` no checklist.
+  - ROI Editor ganhou mensagem de erro mais clara quando não há snapshot (RTSP/edge/câmera).
+  - Auditoria de bundle concluída: sem regressão real, métricas comparadas em condições idênticas.
+  - Performance inicial medida (dist): ~520 KB JS (≈162 KB gzip) com 7 requests no first load.
+  - Navegação para `/app/analytics`: +~379 KB JS (≈112 KB gzip) com 2 requests; charts isolados fora do initial load.
+- Bloqueios:
+  - Nenhum bloqueio ativo no frontend; pendente validar em loja.
+- Decisões:
+  - Fluxo oficial: baixar ZIP, editar `.env` na pasta extraida, instalar autostart ONLOGON.
+  - Validar sempre `schtasks /Query /TN DaleVisionEdgeAgent /V /FO LIST` (Task To Run).
+- Próximos passos:
+  - Validar em loja: snapshot + ROI + métricas fluindo para analytics.
+  - Conferir logs do Edge em `logs/agent.log` após instalação.
+  - Executar checklist de loja atualizado antes de visita presencial.

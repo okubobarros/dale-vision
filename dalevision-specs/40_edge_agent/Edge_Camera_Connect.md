@@ -18,3 +18,7 @@ Conectar câmeras no Edge com rastreabilidade.
 
 ## Observações
 - Em modo local (`CAMERAS_JSON`), `camera_id` deve existir no backend (UUID/external_id/nome).
+- Alguns NVRs Intelbras exigem URI ONVIF completa:
+  - `rtsp://<user>:<pass>@<ip>:554/cam/realmonitor?channel=<N>&subtype=1&unicast=true&proto=Onvif`
+- Mapeamento de canais deve ser correto (ex.: 1,2,3) para evitar `401` e `open_failed`.
+- Flapping pode ocorrer por multiplas instancias abrindo RTSP simultaneamente.

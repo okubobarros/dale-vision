@@ -178,7 +178,18 @@ const EdgeSetupModal = ({ open, onClose, defaultStoreId }: EdgeSetupModalProps) 
   const primaryCtaClass =
     "inline-flex w-full sm:w-auto items-center justify-center rounded-lg px-4 py-2.5 text-sm font-semibold text-white " +
     "bg-gradient-to-r from-blue-500 to-purple-600 shadow-sm hover:opacity-95 transition disabled:opacity-60"
-  const downloadUrl = (import.meta.env.VITE_EDGE_AGENT_DOWNLOAD_URL || "").trim()
+  const fallbackDownloadUrl =
+    "https://github.com/okubobarros/dalevision-edge-agent/releases/latest/download/dalevision-edge-agent-windows.zip"
+  const downloadBaseUrl = (import.meta.env.VITE_EDGE_AGENT_DOWNLOAD_URL || "").trim() || fallbackDownloadUrl
+  const downloadVersion = (import.meta.env.VITE_EDGE_AGENT_DOWNLOAD_VERSION || "").trim()
+  const buildDownloadUrl = () => {
+    const base = downloadVersion
+      ? `${downloadBaseUrl}?v=${encodeURIComponent(downloadVersion)}`
+      : downloadBaseUrl
+    const sep = base.includes("?") ? "&" : "?"
+    return `${base}${sep}cb=${Date.now()}`
+  }
+  const downloadUrl = downloadBaseUrl
   const siteUrl = (import.meta.env.VITE_SITE_URL || "").trim()
   const docsUrl = siteUrl ? `${siteUrl.replace(/\/$/, "")}/docs/edge-agent` : "/docs/edge-agent"
   const canDownload = Boolean(downloadUrl)
@@ -322,6 +333,7 @@ const EdgeSetupModal = ({ open, onClose, defaultStoreId }: EdgeSetupModalProps) 
       `AGENT_ID=${agentId || DEFAULT_AGENT_ID}`,
       `HEARTBEAT_INTERVAL_SECONDS=${HEARTBEAT_INTERVAL_SECONDS}`,
       `CAMERA_HEARTBEAT_INTERVAL_SECONDS=${CAMERA_HEARTBEAT_INTERVAL_SECONDS}`,
+      `DALE_LOG_DIR=./logs`,
       `CAMERA_SYNC_ENABLED=1`,
       `CAMERA_SYNC_FATAL=0`,
       `DASHBOARD_URL=${buildDashboardUrl(storeIdValue)}`,
@@ -332,9 +344,10 @@ const EdgeSetupModal = ({ open, onClose, defaultStoreId }: EdgeSetupModalProps) 
       `VISION_ENABLED=${VISION_ENABLED}`,
       `VISION_POLL_SECONDS=${VISION_POLL_SECONDS}`,
       `VISION_SNAPSHOT_TIMEOUT_SECONDS=${VISION_SNAPSHOT_TIMEOUT_SECONDS}`,
+      `VISION_MODEL_PATH=yolov8n.pt`,
       ``,
       `# Avançado (opcional)`,
-      `# VISION_MODEL_PATH=C:\\ProgramData\\DaleVision\\models\\yolov8n.pt`,
+      `# VISION_MODEL_PATH=yolov8n.pt`,
       `# VISION_FRAME_STRIDE=2`,
       `# VISION_BUCKET_SECONDS=10`,
       `# VISION_PROXY_ENABLED=1  (demo rapido: gera métricas básicas sem IA)`,
@@ -811,14 +824,14 @@ const EdgeSetupModal = ({ open, onClose, defaultStoreId }: EdgeSetupModalProps) 
             >
               <div className="text-sm text-gray-700 font-semibold">2. Download do Agente Dalevision</div>
               <p className="mt-1 text-xs text-gray-500">
-                Baixe e extraia o pacote no computador da loja.
+                Baixe e extraia o pacote no computador da loja (inclui o modelo YOLO).
               </p>
               <div className="mt-3 space-y-2 text-xs text-gray-600">
                 {canDownload ? (
                   <div>
                     <button
                       type="button"
-                      onClick={() => window.open(downloadUrl, "_blank", "noopener,noreferrer")}
+                      onClick={() => window.open(buildDownloadUrl(), "_blank", "noopener,noreferrer")}
                       className="inline-flex items-center justify-center rounded-lg bg-blue-600 px-3 py-1.5 text-xs font-semibold text-white hover:bg-blue-700"
                     >
                       Baixar Edge Agent
@@ -845,8 +858,14 @@ const EdgeSetupModal = ({ open, onClose, defaultStoreId }: EdgeSetupModalProps) 
                   <span className="font-mono">02_TESTE_RAPIDO.bat</span>,{" "}
                   <span className="font-mono">03_INSTALAR_AUTOSTART.bat</span>,{" "}
                   <span className="font-mono">04_VERIFICAR_STATUS.bat</span>,{" "}
+                  <span className="font-mono">yolov8n.pt</span>,{" "}
                   <span className="font-mono">dalevision-edge-agent</span> e{" "}
                   <span className="font-mono">outros arquivos</span>.
+                </div>
+                <div>
+                  No primeiro setup, não preencha{" "}
+                  <span className="font-mono">CAMERAS_JSON</span>. As câmeras são
+                  cadastradas no app e sincronizadas automaticamente.
                 </div>
               </div>
               <button

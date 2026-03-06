@@ -677,8 +677,11 @@ const CameraRoiEditor = ({ open, camera, canEditRoi = false, onClose }: CameraRo
                   Snapshot central indisponível. Fale com suporte.
                 </div>
               ) : snapshotStatus === 404 ? (
-                <div className="text-xs text-gray-500">
-                  Sem snapshot ainda. Faça upload ou gere via Edge.
+                <div className="text-xs text-gray-500 space-y-1">
+                  <div>Sem snapshot ainda. Faça upload ou gere via Edge.</div>
+                  <div>
+                    Verifique: Edge online, RTSP válido e câmera cadastrada no app.
+                  </div>
                 </div>
               ) : imageSrc ? (
                 <img

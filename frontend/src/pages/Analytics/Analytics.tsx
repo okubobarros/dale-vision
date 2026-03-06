@@ -1,9 +1,24 @@
-import { useCallback, useMemo, useState } from "react"
+import { Suspense, lazy, useCallback, useMemo, useState } from "react"
 import { useQuery } from "@tanstack/react-query"
 import { useNavigate } from "react-router-dom"
-import { LineChart, type LineChartPoint, type LineSeries } from "../../components/Charts/LineChart"
-import { PieChart, type PieChartPoint } from "../../components/Charts/PieChart"
+import type { LineChartPoint, LineSeries } from "../../components/Charts/LineChart"
+import type { PieChartPoint } from "../../components/Charts/PieChart"
 import { storesService, type Store } from "../../services/stores"
+
+const LineChart = lazy(() =>
+  import("../../components/Charts/LineChart").then((module) => ({
+    default: module.LineChart,
+  }))
+)
+const PieChart = lazy(() =>
+  import("../../components/Charts/PieChart").then((module) => ({
+    default: module.PieChart,
+  }))
+)
+
+const ChartFallback = () => (
+  <div className="h-full w-full rounded-lg bg-gray-200/70 animate-pulse" />
+)
 
 const Analytics = () => {
   const navigate = useNavigate()
@@ -492,7 +507,9 @@ const Analytics = () => {
             {loadingSummary || !summary ? (
               <p className="text-gray-500">Sem dados disponíveis</p>
             ) : (
-              <LineChart data={lineData} series={metricSeries} />
+              <Suspense fallback={<ChartFallback />}>
+                <LineChart data={lineData} series={metricSeries} />
+              </Suspense>
             )}
           </div>
           <div className="mt-4 flex flex-wrap gap-2">
@@ -525,7 +542,9 @@ const Analytics = () => {
             {loadingSummary || !summary ? (
               <p className="text-gray-500">Sem dados disponíveis</p>
             ) : (
-              <PieChart data={pieData} onSliceClick={(point) => handleZoneClick(point)} />
+              <Suspense fallback={<ChartFallback />}>
+                <PieChart data={pieData} onSliceClick={(point) => handleZoneClick(point)} />
+              </Suspense>
             )}
           </div>
         </div>
