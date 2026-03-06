@@ -497,61 +497,8 @@ const Cameras = () => {
     }
   }, [])
 
-  const cameraStats = useMemo(() => {
-    const list = cameras ?? []
-    let online = 0
-    let offline = 0
-    let degraded = 0
-    let unknown = 0
-    let snapshots = 0
 
-    list.forEach((camera) => {
-      const realtime = edgeCameraMap.get(String(camera.id))
-      const statusValue =
-        realtime?.status ?? camera.camera_health?.status ?? camera.status ?? "unknown"
-      const normalized = String(statusValue || "unknown").toLowerCase()
-      if (normalized === "online") online += 1
-      else if (normalized === "degraded") degraded += 1
-      else if (normalized === "offline" || normalized === "error") offline += 1
-      else unknown += 1
 
-      const snapshotUrl =
-        camera.camera_health?.snapshot_url ?? camera.last_snapshot_url ?? null
-      if (snapshotUrl) snapshots += 1
-    })
-
-    return {
-      total: list.length,
-      online,
-      degraded,
-      offline,
-      unknown,
-      snapshots,
-    }
-  }, [cameras, edgeCameraMap])
-
-  const lastCheckLabel = useMemo(() => {
-    const ts =
-      edgeStatus?.last_comm_at ??
-      edgeStatus?.last_seen_at ??
-      edgeStatus?.last_heartbeat_at ??
-      edgeStatus?.last_heartbeat ??
-      null
-    return ts ? formatTimestamp(ts) : "—"
-  }, [edgeStatus])
-
-  const pipelineLabel = useMemo(() => {
-    switch (edgeStatus?.pipeline_status) {
-      case "healthy":
-        return "Monitoramento em dia"
-      case "stale":
-        return "Dados atrasados"
-      case "no_data":
-        return "Sem dados recentes"
-      default:
-        return "Aguardando dados"
-    }
-  }, [edgeStatus?.pipeline_status])
 
   return (
     <div className="p-6 space-y-6">
