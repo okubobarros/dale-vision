@@ -96,6 +96,7 @@ Registrar decisões e eventos do dia.
 ## 2026-03-04
 - Data: 2026-03-04
 - Highlights:
+  - Frontend (auth OK, token salvo e redigido): requisi??es Axios com auth header para /v1/stores/, /v1/stores/{id}/cameras/, /v1/onboarding/next-step/ e /v1/stores/{id}/edge-status/ deram timeout (10s/3s) e os dados n?o carregaram.
   - Store Health passou a usar camera_health recente e last_comm_at (max store/camera/health).
   - /api/edge/events/ agora atualiza store.last_seen_at para qualquer evento aceito e limpa last_error.
   - Camera health online limpa camera.last_error e camera_health.error; store não fica preso em erro legado.
@@ -112,6 +113,7 @@ Registrar decisões e eventos do dia.
   - Correção de recorrência no endpoint `GET /api/v1/stores/{store_id}/cameras/`: quando houver `X-EDGE-TOKEN`, a validação do token do Edge agora tem precedência sobre auth de usuário para evitar `403` indevido no sync do agent.
   - Edge Setup Wizard passou a concluir a verificação de ativação quando houver heartbeat recente com `store_status_reason=camera_health_stale`, evitando bloqueio da etapa por ausência temporária de health das câmeras.
 - Bloqueios:
+  - Timeouts recorrentes p?s-login nas chamadas Axios (10s/3s), impedindo carregar lojas/c?meras/dashboard.
   - `camera_health` depende de IDs de camera corretos no `CAMERAS_JSON` (UUID/external_id/nome existentes no backend).
 - Decisões:
   - Operacao de loja passa a exigir `CAMERAS_JSON` com IDs reais do dashboard.
