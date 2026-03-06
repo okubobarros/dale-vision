@@ -11,11 +11,13 @@
 - ZIP atualizado baixado e extraído (OK/FAIL)
 - `yolov8n.pt` presente na pasta extraída (OK/FAIL)
 - `.env` atualizado com token atual (OK/FAIL)
+- Nenhuma cópia antiga em `C:\ProgramData\DaleVision\EdgeAgent\` (OK/FAIL)
 - `CAMERAS_JSON` vazio no primeiro setup (OK/FAIL)
 - `CAMERAS_JSON` preenchido no modo loja (OK/FAIL)
 - `VISION_MODEL_PATH=yolov8n.pt` (OK/FAIL)
 - `DALE_LOG_DIR=./logs` (OK/FAIL)
 - Somente 1 instância do agente rodando (OK/FAIL)
+- `Get-Process dalevision-edge-agent` retorna 0 ou 1 processo (OK/FAIL)
 
 ## T-0 Diagnóstico
 - Diagnose.bat rodou (OK/FAIL)
@@ -28,6 +30,7 @@
 - heartbeat_ok=True (OK/FAIL)
 - camera_health_posted == total_cameras (OK/FAIL)
 - logs\agent.log criado (OK/FAIL)
+- `logs\agent.log` na pasta extraída (OK/FAIL)
 
 ## T+5 Autostart
 - 03_INSTALAR_AUTOSTART.bat (OK/FAIL)
@@ -35,6 +38,7 @@
 - Task To Run aponta para pasta extraida (OK/FAIL)
 - Run As User = usuario local (OK/FAIL)
 - Task agendada ONLOGON (OK/FAIL)
+- `schtasks /Query /TN DaleVisionEdgeAgent /V /FO LIST` validado (OK/FAIL)
 
 ## T+8 App
 - Store online no dashboard (OK/FAIL)

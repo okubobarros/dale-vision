@@ -497,26 +497,86 @@ const Cameras = () => {
     }
   }, [])
 
+  const cameraStats = useMemo(() => {
+    const list = cameras ?? []
+    let online = 0
+    let offline = 0
+    let degraded = 0
+    let unknown = 0
+    let snapshots = 0
+
+    list.forEach((camera) => {
+      const realtime = edgeCameraMap.get(String(camera.id))
+      const statusValue =
+        realtime?.status ?? camera.camera_health?.status ?? camera.status ?? "unknown"
+      const normalized = String(statusValue || "unknown").toLowerCase()
+      if (normalized === "online") online += 1
+      else if (normalized === "degraded") degraded += 1
+      else if (normalized === "offline" || normalized === "error") offline += 1
+      else unknown += 1
+
+      const snapshotUrl =
+        camera.camera_health?.snapshot_url ?? camera.last_snapshot_url ?? null
+      if (snapshotUrl) snapshots += 1
+    })
+
+    return {
+      total: list.length,
+      online,
+      degraded,
+      offline,
+      unknown,
+      snapshots,
+    }
+  }, [cameras, edgeCameraMap])
+
+  const lastCheckLabel = useMemo(() => {
+    const ts =
+      edgeStatus?.last_comm_at ??
+      edgeStatus?.last_seen_at ??
+      edgeStatus?.last_heartbeat_at ??
+      edgeStatus?.last_heartbeat ??
+      null
+    return ts ? formatTimestamp(ts) : "—"
+  }, [edgeStatus])
+
+  const pipelineLabel = useMemo(() => {
+    switch (edgeStatus?.pipeline_status) {
+      case "healthy":
+        return "Monitoramento em dia"
+      case "stale":
+        return "Dados atrasados"
+      case "no_data":
+        return "Sem dados recentes"
+      default:
+        return "Aguardando dados"
+    }
+  }, [edgeStatus?.pipeline_status])
+
   return (
     <div className="p-6 space-y-6">
-      <div className="flex flex-col gap-4">
-        <div className="min-w-0">
-          <h1 className="text-3xl font-bold text-gray-800">Câmeras</h1>
-          <p className="text-gray-600 mt-1">
-            Cadastre câmeras, desenhe ROIs e monitore status.
-          </p>
-        </div>
+      <div className="flex flex-col gap-6">
+        <div className="flex flex-col gap-4 lg:flex-row lg:items-center lg:justify-between">
+          <div className="min-w-0">
+            <p className="text-xs font-semibold uppercase tracking-wide text-gray-400">
+              Inteligência operacional
+            </p>
+            <h1 className="text-3xl font-bold text-gray-800">Monitoramento de câmeras</h1>
+            <p className="text-gray-600 mt-1">
+              Suas câmeras estão conectadas, monitoradas e prontas para gerar insights da loja.
+            </p>
+          </div>
 
-        {stores && stores.length > 0 && (
-          <div className="flex flex-col sm:flex-row sm:items-center gap-2">
-            <label
-              htmlFor="store-select"
-              className="text-gray-700 font-semibold text-sm"
-            >
-              Loja
-            </label>
+          {stores && stores.length > 0 && (
+            <div className="flex flex-col sm:flex-row sm:items-center gap-3">
+              <label
+                htmlFor="store-select"
+                className="text-gray-700 font-semibold text-sm"
+              >
+                Loja
+              </label>
 
-            <div className="flex items-center gap-2">
+              <div className="flex items-center gap-2">
                 <select
                   id="store-select"
                   value={selectedStore}
@@ -524,23 +584,24 @@ const Cameras = () => {
                   className="w-full sm:w-[320px] border border-gray-300 rounded-lg px-4 py-2 focus:ring-2 focus:ring-blue-500 focus:border-transparent"
                   disabled={storesLoading}
                   aria-label="Selecionar loja para visualizar câmeras"
-              >
-                {!onboardingMode && stores.length > 1 && (
-                  <option value="all">Todas as lojas</option>
-                )}
-                {stores.map((store) => (
-                  <option key={store.id} value={store.id}>
-                    {store.name}
-                  </option>
-                ))}
-              </select>
+                >
+                  {!onboardingMode && stores.length > 1 && (
+                    <option value="all">Todas as lojas</option>
+                  )}
+                  {stores.map((store) => (
+                    <option key={store.id} value={store.id}>
+                      {store.name}
+                    </option>
+                  ))}
+                </select>
 
-              {storesLoading && (
-                <div className="animate-spin rounded-full h-5 w-5 border-t-2 border-b-2 border-blue-500" />
-              )}
+                {storesLoading && (
+                  <div className="animate-spin rounded-full h-5 w-5 border-t-2 border-b-2 border-blue-500" />
+                )}
+              </div>
             </div>
-          </div>
-        )}
+          )}
+        </div>
       </div>
 
       {onboardingMode && selectedStore && selectedStore !== "all" && (
