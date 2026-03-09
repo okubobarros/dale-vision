@@ -567,9 +567,12 @@ class CameraViewSet(viewsets.ModelViewSet):
             return Response({"detail": "status inválido."}, status=status.HTTP_400_BAD_REQUEST)
 
         zones = config_json.get("zones")
-        if status_value == "published" and (not zones or len(zones) == 0):
+        lines = config_json.get("lines")
+        zones_count = len(zones) if isinstance(zones, list) else 0
+        lines_count = len(lines) if isinstance(lines, list) else 0
+        if status_value == "published" and zones_count + lines_count == 0:
             return Response(
-                {"detail": "Para publicar, inclua ao menos uma zona."},
+                {"detail": "Para publicar, inclua ao menos uma zona ou linha."},
                 status=status.HTTP_400_BAD_REQUEST,
             )
 

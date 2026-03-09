@@ -417,6 +417,88 @@ class CameraRoiLatestEndpointTests(SimpleTestCase):
         roi_latest_mock.assert_called_once_with("cam-1")
 
 
+class CameraRoiPublishValidationTests(SimpleTestCase):
+    def setUp(self):
+        self.factory = APIRequestFactory()
+
+    @patch("apps.cameras.views.log_journey_event")
+    @patch("apps.cameras.views.create_roi_config")
+    @patch("apps.cameras.views.get_latest_published_roi_config", return_value=None)
+    @patch("apps.cameras.views.require_store_role")
+    @patch("apps.cameras.views.ensure_user_uuid", return_value="user-1")
+    def test_publish_accepts_line_without_zone(
+        self,
+        _uuid_mock,
+        _role_mock,
+        _published_mock,
+        create_roi_mock,
+        _journey_mock,
+    ):
+        cam = MagicMock()
+        cam.id = "cam-1"
+        cam.store_id = "store-1"
+        cam.store = MagicMock(org_id="org-1")
+
+        created = MagicMock()
+        created.camera = "cam-1"
+        created.version = 1
+        created.config_json = {
+            "schema_version": "roi.v2",
+            "roi_version": 1,
+            "status": "published",
+            "zones": [],
+            "lines": [
+                {
+                    "id": "roi-entry-line-1",
+                    "roi_entity_id": "roi-entry-line-1",
+                    "name": "linha_entrada_principal",
+                    "type": "line",
+                    "metric_type": "entry_exit",
+                    "ownership": "primary",
+                    "points": [{"x": 0.1, "y": 0.1}, {"x": 0.9, "y": 0.9}],
+                }
+            ],
+        }
+        created.updated_at = None
+        created.updated_by = "user-1"
+        create_roi_mock.return_value = created
+
+        view = CameraViewSet.as_view({"put": "roi"})
+        request = self.factory.put(
+            "/api/v1/cameras/cam-1/roi/",
+            {
+                "config_json": {
+                    "schema_version": "roi.v2",
+                    "status": "published",
+                    "zones": [],
+                    "lines": [
+                        {
+                            "id": "roi-entry-line-1",
+                            "roi_entity_id": "roi-entry-line-1",
+                            "name": "linha_entrada_principal",
+                            "type": "line",
+                            "metric_type": "entry_exit",
+                            "ownership": "primary",
+                            "points": [{"x": 0.1, "y": 0.1}, {"x": 0.9, "y": 0.9}],
+                        }
+                    ],
+                }
+            },
+            format="json",
+        )
+        force_authenticate(request, user=MagicMock(is_authenticated=True, is_staff=False, is_superuser=False))
+
+        with patch.object(CameraViewSet, "get_object", return_value=cam):
+            response = view(request, pk="cam-1")
+
+        self.assertEqual(response.status_code, 200)
+        create_roi_mock.assert_called_once()
+        _, kwargs = create_roi_mock.call_args
+        self.assertEqual(kwargs["camera_id"], "cam-1")
+        self.assertEqual(kwargs["config_json"]["status"], "published")
+        self.assertEqual(kwargs["config_json"]["roi_version"], 1)
+        self.assertEqual(len(kwargs["config_json"]["lines"]), 1)
+
 class SubscriptionRequiredCameraCreateTests(SimpleTestCase):
     @patch("apps.cameras.views.ensure_user_uuid", return_value="user-1")
     @patch("apps.cameras.views.enforce_can_use_product", side_effect=TrialExpiredError())
