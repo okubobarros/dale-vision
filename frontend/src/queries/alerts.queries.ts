@@ -11,12 +11,13 @@ export function useAlertsEvents(
   occurred_from?: string
   occurred_to?: string
   },
-  options?: { enabled?: boolean }
+  options?: { enabled?: boolean; retry?: boolean }
 ) {
   return useQuery({
     queryKey: ["alerts", "events", params],
     queryFn: () => alertsService.listEvents(params),
     enabled: options?.enabled,
+    retry: options?.retry ?? false,
   })
 }
 

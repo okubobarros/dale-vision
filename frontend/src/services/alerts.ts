@@ -207,7 +207,11 @@ export const alertsService = {
     occurred_from?: string
     occurred_to?: string
   }): Promise<DetectionEvent[]> {
-    const res = await api.get("/alerts/events/", { params })
+    const res = await api.get("/alerts/events/", {
+      params,
+      timeoutCategory: "best-effort",
+      noRetry: true,
+    })
     return normalizeArray<DetectionEvent>(res.data).map((event) => {
       const item = event as DetectionEvent & {
         store?: string

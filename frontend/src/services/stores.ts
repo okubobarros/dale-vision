@@ -530,6 +530,7 @@ export const storesService = {
     try {
       const response = await api.get(`/v1/stores/${storeId}/dashboard/`, {
         timeoutCategory: "critical",
+        noRetry: true,
       });
       console.log('✅ Dashboard response:', response.data);
       return response.data;
@@ -622,7 +623,9 @@ export const storesService = {
 
   async getStoreEdgeStatus(storeId: string): Promise<StoreEdgeStatus> {
     try {
-      const response = await api.get(`/v1/stores/${storeId}/edge-status/`);
+      const response = await api.get(`/v1/stores/${storeId}/edge-status/`, {
+        noRetry: true,
+      });
       return normalizeEdgeStatus(response.data, storeId);
     } catch (error) {
       console.error('❌ Erro ao consultar status do edge:', error);

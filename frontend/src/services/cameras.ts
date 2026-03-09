@@ -187,7 +187,9 @@ export const camerasService = {
 
   async getStoreLimits(storeId: string): Promise<StoreLimits> {
     try {
-      const response = await api.get(`/v1/stores/${storeId}/limits/`)
+      const response = await api.get(`/v1/stores/${storeId}/limits/`, {
+        noRetry: true,
+      })
       return response.data
     } catch (error) {
       throw normalizeApiError(error, "Falha ao carregar limites.")

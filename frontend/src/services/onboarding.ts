@@ -80,6 +80,7 @@ export const onboardingService = {
     try {
       const response = await api.get(`/v1/onboarding/next-step/${params}`, {
         timeoutCategory: "best-effort",
+        noRetry: true,
       })
       return response.data
     } catch (error) {

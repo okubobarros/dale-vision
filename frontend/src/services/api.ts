@@ -61,6 +61,7 @@ const isAxiosHeaders = (
 ): headers is AxiosHeaders => headers instanceof AxiosHeaders
 
 let hasLoggedAuthHeader = false
+let refreshSessionPromise: Promise<ReturnType<typeof refreshSupabaseSession>> | null = null
 
 const setDefaultsAuthHeader = (token: string | null) => {
   const commonHeaders = api.defaults.headers.common as Record<
@@ -72,6 +73,15 @@ const setDefaultsAuthHeader = (token: string | null) => {
   } else {
     delete commonHeaders.Authorization
   }
+}
+
+const refreshAuthSessionOnce = async () => {
+  if (!refreshSessionPromise) {
+    refreshSessionPromise = refreshSupabaseSession().finally(() => {
+      refreshSessionPromise = null
+    })
+  }
+  return refreshSessionPromise
 }
 
 export const syncApiAuthHeader = () => {
@@ -286,7 +296,7 @@ api.interceptors.response.use(
 
     if ((status === 401 || status === 403) && config && !config._retryAuth) {
       config._retryAuth = true
-      const refreshed = await refreshSupabaseSession()
+      const refreshed = await refreshAuthSessionOnce()
       if (refreshed?.token) {
         syncApiAuthHeader()
         return api.request(config)

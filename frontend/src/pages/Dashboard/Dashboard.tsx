@@ -224,6 +224,7 @@ const Dashboard = () => {
     queryFn: () => storesService.getStoreDashboard(selectedStore),
     enabled: canFetchAuth && selectedStore !== ALL_STORES_VALUE && !isTrialCeoMode,
     staleTime: 30000,
+    retry: false,
   })
   const dashboardError =
     dashboardErrorRaw instanceof Error ? dashboardErrorRaw.message : null
@@ -256,11 +257,18 @@ const Dashboard = () => {
       if (typeof document !== "undefined" && document.visibilityState === "hidden") {
         return false
       }
+      if (query.state.error) {
+        return false
+      }
+      if (query.state.status !== "success") {
+        return false
+      }
       const data = query.state.data as StoreEdgeStatus | undefined
       if (!data?.online) return 30000
       return edgeSetupOpen ? 15000 : 20000
     },
     refetchIntervalInBackground: false,
+    retry: false,
   })
   const selectedStoreRole = selectedStoreItem?.role ?? null
   const canManageStore = selectedStoreRole
@@ -282,6 +290,7 @@ const Dashboard = () => {
     queryKey: ["store-limits", selectedStore],
     queryFn: () => camerasService.getStoreLimits(selectedStore),
     enabled: canFetchAuth && Boolean(selectedStore && selectedStore !== ALL_STORES_VALUE),
+    retry: false,
   })
 
   const {
@@ -293,6 +302,7 @@ const Dashboard = () => {
     status: "open",
   }, {
     enabled: canFetchAuth && Boolean(selectedStore && selectedStore !== ALL_STORES_VALUE),
+    retry: false,
   })
 
   const {
@@ -326,7 +336,7 @@ const Dashboard = () => {
       ),
     enabled: shouldFetchOnboardingNextStep,
     staleTime: 30000,
-    retry: 1,
+    retry: false,
   })
   const onboardingNextStepError =
     onboardingNextStepErrorRaw instanceof Error
