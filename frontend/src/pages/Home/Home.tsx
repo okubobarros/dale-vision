@@ -401,7 +401,7 @@ export default function HomePage() {
                   className="relative min-h-[520px] overflow-hidden rounded-[24px] border border-white/10 bg-slate-950 bg-cover bg-center bg-no-repeat"
                   style={{
                     backgroundImage:
-                      "linear-gradient(180deg, rgba(6,10,24,0.08) 0%, rgba(6,10,24,0.4) 100%), url('/hero-store-floor.png')",
+                      "linear-gradient(180deg, rgba(6,10,24,0.08) 0%, rgba(6,10,24,0.4) 100%), url('/hero_coffee.png')",
                   }}
                 >
                   <div className="absolute inset-0 bg-gradient-to-t from-slate-950/55 via-transparent to-slate-950/15" />

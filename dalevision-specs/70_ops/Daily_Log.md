@@ -93,6 +93,27 @@ Registrar decisões e eventos do dia.
 - Próximos passos:
   - Monitorar estabilidade do login e tempo de hidratação no app.
 
+## 2026-03-09
+- Data: 2026-03-09
+- Highlights:
+  - Landing `/` corrigida: hero passou a usar `frontend/public/hero_coffee.png`; a produção estava sem imagem porque o JSX referenciava um asset inexistente (`/hero-store-floor.png`) e nenhum arquivo correspondente havia sido versionado/publicado.
+  - Hero da landing mantida com overlay operacional (`DADOS REAIS`, `CAM 04 — STORE FLOOR`, `AI ANALYSIS ACTIVE`) e microcopy revisada para diagnóstico comercial.
+  - Frontend voltou a compilar com `pnpm -C frontend build` após correção de tipagem em `src/services/api.ts` (`refreshSessionPromise` não pode ser `Promise<Promise<...>>`).
+  - Frontend ficou limpo em `pnpm -C frontend lint` após ajuste de sincronização de query params em `Alerts.tsx` e simplificação de memoização/constantes em `Analytics.tsx`.
+  - Dashboard/app: requests críticos deixaram de multiplicar timeout por retry duplicado; polling do `edge-status` passa a pausar em erro e refresh de sessão 401 passa a ser compartilhado.
+  - Analytics backend: ingestão de `vision.metrics.v1` documentada com granularidade por câmera/bucket e cálculo de conversão a partir de `checkout_events / footfall`; migração SQL adicionada em `supabase/sql/20260309_add_camera_granularity_to_metrics.sql`.
+  - Edge-agent: autostart endurecido para operação de loja com task `ONSTART` + fallback `ONLOGON`; payload de visão ampliado com `camera_role` e `checkout_events`.
+- Bloqueios:
+  - Validar deploy da landing para confirmar `hero_coffee.png` servido em produção e sem cache antigo.
+  - Aplicar migração SQL de granularidade por câmera no banco antes de depender dos novos analytics em produção.
+- Decisões:
+  - Assets visuais de landing só entram em produção quando estiverem versionados em `frontend/public` ou importados diretamente no bundle.
+  - Correções cross-repo (frontend/backend/edge-agent) devem sempre gerar registro operacional único em `dalevision-specs`.
+- Próximos passos:
+  - Publicar deploy do frontend com `hero_coffee.png` e validar carregamento via Network.
+  - Aplicar migração SQL, redeploy do backend e rebuild do `dalevision-edge-agent`.
+  - Validar em loja: heartbeat, `camera_health`, `vision.metrics.v1` e reflexo no `/app/analytics`.
+
 ## 2026-03-04
 - Data: 2026-03-04
 - Highlights:
