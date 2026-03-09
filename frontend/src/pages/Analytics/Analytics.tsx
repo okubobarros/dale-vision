@@ -1,9 +1,20 @@
 import { Suspense, lazy, useCallback, useMemo, useState } from "react"
-import { useQuery } from "@tanstack/react-query"
+import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query"
 import { useNavigate } from "react-router-dom"
+import toast from "react-hot-toast"
 import type { LineChartPoint, LineSeries } from "../../components/Charts/LineChart"
 import type { PieChartPoint } from "../../components/Charts/PieChart"
-import { storesService, type Store } from "../../services/stores"
+import {
+  type CreateStoreVisionCalibrationRunPayload,
+  storesService,
+  type MetricGovernanceItem,
+  type Store,
+  type StoreAnalyticsSummary,
+  type StoreVisionAuditItem,
+  type StoreVisionCalibrationPlanResponse,
+  type StoreVisionCalibrationRunsResponse,
+  type StoreVisionConfidenceResponse,
+} from "../../services/stores"
 
 const LineChart = lazy(() =>
   import("../../components/Charts/LineChart").then((module) => ({
@@ -28,6 +39,49 @@ const TARGETS = Object.freeze({
 
 type StatusTone = "good" | "warn" | "bad" | "neutral"
 type MetricStatus = { tone: StatusTone; label: string }
+type MetricGovernance = MetricGovernanceItem
+type VisionConfidence = StoreVisionConfidenceResponse
+type VisionCalibrationPlan = StoreVisionCalibrationPlanResponse
+type VisionCalibrationRuns = StoreVisionCalibrationRunsResponse
+
+const governanceStyles: Record<string, string> = {
+  official: "bg-emerald-50 text-emerald-700 border-emerald-200",
+  proxy: "bg-amber-50 text-amber-700 border-amber-200",
+  estimated: "bg-slate-50 text-slate-700 border-slate-200",
+  unsupported: "bg-rose-50 text-rose-700 border-rose-200",
+}
+
+const confidenceStyles: Record<string, string> = {
+  pronto: "bg-emerald-50 text-emerald-700 border-emerald-200",
+  parcial: "bg-amber-50 text-amber-700 border-amber-200",
+  recalibrar: "bg-rose-50 text-rose-700 border-rose-200",
+}
+
+const confidenceLabels: Record<string, string> = {
+  pronto: "Pronto operacional",
+  parcial: "Cobertura parcial",
+  recalibrar: "Recalibrar",
+}
+
+const cameraRoleLabels: Record<string, string> = {
+  entrada: "Entrada",
+  balcao: "Balcão",
+  salao: "Salão",
+  unknown: "Não classificada",
+}
+
+const confidenceReasonLabels: Record<string, string> = {
+  roi_not_published: "ROI não publicada",
+  camera_not_healthy: "Câmera sem saúde operacional",
+  stale_or_missing_events: "Eventos ausentes ou stale",
+  low_event_volume: "Volume baixo de eventos",
+}
+
+const getGovernance = (
+  summary: StoreAnalyticsSummary | null | undefined,
+  key: string
+): MetricGovernance | null =>
+  summary?.meta?.metric_governance?.totals?.[key] ?? null
 
 const getMetricStatus = (
   hasSummary: boolean,
@@ -50,11 +104,26 @@ const getMetricStatus = (
 
 const Analytics = () => {
   const navigate = useNavigate()
+  const queryClient = useQueryClient()
   const [period, setPeriod] = useState("7d")
   const [selectedStore, setSelectedStore] = useState<string>("")
   const [metricView, setMetricView] = useState<"visitantes" | "conversoes" | "fila">("visitantes")
   const [sortKey, setSortKey] = useState<"visitors" | "conversion" | "queue" | "dwell" | "status">("queue")
   const [sortDir, setSortDir] = useState<"asc" | "desc">("desc")
+  const [auditEventType, setAuditEventType] = useState<string>("")
+  const [calibrationDraft, setCalibrationDraft] = useState<{
+    cameraId: string
+    metricType: CreateStoreVisionCalibrationRunPayload["metric_type"]
+    metricLabel: string
+    roiVersion?: string | null
+    systemValue?: number | null
+  } | null>(null)
+  const [calibrationForm, setCalibrationForm] = useState({
+    manualSampleSize: "",
+    manualReferenceValue: "",
+    systemValue: "",
+    notes: "",
+  })
 
   const periodLabel = useMemo(() => {
     switch (period) {
@@ -104,6 +173,12 @@ const Analytics = () => {
     return (stores ?? []).find((store) => store.id === defaultStoreId)?.name ?? "Sua loja"
   }, [defaultStoreId, stores])
 
+  const selectedStoreRole = useMemo(
+    () => (stores ?? []).find((store) => store.id === defaultStoreId)?.role ?? null,
+    [defaultStoreId, stores]
+  )
+  const canManageCalibration = selectedStoreRole == null || ["owner", "admin", "manager"].includes(selectedStoreRole)
+
   const { data: summary, isLoading: loadingSummary } = useQuery({
     queryKey: ["analytics-summary", defaultStoreId, period],
     queryFn: () =>
@@ -111,6 +186,51 @@ const Analytics = () => {
         ? storesService.getStoreAnalyticsSummary(defaultStoreId, { period, bucket: "day" })
         : Promise.resolve(null),
     enabled: Boolean(defaultStoreId),
+  })
+
+  const { data: audit, isLoading: loadingAudit } = useQuery({
+    queryKey: ["vision-audit", defaultStoreId, periodRange.from, periodRange.to, auditEventType],
+    queryFn: () =>
+      defaultStoreId
+        ? storesService.getStoreVisionAudit(defaultStoreId, {
+            from: `${periodRange.from}T00:00:00`,
+            to: `${periodRange.to}T23:59:59`,
+            event_type: auditEventType || undefined,
+            limit: 12,
+          })
+        : Promise.resolve(null),
+    enabled: Boolean(defaultStoreId),
+    staleTime: 30000,
+  })
+
+  const { data: visionConfidence, isLoading: loadingConfidence } = useQuery<VisionConfidence | null>({
+    queryKey: ["vision-confidence", defaultStoreId],
+    queryFn: () =>
+      defaultStoreId
+        ? storesService.getStoreVisionConfidence(defaultStoreId, { window_hours: 24 })
+        : Promise.resolve(null),
+    enabled: Boolean(defaultStoreId),
+    staleTime: 30000,
+  })
+
+  const { data: calibrationPlan, isLoading: loadingCalibrationPlan } = useQuery<VisionCalibrationPlan | null>({
+    queryKey: ["vision-calibration-plan", defaultStoreId],
+    queryFn: () =>
+      defaultStoreId
+        ? storesService.getStoreVisionCalibrationPlan(defaultStoreId, { window_hours: 24 })
+        : Promise.resolve(null),
+    enabled: Boolean(defaultStoreId),
+    staleTime: 30000,
+  })
+
+  const { data: calibrationRuns, isLoading: loadingCalibrationRuns } = useQuery<VisionCalibrationRuns | null>({
+    queryKey: ["vision-calibration-runs", defaultStoreId],
+    queryFn: () =>
+      defaultStoreId
+        ? storesService.getStoreVisionCalibrationRuns(defaultStoreId, { limit: 8 })
+        : Promise.resolve(null),
+    enabled: Boolean(defaultStoreId),
+    staleTime: 30000,
   })
 
   const totalVisitors = summary?.totals.total_visitors ?? 0
@@ -124,6 +244,10 @@ const Analytics = () => {
   const conversionStatus = getMetricStatus(hasSummary, conversionRate, TARGETS.conversion, "higher")
   const queueStatus = getMetricStatus(hasSummary, queueAvgMin, TARGETS.queueMin, "lower")
   const dwellStatus = getMetricStatus(hasSummary, dwellAvgMin, TARGETS.dwellMin, "lower")
+  const visitorsGovernance = getGovernance(summary, "total_visitors")
+  const conversionGovernance = getGovernance(summary, "avg_conversion_rate")
+  const queueGovernance = getGovernance(summary, "avg_queue_seconds")
+  const dwellGovernance = getGovernance(summary, "avg_dwell_seconds")
 
   const statusStyles: Record<StatusTone, string> = {
     good: "bg-emerald-50 text-emerald-700 border-emerald-200",
@@ -148,7 +272,7 @@ const Analytics = () => {
 
         return `Na ${selectedStoreName}, nos ${periodLabel.toLowerCase()} você recebeu ${totalVisitors.toLocaleString(
           "pt-BR"
-        )} visitantes, converteu ${formatPercent(conversionRate)} em vendas e teve fila média de ${formatMinutes(
+        )} visitantes, converteu ${formatPercent(conversionRate)} em checkout proxy e teve fila média de ${formatMinutes(
           queueAvgMin
         )}. ${painText}`
       })()
@@ -190,6 +314,105 @@ const Analytics = () => {
       color: colors[idx % colors.length],
     }))
   }, [summary])
+
+  const auditEventTypeOptions = useMemo(
+    () => [
+      { value: "", label: "Todos os eventos" },
+      { value: "vision.crossing.v1", label: "Crossing" },
+      { value: "vision.queue_state.v1", label: "Fila" },
+      { value: "vision.checkout_proxy.v1", label: "Checkout proxy" },
+      { value: "vision.zone_occupancy.v1", label: "Ocupação" },
+    ],
+    []
+  )
+
+  const confidenceSummary = visionConfidence?.summary
+  const confidenceGeneratedAt = visionConfidence?.generated_at
+    ? new Date(visionConfidence.generated_at).toLocaleString("pt-BR")
+    : null
+  const calibrationSummary = calibrationPlan?.summary
+
+  const createCalibrationMutation = useMutation({
+    mutationFn: (payload: CreateStoreVisionCalibrationRunPayload) => {
+      if (!defaultStoreId) throw new Error("Loja não selecionada")
+      return storesService.createStoreVisionCalibrationRun(defaultStoreId, payload)
+    },
+    onSuccess: () => {
+      toast.success("Calibração registrada")
+      setCalibrationDraft(null)
+      setCalibrationForm({
+        manualSampleSize: "",
+        manualReferenceValue: "",
+        systemValue: "",
+        notes: "",
+      })
+      void queryClient.invalidateQueries({ queryKey: ["vision-confidence", defaultStoreId] })
+      void queryClient.invalidateQueries({ queryKey: ["vision-calibration-plan", defaultStoreId] })
+      void queryClient.invalidateQueries({ queryKey: ["vision-calibration-runs", defaultStoreId] })
+    },
+    onError: () => {
+      toast.error("Falha ao registrar calibração.")
+    },
+  })
+
+  const auditSummaryEntries = useMemo(
+    () => Object.entries(audit?.summary ?? {}).sort((a, b) => b[1] - a[1]),
+    [audit]
+  )
+
+  const formatAuditValue = useCallback((item: StoreVisionAuditItem) => {
+    if (item.event_type === "vision.crossing.v1") {
+      return item.direction === "entry" ? "Entrada" : item.direction === "exit" ? "Saída" : "-"
+    }
+    if (item.event_type === "vision.queue_state.v1") {
+      return `${item.count_value} na fila`
+    }
+    if (item.event_type === "vision.checkout_proxy.v1") {
+      return `${item.count_value} atendimento`
+    }
+    if (item.event_type === "vision.zone_occupancy.v1") {
+      return `${item.count_value} na zona`
+    }
+    return String(item.count_value)
+  }, [])
+
+  const openCalibrationDraft = useCallback(
+    (
+      cameraId: string,
+      metricType: CreateStoreVisionCalibrationRunPayload["metric_type"],
+      metricLabel: string,
+      roiVersion?: string | null,
+      systemValue?: number | null
+    ) => {
+      setCalibrationDraft({ cameraId, metricType, metricLabel, roiVersion, systemValue })
+      setCalibrationForm({
+        manualSampleSize: "",
+        manualReferenceValue: "",
+        systemValue: systemValue != null ? String(systemValue) : "",
+        notes: "",
+      })
+    },
+    []
+  )
+
+  const submitCalibrationDraft = useCallback(() => {
+    if (!calibrationDraft) return
+    if (!calibrationForm.manualReferenceValue.trim()) {
+      toast.error("Informe o valor manual de referência.")
+      return
+    }
+    const payload: CreateStoreVisionCalibrationRunPayload = {
+      camera_id: calibrationDraft.cameraId,
+      metric_type: calibrationDraft.metricType,
+      roi_version: calibrationDraft.roiVersion ?? undefined,
+      manual_sample_size: calibrationForm.manualSampleSize ? Number(calibrationForm.manualSampleSize) : undefined,
+      manual_reference_value: Number(calibrationForm.manualReferenceValue),
+      system_value: calibrationForm.systemValue ? Number(calibrationForm.systemValue) : undefined,
+      notes: calibrationForm.notes.trim() || undefined,
+      status: "approved",
+    }
+    createCalibrationMutation.mutate(payload)
+  }, [calibrationDraft, calibrationForm, createCalibrationMutation])
 
   const { data: networkSummaries, isLoading: loadingNetwork } = useQuery({
     queryKey: ["analytics-network", period, (stores ?? []).map((s) => s.id).join(",")],
@@ -291,6 +514,7 @@ const Analytics = () => {
     target: string | null
     status: MetricStatus
     metricKey?: "conversion" | "queue" | "dwell"
+    governance?: MetricGovernance | null
   }[] = [
     {
       title: "Total de Visitantes",
@@ -298,6 +522,7 @@ const Analytics = () => {
       change: periodLabel,
       target: null,
       status: { tone: "neutral", label: "Sem meta" },
+      governance: visitorsGovernance,
     },
     {
       title: "Taxa de Conversão (média)",
@@ -306,6 +531,7 @@ const Analytics = () => {
       target: `Meta ${TARGETS.conversion}%`,
       status: conversionStatus,
       metricKey: "conversion",
+      governance: conversionGovernance,
     },
     {
       title: "Fila Média (min)",
@@ -314,6 +540,7 @@ const Analytics = () => {
       target: `Meta ${TARGETS.queueMin} min`,
       status: queueStatus,
       metricKey: "queue",
+      governance: queueGovernance,
     },
     {
       title: "Permanência Média (min)",
@@ -322,6 +549,7 @@ const Analytics = () => {
       target: `Meta ${TARGETS.dwellMin} min`,
       status: dwellStatus,
       metricKey: "dwell",
+      governance: dwellGovernance,
     },
   ]
 
@@ -447,11 +675,22 @@ const Analytics = () => {
               <h3 className="text-sm font-medium text-gray-500">
                 {metric.title}
               </h3>
-              <span
-                className={`text-[11px] px-2 py-0.5 rounded-full border ${statusStyles[metric.status.tone]}`}
-              >
-                {metric.status.label}
-              </span>
+              <div className="flex flex-wrap items-center justify-end gap-2">
+                {metric.governance && (
+                  <span
+                    className={`text-[11px] px-2 py-0.5 rounded-full border ${
+                      governanceStyles[metric.governance.metric_status]
+                    }`}
+                  >
+                    {metric.governance.label ?? metric.governance.metric_status}
+                  </span>
+                )}
+                <span
+                  className={`text-[11px] px-2 py-0.5 rounded-full border ${statusStyles[metric.status.tone]}`}
+                >
+                  {metric.status.label}
+                </span>
+              </div>
             </div>
             <div className="flex items-end">
               <span className="text-2xl font-bold text-gray-800 mr-2">
@@ -465,6 +704,11 @@ const Analytics = () => {
             </div>
             {metric.target && (
               <p className="text-xs text-gray-400 mt-2">{metric.target}</p>
+            )}
+            {metric.governance && (
+              <p className="text-[11px] text-gray-400 mt-1">
+                Método: {metric.governance.source_method}
+              </p>
             )}
           </div>
         )})}
@@ -647,6 +891,568 @@ const Analytics = () => {
                     </tr>
                   )
                 })
+              )}
+            </tbody>
+          </table>
+        </div>
+      </div>
+
+      <div className="bg-white rounded-2xl border border-gray-100 shadow-sm p-5 sm:p-6">
+        <div className="flex flex-col gap-3 md:flex-row md:items-start md:justify-between">
+          <div>
+            <h3 className="text-lg font-semibold text-gray-800">Confiança Operacional de Visão</h3>
+            <p className="text-sm text-gray-500 mt-1">
+              Saúde por câmera e métrica para decidir onde recalibrar ROI, cobertura e operação.
+            </p>
+          </div>
+          <div className="text-sm text-gray-500">
+            {confidenceGeneratedAt ? `Atualizado em ${confidenceGeneratedAt}` : "Sem leitura recente"}
+          </div>
+        </div>
+
+        <div className="mt-4 grid gap-3 md:grid-cols-4">
+          <div className="rounded-2xl border border-gray-100 bg-gray-50 p-4">
+            <div className="text-xs uppercase tracking-wide text-gray-400">Status da loja</div>
+            <div className="mt-2">
+              <span
+                className={`inline-flex rounded-full border px-3 py-1 text-sm font-medium ${
+                  confidenceStyles[visionConfidence?.store_status ?? "recalibrar"]
+                }`}
+              >
+                {confidenceLabels[visionConfidence?.store_status ?? "recalibrar"]}
+              </span>
+            </div>
+          </div>
+          <div className="rounded-2xl border border-gray-100 bg-gray-50 p-4">
+            <div className="text-xs uppercase tracking-wide text-gray-400">ROIs publicadas</div>
+            <div className="mt-2 text-2xl font-semibold text-gray-800">
+              {confidenceSummary?.cameras_with_published_roi ?? 0}
+              <span className="ml-1 text-sm font-normal text-gray-500">
+                / {confidenceSummary?.cameras_total ?? 0}
+              </span>
+            </div>
+          </div>
+          <div className="rounded-2xl border border-gray-100 bg-gray-50 p-4">
+            <div className="text-xs uppercase tracking-wide text-gray-400">Métricas prontas</div>
+            <div className="mt-2 text-2xl font-semibold text-emerald-700">
+              {confidenceSummary?.metrics_ready ?? 0}
+            </div>
+          </div>
+          <div className="rounded-2xl border border-gray-100 bg-gray-50 p-4">
+            <div className="text-xs uppercase tracking-wide text-gray-400">Recalibrar</div>
+            <div className="mt-2 text-2xl font-semibold text-rose-700">
+              {confidenceSummary?.metrics_recalibrate ?? 0}
+            </div>
+          </div>
+        </div>
+
+        <div className="mt-4 grid gap-4 xl:grid-cols-2">
+          {loadingConfidence ? (
+            <div className="rounded-2xl border border-dashed border-gray-200 p-6 text-center text-sm text-gray-400 xl:col-span-2">
+              Carregando confiança operacional...
+            </div>
+          ) : (visionConfidence?.cameras ?? []).length === 0 ? (
+            <div className="rounded-2xl border border-dashed border-gray-200 p-6 text-center text-sm text-gray-400 xl:col-span-2">
+              Nenhuma câmera disponível para avaliação operacional.
+            </div>
+          ) : (
+            (visionConfidence?.cameras ?? []).map((camera) => (
+              <div key={camera.camera_id} className="rounded-2xl border border-gray-100 bg-white p-4">
+                <div className="flex flex-col gap-3 sm:flex-row sm:items-start sm:justify-between">
+                  <div>
+                    <div className="text-base font-semibold text-gray-800">{camera.camera_name}</div>
+                    <div className="mt-1 text-sm text-gray-500">
+                      {cameraRoleLabels[camera.camera_role] ?? camera.camera_role}
+                      {" • "}
+                      status câmera: {camera.camera_status}
+                    </div>
+                  </div>
+                  <span
+                    className={`inline-flex rounded-full border px-3 py-1 text-xs font-medium ${
+                      confidenceStyles[camera.store_status]
+                    }`}
+                  >
+                    {confidenceLabels[camera.store_status]}
+                  </span>
+                </div>
+
+                <div className="mt-3 flex flex-wrap gap-2 text-xs text-gray-500">
+                  <span className="rounded-full bg-gray-100 px-3 py-1">
+                    ROI: {camera.roi_published ? `publicada${camera.roi_version ? ` v${camera.roi_version}` : ""}` : "pendente"}
+                  </span>
+                  <span className="rounded-full bg-gray-100 px-3 py-1">
+                    Último heartbeat: {camera.last_seen_at ? new Date(camera.last_seen_at).toLocaleString("pt-BR") : "-"}
+                  </span>
+                </div>
+
+                <div className="mt-4 space-y-3">
+                  {camera.metrics.length === 0 ? (
+                    <div className="rounded-xl border border-dashed border-gray-200 px-4 py-3 text-sm text-gray-400">
+                      Sem métricas atribuídas para esta câmera.
+                    </div>
+                  ) : (
+                    camera.metrics.map((metric) => (
+                      <div key={`${camera.camera_id}-${metric.metric_key}`} className="rounded-xl border border-gray-100 bg-gray-50 p-4">
+                        <div className="flex flex-col gap-3 md:flex-row md:items-start md:justify-between">
+                          <div>
+                            <div className="text-sm font-semibold text-gray-800">{metric.metric_key}</div>
+                            <div className="text-xs text-gray-500">{metric.event_type}</div>
+                          </div>
+                          <span
+                            className={`inline-flex rounded-full border px-3 py-1 text-xs font-medium ${
+                              confidenceStyles[metric.status]
+                            }`}
+                          >
+                            {confidenceLabels[metric.status]}
+                          </span>
+                        </div>
+                        <div className="mt-3 grid gap-3 sm:grid-cols-3 text-sm">
+                          <div>
+                            <div className="text-xs uppercase tracking-wide text-gray-400">Cobertura</div>
+                            <div className="mt-1 font-semibold text-gray-800">{metric.coverage_score}/100</div>
+                          </div>
+                          <div>
+                            <div className="text-xs uppercase tracking-wide text-gray-400">Confiança</div>
+                            <div className="mt-1 font-semibold text-gray-800">{metric.confidence_score}/100</div>
+                          </div>
+                          <div>
+                            <div className="text-xs uppercase tracking-wide text-gray-400">Eventos 24h</div>
+                            <div className="mt-1 font-semibold text-gray-800">{metric.events_24h}</div>
+                          </div>
+                        </div>
+                        <div className="mt-3 flex flex-wrap gap-2">
+                          {(metric.reasons.length === 0 ? ["Sem bloqueios operacionais"] : metric.reasons).map((reason) => (
+                            <span
+                              key={`${camera.camera_id}-${metric.metric_key}-${reason}`}
+                              className="rounded-full border border-gray-200 bg-white px-3 py-1 text-xs text-gray-600"
+                            >
+                              {confidenceReasonLabels[reason] ?? reason}
+                            </span>
+                          ))}
+                        </div>
+                        <div className="mt-3 rounded-xl border border-dashed border-gray-200 bg-white px-4 py-3 text-sm text-gray-600">
+                          {metric.latest_calibration ? (
+                            <div className="flex flex-col gap-2 sm:flex-row sm:flex-wrap sm:items-center">
+                              <span className="font-medium text-gray-700">
+                                Ultima calibracao:{" "}
+                                {metric.latest_calibration.approved_at
+                                  ? new Date(metric.latest_calibration.approved_at).toLocaleString("pt-BR")
+                                  : "sem aprovacao"}
+                              </span>
+                              <span>
+                                erro:{" "}
+                                {metric.latest_calibration.error_pct != null
+                                  ? `${metric.latest_calibration.error_pct.toFixed(1)}%`
+                                  : "-"}
+                              </span>
+                              <span>
+                                amostra: {metric.latest_calibration.manual_sample_size ?? "-"}
+                              </span>
+                              <span>
+                                ROI v{metric.latest_calibration.roi_version ?? metric.roi_version ?? "-"}
+                              </span>
+                              <span>
+                                status: {metric.latest_calibration.status ?? "-"}
+                              </span>
+                              <span>
+                                aprovador: {metric.latest_calibration.approved_by ?? "-"}
+                              </span>
+                            </div>
+                          ) : (
+                            <span>Nenhuma calibracao manual registrada para esta metrica.</span>
+                          )}
+                        </div>
+                        <div className="mt-3">
+                          <button
+                            type="button"
+                            className="inline-flex items-center justify-center rounded-lg border border-gray-200 bg-white px-4 py-2 text-sm font-medium text-gray-700 transition hover:bg-gray-100 disabled:cursor-not-allowed disabled:opacity-60"
+                            onClick={() =>
+                              openCalibrationDraft(
+                                camera.camera_id,
+                                metric.metric_key as CreateStoreVisionCalibrationRunPayload["metric_type"],
+                                metric.metric_key,
+                                metric.roi_version,
+                                metric.latest_calibration?.system_value ?? null
+                              )
+                            }
+                            disabled={!canManageCalibration}
+                          >
+                            Registrar calibração manual
+                          </button>
+                        </div>
+                      </div>
+                    ))
+                  )}
+                </div>
+              </div>
+            ))
+          )}
+        </div>
+      </div>
+
+      <div className="bg-white rounded-2xl border border-gray-100 shadow-sm p-5 sm:p-6">
+        <div className="flex flex-col gap-3 md:flex-row md:items-start md:justify-between">
+          <div>
+            <h3 className="text-lg font-semibold text-gray-800">Plano de Recalibração</h3>
+            <p className="text-sm text-gray-500 mt-1">
+              Fila priorizada de ações por câmera e métrica para tirar a loja de `recalibrar`.
+            </p>
+          </div>
+          <div className="flex flex-wrap gap-2 text-xs">
+            <span className="rounded-full bg-rose-50 px-3 py-1 font-medium text-rose-700">
+              Alta: {calibrationSummary?.high_priority ?? 0}
+            </span>
+            <span className="rounded-full bg-amber-50 px-3 py-1 font-medium text-amber-700">
+              Média: {calibrationSummary?.medium_priority ?? 0}
+            </span>
+          </div>
+        </div>
+
+        <div className="mt-4 space-y-3">
+          {loadingCalibrationPlan ? (
+            <div className="rounded-2xl border border-dashed border-gray-200 p-6 text-center text-sm text-gray-400">
+              Gerando plano de recalibração...
+            </div>
+          ) : (calibrationPlan?.actions ?? []).length === 0 ? (
+            <div className="rounded-2xl border border-dashed border-gray-200 p-6 text-center text-sm text-gray-400">
+              Nenhuma ação pendente. A loja está sem bloqueios operacionais relevantes no momento.
+            </div>
+          ) : (
+            (calibrationPlan?.actions ?? []).map((action) => (
+              <div key={`${action.camera_id}-${action.metric_key}`} className="rounded-2xl border border-gray-100 bg-gray-50 p-4">
+                <div className="flex flex-col gap-3 lg:flex-row lg:items-start lg:justify-between">
+                  <div>
+                    <div className="flex flex-wrap items-center gap-2">
+                      <span
+                        className={`inline-flex rounded-full px-2.5 py-1 text-xs font-medium ${
+                          action.priority === "alta" ? "bg-rose-100 text-rose-700" : "bg-amber-100 text-amber-700"
+                        }`}
+                      >
+                        {action.priority === "alta" ? "Prioridade alta" : "Prioridade média"}
+                      </span>
+                      <span className="text-sm font-semibold text-gray-800">{action.title}</span>
+                    </div>
+                    <div className="mt-2 text-sm text-gray-600">
+                      {action.camera_name} • {cameraRoleLabels[action.camera_role] ?? action.camera_role} • {action.metric_label}
+                    </div>
+                    <p className="mt-2 text-sm text-gray-600">{action.description}</p>
+                    <p className="mt-1 text-sm text-gray-500">{action.playbook_hint}</p>
+                  </div>
+                  <div className="grid grid-cols-3 gap-3 text-sm lg:min-w-64">
+                    <div className="rounded-xl bg-white p-3">
+                      <div className="text-xs uppercase tracking-wide text-gray-400">Cobertura</div>
+                      <div className="mt-1 font-semibold text-gray-800">{action.coverage_score}/100</div>
+                    </div>
+                    <div className="rounded-xl bg-white p-3">
+                      <div className="text-xs uppercase tracking-wide text-gray-400">Confiança</div>
+                      <div className="mt-1 font-semibold text-gray-800">{action.confidence_score}/100</div>
+                    </div>
+                    <div className="rounded-xl bg-white p-3">
+                      <div className="text-xs uppercase tracking-wide text-gray-400">Eventos 24h</div>
+                      <div className="mt-1 font-semibold text-gray-800">{action.events_24h}</div>
+                    </div>
+                  </div>
+                </div>
+
+                <div className="mt-3 flex flex-wrap gap-2">
+                  {action.reasons.map((reason) => (
+                    <span
+                      key={`${action.camera_id}-${action.metric_key}-${reason}`}
+                      className="rounded-full border border-gray-200 bg-white px-3 py-1 text-xs text-gray-600"
+                    >
+                      {confidenceReasonLabels[reason] ?? reason}
+                    </span>
+                  ))}
+                </div>
+
+                <div className="mt-4 flex flex-col gap-2 sm:flex-row sm:items-center sm:justify-between">
+                  <div className="text-xs text-gray-500">
+                    Último evento: {action.last_event_at ? new Date(action.last_event_at).toLocaleString("pt-BR") : "sem evento recente"}
+                  </div>
+                  <div className="flex flex-col gap-2 sm:flex-row">
+                    <button
+                      type="button"
+                      className="inline-flex items-center justify-center rounded-lg border border-gray-200 bg-white px-4 py-2 text-sm font-medium text-gray-700 transition hover:bg-gray-100 disabled:cursor-not-allowed disabled:opacity-60"
+                      onClick={() =>
+                        openCalibrationDraft(
+                          action.camera_id,
+                          action.metric_key as CreateStoreVisionCalibrationRunPayload["metric_type"],
+                          action.metric_label,
+                          action.roi_version,
+                          null
+                        )
+                      }
+                      disabled={!canManageCalibration}
+                    >
+                      Registrar calibração
+                    </button>
+                    <button
+                      type="button"
+                      className="inline-flex items-center justify-center rounded-lg border border-sky-200 bg-sky-50 px-4 py-2 text-sm font-medium text-sky-700 transition hover:bg-sky-100"
+                      onClick={() => setAuditEventType(action.event_type)}
+                    >
+                      Filtrar auditoria por este evento
+                    </button>
+                  </div>
+                </div>
+              </div>
+            ))
+          )}
+        </div>
+      </div>
+
+      <div className="bg-white rounded-2xl border border-gray-100 shadow-sm p-5 sm:p-6">
+        <div className="flex flex-col gap-3 md:flex-row md:items-start md:justify-between">
+          <div>
+            <h3 className="text-lg font-semibold text-gray-800">Registrar Calibração Manual</h3>
+            <p className="text-sm text-gray-500 mt-1">
+              Validação assistida por câmera e métrica para aprovar a leitura operacional.
+            </p>
+          </div>
+        </div>
+
+        {!canManageCalibration ? (
+          <div className="mt-4 rounded-2xl border border-amber-200 bg-amber-50 p-4 text-sm text-amber-800">
+            Seu perfil está em modo leitura para esta loja. A aprovação manual de calibração exige papel `owner`, `admin` ou `manager`.
+          </div>
+        ) : null}
+
+        {!calibrationDraft ? (
+          <div className="mt-4 rounded-2xl border border-dashed border-gray-200 p-6 text-center text-sm text-gray-400">
+            Selecione “Registrar calibração” em uma métrica ou ação do plano para preencher a validação.
+          </div>
+        ) : (
+          <div className="mt-4 rounded-2xl border border-gray-100 bg-gray-50 p-4">
+            <div className="flex flex-col gap-2 md:flex-row md:items-center md:justify-between">
+              <div>
+                <div className="text-sm font-semibold text-gray-800">{calibrationDraft.metricLabel}</div>
+                <div className="text-xs text-gray-500">
+                  câmera {calibrationDraft.cameraId}
+                  {calibrationDraft.roiVersion ? ` • ROI v${calibrationDraft.roiVersion}` : ""}
+                </div>
+              </div>
+              <button
+                type="button"
+                className="inline-flex items-center justify-center rounded-lg border border-gray-200 bg-white px-3 py-2 text-sm font-medium text-gray-600 transition hover:bg-gray-100"
+                onClick={() => setCalibrationDraft(null)}
+              >
+                Fechar
+              </button>
+            </div>
+
+            <div className="mt-4 grid gap-4 md:grid-cols-3">
+              <label className="flex flex-col gap-2 text-sm text-gray-700">
+                <span>Amostra manual</span>
+                <input
+                  type="number"
+                  min="1"
+                  className="rounded-lg border border-gray-300 bg-white px-3 py-2"
+                  value={calibrationForm.manualSampleSize}
+                  onChange={(event) => setCalibrationForm((current) => ({ ...current, manualSampleSize: event.target.value }))}
+                />
+              </label>
+              <label className="flex flex-col gap-2 text-sm text-gray-700">
+                <span>Valor manual de referência</span>
+                <input
+                  type="number"
+                  step="0.01"
+                  className="rounded-lg border border-gray-300 bg-white px-3 py-2"
+                  value={calibrationForm.manualReferenceValue}
+                  onChange={(event) => setCalibrationForm((current) => ({ ...current, manualReferenceValue: event.target.value }))}
+                />
+              </label>
+              <label className="flex flex-col gap-2 text-sm text-gray-700">
+                <span>Valor do sistema</span>
+                <input
+                  type="number"
+                  step="0.01"
+                  className="rounded-lg border border-gray-300 bg-white px-3 py-2"
+                  value={calibrationForm.systemValue}
+                  onChange={(event) => setCalibrationForm((current) => ({ ...current, systemValue: event.target.value }))}
+                />
+              </label>
+            </div>
+
+            <label className="mt-4 flex flex-col gap-2 text-sm text-gray-700">
+              <span>Notas da validação</span>
+              <textarea
+                rows={3}
+                className="rounded-lg border border-gray-300 bg-white px-3 py-2"
+                value={calibrationForm.notes}
+                onChange={(event) => setCalibrationForm((current) => ({ ...current, notes: event.target.value }))}
+              />
+            </label>
+
+            <div className="mt-4 flex flex-col gap-2 sm:flex-row sm:justify-end">
+              <button
+                type="button"
+                className="inline-flex items-center justify-center rounded-lg border border-gray-200 bg-white px-4 py-2 text-sm font-medium text-gray-700 transition hover:bg-gray-100"
+                onClick={() => setCalibrationDraft(null)}
+              >
+                Cancelar
+              </button>
+              <button
+                type="button"
+                className="inline-flex items-center justify-center rounded-lg border border-emerald-200 bg-emerald-50 px-4 py-2 text-sm font-medium text-emerald-700 transition hover:bg-emerald-100 disabled:cursor-not-allowed disabled:opacity-60"
+                onClick={submitCalibrationDraft}
+                disabled={createCalibrationMutation.isPending || !canManageCalibration}
+              >
+                {createCalibrationMutation.isPending ? "Salvando..." : "Salvar calibração"}
+              </button>
+            </div>
+          </div>
+        )}
+      </div>
+
+      <div className="bg-white rounded-2xl border border-gray-100 shadow-sm p-5 sm:p-6">
+        <div className="flex flex-col gap-3 md:flex-row md:items-start md:justify-between">
+          <div>
+            <h3 className="text-lg font-semibold text-gray-800">Histórico de Calibração</h3>
+            <p className="text-sm text-gray-500 mt-1">
+              Últimas validações manuais aprovadas por câmera e métrica.
+            </p>
+          </div>
+        </div>
+
+        <div className="mt-4 overflow-x-auto">
+          <table className="min-w-full text-sm">
+            <thead className="text-xs uppercase tracking-wide text-gray-400">
+              <tr>
+                <th className="py-2 pr-4 text-left">Câmera</th>
+                <th className="py-2 px-2 text-left">Métrica</th>
+                <th className="py-2 px-2 text-left">ROI</th>
+                <th className="py-2 px-2 text-left">Status</th>
+                <th className="py-2 px-2 text-left">Erro</th>
+                <th className="py-2 px-2 text-left">Amostra</th>
+                <th className="py-2 px-2 text-left">Aprovador</th>
+                <th className="py-2 pl-2 text-left">Aprovada em</th>
+              </tr>
+            </thead>
+            <tbody className="divide-y divide-gray-100">
+              {loadingCalibrationRuns ? (
+                <tr>
+                  <td colSpan={8} className="py-6 text-center text-gray-400">
+                    Carregando histórico de calibração...
+                  </td>
+                </tr>
+              ) : (calibrationRuns?.items ?? []).length === 0 ? (
+                <tr>
+                  <td colSpan={8} className="py-6 text-center text-gray-400">
+                    Nenhuma calibração manual registrada.
+                  </td>
+                </tr>
+              ) : (
+                (calibrationRuns?.items ?? []).map((item) => (
+                  <tr key={item.id}>
+                    <td className="py-3 pr-4 text-gray-700">{item.camera_id}</td>
+                    <td className="py-3 px-2 text-gray-700">{item.metric_type}</td>
+                    <td className="py-3 px-2 text-gray-700">{item.roi_version ? `v${item.roi_version}` : "-"}</td>
+                    <td className="py-3 px-2 text-gray-700">{item.status}</td>
+                    <td className="py-3 px-2 text-gray-700">
+                      {item.error_pct != null ? `${item.error_pct.toFixed(1)}%` : "-"}
+                    </td>
+                    <td className="py-3 px-2 text-gray-700">{item.manual_sample_size ?? "-"}</td>
+                    <td className="py-3 px-2 text-gray-700">{item.approved_by ?? "-"}</td>
+                    <td className="py-3 pl-2 text-gray-700">
+                      {item.approved_at ? new Date(item.approved_at).toLocaleString("pt-BR") : "-"}
+                    </td>
+                  </tr>
+                ))
+              )}
+            </tbody>
+          </table>
+        </div>
+      </div>
+
+      <div className="bg-white rounded-2xl border border-gray-100 shadow-sm p-5 sm:p-6">
+        <div className="flex flex-col gap-3 md:flex-row md:items-start md:justify-between">
+          <div>
+            <h3 className="text-lg font-semibold text-gray-800">Auditoria de Visão</h3>
+            <p className="text-sm text-gray-500 mt-1">
+              Inspeção operacional dos eventos atômicos persistidos por câmera, ROI e timestamp.
+            </p>
+          </div>
+          <div className="flex flex-col gap-2 sm:flex-row sm:items-center">
+            <select
+              aria-label="Filtrar auditoria por evento"
+              className="w-full sm:w-auto border border-gray-300 rounded-lg px-4 py-2"
+              value={auditEventType}
+              onChange={(event) => setAuditEventType(event.target.value)}
+            >
+              {auditEventTypeOptions.map((option) => (
+                <option key={option.value || "all"} value={option.value}>
+                  {option.label}
+                </option>
+              ))}
+            </select>
+          </div>
+        </div>
+
+        <div className="mt-4 flex flex-wrap gap-2">
+          {auditSummaryEntries.length === 0 ? (
+            <span className="text-sm text-gray-400">Sem eventos no período selecionado.</span>
+          ) : (
+            auditSummaryEntries.map(([key, value]) => (
+              <span
+                key={key}
+                className="inline-flex items-center gap-2 rounded-full border border-sky-100 bg-sky-50 px-3 py-1 text-xs font-medium text-sky-700"
+              >
+                <span>{key}</span>
+                <span className="rounded-full bg-white px-2 py-0.5 text-sky-800">{value}</span>
+              </span>
+            ))
+          )}
+        </div>
+
+        <div className="mt-4 overflow-x-auto">
+          <table className="min-w-full text-sm">
+            <thead className="text-xs uppercase tracking-wide text-gray-400">
+              <tr>
+                <th className="py-2 pr-4 text-left">Evento</th>
+                <th className="py-2 px-2 text-left">Câmera</th>
+                <th className="py-2 px-2 text-left">ROI</th>
+                <th className="py-2 px-2 text-left">Valor</th>
+                <th className="py-2 px-2 text-left">Duração</th>
+                <th className="py-2 pl-2 text-left">Timestamp</th>
+              </tr>
+            </thead>
+            <tbody className="divide-y divide-gray-100">
+              {loadingAudit ? (
+                <tr>
+                  <td colSpan={6} className="py-6 text-center text-gray-400">
+                    Carregando auditoria...
+                  </td>
+                </tr>
+              ) : (audit?.items ?? []).length === 0 ? (
+                <tr>
+                  <td colSpan={6} className="py-6 text-center text-gray-400">
+                    Nenhum evento atômico encontrado para os filtros atuais.
+                  </td>
+                </tr>
+              ) : (
+                (audit?.items ?? []).map((item) => (
+                  <tr key={item.receipt_id} className="align-top">
+                    <td className="py-3 pr-4 text-gray-700">
+                      <div className="font-medium">{item.event_type}</div>
+                      <div className="text-xs text-gray-400">{item.metric_type ?? "-"}</div>
+                    </td>
+                    <td className="py-3 px-2 text-gray-700">
+                      <div>{item.camera_id ?? "-"}</div>
+                      <div className="text-xs text-gray-400">{item.camera_role ?? "-"}</div>
+                    </td>
+                    <td className="py-3 px-2 text-gray-700">
+                      <div>{item.roi_entity_id ?? "-"}</div>
+                      <div className="text-xs text-gray-400">{item.zone_id ?? "-"}</div>
+                    </td>
+                    <td className="py-3 px-2 text-gray-700">{formatAuditValue(item)}</td>
+                    <td className="py-3 px-2 text-gray-700">
+                      {item.duration_seconds != null ? `${item.duration_seconds}s` : "-"}
+                    </td>
+                    <td className="py-3 pl-2 text-gray-700">
+                      {item.ts ? new Date(item.ts).toLocaleString("pt-BR") : "-"}
+                    </td>
+                  </tr>
+                ))
               )}
             </tbody>
           </table>

@@ -121,6 +121,26 @@ export interface StoreAnalyticsSummary {
     footfall: number;
     dwell_seconds_avg: number;
   }>;
+  meta?: {
+    metric_governance?: {
+      totals?: Record<
+        string,
+        MetricGovernanceItem
+      >;
+      series?: Record<
+        string,
+        MetricGovernanceItem
+      >;
+      zones?: MetricGovernanceItem;
+    };
+  };
+}
+
+export type MetricGovernanceItem = {
+  metric_status: "official" | "proxy" | "estimated" | "unsupported"
+  source_method: string
+  ownership_mode?: string
+  label?: string
 }
 
 export type StoreOverviewCamera = {
@@ -270,7 +290,13 @@ export type StoreCeoDashboard = {
     idle_peak_hour?: string | null
     message?: string | null
   }
-  meta?: Record<string, unknown>
+  meta?: {
+    idle_index_estimated?: boolean
+    idle_index_method?: string
+    queue_now_method?: string
+    metric_governance?: Record<string, MetricGovernanceItem>
+    [key: string]: unknown
+  }
 }
 
 export type StoreEvidenceItem = {
@@ -290,6 +316,181 @@ export type StoreEvidenceResponse = {
   store_id: string
   hour_bucket: string
   events: StoreEvidenceItem[]
+}
+
+export type StoreVisionAuditItem = {
+  receipt_id: string
+  event_type: string
+  camera_id?: string | null
+  camera_role?: string | null
+  zone_id?: string | null
+  roi_entity_id?: string | null
+  roi_version?: string | null
+  metric_type?: string | null
+  ownership?: string | null
+  direction?: string | null
+  count_value: number
+  staff_active_est?: number | null
+  duration_seconds?: number | null
+  confidence?: number | null
+  track_id_hash?: string | null
+  ts?: string | null
+  raw_payload?: Record<string, unknown>
+}
+
+export type StoreVisionAuditResponse = {
+  store_id: string
+  from: string
+  to: string
+  filters: {
+    event_type?: string | null
+    camera_id?: string | null
+    zone_id?: string | null
+    roi_entity_id?: string | null
+    limit: number
+  }
+  summary: Record<string, number>
+  items: StoreVisionAuditItem[]
+}
+
+export type VisionConfidenceStatus = "pronto" | "parcial" | "recalibrar"
+
+export type StoreVisionConfidenceMetric = {
+  metric_key: string
+  event_type: string
+  status: VisionConfidenceStatus
+  coverage_score: number
+  confidence_score: number
+  events_24h: number
+  last_event_at?: string | null
+  roi_version?: string | null
+  reasons: string[]
+  latest_calibration?: {
+    metric_type: string
+    roi_version?: string | null
+    manual_sample_size?: number | null
+    manual_reference_value?: number | null
+    system_value?: number | null
+    error_pct?: number | null
+    approved_by?: string | null
+    approved_at?: string | null
+    notes?: string | null
+    status?: string | null
+    created_at?: string | null
+  } | null
+}
+
+export type StoreVisionConfidenceCamera = {
+  camera_id: string
+  camera_name: string
+  camera_role: string
+  camera_status: string
+  store_status: VisionConfidenceStatus
+  last_seen_at?: string | null
+  roi_published: boolean
+  roi_version?: string | null
+  metrics: StoreVisionConfidenceMetric[]
+}
+
+export type StoreVisionConfidenceResponse = {
+  store_id: string
+  generated_at: string
+  window_hours: number
+  store_status: VisionConfidenceStatus
+  summary: {
+    cameras_total: number
+    cameras_with_published_roi: number
+    metrics_ready: number
+    metrics_partial: number
+    metrics_recalibrate: number
+  }
+  cameras: StoreVisionConfidenceCamera[]
+}
+
+export type StoreVisionCalibrationAction = {
+  camera_id: string
+  camera_name: string
+  camera_role: string
+  camera_status: string
+  metric_key: string
+  metric_label: string
+  event_type: string
+  status: VisionConfidenceStatus
+  priority: "alta" | "media"
+  action_code: string
+  title: string
+  description: string
+  playbook_hint: string
+  reasons: string[]
+  coverage_score: number
+  confidence_score: number
+  events_24h: number
+  roi_published: boolean
+  roi_version?: string | null
+  last_event_at?: string | null
+  last_seen_at?: string | null
+  audit_filters: {
+    camera_id?: string | null
+    event_type?: string | null
+  }
+}
+
+export type StoreVisionCalibrationPlanResponse = {
+  store_id: string
+  generated_at: string
+  window_hours: number
+  store_status: VisionConfidenceStatus
+  summary: {
+    cameras_total: number
+    cameras_with_published_roi: number
+    metrics_ready: number
+    metrics_partial: number
+    metrics_recalibrate: number
+    actions_total: number
+    high_priority: number
+    medium_priority: number
+  }
+  actions: StoreVisionCalibrationAction[]
+}
+
+export type StoreVisionCalibrationRun = {
+  id: string
+  store_id: string
+  camera_id: string
+  metric_type: string
+  roi_version?: string | null
+  manual_sample_size?: number | null
+  manual_reference_value?: number | null
+  system_value?: number | null
+  error_pct?: number | null
+  approved_by?: string | null
+  approved_at?: string | null
+  notes?: string | null
+  status: string
+  created_at?: string | null
+  updated_at?: string | null
+}
+
+export type StoreVisionCalibrationRunsResponse = {
+  store_id: string
+  filters: {
+    camera_id?: string | null
+    metric_type?: string | null
+    limit: number
+  }
+  items: StoreVisionCalibrationRun[]
+}
+
+export type CreateStoreVisionCalibrationRunPayload = {
+  camera_id: string
+  metric_type: "entry_exit" | "queue" | "checkout_proxy" | "occupancy"
+  roi_version?: string
+  manual_sample_size?: number
+  manual_reference_value?: number
+  system_value?: number
+  error_pct?: number
+  notes?: string
+  status?: "approved" | "draft"
 }
 
 const omitEmpty = <T extends Record<string, unknown>>(payload: T): Partial<T> => {
@@ -575,6 +776,62 @@ export const storesService = {
   async getStoreAnalyticsSummary(storeId: string, params?: { period?: string; from?: string; to?: string; bucket?: "hour" | "day" }): Promise<StoreAnalyticsSummary> {
     const response = await api.get(`/v1/stores/${storeId}/metrics/summary/`, { params })
     return response.data as StoreAnalyticsSummary
+  },
+
+  async getStoreVisionAudit(
+    storeId: string,
+    params?: {
+      from?: string
+      to?: string
+      event_type?: string
+      camera_id?: string
+      zone_id?: string
+      roi_entity_id?: string
+      limit?: number
+    }
+  ): Promise<StoreVisionAuditResponse> {
+    const response = await api.get(`/v1/stores/${storeId}/vision/audit/`, { params })
+    return response.data as StoreVisionAuditResponse
+  },
+
+  async getStoreVisionConfidence(
+    storeId: string,
+    params?: {
+      window_hours?: number
+    }
+  ): Promise<StoreVisionConfidenceResponse> {
+    const response = await api.get(`/v1/stores/${storeId}/vision/confidence/`, { params })
+    return response.data as StoreVisionConfidenceResponse
+  },
+
+  async getStoreVisionCalibrationPlan(
+    storeId: string,
+    params?: {
+      window_hours?: number
+    }
+  ): Promise<StoreVisionCalibrationPlanResponse> {
+    const response = await api.get(`/v1/stores/${storeId}/vision/calibration-plan/`, { params })
+    return response.data as StoreVisionCalibrationPlanResponse
+  },
+
+  async getStoreVisionCalibrationRuns(
+    storeId: string,
+    params?: {
+      camera_id?: string
+      metric_type?: string
+      limit?: number
+    }
+  ): Promise<StoreVisionCalibrationRunsResponse> {
+    const response = await api.get(`/v1/stores/${storeId}/vision/calibration-runs/`, { params })
+    return response.data as StoreVisionCalibrationRunsResponse
+  },
+
+  async createStoreVisionCalibrationRun(
+    storeId: string,
+    payload: CreateStoreVisionCalibrationRunPayload
+  ): Promise<StoreVisionCalibrationRun> {
+    const response = await api.post(`/v1/stores/${storeId}/vision/calibration-runs/`, payload)
+    return response.data as StoreVisionCalibrationRun
   },
 
   async getStoreOverview(storeId: string): Promise<StoreOverview> {

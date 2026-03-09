@@ -66,7 +66,25 @@ vi.mock("../../services/stores", () => ({
         queue_now_people: 0,
       },
       overlay: {},
-      meta: {},
+      meta: {
+        metric_governance: {
+          avg_queue_seconds: {
+            metric_status: "official",
+            source_method: "cashier_queue_primary_camera",
+            label: "Oficial",
+          },
+          queue_now_people: {
+            metric_status: "estimated",
+            source_method: "last_bucket_queue_avg_seconds",
+            label: "Estimativa",
+          },
+          flow_by_hour: {
+            metric_status: "official",
+            source_method: "entry_camera_footfall",
+            label: "Oficial",
+          },
+        },
+      },
     }),
   },
 }))

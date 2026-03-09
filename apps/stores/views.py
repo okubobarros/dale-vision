@@ -18,7 +18,7 @@ from django.utils import timezone
 from django.conf import settings
 from django.utils.dateparse import parse_datetime
 from apps.core.models import Store, OrgMember, Organization, Camera, Employee, DetectionEvent
-from apps.edge.models import EdgeToken
+from apps.edge.models import EdgeToken, StoreCalibrationRun
 from apps.edge.auth import validate_store_token, EdgeAwareJWTAuthentication
 from apps.cameras.limits import (
     enforce_trial_camera_limit,
@@ -34,6 +34,7 @@ from apps.cameras.permissions import (
     ALLOWED_READ_ROLES,
 )
 from apps.cameras.serializers import CameraSerializer
+from apps.cameras.roi import get_latest_published_roi_config
 from apps.billing.utils import (
     PaywallError,
     enforce_trial_store_limit,
@@ -48,6 +49,59 @@ from apps.stores.services.user_uuid import ensure_user_uuid
 from apps.stores.services.user_orgs import get_user_org_ids
 
 logger = logging.getLogger(__name__)
+
+
+def _build_metric_governance():
+    return {
+        "total_visitors": {
+            "metric_status": "official",
+            "source_method": "entry_camera_footfall",
+            "ownership_mode": "single_camera_owner",
+            "label": "Oficial",
+        },
+        "avg_dwell_seconds": {
+            "metric_status": "estimated",
+            "source_method": "bucket_average_dwell_proxy",
+            "ownership_mode": "single_camera_owner",
+            "label": "Estimativa",
+        },
+        "avg_queue_seconds": {
+            "metric_status": "official",
+            "source_method": "cashier_queue_primary_camera",
+            "ownership_mode": "single_camera_owner",
+            "label": "Oficial",
+        },
+        "avg_staff_active": {
+            "metric_status": "official",
+            "source_method": "cashier_staff_primary_camera",
+            "ownership_mode": "single_camera_owner",
+            "label": "Oficial",
+        },
+        "avg_conversion_rate": {
+            "metric_status": "proxy",
+            "source_method": "checkout_events_over_footfall",
+            "ownership_mode": "single_camera_owner",
+            "label": "Proxy",
+        },
+        "queue_now_people": {
+            "metric_status": "estimated",
+            "source_method": "last_bucket_queue_avg_seconds",
+            "ownership_mode": "single_camera_owner",
+            "label": "Estimativa",
+        },
+        "idle_index": {
+            "metric_status": "estimated",
+            "source_method": "staff_active_est_normalized",
+            "ownership_mode": "single_camera_owner",
+            "label": "Estimativa",
+        },
+        "zones": {
+            "metric_status": "estimated",
+            "source_method": "zone_traffic_without_cross_camera_dedupe",
+            "ownership_mode": "single_camera_owner",
+            "label": "Estimativa",
+        },
+    }
 
 def _error_response(code: str, message: str, status_code: int, *, details=None, deprecated_detail=None):
     payload = {
@@ -244,6 +298,368 @@ def _get_org_timezone(store: Store):
         return ZoneInfo(tz_name)
     except Exception:
         return timezone.get_current_timezone()
+
+
+VISION_CONFIDENCE_METRIC_RULES = {
+    "entrada": [
+        {"metric_key": "entry_exit", "event_type": "vision.crossing.v1", "target_events_24h": 20},
+    ],
+    "balcao": [
+        {"metric_key": "queue", "event_type": "vision.queue_state.v1", "target_events_24h": 120},
+        {"metric_key": "checkout_proxy", "event_type": "vision.checkout_proxy.v1", "target_events_24h": 10},
+    ],
+    "salao": [
+        {"metric_key": "occupancy", "event_type": "vision.zone_occupancy.v1", "target_events_24h": 120},
+    ],
+}
+
+
+def _infer_camera_role_from_roi_or_name(camera: Camera, roi_config: dict | None) -> str:
+    config = roi_config or {}
+    zones = config.get("zones") if isinstance(config, dict) else []
+    lines = config.get("lines") if isinstance(config, dict) else []
+    zone_names = {
+        str((item or {}).get("name") or "").strip().lower()
+        for item in (zones or [])
+        if isinstance(item, dict)
+    }
+    if lines:
+        return "entrada"
+    if zone_names & {"fila", "area_atendimento_fila", "ponto_pagamento", "zona_funcionario_caixa"}:
+        return "balcao"
+    if zone_names & {"area_consumo", "salao", "mesa"}:
+        return "salao"
+
+    name = str(getattr(camera, "name", "") or "").lower()
+    ext = str(getattr(camera, "external_id", "") or "").lower()
+    if "caixa" in name or "caixa" in ext or "checkout" in name or "checkout" in ext:
+        return "balcao"
+    if "entrada" in name or "entrada" in ext:
+        return "entrada"
+    if "salao" in name or "salao" in ext:
+        return "salao"
+    return "unknown"
+
+
+def _camera_operational_score(status_value: str) -> int:
+    normalized = str(status_value or "unknown").lower()
+    if normalized == "online":
+        return 100
+    if normalized == "degraded":
+        return 65
+    if normalized == "unknown":
+        return 35
+    return 10
+
+
+def _freshness_score(last_event_at):
+    if not last_event_at:
+        return 0
+    age_seconds = max(0, int((timezone.now() - last_event_at).total_seconds()))
+    if age_seconds <= 30 * 60:
+        return 100
+    if age_seconds <= 6 * 3600:
+        return 70
+    if age_seconds <= 24 * 3600:
+        return 40
+    return 10
+
+
+def _classify_confidence_status(coverage_score: int, confidence_score: int) -> str:
+    if coverage_score >= 70 and confidence_score >= 70:
+        return "pronto"
+    if coverage_score >= 40 and confidence_score >= 40:
+        return "parcial"
+    return "recalibrar"
+
+
+def _metric_display_label(metric_key: str) -> str:
+    labels = {
+        "entry_exit": "Fluxo de entrada/saida",
+        "queue": "Fila",
+        "checkout_proxy": "Checkout proxy",
+        "occupancy": "Ocupacao",
+    }
+    return labels.get(metric_key, metric_key)
+
+
+def _camera_role_playbook(camera_role: str) -> str:
+    playbooks = {
+        "entrada": "Validar direcao da linha, area de passagem e cobertura total da porta.",
+        "balcao": "Validar zonas de fila, caixa e equipe; revisar oclusoes e campo de visao.",
+        "salao": "Validar area de consumo, permanencia e cobertura da zona principal.",
+    }
+    return playbooks.get(camera_role, "Validar enquadramento, ROI publicada e saude operacional da camera.")
+
+
+def _build_calibration_actions(cameras_out: list[dict]) -> tuple[list[dict], dict]:
+    actions = []
+    high_priority = 0
+    medium_priority = 0
+    for camera in cameras_out:
+        for metric in camera.get("metrics") or []:
+            if metric.get("status") == "pronto":
+                continue
+            reasons = metric.get("reasons") or []
+            if "roi_not_published" in reasons:
+                action_code = "publish_roi"
+                title = "Publicar ROI da camera"
+                description = "A metrica nao pode ser confiavel sem ROI publicada e versionada."
+                priority = "alta"
+            elif "camera_not_healthy" in reasons:
+                action_code = "recover_camera_health"
+                title = "Recuperar saude operacional da camera"
+                description = "A camera precisa voltar a online ou degraded estavel antes de validar a metrica."
+                priority = "alta"
+            elif "stale_or_missing_events" in reasons:
+                action_code = "inspect_event_pipeline"
+                title = "Inspecionar pipeline de eventos"
+                description = "Ha ausencia ou envelhecimento de eventos atomicos para a metrica nas ultimas horas."
+                priority = "alta" if metric.get("events_24h", 0) == 0 else "media"
+            else:
+                action_code = "tune_roi_coverage"
+                title = "Ajustar cobertura e calibracao"
+                description = "A metrica esta viva, mas com volume insuficiente para cobertura confiavel."
+                priority = "media"
+
+            if priority == "alta":
+                high_priority += 1
+            else:
+                medium_priority += 1
+
+            actions.append(
+                {
+                    "camera_id": camera.get("camera_id"),
+                    "camera_name": camera.get("camera_name"),
+                    "camera_role": camera.get("camera_role"),
+                    "camera_status": camera.get("camera_status"),
+                    "metric_key": metric.get("metric_key"),
+                    "metric_label": _metric_display_label(metric.get("metric_key") or ""),
+                    "event_type": metric.get("event_type"),
+                    "status": metric.get("status"),
+                    "priority": priority,
+                    "action_code": action_code,
+                    "title": title,
+                    "description": description,
+                    "playbook_hint": _camera_role_playbook(str(camera.get("camera_role") or "")),
+                    "reasons": reasons,
+                    "coverage_score": metric.get("coverage_score"),
+                    "confidence_score": metric.get("confidence_score"),
+                    "events_24h": metric.get("events_24h"),
+                    "roi_published": camera.get("roi_published"),
+                    "roi_version": metric.get("roi_version") or camera.get("roi_version"),
+                    "last_event_at": metric.get("last_event_at"),
+                    "last_seen_at": camera.get("last_seen_at"),
+                    "audit_filters": {
+                        "camera_id": camera.get("camera_id"),
+                        "event_type": metric.get("event_type"),
+                    },
+                }
+            )
+
+    actions.sort(
+        key=lambda item: (
+            0 if item["priority"] == "alta" else 1,
+            0 if item["status"] == "recalibrar" else 1,
+            item.get("camera_name") or "",
+            item.get("metric_key") or "",
+        )
+    )
+    return actions, {
+        "actions_total": len(actions),
+        "high_priority": high_priority,
+        "medium_priority": medium_priority,
+    }
+
+
+def _get_latest_calibration_runs(store: Store, camera_ids: list[str]) -> dict[tuple[str, str], dict]:
+    if not camera_ids:
+        return {}
+    rows = (
+        StoreCalibrationRun.objects.filter(store_id=store.id, camera_id__in=camera_ids)
+        .order_by("camera_id", "metric_type", "-approved_at", "-created_at")
+        .values(
+            "camera_id",
+            "metric_type",
+            "roi_version",
+            "manual_sample_size",
+            "manual_reference_value",
+            "system_value",
+            "error_pct",
+            "approved_by",
+            "approved_at",
+            "notes",
+            "status",
+            "created_at",
+        )
+    )
+    latest: dict[tuple[str, str], dict] = {}
+    for row in rows:
+        key = (str(row["camera_id"]), str(row["metric_type"]))
+        if key in latest:
+            continue
+        latest[key] = {
+            "metric_type": row["metric_type"],
+            "roi_version": row.get("roi_version"),
+            "manual_sample_size": row.get("manual_sample_size"),
+            "manual_reference_value": row.get("manual_reference_value"),
+            "system_value": row.get("system_value"),
+            "error_pct": row.get("error_pct"),
+            "approved_by": str(row["approved_by"]) if row.get("approved_by") else None,
+            "approved_at": row["approved_at"].isoformat() if row.get("approved_at") else None,
+            "notes": row.get("notes"),
+            "status": row.get("status"),
+            "created_at": row["created_at"].isoformat() if row.get("created_at") else None,
+        }
+    return latest
+
+
+def _build_vision_confidence_snapshot(store: Store, window_hours: int = 24) -> dict:
+    cameras = list(Camera.objects.filter(store_id=store.id).order_by("name"))
+    camera_ids = [str(camera.id) for camera in cameras]
+    latest_calibrations = _get_latest_calibration_runs(store, camera_ids)
+    atomic_stats: dict[tuple[str, str], dict] = {}
+    if camera_ids:
+        with connection.cursor() as cursor:
+            cursor.execute(
+                """
+                SELECT camera_id, event_type, COUNT(*) AS events_count, MAX(ts) AS last_event_at
+                FROM public.vision_atomic_events
+                WHERE store_id = %s
+                  AND ts >= %s
+                  AND camera_id = ANY(%s)
+                GROUP BY camera_id, event_type
+                """,
+                [str(store.id), timezone.now() - timedelta(hours=window_hours), camera_ids],
+            )
+            for row in cursor.fetchall():
+                atomic_stats[(str(row[0]), str(row[1]))] = {
+                    "events_count": int(row[2] or 0),
+                    "last_event_at": row[3],
+                }
+
+    cameras_out = []
+    metrics_ready = 0
+    metrics_partial = 0
+    metrics_recalibrate = 0
+    cameras_with_roi = 0
+    for camera in cameras:
+        published = get_latest_published_roi_config(str(camera.id))
+        roi_config = published.config_json if published and isinstance(published.config_json, dict) else {}
+        roi_version = roi_config.get("roi_version") if isinstance(roi_config, dict) else None
+        camera_role = _infer_camera_role_from_roi_or_name(camera, roi_config)
+        if published:
+            cameras_with_roi += 1
+
+        metric_rules = VISION_CONFIDENCE_METRIC_RULES.get(camera_role, [])
+        metrics = []
+        for rule in metric_rules:
+            stat = atomic_stats.get((str(camera.id), rule["event_type"]), {})
+            latest_calibration = latest_calibrations.get((str(camera.id), rule["metric_key"]))
+            last_event_at = stat.get("last_event_at")
+            events_count = int(stat.get("events_count") or 0)
+            freshness = _freshness_score(last_event_at)
+            volume_score = min(100, int((events_count / max(1, rule["target_events_24h"])) * 100))
+            roi_score = 100 if published else 0
+            camera_score = _camera_operational_score(getattr(camera, "status", "unknown"))
+            coverage_score = int(round((volume_score * 0.6) + (freshness * 0.4)))
+            confidence_score = int(
+                round((roi_score * 0.35) + (camera_score * 0.25) + (freshness * 0.25) + (volume_score * 0.15))
+            )
+            status_value = _classify_confidence_status(coverage_score, confidence_score)
+            if status_value == "pronto":
+                metrics_ready += 1
+            elif status_value == "parcial":
+                metrics_partial += 1
+            else:
+                metrics_recalibrate += 1
+            reasons = []
+            if not published:
+                reasons.append("roi_not_published")
+            if camera_score < 60:
+                reasons.append("camera_not_healthy")
+            if freshness < 70:
+                reasons.append("stale_or_missing_events")
+            if volume_score < 60:
+                reasons.append("low_event_volume")
+
+            metrics.append(
+                {
+                    "metric_key": rule["metric_key"],
+                    "event_type": rule["event_type"],
+                    "status": status_value,
+                    "coverage_score": coverage_score,
+                    "confidence_score": confidence_score,
+                    "events_24h": events_count,
+                    "last_event_at": last_event_at.isoformat() if last_event_at else None,
+                    "roi_version": roi_version,
+                    "reasons": reasons,
+                    "latest_calibration": latest_calibration,
+                }
+            )
+
+        camera_status = "recalibrar"
+        if metrics:
+            camera_statuses = {metric["status"] for metric in metrics}
+            if camera_statuses == {"pronto"}:
+                camera_status = "pronto"
+            elif "pronto" in camera_statuses or "parcial" in camera_statuses:
+                camera_status = "parcial"
+        elif published and str(getattr(camera, "status", "")).lower() in {"online", "degraded"}:
+            camera_status = "parcial"
+
+        cameras_out.append(
+            {
+                "camera_id": str(camera.id),
+                "camera_name": camera.name,
+                "camera_role": camera_role,
+                "camera_status": getattr(camera, "status", "unknown"),
+                "store_status": camera_status,
+                "last_seen_at": camera.last_seen_at.isoformat() if getattr(camera, "last_seen_at", None) else None,
+                "roi_published": bool(published),
+                "roi_version": roi_version,
+                "metrics": metrics,
+            }
+        )
+
+    if metrics_recalibrate == 0 and (metrics_ready > 0 or metrics_partial > 0):
+        store_status = "pronto" if metrics_partial == 0 else "parcial"
+    elif metrics_ready > 0 or metrics_partial > 0:
+        store_status = "parcial"
+    else:
+        store_status = "recalibrar"
+
+    return {
+        "store_status": store_status,
+        "summary": {
+            "cameras_total": len(cameras_out),
+            "cameras_with_published_roi": cameras_with_roi,
+            "metrics_ready": metrics_ready,
+            "metrics_partial": metrics_partial,
+            "metrics_recalibrate": metrics_recalibrate,
+        },
+        "cameras": cameras_out,
+    }
+
+
+def _serialize_calibration_run(row: StoreCalibrationRun) -> dict:
+    return {
+        "id": str(row.id),
+        "store_id": str(row.store_id),
+        "camera_id": str(row.camera_id),
+        "metric_type": row.metric_type,
+        "roi_version": row.roi_version,
+        "manual_sample_size": row.manual_sample_size,
+        "manual_reference_value": row.manual_reference_value,
+        "system_value": row.system_value,
+        "error_pct": row.error_pct,
+        "approved_by": str(row.approved_by) if row.approved_by else None,
+        "approved_at": row.approved_at.isoformat() if row.approved_at else None,
+        "notes": row.notes,
+        "status": row.status,
+        "created_at": row.created_at.isoformat() if row.created_at else None,
+        "updated_at": row.updated_at.isoformat() if row.updated_at else None,
+    }
 
 class StoreViewSet(viewsets.ModelViewSet):
     queryset = Store.objects.all()
@@ -1326,6 +1742,7 @@ class StoreViewSet(viewsets.ModelViewSet):
             "avg_staff_active": 0,
             "avg_conversion_rate": 0,
         }
+        metric_governance = _build_metric_governance()
         zones_breakdown = []
 
         with connection.cursor() as cursor:
@@ -1335,7 +1752,11 @@ class StoreViewSet(viewsets.ModelViewSet):
                        COALESCE(SUM(footfall), 0) AS footfall,
                        COALESCE(AVG(NULLIF(dwell_seconds_avg, 0)), 0) AS dwell_avg
                 FROM public.traffic_metrics
-                WHERE store_id = %s AND ts_bucket >= %s AND ts_bucket < %s
+                WHERE store_id = %s
+                  AND ts_bucket >= %s
+                  AND ts_bucket < %s
+                  AND (camera_role = 'entrada' OR camera_role IS NULL)
+                  AND (ownership = 'primary' OR ownership IS NULL)
                 GROUP BY 1
                 ORDER BY 1 ASC
                 """,
@@ -1356,7 +1777,11 @@ class StoreViewSet(viewsets.ModelViewSet):
                     SELECT date_trunc(%s, ts_bucket) AS bucket,
                            COALESCE(SUM(footfall), 0) AS footfall
                     FROM public.traffic_metrics
-                    WHERE store_id = %s AND ts_bucket >= %s AND ts_bucket < %s
+                    WHERE store_id = %s
+                      AND ts_bucket >= %s
+                      AND ts_bucket < %s
+                      AND (camera_role = 'entrada' OR camera_role IS NULL)
+                      AND (ownership = 'primary' OR ownership IS NULL)
                     GROUP BY 1
                 ),
                 conversion AS (
@@ -1369,6 +1794,7 @@ class StoreViewSet(viewsets.ModelViewSet):
                       AND ts_bucket >= %s
                       AND ts_bucket < %s
                       AND (camera_role = 'balcao' OR camera_role IS NULL)
+                      AND (ownership = 'primary' OR ownership IS NULL)
                     GROUP BY 1
                 )
                 SELECT COALESCE(conversion.bucket, traffic.bucket) AS bucket,
@@ -1400,7 +1826,11 @@ class StoreViewSet(viewsets.ModelViewSet):
                 SELECT COALESCE(SUM(footfall), 0) AS total_visitors,
                        COALESCE(AVG(NULLIF(dwell_seconds_avg, 0)), 0) AS avg_dwell_seconds
                 FROM public.traffic_metrics
-                WHERE store_id = %s AND ts_bucket >= %s AND ts_bucket < %s
+                WHERE store_id = %s
+                  AND ts_bucket >= %s
+                  AND ts_bucket < %s
+                  AND (camera_role = 'entrada' OR camera_role IS NULL)
+                  AND (ownership = 'primary' OR ownership IS NULL)
                 """,
                 [str(store.id), start, end],
             )
@@ -1415,7 +1845,11 @@ class StoreViewSet(viewsets.ModelViewSet):
                     SELECT ts_bucket,
                            COALESCE(SUM(footfall), 0) AS footfall
                     FROM public.traffic_metrics
-                    WHERE store_id = %s AND ts_bucket >= %s AND ts_bucket < %s
+                    WHERE store_id = %s
+                      AND ts_bucket >= %s
+                      AND ts_bucket < %s
+                      AND (camera_role = 'entrada' OR camera_role IS NULL)
+                      AND (ownership = 'primary' OR ownership IS NULL)
                     GROUP BY 1
                 ),
                 conversion AS (
@@ -1428,6 +1862,7 @@ class StoreViewSet(viewsets.ModelViewSet):
                       AND ts_bucket >= %s
                       AND ts_bucket < %s
                       AND (camera_role = 'balcao' OR camera_role IS NULL)
+                      AND (ownership = 'primary' OR ownership IS NULL)
                     GROUP BY 1
                 )
                 SELECT COALESCE(AVG(conversion.queue_avg_seconds), 0) AS avg_queue_seconds,
@@ -1460,7 +1895,10 @@ class StoreViewSet(viewsets.ModelViewSet):
                        COALESCE(AVG(NULLIF(t.dwell_seconds_avg, 0)), 0) AS dwell_avg
                 FROM public.store_zones z
                 JOIN public.traffic_metrics t ON t.zone_id = z.id
-                WHERE z.store_id = %s AND t.ts_bucket >= %s AND t.ts_bucket < %s
+                WHERE z.store_id = %s
+                  AND t.ts_bucket >= %s
+                  AND t.ts_bucket < %s
+                  AND (t.ownership = 'primary' OR t.ownership IS NULL)
                 GROUP BY z.id, z.name
                 ORDER BY footfall DESC
                 """,
@@ -1488,6 +1926,25 @@ class StoreViewSet(viewsets.ModelViewSet):
                     "conversion": conversion_series,
                 },
                 "zones": zones_breakdown,
+                "meta": {
+                    "metric_governance": {
+                        "totals": {
+                            key: metric_governance[key]
+                            for key in (
+                                "total_visitors",
+                                "avg_dwell_seconds",
+                                "avg_queue_seconds",
+                                "avg_staff_active",
+                                "avg_conversion_rate",
+                            )
+                        },
+                        "series": {
+                            "traffic": metric_governance["total_visitors"],
+                            "conversion": metric_governance["avg_conversion_rate"],
+                        },
+                        "zones": metric_governance["zones"],
+                    }
+                },
             }
         )
 
@@ -1507,6 +1964,7 @@ class StoreViewSet(viewsets.ModelViewSet):
 
         traffic_by_hour = []
         conversion_by_hour = []
+        metric_governance = _build_metric_governance()
 
         with connection.cursor() as cursor:
             cursor.execute(
@@ -1515,7 +1973,11 @@ class StoreViewSet(viewsets.ModelViewSet):
                        COALESCE(SUM(footfall), 0) AS footfall,
                        COALESCE(AVG(NULLIF(dwell_seconds_avg, 0)), 0) AS dwell_avg
                 FROM public.traffic_metrics
-                WHERE store_id = %s AND ts_bucket >= %s AND ts_bucket < %s
+                WHERE store_id = %s
+                  AND ts_bucket >= %s
+                  AND ts_bucket < %s
+                  AND (camera_role = 'entrada' OR camera_role IS NULL)
+                  AND (ownership = 'primary' OR ownership IS NULL)
                 GROUP BY 1
                 ORDER BY 1 ASC
                 """,
@@ -1540,7 +2002,11 @@ class StoreViewSet(viewsets.ModelViewSet):
                     SELECT date_trunc('hour', ts_bucket AT TIME ZONE %s) AS bucket_local,
                            COALESCE(SUM(footfall), 0) AS footfall
                     FROM public.traffic_metrics
-                    WHERE store_id = %s AND ts_bucket >= %s AND ts_bucket < %s
+                    WHERE store_id = %s
+                      AND ts_bucket >= %s
+                      AND ts_bucket < %s
+                      AND (camera_role = 'entrada' OR camera_role IS NULL)
+                      AND (ownership = 'primary' OR ownership IS NULL)
                     GROUP BY 1
                 ),
                 conversion AS (
@@ -1553,6 +2019,7 @@ class StoreViewSet(viewsets.ModelViewSet):
                       AND ts_bucket >= %s
                       AND ts_bucket < %s
                       AND (camera_role = 'balcao' OR camera_role IS NULL)
+                      AND (ownership = 'primary' OR ownership IS NULL)
                     GROUP BY 1
                 )
                 SELECT COALESCE(conversion.bucket_local, traffic.bucket_local) AS bucket_local,
@@ -1591,6 +2058,8 @@ class StoreViewSet(viewsets.ModelViewSet):
                            COALESCE(SUM(footfall), 0) AS footfall
                     FROM public.traffic_metrics
                     WHERE store_id = %s
+                      AND (camera_role = 'entrada' OR camera_role IS NULL)
+                      AND (ownership = 'primary' OR ownership IS NULL)
                     GROUP BY 1
                 ),
                 conversion AS (
@@ -1601,6 +2070,7 @@ class StoreViewSet(viewsets.ModelViewSet):
                     FROM public.conversion_metrics
                     WHERE store_id = %s
                       AND (camera_role = 'balcao' OR camera_role IS NULL)
+                      AND (ownership = 'primary' OR ownership IS NULL)
                     GROUP BY 1
                 )
                 SELECT conversion.ts_bucket,
@@ -1715,6 +2185,14 @@ class StoreViewSet(viewsets.ModelViewSet):
                 "idle_index_estimated": True,
                 "idle_index_method": "staff_active_est_normalized",
                 "queue_now_method": "last_bucket_queue_avg_seconds",
+                "metric_governance": {
+                    "avg_dwell_seconds": metric_governance["avg_dwell_seconds"],
+                    "avg_queue_seconds": metric_governance["avg_queue_seconds"],
+                    "avg_conversion_rate": metric_governance["avg_conversion_rate"],
+                    "queue_now_people": metric_governance["queue_now_people"],
+                    "idle_index": metric_governance["idle_index"],
+                    "flow_by_hour": metric_governance["total_visitors"],
+                },
             },
         }
         return Response(payload)
@@ -1857,6 +2335,308 @@ class StoreViewSet(viewsets.ModelViewSet):
                 "events": events,
             }
         )
+
+    @action(detail=True, methods=["get"], url_path="vision/audit")
+    def vision_audit(self, request, pk=None):
+        store = self.get_object()
+        require_store_role(request.user, str(store.id), ALLOWED_READ_ROLES)
+        self._require_subscription_for_store(store, "vision_audit")
+
+        tz = _get_org_timezone(store)
+        start = _parse_dt(request.query_params.get("from"), tz)
+        end = _parse_dt(request.query_params.get("to"), tz)
+        if not end:
+            end = timezone.now()
+        if not start:
+            start = end - timedelta(days=1)
+
+        event_type = (request.query_params.get("event_type") or "").strip() or None
+        camera_id = (request.query_params.get("camera_id") or "").strip() or None
+        zone_id = (request.query_params.get("zone_id") or "").strip() or None
+        roi_entity_id = (request.query_params.get("roi_entity_id") or "").strip() or None
+        limit_raw = request.query_params.get("limit") or "100"
+        try:
+            limit = max(1, min(500, int(limit_raw)))
+        except Exception:
+            limit = 100
+
+        filters = [
+            "store_id = %s",
+            "ts >= %s",
+            "ts < %s",
+        ]
+        params = [str(store.id), start, end]
+        if event_type:
+            filters.append("event_type = %s")
+            params.append(event_type)
+        if camera_id:
+            filters.append("camera_id = %s")
+            params.append(camera_id)
+        if zone_id:
+            filters.append("zone_id = %s")
+            params.append(zone_id)
+        if roi_entity_id:
+            filters.append("roi_entity_id = %s")
+            params.append(roi_entity_id)
+
+        where_sql = " AND ".join(filters)
+        items = []
+        summary = {}
+        with connection.cursor() as cursor:
+            cursor.execute(
+                f"""
+                SELECT event_type, COUNT(*)
+                FROM public.vision_atomic_events
+                WHERE {where_sql}
+                GROUP BY 1
+                ORDER BY 1 ASC
+                """,
+                params,
+            )
+            for row in cursor.fetchall():
+                summary[str(row[0])] = int(row[1] or 0)
+
+            cursor.execute(
+                f"""
+                SELECT
+                    receipt_id,
+                    event_type,
+                    camera_id,
+                    camera_role,
+                    zone_id,
+                    roi_entity_id,
+                    roi_version,
+                    metric_type,
+                    ownership,
+                    direction,
+                    count_value,
+                    staff_active_est,
+                    duration_seconds,
+                    confidence,
+                    track_id_hash,
+                    ts,
+                    raw_payload
+                FROM public.vision_atomic_events
+                WHERE {where_sql}
+                ORDER BY ts DESC
+                LIMIT %s
+                """,
+                [*params, limit],
+            )
+            for row in cursor.fetchall():
+                items.append(
+                    {
+                        "receipt_id": row[0],
+                        "event_type": row[1],
+                        "camera_id": row[2],
+                        "camera_role": row[3],
+                        "zone_id": row[4],
+                        "roi_entity_id": row[5],
+                        "roi_version": row[6],
+                        "metric_type": row[7],
+                        "ownership": row[8],
+                        "direction": row[9],
+                        "count_value": int(row[10] or 0),
+                        "staff_active_est": int(row[11] or 0) if row[11] is not None else None,
+                        "duration_seconds": int(row[12] or 0) if row[12] is not None else None,
+                        "confidence": float(row[13]) if row[13] is not None else None,
+                        "track_id_hash": row[14],
+                        "ts": row[15].isoformat() if row[15] else None,
+                        "raw_payload": row[16] or {},
+                    }
+                )
+
+        return Response(
+            {
+                "store_id": str(store.id),
+                "from": start.isoformat(),
+                "to": end.isoformat(),
+                "filters": {
+                    "event_type": event_type,
+                    "camera_id": camera_id,
+                    "zone_id": zone_id,
+                    "roi_entity_id": roi_entity_id,
+                    "limit": limit,
+                },
+                "summary": summary,
+                "items": items,
+            }
+        )
+
+    @action(detail=True, methods=["get"], url_path="vision/confidence")
+    def vision_confidence(self, request, pk=None):
+        store = self.get_object()
+        require_store_role(request.user, str(store.id), ALLOWED_READ_ROLES)
+        self._require_subscription_for_store(store, "vision_confidence")
+
+        window_hours_raw = request.query_params.get("window_hours") or "24"
+        try:
+            window_hours = max(1, min(168, int(window_hours_raw)))
+        except Exception:
+            window_hours = 24
+        snapshot = _build_vision_confidence_snapshot(store, window_hours=window_hours)
+
+        return Response(
+            {
+                "store_id": str(store.id),
+                "generated_at": timezone.now().isoformat(),
+                "window_hours": window_hours,
+                "store_status": snapshot["store_status"],
+                "summary": snapshot["summary"],
+                "cameras": snapshot["cameras"],
+            }
+        )
+
+    @action(detail=True, methods=["get"], url_path="vision/calibration-plan")
+    def vision_calibration_plan(self, request, pk=None):
+        store = self.get_object()
+        require_store_role(request.user, str(store.id), ALLOWED_READ_ROLES)
+        self._require_subscription_for_store(store, "vision_calibration_plan")
+
+        window_hours_raw = request.query_params.get("window_hours") or "24"
+        try:
+            window_hours = max(1, min(168, int(window_hours_raw)))
+        except Exception:
+            window_hours = 24
+
+        snapshot = _build_vision_confidence_snapshot(store, window_hours=window_hours)
+        actions, action_summary = _build_calibration_actions(snapshot["cameras"])
+
+        return Response(
+            {
+                "store_id": str(store.id),
+                "generated_at": timezone.now().isoformat(),
+                "window_hours": window_hours,
+                "store_status": snapshot["store_status"],
+                "summary": {
+                    **snapshot["summary"],
+                    **action_summary,
+                },
+                "actions": actions,
+            }
+        )
+
+    @action(detail=True, methods=["get", "post"], url_path="vision/calibration-runs")
+    def vision_calibration_runs(self, request, pk=None):
+        store = self.get_object()
+        if request.method.lower() == "post":
+            require_store_role(request.user, str(store.id), ALLOWED_MANAGE_ROLES)
+            action_name = "vision_calibration_runs_write"
+        else:
+            require_store_role(request.user, str(store.id), ALLOWED_READ_ROLES)
+            action_name = "vision_calibration_runs"
+        self._require_subscription_for_store(store, action_name)
+
+        if request.method.lower() == "get":
+            limit_raw = request.query_params.get("limit") or "20"
+            camera_id = (request.query_params.get("camera_id") or "").strip() or None
+            metric_type = (request.query_params.get("metric_type") or "").strip() or None
+            try:
+                limit = max(1, min(100, int(limit_raw)))
+            except Exception:
+                limit = 20
+
+            qs = StoreCalibrationRun.objects.filter(store_id=store.id).order_by("-approved_at", "-created_at")
+            if camera_id:
+                qs = qs.filter(camera_id=camera_id)
+            if metric_type:
+                qs = qs.filter(metric_type=metric_type)
+            items = [_serialize_calibration_run(row) for row in qs[:limit]]
+            return Response(
+                {
+                    "store_id": str(store.id),
+                    "filters": {
+                        "camera_id": camera_id,
+                        "metric_type": metric_type,
+                        "limit": limit,
+                    },
+                    "items": items,
+                }
+            )
+
+        payload = request.data or {}
+        camera_id = str(payload.get("camera_id") or "").strip()
+        metric_type = str(payload.get("metric_type") or "").strip()
+        if not camera_id or not metric_type:
+            return _error_response(
+                "INVALID_CALIBRATION_INPUT",
+                "camera_id e metric_type sao obrigatorios.",
+                status.HTTP_400_BAD_REQUEST,
+                deprecated_detail="camera_id e metric_type sao obrigatorios.",
+            )
+
+        if metric_type not in {"entry_exit", "queue", "checkout_proxy", "occupancy"}:
+            return _error_response(
+                "INVALID_CALIBRATION_METRIC",
+                "metric_type invalido.",
+                status.HTTP_400_BAD_REQUEST,
+                deprecated_detail="metric_type invalido.",
+            )
+
+        camera = Camera.objects.filter(store_id=store.id, id=camera_id).first()
+        if not camera:
+            return _error_response(
+                "CAMERA_NOT_FOUND",
+                "Camera nao encontrada para a loja.",
+                status.HTTP_404_NOT_FOUND,
+                deprecated_detail="Camera nao encontrada para a loja.",
+            )
+
+        def _to_int(value):
+            if value in (None, ""):
+                return None
+            return int(value)
+
+        def _to_float(value):
+            if value in (None, ""):
+                return None
+            return float(value)
+
+        try:
+            manual_sample_size = _to_int(payload.get("manual_sample_size"))
+            manual_reference_value = _to_float(payload.get("manual_reference_value"))
+            system_value = _to_float(payload.get("system_value"))
+            error_pct = _to_float(payload.get("error_pct"))
+        except Exception:
+            return _error_response(
+                "INVALID_CALIBRATION_VALUES",
+                "Valores numericos invalidos na calibracao.",
+                status.HTTP_400_BAD_REQUEST,
+                deprecated_detail="Valores numericos invalidos na calibracao.",
+            )
+
+        if error_pct is None and manual_reference_value not in (None, 0) and system_value is not None:
+            error_pct = round(abs(system_value - manual_reference_value) / abs(manual_reference_value) * 100, 2)
+
+        try:
+            actor_user_id = ensure_user_uuid(request.user)
+        except Exception:
+            actor_user_id = None
+
+        published = get_latest_published_roi_config(str(camera.id))
+        roi_config = published.config_json if published and isinstance(published.config_json, dict) else {}
+        roi_version = str(payload.get("roi_version") or roi_config.get("roi_version") or "") or None
+        status_value = str(payload.get("status") or "approved").strip() or "approved"
+        approved_at = timezone.now() if status_value == "approved" else None
+        notes = str(payload.get("notes") or "").strip() or None
+
+        row = StoreCalibrationRun.objects.create(
+            store_id=store.id,
+            camera_id=camera.id,
+            metric_type=metric_type,
+            roi_version=roi_version,
+            manual_sample_size=manual_sample_size,
+            manual_reference_value=manual_reference_value,
+            system_value=system_value,
+            error_pct=error_pct,
+            approved_by=actor_user_id,
+            approved_at=approved_at,
+            notes=notes,
+            status=status_value,
+            created_at=timezone.now(),
+            updated_at=timezone.now(),
+        )
+        return Response(_serialize_calibration_run(row), status=status.HTTP_201_CREATED)
     
     @action(detail=False, methods=['get'])
     def network_dashboard(self, request):

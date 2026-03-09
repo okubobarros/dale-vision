@@ -1,4 +1,4 @@
-from datetime import datetime, timezone as dt_timezone
+from datetime import datetime
 from unittest.mock import MagicMock, patch
 
 from django.test import SimpleTestCase
@@ -22,11 +22,8 @@ class _Cursor:
     def __exit__(self, exc_type, exc, tb):
         return False
 
-    def execute(self, *args, **kwargs):
-        if args:
-            sql = args[0]
-            params = args[1] if len(args) > 1 else None
-            self.executed.append((sql, params))
+    def execute(self, sql, params=None):
+        self.executed.append((sql, params))
         return None
 
     def fetchall(self):
@@ -44,7 +41,7 @@ class _Cursor:
         return result
 
 
-class StoreCeoDashboardTests(SimpleTestCase):
+class StoreMetricsSummaryTests(SimpleTestCase):
     def setUp(self):
         self.factory = APIRequestFactory()
         self.user = MagicMock(is_authenticated=True, is_staff=False, is_superuser=False)
@@ -54,57 +51,47 @@ class StoreCeoDashboardTests(SimpleTestCase):
         self.store.name = "Loja Teste"
 
     def _call_view(self):
-        view = StoreViewSet.as_view({"get": "ceo_dashboard"})
-        request = self.factory.get(f"/api/v1/stores/{self.store.id}/ceo-dashboard/")
+        view = StoreViewSet.as_view({"get": "metrics_summary"})
+        request = self.factory.get(f"/api/v1/stores/{self.store.id}/metrics/summary/")
         force_authenticate(request, user=self.user)
         return view(request, pk=self.store.id)
 
     @patch("apps.stores.views._get_org_timezone", return_value=timezone.get_current_timezone())
-    @patch("apps.stores.views.StoreViewSet._require_subscription_for_store")
     @patch("apps.stores.views.require_store_role")
     @patch("apps.stores.views.StoreViewSet.get_object")
     @patch("apps.stores.views.connection")
-    def test_ceo_dashboard_payload(
+    def test_metrics_summary_returns_metric_governance_and_filters_entry_camera_traffic(
         self,
         connection_mock,
         get_object_mock,
         _require_role,
-        _require_subscription,
         _tz,
     ):
         get_object_mock.return_value = self.store
-        traffic_rows = [
-            (datetime(2026, 2, 27, 10, 0, 0), 120, 180),
-            (datetime(2026, 2, 27, 11, 0, 0), 80, 210),
-        ]
-        conversion_rows = [
-            (datetime(2026, 2, 27, 10, 0, 0), 45, 3, 0.12),
-            (datetime(2026, 2, 27, 11, 0, 0), 30, 2, 0.09),
-        ]
-        latest_row = (datetime(2026, 2, 27, 11, 0, 0, tzinfo=dt_timezone.utc), 30, 2, 0.09)
-
-        first_cursor = _Cursor(fetchall_returns=[traffic_rows, conversion_rows])
-        second_cursor = _Cursor(fetchone_returns=[latest_row])
-        connection_mock.cursor.side_effect = [first_cursor, second_cursor]
+        cursor = _Cursor(
+            fetchall_returns=[
+                [(datetime(2026, 3, 1, 0, 0, 0), 25, 0)],
+                [(datetime(2026, 3, 1, 0, 0, 0), 40, 2, 12.5)],
+                [("zone-1", "Fila", 10, 0)],
+            ],
+            fetchone_returns=[
+                (25, 0),
+                (40, 2, 12.5),
+            ],
+        )
+        connection_mock.cursor.return_value = cursor
 
         response = self._call_view()
 
         self.assertEqual(response.status_code, 200)
-        self.assertEqual(response.data.get("store_id"), str(self.store.id))
-        self.assertEqual(response.data.get("store_name"), self.store.name)
-        self.assertIn("series", response.data)
-        self.assertIn("kpis", response.data)
         self.assertEqual(
-            response.data["meta"]["metric_governance"]["avg_conversion_rate"]["metric_status"],
+            response.data["meta"]["metric_governance"]["totals"]["avg_conversion_rate"]["metric_status"],
             "proxy",
         )
         self.assertEqual(
-            response.data["meta"]["metric_governance"]["queue_now_people"]["metric_status"],
-            "estimated",
+            response.data["meta"]["metric_governance"]["totals"]["total_visitors"]["metric_status"],
+            "official",
         )
-        self.assertEqual(len(response.data["series"]["flow_by_hour"]), 2)
-        self.assertEqual(response.data["kpis"]["avg_queue_seconds"], 38)
-        executed_sql = "\n".join(
-            sql for cursor in (first_cursor, second_cursor) for sql, _params in cursor.executed
-        )
+        executed_sql = "\n".join(sql for sql, _params in cursor.executed)
+        self.assertIn("camera_role = 'entrada' OR camera_role IS NULL", executed_sql)
         self.assertIn("ownership = 'primary' OR ownership IS NULL", executed_sql)

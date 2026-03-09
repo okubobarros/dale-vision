@@ -21,6 +21,10 @@ Conectar a loja, validar 3 câmeras e iniciar envio de métricas (`vision.metric
 ## Câmeras + ROI
 - [ ] Cadastrar 3 câmeras (nomear com `balcao`, `salao`, `entrada` se possível).
 - [ ] Fazer upload de snapshot e desenhar ROI por câmera.
+- [ ] `entrada` usa `line` para fluxo de entrada/saida.
+- [ ] `balcao` usa `poly` para `area_atendimento_fila`, `ponto_pagamento` e `zona_funcionario_caixa`.
+- [ ] `salao` usa `poly` para `area_consumo` e zonas relevantes do negocio.
+- [ ] Confirmar `ownership=primary` apenas na camera dona de cada metrica.
 - [ ] Status “Aguardando validação” é esperado até o edge enviar health/snapshot.
 
 ## Métricas (Vision Worker)
@@ -33,4 +37,5 @@ Conectar a loja, validar 3 câmeras e iniciar envio de métricas (`vision.metric
 ## Resultado esperado
 - [ ] Loja online.
 - [ ] 3 câmeras conectadas e com ROI válido.
+- [ ] Cada metrica principal tem camera dona e ROI auditavel.
 - [ ] Métricas chegando em buckets de 30s.

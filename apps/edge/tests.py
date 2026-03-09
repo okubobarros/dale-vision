@@ -1,3 +1,4 @@
+import json
 import hashlib
 import uuid
 from types import SimpleNamespace
@@ -12,6 +13,15 @@ from rest_framework.exceptions import PermissionDenied
 from knox.models import AuthToken
 from apps.edge.models import EdgeToken
 from apps.edge.auth import _extract_store_token
+from apps.edge.vision_metrics import (
+    apply_vision_metrics,
+    apply_vision_crossing,
+    apply_vision_queue_state,
+    apply_vision_checkout_proxy,
+    apply_vision_zone_occupancy,
+    insert_event_receipt_if_new,
+    insert_vision_atomic_event_if_new,
+)
 
 
 class EdgeAuthHeaderPrecedenceTests(SimpleTestCase):
@@ -526,3 +536,372 @@ class EdgeSetupTokenTests(TestCase):
         self.assertEqual(hint_resp.data.get("token_prefix"), raw_token[:6])
         self.assertEqual(hint_resp.data.get("token_last4"), raw_token[-4:])
         self.assertNotIn("edge_token", hint_resp.data)
+
+
+class VisionMetricsContractTests(TestCase):
+    def test_insert_event_receipt_if_new_extracts_roi_context_into_meta(self):
+        payload = {
+            "data": {
+                "store_id": "store-1",
+                "camera_id": "cam-1",
+                "traffic": {
+                    "zone_id": "zone-front",
+                    "roi_entity_id": "line-main",
+                    "metric_type": "entry_exit",
+                },
+                "conversion": {},
+            }
+        }
+
+        cursor = MagicMock()
+        cursor.rowcount = 1
+        cursor_cm = MagicMock()
+        cursor_cm.__enter__.return_value = cursor
+        cursor_cm.__exit__.return_value = False
+
+        with patch("apps.edge.vision_metrics.connection.cursor", return_value=cursor_cm):
+            inserted = insert_event_receipt_if_new(
+                event_id="evt-1",
+                event_name="vision.metrics.v1",
+                payload=payload,
+            )
+
+        self.assertTrue(inserted)
+        _, params = cursor.execute.call_args[0]
+        meta = json.loads(params[5])
+        self.assertEqual(meta["store_id"], "store-1")
+        self.assertEqual(meta["camera_id"], "cam-1")
+        self.assertEqual(meta["zone_id"], "zone-front")
+        self.assertEqual(meta["roi_entity_id"], "line-main")
+        self.assertEqual(meta["metric_type"], "entry_exit")
+
+    def test_apply_vision_metrics_passes_traffic_zone_context_to_upsert(self):
+        payload = {
+            "data": {
+                "store_id": "store-1",
+                "camera_id": "cam-1",
+                "camera_role": "entrada",
+                "ownership": {"mode": "single_camera_owner"},
+                "bucket": {"start": "2026-03-09T12:00:00Z"},
+                "traffic": {
+                    "footfall": 4,
+                    "entries": 4,
+                    "exits": 1,
+                    "zone_id": "zone-front",
+                    "roi_entity_id": "line-main",
+                    "metric_type": "entry_exit",
+                },
+                "conversion": {
+                    "checkout_events": 0,
+                },
+            }
+        }
+
+        cursor = MagicMock()
+        cursor.fetchone.side_effect = [None, None]
+        cursor_cm = MagicMock()
+        cursor_cm.__enter__.return_value = cursor
+        cursor_cm.__exit__.return_value = False
+
+        with patch("apps.edge.vision_metrics.connection.cursor", return_value=cursor_cm):
+            with patch("apps.edge.vision_metrics._upsert_traffic_metrics") as traffic_upsert:
+                with patch("apps.edge.vision_metrics._upsert_conversion_metrics") as conversion_upsert:
+                    apply_vision_metrics(payload)
+
+        traffic_upsert.assert_called_once()
+        conversion_upsert.assert_called_once()
+        traffic_payload = traffic_upsert.call_args.args[2]
+        conversion_payload = conversion_upsert.call_args.args[2]
+        traffic_kwargs = traffic_upsert.call_args.kwargs
+        conversion_kwargs = conversion_upsert.call_args.kwargs
+        self.assertEqual(traffic_payload["ownership"], "primary")
+        self.assertEqual(conversion_payload["ownership"], "primary")
+        self.assertEqual(traffic_kwargs["zone_id"], "zone-front")
+        self.assertEqual(traffic_kwargs["camera_id"], "cam-1")
+        self.assertEqual(traffic_kwargs["camera_role"], "entrada")
+        self.assertEqual(conversion_kwargs["camera_id"], "cam-1")
+        self.assertEqual(conversion_kwargs["camera_role"], "entrada")
+
+    def test_insert_vision_atomic_event_if_new_includes_crossing_context(self):
+        payload = {
+            "data": {
+                "event_type": "vision.crossing.v1",
+                "store_id": "store-1",
+                "camera_id": "cam-1",
+                "camera_role": "entrada",
+                "zone_id": "zone-front",
+                "roi_entity_id": "line-main",
+                "roi_version": 4,
+                "metric_type": "entry_exit",
+                "ownership": "primary",
+                "direction": "entry",
+                "count_value": 1,
+                "track_id_hash": "hash-1",
+                "ts": "2026-03-09T12:00:05Z",
+            }
+        }
+
+        cursor = MagicMock()
+        cursor.rowcount = 1
+        cursor_cm = MagicMock()
+        cursor_cm.__enter__.return_value = cursor
+        cursor_cm.__exit__.return_value = False
+
+        with patch("apps.edge.vision_metrics.connection.cursor", return_value=cursor_cm):
+            inserted = insert_vision_atomic_event_if_new(receipt_id="rcpt-1", payload=payload)
+
+        self.assertTrue(inserted)
+        _, params = cursor.execute.call_args[0]
+        self.assertEqual(params[0], "rcpt-1")
+        self.assertEqual(params[1], "vision.crossing.v1")
+        self.assertEqual(params[5], "zone-front")
+        self.assertEqual(params[6], "line-main")
+        self.assertEqual(params[9], "primary")
+        self.assertEqual(params[10], "entry")
+
+    def test_apply_vision_crossing_aggregates_primary_entry_into_traffic_metrics(self):
+        payload = {
+            "data": {
+                "store_id": "store-1",
+                "camera_id": "cam-1",
+                "camera_role": "entrada",
+                "zone_id": "zone-front",
+                "roi_entity_id": "line-main",
+                "metric_type": "entry_exit",
+                "ownership": "primary",
+                "direction": "entry",
+                "count_value": 1,
+                "ts": "2026-03-09T12:00:05Z",
+            }
+        }
+
+        with patch("apps.edge.vision_metrics._upsert_traffic_metrics") as traffic_upsert:
+            apply_vision_crossing(payload)
+
+        traffic_upsert.assert_called_once()
+        traffic_payload = traffic_upsert.call_args.args[2]
+        self.assertEqual(traffic_payload["footfall"], 1)
+        self.assertEqual(traffic_payload["ownership"], "primary")
+        self.assertEqual(traffic_payload["metric_type"], "entry_exit")
+        self.assertTrue(traffic_upsert.call_args.kwargs["accumulate"])
+
+    def test_insert_vision_atomic_event_if_new_includes_queue_state_context(self):
+        payload = {
+            "data": {
+                "event_type": "vision.queue_state.v1",
+                "store_id": "store-1",
+                "camera_id": "cam-cashier-1",
+                "camera_role": "balcao",
+                "zone_id": "zone-cashier",
+                "roi_entity_id": "queue-zone-1",
+                "roi_version": 5,
+                "metric_type": "queue",
+                "ownership": "primary",
+                "count_value": 4,
+                "staff_active_est": 2,
+                "confidence": 0.93,
+                "ts": "2026-03-09T12:00:11Z",
+            }
+        }
+
+        cursor = MagicMock()
+        cursor.rowcount = 1
+        cursor_cm = MagicMock()
+        cursor_cm.__enter__.return_value = cursor
+        cursor_cm.__exit__.return_value = False
+
+        with patch("apps.edge.vision_metrics.connection.cursor", return_value=cursor_cm):
+            inserted = insert_vision_atomic_event_if_new(receipt_id="rcpt-queue-1", payload=payload)
+
+        self.assertTrue(inserted)
+        _, params = cursor.execute.call_args[0]
+        self.assertEqual(params[0], "rcpt-queue-1")
+        self.assertEqual(params[1], "vision.queue_state.v1")
+        self.assertEqual(params[5], "zone-cashier")
+        self.assertEqual(params[6], "queue-zone-1")
+        self.assertEqual(params[11], 4)
+        self.assertEqual(params[12], 2)
+
+    def test_apply_vision_queue_state_derives_conversion_metrics_from_atomic_samples(self):
+        payload = {
+            "data": {
+                "event_type": "vision.queue_state.v1",
+                "store_id": "store-1",
+                "camera_id": "cam-cashier-1",
+                "camera_role": "balcao",
+                "zone_id": "zone-cashier",
+                "roi_entity_id": "queue-zone-1",
+                "metric_type": "queue",
+                "ownership": "primary",
+                "count_value": 4,
+                "staff_active_est": 2,
+                "ts": "2026-03-09T12:00:11Z",
+            }
+        }
+
+        cursor = MagicMock()
+        cursor.fetchone.side_effect = [
+            (3.5, 2),
+            None,
+        ]
+        cursor_cm = MagicMock()
+        cursor_cm.__enter__.return_value = cursor
+        cursor_cm.__exit__.return_value = False
+
+        with patch("apps.edge.vision_metrics.connection.cursor", return_value=cursor_cm):
+            apply_vision_queue_state(payload)
+
+        self.assertEqual(cursor.execute.call_count, 3)
+        insert_sql, insert_params = cursor.execute.call_args_list[2][0]
+        self.assertIn("INSERT INTO public.conversion_metrics", insert_sql)
+        self.assertEqual(insert_params[0], "store-1")
+        self.assertEqual(insert_params[1], "cam-cashier-1")
+        self.assertEqual(insert_params[2], "balcao")
+        self.assertEqual(insert_params[3], "primary")
+        self.assertEqual(insert_params[4], "queue")
+        self.assertEqual(insert_params[5], "queue-zone-1")
+        self.assertEqual(insert_params[7], 105)
+        self.assertEqual(insert_params[8], 2)
+
+    def test_insert_vision_atomic_event_if_new_includes_checkout_proxy_context(self):
+        payload = {
+            "data": {
+                "event_type": "vision.checkout_proxy.v1",
+                "store_id": "store-1",
+                "camera_id": "cam-cashier-1",
+                "camera_role": "balcao",
+                "zone_id": "zone-cashier",
+                "roi_entity_id": "checkout-zone-1",
+                "roi_version": 5,
+                "metric_type": "checkout_proxy",
+                "ownership": "primary",
+                "count_value": 1,
+                "duration_seconds": 18,
+                "confidence": 0.9,
+                "ts": "2026-03-09T12:00:21Z",
+            }
+        }
+
+        cursor = MagicMock()
+        cursor.rowcount = 1
+        cursor_cm = MagicMock()
+        cursor_cm.__enter__.return_value = cursor
+        cursor_cm.__exit__.return_value = False
+
+        with patch("apps.edge.vision_metrics.connection.cursor", return_value=cursor_cm):
+            inserted = insert_vision_atomic_event_if_new(receipt_id="rcpt-checkout-1", payload=payload)
+
+        self.assertTrue(inserted)
+        _, params = cursor.execute.call_args[0]
+        self.assertEqual(params[1], "vision.checkout_proxy.v1")
+        self.assertEqual(params[6], "checkout-zone-1")
+        self.assertEqual(params[11], 1)
+        self.assertEqual(params[13], 18)
+
+    def test_apply_vision_checkout_proxy_derives_conversion_metrics_from_atomic_events(self):
+        payload = {
+            "data": {
+                "event_type": "vision.checkout_proxy.v1",
+                "store_id": "store-1",
+                "camera_id": "cam-cashier-1",
+                "camera_role": "balcao",
+                "zone_id": "zone-cashier",
+                "roi_entity_id": "checkout-zone-1",
+                "metric_type": "checkout_proxy",
+                "ownership": "primary",
+                "count_value": 1,
+                "duration_seconds": 18,
+                "ts": "2026-03-09T12:00:21Z",
+            }
+        }
+
+        cursor = MagicMock()
+        cursor.fetchone.side_effect = [
+            (2,),
+            None,
+        ]
+        cursor_cm = MagicMock()
+        cursor_cm.__enter__.return_value = cursor
+        cursor_cm.__exit__.return_value = False
+
+        with patch("apps.edge.vision_metrics.connection.cursor", return_value=cursor_cm):
+            apply_vision_checkout_proxy(payload)
+
+        self.assertEqual(cursor.execute.call_count, 3)
+        insert_sql, insert_params = cursor.execute.call_args_list[2][0]
+        self.assertIn("INSERT INTO public.conversion_metrics", insert_sql)
+        self.assertEqual(insert_params[0], "store-1")
+        self.assertEqual(insert_params[1], "cam-cashier-1")
+        self.assertEqual(insert_params[4], "checkout_proxy")
+        self.assertEqual(insert_params[5], "checkout-zone-1")
+        self.assertEqual(insert_params[7], 2)
+
+    def test_insert_vision_atomic_event_if_new_includes_zone_occupancy_context(self):
+        payload = {
+            "data": {
+                "event_type": "vision.zone_occupancy.v1",
+                "store_id": "store-1",
+                "camera_id": "cam-salao-1",
+                "camera_role": "salao",
+                "zone_id": "zone-dining",
+                "roi_entity_id": "occupancy-zone-1",
+                "roi_version": 6,
+                "metric_type": "occupancy",
+                "ownership": "primary",
+                "count_value": 5,
+                "duration_seconds": 12,
+                "confidence": 0.88,
+                "ts": "2026-03-09T12:00:31Z",
+            }
+        }
+
+        cursor = MagicMock()
+        cursor.rowcount = 1
+        cursor_cm = MagicMock()
+        cursor_cm.__enter__.return_value = cursor
+        cursor_cm.__exit__.return_value = False
+
+        with patch("apps.edge.vision_metrics.connection.cursor", return_value=cursor_cm):
+            inserted = insert_vision_atomic_event_if_new(receipt_id="rcpt-occupancy-1", payload=payload)
+
+        self.assertTrue(inserted)
+        _, params = cursor.execute.call_args[0]
+        self.assertEqual(params[1], "vision.zone_occupancy.v1")
+        self.assertEqual(params[6], "occupancy-zone-1")
+        self.assertEqual(params[11], 5)
+        self.assertEqual(params[13], 12)
+
+    def test_apply_vision_zone_occupancy_derives_traffic_metrics_from_atomic_events(self):
+        payload = {
+            "data": {
+                "event_type": "vision.zone_occupancy.v1",
+                "store_id": "store-1",
+                "camera_id": "cam-salao-1",
+                "camera_role": "salao",
+                "zone_id": "zone-dining",
+                "roi_entity_id": "occupancy-zone-1",
+                "metric_type": "occupancy",
+                "ownership": "primary",
+                "count_value": 5,
+                "duration_seconds": 12,
+                "ts": "2026-03-09T12:00:31Z",
+            }
+        }
+
+        cursor = MagicMock()
+        cursor.fetchone.return_value = (4.6, 14.0)
+        cursor_cm = MagicMock()
+        cursor_cm.__enter__.return_value = cursor
+        cursor_cm.__exit__.return_value = False
+
+        with patch("apps.edge.vision_metrics.connection.cursor", return_value=cursor_cm):
+            with patch("apps.edge.vision_metrics._upsert_traffic_metrics") as traffic_upsert:
+                apply_vision_zone_occupancy(payload)
+
+        traffic_upsert.assert_called_once()
+        traffic_payload = traffic_upsert.call_args.args[2]
+        self.assertEqual(traffic_payload["engaged"], 5)
+        self.assertEqual(traffic_payload["dwell_seconds_avg"], 14)
+        self.assertEqual(traffic_payload["metric_type"], "occupancy")
+        self.assertEqual(traffic_upsert.call_args.kwargs["zone_id"], "zone-dining")
+        self.assertEqual(traffic_upsert.call_args.kwargs["camera_role"], "salao")

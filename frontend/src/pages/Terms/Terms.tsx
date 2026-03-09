@@ -112,7 +112,9 @@ const Terms = () => {
                 <li>Não determina as finalidades do monitoramento</li>
               </ul>
               <p className="mt-3 text-sm">
-                O Cliente é o único e exclusivo Controlador dos dados pessoais captados.
+                A DALE VISION atua exclusivamente como OPERADORA de dados pessoais, nos termos da LGPD.
+                O CLIENTE é o único e exclusivo CONTROLADOR, responsável pela definição das finalidades e
+                bases legais do monitoramento.
               </p>
             </section>
 

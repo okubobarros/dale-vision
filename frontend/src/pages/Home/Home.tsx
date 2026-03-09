@@ -248,6 +248,11 @@ export default function HomePage() {
         q: "E a privacidade dos meus funcionários?",
         a: "Privacy-by-design: sem reconhecimento facial, sem áudio, com mascaramento de áreas sensíveis e dados criptografados. Pronto para operar com boas práticas LGPD.",
       },
+      {
+        icon: "🛡️",
+        q: "Como a DaleVision se relaciona com a LGPD e o monitoramento de colaboradores?",
+        a: "Na DaleVision, o cliente é o Controlador dos dados e nós atuamos como Operadora, processando imagens e eventos exclusivamente sob suas instruções. A plataforma é desenhada para apoiar monitoramento operacional (filas, ocupação, rotinas, desvios de postura) e não faz reconhecimento facial biométrico por padrão. Cabe ao varejista ter base legal para o uso de câmeras, informar colaboradores, incluir cláusulas específicas em contratos de trabalho e manter a sinalização adequada no ponto de venda. A DaleVision não responde por políticas internas de monitoramento, decisões disciplinares ou reclamações trabalhistas decorrentes do uso da plataforma, conforme nossos Termos de Uso e Política de Privacidade.",
+      },
     ],
     []
   )
@@ -794,6 +799,57 @@ export default function HomePage() {
                 </div>
               ))}
             </div>
+          </div>
+        </section>
+
+        <div className="dv-divider my-6" />
+
+        {/* LGPD & privacidade */}
+        <section className="py-12">
+          <div data-reveal className="dv-reveal">
+            <div className="text-center mb-10">
+              <h2 className="text-2xl md:text-3xl font-bold">
+                LGPD e privacidade: como a DaleVision <GradientTitle>protege você</GradientTitle>
+              </h2>
+              <p className="mt-3 text-white/70">
+                Monitoramos operação, não a vida privada das pessoas.
+              </p>
+            </div>
+
+            <div className="grid gap-6 md:grid-cols-3">
+              {[
+                {
+                  title: "Você é o controlador",
+                  text:
+                    "As câmeras são do cliente e ele define onde, por quê e como monitorar. A DaleVision atua apenas como operadora de dados, seguindo as instruções do controlador e a LGPD (Lei 13.709/2018).",
+                },
+                {
+                  title: "Sem reconhecimento facial por padrão",
+                  text:
+                    "A plataforma não faz reconhecimento facial biométrico por padrão. Nosso foco é medir fluxo, filas, comportamento operacional e produtividade em formato agregado, não identificar pessoas.",
+                },
+                {
+                  title: "Base legal e comunicação são do cliente",
+                  text:
+                    "Cabe ao varejista obter a base legal adequada, informar colaboradores e expor a sinalização de monitoramento. Nós fornecemos ferramenta, relatórios e recursos de segurança, mas não substituímos o jurídico, o RH nem o compliance da sua empresa.",
+                },
+              ].map((item, i) => (
+                <div
+                  key={i}
+                  className="dv-card rounded-2xl border border-white/10 bg-white/5 p-6 hover:border-white/20 transition-all"
+                >
+                  <h3 className="text-lg font-bold text-white/90 mb-3">{item.title}</h3>
+                  <p className="text-sm text-white/70 leading-relaxed">{item.text}</p>
+                </div>
+              ))}
+            </div>
+
+            <p className="mt-6 text-xs text-white/45 text-center">
+              Recomendamos que o cliente tenha política interna de monitoramento,
+              cláusulas contratuais específicas e orientação jurídica própria. A DaleVision pode
+              suspender o acesso em caso de uso ilegal, violação trabalhista evidente ou
+              descumprimento da LGPD, conforme Termos de Uso.
+            </p>
           </div>
         </section>
 

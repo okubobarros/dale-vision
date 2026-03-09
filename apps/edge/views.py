@@ -31,7 +31,15 @@ from apps.cameras.limits import enforce_trial_camera_limit
 from apps.cameras.services import rtsp_probe_with_hard_timeout
 from apps.billing.utils import PaywallError
 from .status_events import emit_store_status_changed, emit_camera_status_changed
-from .vision_metrics import insert_event_receipt_if_new, apply_vision_metrics
+from .vision_metrics import (
+    insert_event_receipt_if_new,
+    insert_vision_atomic_event_if_new,
+    apply_vision_metrics,
+    apply_vision_crossing,
+    apply_vision_queue_state,
+    apply_vision_checkout_proxy,
+    apply_vision_zone_occupancy,
+)
 from apps.core.services.journey_events import log_journey_event
 
 
@@ -346,6 +354,82 @@ class EdgeEventsIngestView(APIView):
                 logger.exception("[EDGE] vision metrics ingest failed")
                 return Response(
                     {"ok": False, "stored": False, "reason": "vision_ingest_failed"},
+                    status=status.HTTP_500_INTERNAL_SERVER_ERROR,
+                )
+
+        if event_name == "vision.crossing.v1":
+            try:
+                inserted = insert_vision_atomic_event_if_new(
+                    receipt_id=receipt_id,
+                    payload=payload,
+                )
+                if inserted:
+                    apply_vision_crossing(payload)
+                return Response(
+                    {"ok": True, "receipt_id": receipt_id or None, "stored": True, "deduped": not inserted},
+                    status=status.HTTP_201_CREATED if inserted else status.HTTP_200_OK,
+                )
+            except Exception:
+                logger.exception("[EDGE] vision crossing ingest failed")
+                return Response(
+                    {"ok": False, "stored": False, "reason": "vision_crossing_ingest_failed"},
+                    status=status.HTTP_500_INTERNAL_SERVER_ERROR,
+                )
+
+        if event_name == "vision.queue_state.v1":
+            try:
+                inserted = insert_vision_atomic_event_if_new(
+                    receipt_id=receipt_id,
+                    payload=payload,
+                )
+                if inserted:
+                    apply_vision_queue_state(payload)
+                return Response(
+                    {"ok": True, "receipt_id": receipt_id or None, "stored": True, "deduped": not inserted},
+                    status=status.HTTP_201_CREATED if inserted else status.HTTP_200_OK,
+                )
+            except Exception:
+                logger.exception("[EDGE] vision queue_state ingest failed")
+                return Response(
+                    {"ok": False, "stored": False, "reason": "vision_queue_state_ingest_failed"},
+                    status=status.HTTP_500_INTERNAL_SERVER_ERROR,
+                )
+
+        if event_name == "vision.checkout_proxy.v1":
+            try:
+                inserted = insert_vision_atomic_event_if_new(
+                    receipt_id=receipt_id,
+                    payload=payload,
+                )
+                if inserted:
+                    apply_vision_checkout_proxy(payload)
+                return Response(
+                    {"ok": True, "receipt_id": receipt_id or None, "stored": True, "deduped": not inserted},
+                    status=status.HTTP_201_CREATED if inserted else status.HTTP_200_OK,
+                )
+            except Exception:
+                logger.exception("[EDGE] vision checkout_proxy ingest failed")
+                return Response(
+                    {"ok": False, "stored": False, "reason": "vision_checkout_proxy_ingest_failed"},
+                    status=status.HTTP_500_INTERNAL_SERVER_ERROR,
+                )
+
+        if event_name == "vision.zone_occupancy.v1":
+            try:
+                inserted = insert_vision_atomic_event_if_new(
+                    receipt_id=receipt_id,
+                    payload=payload,
+                )
+                if inserted:
+                    apply_vision_zone_occupancy(payload)
+                return Response(
+                    {"ok": True, "receipt_id": receipt_id or None, "stored": True, "deduped": not inserted},
+                    status=status.HTTP_201_CREATED if inserted else status.HTTP_200_OK,
+                )
+            except Exception:
+                logger.exception("[EDGE] vision zone_occupancy ingest failed")
+                return Response(
+                    {"ok": False, "stored": False, "reason": "vision_zone_occupancy_ingest_failed"},
                     status=status.HTTP_500_INTERNAL_SERVER_ERROR,
                 )
 

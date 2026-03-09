@@ -164,6 +164,10 @@ export default function EmployeesSetup({
 
       <div className="rounded-3xl border border-slate-200 bg-white/70 p-6 space-y-4 shadow-[0_18px_50px_rgba(15,23,42,0.08)]">
         <h4 className="font-semibold text-slate-900">Adicionar Funcionário</h4>
+        <p className="text-xs text-slate-500">
+          Use este recurso somente para colaboradores previamente informados e com base legal adequada.
+          A DaleVision não valida as políticas internas do cliente.
+        </p>
 
         <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
           <div>

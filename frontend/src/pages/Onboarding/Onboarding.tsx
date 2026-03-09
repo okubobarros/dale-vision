@@ -8,12 +8,13 @@ import { employeesService } from "../../services/employees"
 import OnboardingProgress from "./components/OnboardingProgress"
 import StoresSetup, { type StoreDraft } from "./components/StoresSetup"
 import EmployeesSetup, { type EmployeeDraft } from "./components/EmployeesSetup"
+import LgpdConsent from "./components/LgpdConsent"
 import { buildEmployeesPayload } from "./helpers/employeePayload"
 
 export default function Onboarding() {
   const navigate = useNavigate()
   const { isAuthenticated, isLoading } = useAuth()
-  const [step, setStep] = useState<1 | 2>(1)
+  const [step, setStep] = useState<1 | 2 | 3>(1)
 
   // estado local para demo (sem backend)
   const [store, setStore] = useState<StoreDraft | null>(null)
@@ -25,6 +26,10 @@ export default function Onboarding() {
   const [avgHourlyLaborCost, setAvgHourlyLaborCost] = useState("")
   const [employeesSaving, setEmployeesSaving] = useState(false)
   const [employeesError, setEmployeesError] = useState("")
+  const [lgpdAccepted, setLgpdAccepted] = useState(false)
+  const [lgpdRecommendedAccepted, setLgpdRecommendedAccepted] = useState(false)
+  const [lgpdError, setLgpdError] = useState("")
+  const [lgpdSubmitting, setLgpdSubmitting] = useState(false)
 
   useEffect(() => {
     window.scrollTo({ top: 0, behavior: "smooth" })
@@ -60,7 +65,7 @@ export default function Onboarding() {
 
   function handlePrev() {
     if (step > 1) {
-      setStep((s) => (s === 2 ? 1 : s))
+      setStep((s) => (s === 3 ? 2 : 1))
     }
   }
 
@@ -114,7 +119,7 @@ export default function Onboarding() {
     }
   }
 
-  async function handleComplete(list: EmployeeDraft[]) {
+  async function handleEmployeesNext(list: EmployeeDraft[]) {
     if (!isAuthenticated) {
       navigate("/login", { replace: true })
       return
@@ -208,16 +213,32 @@ export default function Onboarding() {
         }
       }
 
-      localStorage.setItem(
-        "demo_onboarding",
-        JSON.stringify({ store, storeId, employees: list, avgHourlyLaborCost })
-      )
-      navigate("/app/dashboard?openEdgeSetup=1", { replace: true })
+      setEmployeesError("")
+      setStep(3)
     } catch (error) {
       console.error("[Onboarding] onboarding completion failed", error)
       setEmployeesError("Não foi possível concluir o onboarding. Tente novamente.")
     } finally {
       setEmployeesSaving(false)
+    }
+  }
+
+  function handleLgpdNext() {
+    if (lgpdSubmitting) return
+    if (!lgpdAccepted) {
+      setLgpdError("Confirme o aceite obrigatório para continuar.")
+      return
+    }
+    setLgpdSubmitting(true)
+    setLgpdError("")
+    try {
+      localStorage.setItem(
+        "demo_onboarding",
+        JSON.stringify({ store, storeId, employees, avgHourlyLaborCost })
+      )
+      navigate("/app/dashboard?openEdgeSetup=1", { replace: true })
+    } finally {
+      setLgpdSubmitting(false)
     }
   }
 
@@ -246,18 +267,34 @@ export default function Onboarding() {
             )}
 
             {step === 2 && (
-      <EmployeesSetup
-        employees={employees}
-        onChange={setEmployees}
-        onPrev={handlePrev}
-        onNext={handleComplete}
-        isSubmitting={employeesSaving}
-        submitError={employeesError}
-        employeesTotal={employeesTotal}
-        onEmployeesTotalChange={setEmployeesTotal}
-        avgHourlyLaborCost={avgHourlyLaborCost}
-        onAvgHourlyLaborCostChange={setAvgHourlyLaborCost}
-      />
+              <EmployeesSetup
+                employees={employees}
+                onChange={setEmployees}
+                onPrev={handlePrev}
+                onNext={handleEmployeesNext}
+                isSubmitting={employeesSaving}
+                submitError={employeesError}
+                employeesTotal={employeesTotal}
+                onEmployeesTotalChange={setEmployeesTotal}
+                avgHourlyLaborCost={avgHourlyLaborCost}
+                onAvgHourlyLaborCostChange={setAvgHourlyLaborCost}
+              />
+            )}
+
+            {step === 3 && (
+              <LgpdConsent
+                accepted={lgpdAccepted}
+                onAcceptedChange={(value) => {
+                  setLgpdAccepted(value)
+                  if (value) setLgpdError("")
+                }}
+                recommendedAccepted={lgpdRecommendedAccepted}
+                onRecommendedAcceptedChange={setLgpdRecommendedAccepted}
+                onPrev={handlePrev}
+                onNext={handleLgpdNext}
+                error={lgpdError}
+                isSubmitting={lgpdSubmitting}
+              />
             )}
           </div>
         </div>

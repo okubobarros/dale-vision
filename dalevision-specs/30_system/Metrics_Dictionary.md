@@ -14,7 +14,7 @@ de dados e a forma de cálculo usada nos relatórios e dashboards.
 ### avg_dwell_seconds (Permanência média)
 - **Fonte**: `traffic_metrics.dwell_seconds_avg`
 - **Cálculo**: média simples de `dwell_seconds_avg` no período.
-- **Observação**: representa permanência média por bucket, não por pessoa.
+- **Observação**: representa permanência média estimada por bucket, derivada da permanência de trilhas locais em `vision.zone_occupancy.v1`, não por pessoa deduplicada entre câmeras.
 
 ### engaged (Engajados)
 - **Fonte**: `traffic_metrics.engaged`
@@ -26,16 +26,41 @@ de dados e a forma de cálculo usada nos relatórios e dashboards.
 ### avg_queue_seconds (Fila média)
 - **Fonte**: `conversion_metrics.queue_avg_seconds`
 - **Cálculo**: média simples de `queue_avg_seconds` no período.
+- **Observação**: no pipeline novo é derivada de `vision.queue_state.v1` em janela de 30s.
 
 ### avg_conversion_rate (Conversão média)
 - **Fonte**: `conversion_metrics.conversion_rate`
 - **Cálculo**: média simples de `conversion_rate` no período.
-- **Observação**: depende do método de conversão configurado no edge (ex.: checkout proxy).
+- **Observação**: hoje deve ser tratada como **proxy**, baseada em `checkout_events` até integração com POS.
+- **Observação técnica**: `checkout_events` no path novo é derivado de `vision.checkout_proxy.v1`.
 
 ### staff_active_est (Equipe ativa estimada)
 - **Fonte**: `conversion_metrics.staff_active_est`
 - **Cálculo**: média simples de `staff_active_est` no período.
 - **Status**: disponível na base; não exibido nos KPIs atuais.
+- **Observação técnica**: no path novo é derivada de `vision.queue_state.v1`.
+
+## Eventos atômicos auditáveis (vision_atomic_events)
+
+### vision.crossing.v1
+- **Uso**: trilha auditável de entrada/saída por linha.
+- **Campos-chave**: `direction`, `track_id_hash`, `camera_id`, `roi_entity_id`, `zone_id`, `ts`.
+- **Agregado derivado**: `traffic_metrics.footfall`.
+
+### vision.queue_state.v1
+- **Uso**: estado atômico de fila por câmera/ROI.
+- **Campos-chave**: `count_value` (tamanho da fila), `staff_active_est`, `camera_id`, `roi_entity_id`, `ts`.
+- **Agregado derivado**: `conversion_metrics.queue_avg_seconds`, `conversion_metrics.staff_active_est`.
+
+### vision.checkout_proxy.v1
+- **Uso**: fechamento de ciclo de atendimento/pagamento observado no `ponto_pagamento`.
+- **Campos-chave**: `count_value` (interações), `duration_seconds`, `camera_id`, `roi_entity_id`, `ts`.
+- **Agregado derivado**: `conversion_metrics.checkout_events`.
+
+### vision.zone_occupancy.v1
+- **Uso**: ocupação auditável por zona semântica.
+- **Campos-chave**: `count_value` (ocupação), `duration_seconds` (`dwell_seconds_est`), `camera_id`, `roi_entity_id`, `ts`.
+- **Agregado derivado**: `traffic_metrics.engaged`, `traffic_metrics.dwell_seconds_avg`.
 
 ## Trial CEO Dashboard (derivadas)
 
@@ -104,6 +129,10 @@ de dados e a forma de cálculo usada nos relatórios e dashboards.
 ## Observações
 - Todas as métricas respeitam **org → stores** (escopo multi‑loja).
 - Respeitar timezone da organização ao calcular buckets.
+- `checkout_events` não é venda confirmada; é aproximação operacional até POS.
+- `entry_exit` deve vir de `line ROI`, não de polígono.
+- Métricas com sobreposição entre câmeras só podem ser agregadas quando houver ownership explícito ou dedupe multi-câmera.
+- Existe endpoint operacional de auditoria: `GET /api/v1/stores/{store_id}/vision/audit/`.
 
 ### last_comm_at (última comunicação)
 - **Fonte**: max entre store, camera e camera_health recentes.

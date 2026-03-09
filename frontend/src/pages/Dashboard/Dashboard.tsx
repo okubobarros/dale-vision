@@ -5,6 +5,7 @@ import toast from "react-hot-toast"
 import { useAuth } from "../../contexts/useAuth"
 import {
   storesService,
+  type MetricGovernanceItem,
   type StoreSummary,
   type StoreEdgeStatus,
   type StoreCeoDashboard,
@@ -135,6 +136,27 @@ const formatTimeSafe = (iso?: string | null) => {
 
 const ALL_STORES_VALUE = "all"
 const CEO_PERIOD: "day" | "7d" = "day"
+type DashboardMetricGovernance = MetricGovernanceItem
+
+const governanceStyles: Record<string, string> = {
+  official: "bg-emerald-50 text-emerald-700 border-emerald-200",
+  proxy: "bg-amber-50 text-amber-700 border-amber-200",
+  estimated: "bg-slate-50 text-slate-700 border-slate-200",
+  unsupported: "bg-rose-50 text-rose-700 border-rose-200",
+}
+
+const GovernanceBadge = ({ item }: { item?: DashboardMetricGovernance | null }) => {
+  if (!item) return null
+  return (
+    <span
+      className={`inline-flex items-center px-2 py-0.5 rounded-full text-[11px] border ${
+        governanceStyles[item.metric_status]
+      }`}
+    >
+      {item.label ?? item.metric_status}
+    </span>
+  )
+}
 
 
 const Dashboard = () => {
@@ -617,6 +639,7 @@ const Dashboard = () => {
 
   const ceoFlow = ceoDashboard?.series?.flow_by_hour ?? []
   const ceoIdle = ceoDashboard?.series?.idle_index_by_hour ?? []
+  const ceoGovernance = ceoDashboard?.meta?.metric_governance ?? {}
   const maxFootfall = ceoFlow.length
     ? Math.max(...ceoFlow.map((item) => item.footfall), 1)
     : 1
@@ -1043,17 +1066,31 @@ const Dashboard = () => {
                     </div>
                   </div>
                 )}
+                <p className="mt-3 text-xs text-gray-500">
+                  Os dados apresentados são de apoio à gestão. Toda decisão disciplinar é de responsabilidade exclusiva do cliente, conforme Termos de Uso.
+                </p>
               </div>
 
               <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
                 <div className="bg-white rounded-xl shadow-sm border border-gray-100 p-4 sm:p-6">
-                  <div className="text-sm text-gray-500">Tempo médio na fila</div>
+                  <div className="flex items-center justify-between gap-3">
+                    <div className="text-sm text-gray-500">Tempo médio na fila</div>
+                    <GovernanceBadge item={ceoGovernance.avg_queue_seconds} />
+                  </div>
                   <div className="text-2xl font-bold text-gray-800 mt-2">
                     {ceoDashboard ? `${Math.round(ceoDashboard.kpis.avg_queue_seconds / 60)}m` : "—"}
                   </div>
+                  {ceoGovernance.avg_queue_seconds && (
+                    <div className="text-[11px] text-gray-400 mt-1">
+                      Método: {ceoGovernance.avg_queue_seconds.source_method}
+                    </div>
+                  )}
                 </div>
                 <div className="bg-white rounded-xl shadow-sm border border-gray-100 p-4 sm:p-6">
-                  <div className="text-sm text-gray-500">Pessoas na fila agora</div>
+                  <div className="flex items-center justify-between gap-3">
+                    <div className="text-sm text-gray-500">Pessoas na fila agora</div>
+                    <GovernanceBadge item={ceoGovernance.queue_now_people} />
+                  </div>
                   <div className="text-2xl font-bold text-gray-800 mt-2">
                     {ceoDashboard ? ceoDashboard.kpis.queue_now_people : "—"}
                   </div>
@@ -1064,8 +1101,11 @@ const Dashboard = () => {
               </div>
 
               <div className="bg-white rounded-xl shadow-sm border border-gray-100 p-4 sm:p-6">
-                <div className="text-sm font-semibold text-gray-800 mb-4">
-                  Pulso do Fluxo (Vendas)
+                <div className="flex items-center justify-between gap-3 mb-4">
+                  <div className="text-sm font-semibold text-gray-800">
+                    Pulso do Fluxo
+                  </div>
+                  <GovernanceBadge item={ceoGovernance.flow_by_hour} />
                 </div>
                 {ceoLoading ? (
                   <div className="h-40 bg-gray-100 rounded-lg animate-pulse" />

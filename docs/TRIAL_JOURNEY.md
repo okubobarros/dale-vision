@@ -58,13 +58,16 @@ Critério de sucesso:
 - “ROI pronta para desenhar”.
 
 ### Etapa 3 — ROI (publicar)
-- Usuário desenha zonas e publica.
+- Usuário desenha ROI com semântica operacional e publica.
+- Entrada/saída deve usar `line`.
+- Fila, checkout proxy e ocupação devem usar `poly` como padrão.
+- Cada métrica precisa ter câmera dona (`ownership=primary`) para evitar duplicação.
 - Edge agent busca `roi/latest` (somente `published`) e usa versionamento para cache.
 
 ### Etapa 4 — Analytics (Aha)
 Métricas base no trial (varejo):
 - Fila no caixa (tempo médio, picos).
-- Fluxo/footfall por bucket de tempo.
+- Fluxo/footfall por bucket de tempo a partir de `line ROI`.
 - Permanência/dwell por zona.
 - Alertas operacionais (concentração, permanência alta).
 

@@ -95,7 +95,11 @@ def _build_report_payload(*, org_id: str, store_id: str | None, start, end):
                        COALESCE(SUM(footfall), 0) AS footfall,
                        COALESCE(AVG(NULLIF(dwell_seconds_avg, 0)), 0) AS dwell_avg
                 FROM public.traffic_metrics
-                WHERE store_id = ANY(%s) AND ts_bucket >= %s AND ts_bucket < %s
+                WHERE store_id = ANY(%s)
+                  AND ts_bucket >= %s
+                  AND ts_bucket < %s
+                  AND (camera_role = 'entrada' OR camera_role IS NULL)
+                  AND (ownership = 'primary' OR ownership IS NULL)
                 GROUP BY 1
                 ORDER BY 1 ASC
                 """,
@@ -116,7 +120,11 @@ def _build_report_payload(*, org_id: str, store_id: str | None, start, end):
                     SELECT date_trunc('day', ts_bucket) AS bucket,
                            COALESCE(SUM(footfall), 0) AS footfall
                     FROM public.traffic_metrics
-                    WHERE store_id = ANY(%s) AND ts_bucket >= %s AND ts_bucket < %s
+                    WHERE store_id = ANY(%s)
+                      AND ts_bucket >= %s
+                      AND ts_bucket < %s
+                      AND (camera_role = 'entrada' OR camera_role IS NULL)
+                      AND (ownership = 'primary' OR ownership IS NULL)
                     GROUP BY 1
                 ),
                 conversion AS (
@@ -128,6 +136,7 @@ def _build_report_payload(*, org_id: str, store_id: str | None, start, end):
                       AND ts_bucket >= %s
                       AND ts_bucket < %s
                       AND (camera_role = 'balcao' OR camera_role IS NULL)
+                      AND (ownership = 'primary' OR ownership IS NULL)
                     GROUP BY 1
                 )
                 SELECT COALESCE(conversion.bucket, traffic.bucket) AS bucket,
@@ -157,7 +166,11 @@ def _build_report_payload(*, org_id: str, store_id: str | None, start, end):
                 SELECT COALESCE(SUM(footfall), 0) AS total_visitors,
                        COALESCE(AVG(NULLIF(dwell_seconds_avg, 0)), 0) AS avg_dwell_seconds
                 FROM public.traffic_metrics
-                WHERE store_id = ANY(%s) AND ts_bucket >= %s AND ts_bucket < %s
+                WHERE store_id = ANY(%s)
+                  AND ts_bucket >= %s
+                  AND ts_bucket < %s
+                  AND (camera_role = 'entrada' OR camera_role IS NULL)
+                  AND (ownership = 'primary' OR ownership IS NULL)
                 """,
                 [store_ids, start, end],
             )
@@ -172,7 +185,11 @@ def _build_report_payload(*, org_id: str, store_id: str | None, start, end):
                     SELECT store_id, ts_bucket,
                            COALESCE(SUM(footfall), 0) AS footfall
                     FROM public.traffic_metrics
-                    WHERE store_id = ANY(%s) AND ts_bucket >= %s AND ts_bucket < %s
+                    WHERE store_id = ANY(%s)
+                      AND ts_bucket >= %s
+                      AND ts_bucket < %s
+                      AND (camera_role = 'entrada' OR camera_role IS NULL)
+                      AND (ownership = 'primary' OR ownership IS NULL)
                     GROUP BY 1, 2
                 ),
                 conversion AS (
@@ -184,6 +201,7 @@ def _build_report_payload(*, org_id: str, store_id: str | None, start, end):
                       AND ts_bucket >= %s
                       AND ts_bucket < %s
                       AND (camera_role = 'balcao' OR camera_role IS NULL)
+                      AND (ownership = 'primary' OR ownership IS NULL)
                     GROUP BY 1, 2
                 )
                 SELECT COALESCE(AVG(conversion.queue_avg_seconds), 0) AS avg_queue_seconds,
@@ -215,7 +233,11 @@ def _build_report_payload(*, org_id: str, store_id: str | None, start, end):
                 SELECT date_part('hour', ts_bucket)::int AS hour,
                        COALESCE(SUM(footfall), 0) AS footfall
                 FROM public.traffic_metrics
-                WHERE store_id = ANY(%s) AND ts_bucket >= %s AND ts_bucket < %s
+                WHERE store_id = ANY(%s)
+                  AND ts_bucket >= %s
+                  AND ts_bucket < %s
+                  AND (camera_role = 'entrada' OR camera_role IS NULL)
+                  AND (ownership = 'primary' OR ownership IS NULL)
                 GROUP BY 1
                 ORDER BY 1 ASC
                 """,
@@ -365,13 +387,18 @@ def _build_report_impact_payload(*, org_id: str, store_id: str | None, start, en
                       AND ts_bucket >= %s
                       AND ts_bucket < %s
                       AND (camera_role = 'balcao' OR camera_role IS NULL)
+                      AND (ownership = 'primary' OR ownership IS NULL)
                     GROUP BY 1, 2
                 ) cm
                 LEFT JOIN (
                     SELECT store_id, ts_bucket,
                            COALESCE(SUM(footfall), 0) AS footfall
                     FROM public.traffic_metrics
-                    WHERE store_id = ANY(%s) AND ts_bucket >= %s AND ts_bucket < %s
+                    WHERE store_id = ANY(%s)
+                      AND ts_bucket >= %s
+                      AND ts_bucket < %s
+                      AND (camera_role = 'entrada' OR camera_role IS NULL)
+                      AND (ownership = 'primary' OR ownership IS NULL)
                     GROUP BY 1, 2
                 ) tm
                   ON tm.store_id = cm.store_id AND tm.ts_bucket = cm.ts_bucket

@@ -31,6 +31,21 @@ const EdgeHelp = () => {
           depois “Executar assim mesmo”.
         </p>
       </div>
+
+      <div className="bg-white rounded-2xl border border-gray-100 shadow-sm p-6 space-y-2 text-sm text-gray-700">
+        <div className="font-semibold text-gray-900">Template de placa de aviso</div>
+        <p>
+          Baixe e imprima a sinalização recomendada para lojas com monitoramento.
+        </p>
+        <a
+          href="/placa-aviso-monitoramento.html"
+          target="_blank"
+          rel="noopener noreferrer"
+          className="inline-flex items-center gap-2 text-blue-600 hover:text-blue-700 font-medium"
+        >
+          Abrir template de placa de aviso
+        </a>
+      </div>
     </div>
   )
 }

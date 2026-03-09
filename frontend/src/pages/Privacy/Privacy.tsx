@@ -84,7 +84,7 @@ const Privacy = () => {
                 <li>Identificação funcional de colaboradores (quando configurado)</li>
               </ul>
               <p className="mt-3 text-sm">
-                A DALE VISION não realiza reconhecimento facial biométrico por padrão.
+                Por padrão, a DaleVision não realiza reconhecimento facial biométrico nem faz identificação civil de pessoas.
               </p>
             </section>
 
@@ -149,6 +149,10 @@ const Privacy = () => {
                 <li>Reclamações por dano moral</li>
                 <li>Processos trabalhistas</li>
               </ul>
+              <p className="mt-3 text-sm">
+                A DaleVision não recomenda o uso da plataforma para controle abusivo ou invasivo da vida privada dos colaboradores,
+                sendo o CLIENTE integralmente responsável por manter equilíbrio entre monitoramento e direitos fundamentais.
+              </p>
             </section>
           </div>
         </div>

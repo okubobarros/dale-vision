@@ -23,11 +23,24 @@ type RoiPoint = {
   y: number
 }
 
+type RoiMetricType =
+  | "entry_exit"
+  | "queue"
+  | "checkout_proxy"
+  | "occupancy"
+  | "custom"
+
+type RoiOwnership = "primary" | "secondary"
+
 type RoiShape = {
   id: string
   name: string
-  type: "rect" | "poly"
+  type: "rect" | "poly" | "line"
   points: RoiPoint[]
+  metric_type: RoiMetricType
+  ownership: RoiOwnership
+  roi_entity_id: string
+  zone_id?: string | null
 }
 
 type CameraRoiEditorProps = {
@@ -66,12 +79,71 @@ const normalizeSnapshotImage = (
   return { imageSrc: null }
 }
 
+const slugifyShapeValue = (value: string) =>
+  value
+    .normalize("NFD")
+    .replace(/[\u0300-\u036f]/g, "")
+    .toLowerCase()
+    .replace(/[^a-z0-9]+/g, "_")
+    .replace(/^_+|_+$/g, "")
+
+const inferMetricType = (shape: Partial<RoiShape>): RoiMetricType => {
+  if (
+    shape.metric_type === "entry_exit" ||
+    shape.metric_type === "queue" ||
+    shape.metric_type === "checkout_proxy" ||
+    shape.metric_type === "occupancy" ||
+    shape.metric_type === "custom"
+  ) {
+    return shape.metric_type
+  }
+  const name = slugifyShapeValue(shape.name || "")
+  if (shape.type === "line" || name.includes("entrada") || name.includes("saida")) {
+    return "entry_exit"
+  }
+  if (name.includes("fila") || name.includes("espera")) {
+    return "queue"
+  }
+  if (name.includes("caixa") || name.includes("pagamento") || name.includes("checkout")) {
+    return "checkout_proxy"
+  }
+  if (name.includes("salao") || name.includes("consumo") || name.includes("mesa")) {
+    return "occupancy"
+  }
+  return "custom"
+}
+
+const normalizeShape = (shape: Partial<RoiShape>): RoiShape | null => {
+  const id = String(shape.id || shape.roi_entity_id || "").trim()
+  const name = String(shape.name || "").trim()
+  if (!id || !name) return null
+  if (shape.type !== "rect" && shape.type !== "poly" && shape.type !== "line") return null
+  if (!Array.isArray(shape.points) || shape.points.length === 0) return null
+  return {
+    id,
+    name,
+    type: shape.type,
+    points: shape.points,
+    metric_type: inferMetricType(shape),
+    ownership: shape.ownership === "secondary" ? "secondary" : "primary",
+    roi_entity_id: String(shape.roi_entity_id || id),
+    zone_id: shape.zone_id ?? null,
+  }
+}
+
 const extractShapesFromConfig = (configJson: unknown): RoiShape[] => {
   if (!configJson) return []
-  if (Array.isArray(configJson)) return configJson as RoiShape[]
+  if (Array.isArray(configJson)) {
+    return configJson
+      .map((item) => normalizeShape(item as Partial<RoiShape>))
+      .filter((shape): shape is RoiShape => Boolean(shape))
+  }
   if (typeof configJson === "object" && configJson !== null) {
     const zones = (configJson as { zones?: unknown }).zones
-    return Array.isArray(zones) ? (zones as RoiShape[]) : []
+    const lines = (configJson as { lines?: unknown }).lines
+    return [...(Array.isArray(zones) ? zones : []), ...(Array.isArray(lines) ? lines : [])]
+      .map((item) => normalizeShape(item as Partial<RoiShape>))
+      .filter((shape): shape is RoiShape => Boolean(shape))
   }
   return []
 }
@@ -79,8 +151,10 @@ const extractShapesFromConfig = (configJson: unknown): RoiShape[] => {
 const CameraRoiEditor = ({ open, camera, canEditRoi = false, onClose }: CameraRoiEditorProps) => {
   const canvasRef = useRef<HTMLCanvasElement | null>(null)
   const queryClient = useQueryClient()
-  const [mode, setMode] = useState<"rect" | "poly">("rect")
+  const [mode, setMode] = useState<"rect" | "poly" | "line">("rect")
   const [zoneName, setZoneName] = useState("")
+  const [metricType, setMetricType] = useState<RoiMetricType>("queue")
+  const [ownership, setOwnership] = useState<RoiOwnership>("primary")
   const [addedShapes, setAddedShapes] = useState<RoiShape[]>([])
   const [removedShapeIds, setRemovedShapeIds] = useState<string[]>([])
   const [draftPoints, setDraftPoints] = useState<RoiPoint[]>([])
@@ -175,10 +249,12 @@ const CameraRoiEditor = ({ open, camera, canEditRoi = false, onClose }: CameraRo
   const latestUpdatedAt = roiConfig?.updated_at ?? null
   const latestConfig = roiConfig?.config_json as
     | {
+        schema_version?: string
         roi_version?: number
         status?: "draft" | "published"
         image?: { width?: number; height?: number }
         zones?: RoiShape[]
+        lines?: RoiShape[]
         metrics_enabled?: boolean
       }
     | undefined
@@ -200,6 +276,49 @@ const CameraRoiEditor = ({ open, camera, canEditRoi = false, onClose }: CameraRo
       ...addedShapes,
     ])
   }, [addedShapes, baseShapes, removedShapeIds])
+
+  const buildRoiConfigPayload = useCallback(
+    (status: "draft" | "published") => {
+      const imageSize = imageSizeRef.current
+      const normalizedShapes = effectiveShapes.map((shape) => ({
+        ...shape,
+        zone_id: shape.zone_id ?? camera?.zone_id ?? null,
+        roi_entity_id: shape.roi_entity_id || shape.id,
+      }))
+      return {
+        schema_version: "roi.v2",
+        roi_version: roiVersionLabel,
+        status,
+        image: {
+          width: imageSize?.width ?? Math.round(canvasSize.width || 0),
+          height: imageSize?.height ?? Math.round(canvasSize.height || 0),
+        },
+        zones: normalizedShapes.filter((shape) => shape.type !== "line"),
+        lines: normalizedShapes.filter((shape) => shape.type === "line"),
+        ownership_matrix: normalizedShapes.map((shape) => ({
+          camera_id: cameraId,
+          camera_name: camera?.name ?? null,
+          camera_zone_id: camera?.zone_id ?? null,
+          roi_entity_id: shape.roi_entity_id,
+          name: shape.name,
+          metric_type: shape.metric_type,
+          shape_type: shape.type,
+          ownership: shape.ownership,
+        })),
+        metrics_enabled: Boolean(latestConfig?.metrics_enabled),
+      }
+    },
+    [
+      camera?.name,
+      camera?.zone_id,
+      cameraId,
+      canvasSize.height,
+      canvasSize.width,
+      effectiveShapes,
+      latestConfig?.metrics_enabled,
+      roiVersionLabel,
+    ]
+  )
 
   const updateCanvasSize = useCallback(() => {
     const canvas = canvasRef.current
@@ -253,12 +372,21 @@ const CameraRoiEditor = ({ open, camera, canEditRoi = false, onClose }: CameraRo
     if (draftPoints.length > 0) {
       drawShape(
         ctx,
-        { id: "draft", name: zoneName || "Rascunho", type: mode, points: draftPoints },
+        {
+          id: "draft",
+          name: zoneName || "Rascunho",
+          type: mode,
+          points: draftPoints,
+          metric_type: metricType,
+          ownership,
+          roi_entity_id: "draft",
+          zone_id: camera?.zone_id ?? null,
+        },
         "#f59e0b",
         activeDrawRect
       )
     }
-  }, [canvasSize, draftPoints, drawRect, effectiveShapes, mode, zoneName])
+  }, [camera?.zone_id, canvasSize, draftPoints, drawRect, effectiveShapes, metricType, mode, ownership, zoneName])
 
   useEffect(() => {
     if (!open) return
@@ -339,6 +467,8 @@ const CameraRoiEditor = ({ open, camera, canEditRoi = false, onClose }: CameraRo
       if (mode === "rect") {
         setIsDrawing(true)
         setDraftPoints([point, point])
+      } else if (mode === "line") {
+        setDraftPoints((prev) => (prev.length === 0 ? [point] : [prev[0], point]))
       } else {
         setDraftPoints((prev) => [...prev, point])
       }
@@ -377,35 +507,64 @@ const CameraRoiEditor = ({ open, camera, canEditRoi = false, onClose }: CameraRo
       setDraftPoints([])
       return
     }
+    const entityId = `roi-${Date.now()}`
     setAddedShapes((prev) => [
       ...prev,
       {
-        id: `roi-${Date.now()}`,
+        id: entityId,
         name: zoneName.trim(),
         type: "rect",
         points: [
           { x: minX, y: minY },
           { x: maxX, y: maxY },
         ],
+        metric_type: metricType,
+        ownership,
+        roi_entity_id: entityId,
+        zone_id: camera?.zone_id ?? null,
       },
     ])
     setDraftPoints([])
     setIsDrawing(false)
-  }, [draftPoints, mode, zoneName])
+  }, [camera?.zone_id, draftPoints, metricType, mode, ownership, zoneName])
 
   const finalizePolygon = useCallback(() => {
     if (mode !== "poly" || draftPoints.length < 3) return
+    const entityId = `roi-${Date.now()}`
     setAddedShapes((prev) => [
       ...prev,
       {
-        id: `roi-${Date.now()}`,
+        id: entityId,
         name: zoneName.trim(),
         type: "poly",
         points: draftPoints,
+        metric_type: metricType,
+        ownership,
+        roi_entity_id: entityId,
+        zone_id: camera?.zone_id ?? null,
       },
     ])
     setDraftPoints([])
-  }, [draftPoints, mode, zoneName])
+  }, [camera?.zone_id, draftPoints, metricType, mode, ownership, zoneName])
+
+  const finalizeLine = useCallback(() => {
+    if (mode !== "line" || draftPoints.length !== 2) return
+    const entityId = `roi-${Date.now()}`
+    setAddedShapes((prev) => [
+      ...prev,
+      {
+        id: entityId,
+        name: zoneName.trim(),
+        type: "line",
+        points: draftPoints,
+        metric_type: metricType,
+        ownership,
+        roi_entity_id: entityId,
+        zone_id: camera?.zone_id ?? null,
+      },
+    ])
+    setDraftPoints([])
+  }, [camera?.zone_id, draftPoints, metricType, mode, ownership, zoneName])
 
   const handlePointerUp = useCallback(() => {
     if (!canEditRoi) return
@@ -426,51 +585,13 @@ const CameraRoiEditor = ({ open, camera, canEditRoi = false, onClose }: CameraRo
 
   const handleSave = useCallback(() => {
     if (!cameraId || !canEditRoi) return
-    const imageSize = imageSizeRef.current
-    updateRoiMutation.mutate({
-      roi_version: roiVersionLabel,
-      status: "draft",
-      image: {
-        width: imageSize?.width ?? Math.round(canvasSize.width || 0),
-        height: imageSize?.height ?? Math.round(canvasSize.height || 0),
-      },
-      zones: effectiveShapes,
-      metrics_enabled: Boolean(latestConfig?.metrics_enabled),
-    })
-  }, [
-    cameraId,
-    canEditRoi,
-    canvasSize.height,
-    canvasSize.width,
-    effectiveShapes,
-    latestConfig?.metrics_enabled,
-    roiVersionLabel,
-    updateRoiMutation,
-  ])
+    updateRoiMutation.mutate(buildRoiConfigPayload("draft"))
+  }, [buildRoiConfigPayload, cameraId, canEditRoi, updateRoiMutation])
 
   const handlePublish = useCallback(() => {
     if (!cameraId || !canEditRoi) return
-    const imageSize = imageSizeRef.current
-    updateRoiMutation.mutate({
-      roi_version: roiVersionLabel,
-      status: "published",
-      image: {
-        width: imageSize?.width ?? Math.round(canvasSize.width || 0),
-        height: imageSize?.height ?? Math.round(canvasSize.height || 0),
-      },
-      zones: effectiveShapes,
-      metrics_enabled: Boolean(latestConfig?.metrics_enabled),
-    })
-  }, [
-    cameraId,
-    canEditRoi,
-    canvasSize.height,
-    canvasSize.width,
-    effectiveShapes,
-    latestConfig?.metrics_enabled,
-    roiVersionLabel,
-    updateRoiMutation,
-  ])
+    updateRoiMutation.mutate(buildRoiConfigPayload("published"))
+  }, [buildRoiConfigPayload, cameraId, canEditRoi, updateRoiMutation])
 
   const handleStartMonitoring = useCallback(async () => {
     if (!cameraId || !camera?.store) return
@@ -502,6 +623,8 @@ const CameraRoiEditor = ({ open, camera, canEditRoi = false, onClose }: CameraRo
     setIsDrawing(false)
     setError(null)
     setZoneName("")
+    setMetricType("queue")
+    setOwnership("primary")
     setMode("rect")
     onClose()
   }, [onClose])
@@ -539,7 +662,7 @@ const CameraRoiEditor = ({ open, camera, canEditRoi = false, onClose }: CameraRo
               <div className="mt-2 rounded-lg border border-blue-100 bg-blue-50 px-3 py-2 text-xs text-blue-900">
                 <div className="font-semibold">Passo 3 de 4 — Defina as áreas de monitoramento</div>
                 <div className="text-blue-800 mt-1">
-                  Desenhe zonas como Caixa, Entrada ou Área de espera.
+                  Defina linhas para fluxo de entrada/saída e zonas para fila, checkout proxy e ocupação.
                 </div>
               </div>
             </div>
@@ -620,12 +743,12 @@ const CameraRoiEditor = ({ open, camera, canEditRoi = false, onClose }: CameraRo
             <div className="rounded-xl border border-gray-200 p-4 space-y-3">
               <div>
                 <label className="text-xs font-semibold text-gray-600">
-                  Nome da zona
+                  Nome do ROI
                 </label>
                 <input
                   value={zoneName}
                   onChange={(e) => setZoneName(e.target.value)}
-                  placeholder="Ex: Entrada"
+                  placeholder="Ex: Linha entrada principal"
                   disabled={!canEditRoi}
                   className="mt-1 w-full rounded-lg border border-gray-200 px-3 py-2 text-sm disabled:bg-gray-50"
                 />
@@ -634,12 +757,40 @@ const CameraRoiEditor = ({ open, camera, canEditRoi = false, onClose }: CameraRo
                 <label className="text-xs font-semibold text-gray-600">Modo</label>
                 <select
                   value={mode}
-                  onChange={(e) => setMode(e.target.value as "rect" | "poly")}
+                  onChange={(e) => setMode(e.target.value as "rect" | "poly" | "line")}
                   disabled={!canEditRoi}
                   className="mt-1 w-full rounded-lg border border-gray-200 px-3 py-2 text-sm"
                 >
                   <option value="rect">Retângulo</option>
                   <option value="poly">Polígono</option>
+                  <option value="line">Linha virtual</option>
+                </select>
+              </div>
+              <div>
+                <label className="text-xs font-semibold text-gray-600">Métrica principal</label>
+                <select
+                  value={metricType}
+                  onChange={(e) => setMetricType(e.target.value as RoiMetricType)}
+                  disabled={!canEditRoi}
+                  className="mt-1 w-full rounded-lg border border-gray-200 px-3 py-2 text-sm"
+                >
+                  <option value="entry_exit">Fluxo entrada/saída</option>
+                  <option value="queue">Fila/espera</option>
+                  <option value="checkout_proxy">Checkout proxy</option>
+                  <option value="occupancy">Ocupação</option>
+                  <option value="custom">Customizada</option>
+                </select>
+              </div>
+              <div>
+                <label className="text-xs font-semibold text-gray-600">Ownership da métrica</label>
+                <select
+                  value={ownership}
+                  onChange={(e) => setOwnership(e.target.value as RoiOwnership)}
+                  disabled={!canEditRoi}
+                  className="mt-1 w-full rounded-lg border border-gray-200 px-3 py-2 text-sm"
+                >
+                  <option value="primary">Câmera dona</option>
+                  <option value="secondary">Câmera de apoio</option>
                 </select>
               </div>
               {error && <p className="text-xs text-red-600">{error}</p>}
@@ -653,6 +804,16 @@ const CameraRoiEditor = ({ open, camera, canEditRoi = false, onClose }: CameraRo
                   Finalizar polígono
                 </button>
               )}
+              {mode === "line" && canEditRoi && (
+                <button
+                  type="button"
+                  onClick={finalizeLine}
+                  disabled={draftPoints.length !== 2}
+                  className="w-full rounded-lg border border-gray-200 px-3 py-2 text-xs font-semibold text-gray-700 hover:bg-gray-50 disabled:opacity-60"
+                >
+                  Finalizar linha
+                </button>
+              )}
               {canEditRoi && draftPoints.length > 0 && (
                 <button
                   type="button"
@@ -662,6 +823,11 @@ const CameraRoiEditor = ({ open, camera, canEditRoi = false, onClose }: CameraRo
                   Cancelar desenho
                 </button>
               )}
+              <div className="rounded-lg border border-slate-200 bg-slate-50 px-3 py-2 text-[11px] text-slate-600">
+                {mode === "line"
+                  ? "Linha virtual: marque dois pontos sobre a passagem física para contar entradas e saídas."
+                  : "Use polígono para áreas reais da operação. Retângulo só quando a área é simples e sem distorção forte."}
+              </div>
             </div>
 
             <div className="rounded-xl border border-gray-200 p-4 space-y-3">
@@ -724,11 +890,11 @@ const CameraRoiEditor = ({ open, camera, canEditRoi = false, onClose }: CameraRo
 
             <div className="rounded-xl border border-gray-200 p-4">
               <h4 className="text-sm font-semibold text-gray-700">
-                Zonas ({effectiveShapes.length})
+                ROIs ({effectiveShapes.length})
               </h4>
               {effectiveShapes.length === 0 ? (
                 <p className="text-xs text-gray-500 mt-2">
-                  Nenhuma zona criada ainda.
+                  Nenhum ROI criado ainda.
                 </p>
               ) : (
                 <div className="mt-3 space-y-2">
@@ -742,8 +908,12 @@ const CameraRoiEditor = ({ open, camera, canEditRoi = false, onClose }: CameraRo
                           {shape.name}
                         </p>
                         <p className="text-[11px] text-gray-500">
-                          {shape.type === "rect" ? "Retângulo" : "Polígono"} ·{" "}
-                          {shape.points.length} pontos
+                          {shape.type === "rect"
+                            ? "Retângulo"
+                            : shape.type === "line"
+                            ? "Linha"
+                            : "Polígono"}{" "}
+                          · {shape.metric_type} · {shape.ownership === "primary" ? "dona" : "apoio"}
                         </p>
                       </div>
                       {canEditRoi && (
@@ -850,6 +1020,22 @@ const drawShape = (
   ctx.strokeStyle = stroke
   ctx.lineWidth = 2
   ctx.fillStyle = `${stroke}22`
+
+  if (shape.type === "line" && shape.points.length === 2) {
+    const start = denormalizePointInDrawRect(shape.points[0], drawRect)
+    const end = denormalizePointInDrawRect(shape.points[1], drawRect)
+    ctx.beginPath()
+    ctx.moveTo(start.x, start.y)
+    ctx.lineTo(end.x, end.y)
+    ctx.stroke()
+    ctx.beginPath()
+    ctx.arc(start.x, start.y, 4, 0, Math.PI * 2)
+    ctx.arc(end.x, end.y, 4, 0, Math.PI * 2)
+    ctx.fill()
+    ctx.fillStyle = stroke
+    ctx.fillText(shape.name, start.x + 6, start.y - 8)
+    return
+  }
 
   if (shape.type === "rect" && shape.points.length >= 2) {
     const start = denormalizePointInDrawRect(shape.points[0], drawRect)

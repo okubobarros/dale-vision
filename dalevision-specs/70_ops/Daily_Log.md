@@ -103,16 +103,30 @@ Registrar decisões e eventos do dia.
   - Dashboard/app: requests críticos deixaram de multiplicar timeout por retry duplicado; polling do `edge-status` passa a pausar em erro e refresh de sessão 401 passa a ser compartilhado.
   - Analytics backend: ingestão de `vision.metrics.v1` documentada com granularidade por câmera/bucket e cálculo de conversão a partir de `checkout_events / footfall`; migração SQL adicionada em `supabase/sql/20260309_add_camera_granularity_to_metrics.sql`.
   - Edge-agent: autostart endurecido para operação de loja com task `ONSTART` + fallback `ONLOGON`; payload de visão ampliado com `camera_role` e `checkout_events`.
+  - ROI admin evoluído para ROI v2 com `line`, `metric_type` e `ownership`; publish agora separa `zones` e `lines`.
+  - Worker ativo do edge-agent voltou a contar `line crossing` para câmera de entrada e passou a enriquecer o payload com `zone_id`, `roi_entity_id` e `metric_type`.
+  - Criados documentos de produto/arquitetura para ownership por câmera, schema ROI v2 e roadmap de productização da visão.
+  - Slice 3 foi concluído no núcleo técnico: `vision.crossing.v1`, `vision.queue_state.v1`, `vision.checkout_proxy.v1` e `vision.zone_occupancy.v1` agora existem ponta a ponta com persistência em `vision_atomic_events`.
+  - Backend passou a derivar buckets de 30s a partir desses eventos para manter compatibilidade com `traffic_metrics` e `conversion_metrics`.
+  - Endpoint `GET /api/v1/stores/{store_id}/vision/audit/` implementado para auditoria operacional dos eventos atômicos.
+  - Frontend de Analytics ganhou seção de auditoria operacional mostrando resumo por tipo e últimos eventos atômicos por câmera/ROI/timestamp.
+  - `vision.zone_occupancy.v1` deixou de emitir `dwell_seconds_est=0` e passou a calcular permanência média estimada por trilha local no `salao`.
+  - Slice 4 foi fechado no núcleo de produto: `vision/confidence`, `vision/calibration-plan` e `vision/calibration-runs` implementados no backend.
+  - Migration `edge.0009_store_calibration_runs` aplicada com sucesso no Supabase usando pooler (`aws-0-us-west-2.pooler.supabase.com:5432`).
+  - Analytics agora exibe confiança operacional, plano de recalibração, histórico de calibração e formulário de aprovação manual.
+  - Guardrail de permissão aplicado no frontend: apenas `owner|admin|manager` podem registrar calibração manual.
 - Bloqueios:
   - Validar deploy da landing para confirmar `hero_coffee.png` servido em produção e sem cache antigo.
   - Aplicar migração SQL de granularidade por câmera no banco antes de depender dos novos analytics em produção.
 - Decisões:
   - Assets visuais de landing só entram em produção quando estiverem versionados em `frontend/public` ou importados diretamente no bundle.
   - Correções cross-repo (frontend/backend/edge-agent) devem sempre gerar registro operacional único em `dalevision-specs`.
+  - Slice 4 foi encerrado após fechar confiança operacional, plano e aprovação manual no produto.
+  - Conexão Supabase para migrações deve usar pooler, não conexão direta `db.<project-ref>.supabase.co`.
 - Próximos passos:
-  - Publicar deploy do frontend com `hero_coffee.png` e validar carregamento via Network.
-  - Aplicar migração SQL, redeploy do backend e rebuild do `dalevision-edge-agent`.
-  - Validar em loja: heartbeat, `camera_health`, `vision.metrics.v1` e reflexo no `/app/analytics`.
+  - Validar em loja: heartbeat, `camera_health`, eventos atômicos de visão e reflexo no `/app/analytics`.
+  - Executar calibração manual real na rede da loja para `entrada`, `balcao` e `salao`.
+  - Consolidar erros observados e cobertura mínima como entrada para Slice 5.
 
 ## 2026-03-04
 - Data: 2026-03-04
