@@ -459,10 +459,13 @@ CREATE TABLE IF NOT EXISTS public.sales_metrics (
 CREATE TABLE IF NOT EXISTS public.conversion_metrics (
   id uuid NOT NULL DEFAULT uuid_generate_v4(),
   store_id uuid NOT NULL,
+  camera_id uuid,
+  camera_role text,
   ts_bucket timestamp with time zone NOT NULL,
   conversion_rate numeric NOT NULL DEFAULT 0,
   queue_avg_seconds integer NOT NULL DEFAULT 0,
   staff_active_est integer NOT NULL DEFAULT 0,
+  checkout_events integer NOT NULL DEFAULT 0,
   created_at timestamp with time zone NOT NULL DEFAULT now(),
   CONSTRAINT conversion_metrics_pkey PRIMARY KEY (id),
   CONSTRAINT conversion_metrics_store_id_fkey FOREIGN KEY (store_id) REFERENCES public.stores(id)
@@ -472,6 +475,8 @@ CREATE TABLE IF NOT EXISTS public.traffic_metrics (
   id uuid NOT NULL DEFAULT uuid_generate_v4(),
   store_id uuid NOT NULL,
   zone_id uuid,
+  camera_id uuid,
+  camera_role text,
   ts_bucket timestamp with time zone NOT NULL,
   footfall integer NOT NULL DEFAULT 0,
   engaged integer NOT NULL DEFAULT 0,

@@ -93,7 +93,7 @@ def _build_report_payload(*, org_id: str, store_id: str | None, start, end):
                 """
                 SELECT date_trunc('day', ts_bucket) AS bucket,
                        COALESCE(SUM(footfall), 0) AS footfall,
-                       COALESCE(AVG(dwell_seconds_avg), 0) AS dwell_avg
+                       COALESCE(AVG(NULLIF(dwell_seconds_avg, 0)), 0) AS dwell_avg
                 FROM public.traffic_metrics
                 WHERE store_id = ANY(%s) AND ts_bucket >= %s AND ts_bucket < %s
                 GROUP BY 1
@@ -112,15 +112,36 @@ def _build_report_payload(*, org_id: str, store_id: str | None, start, end):
 
             cursor.execute(
                 """
-                SELECT date_trunc('day', ts_bucket) AS bucket,
-                       COALESCE(AVG(queue_avg_seconds), 0) AS queue_avg_seconds,
-                       COALESCE(AVG(conversion_rate), 0) AS conversion_rate
-                FROM public.conversion_metrics
-                WHERE store_id = ANY(%s) AND ts_bucket >= %s AND ts_bucket < %s
-                GROUP BY 1
+                WITH traffic AS (
+                    SELECT date_trunc('day', ts_bucket) AS bucket,
+                           COALESCE(SUM(footfall), 0) AS footfall
+                    FROM public.traffic_metrics
+                    WHERE store_id = ANY(%s) AND ts_bucket >= %s AND ts_bucket < %s
+                    GROUP BY 1
+                ),
+                conversion AS (
+                    SELECT date_trunc('day', ts_bucket) AS bucket,
+                           COALESCE(AVG(queue_avg_seconds), 0) AS queue_avg_seconds,
+                           COALESCE(SUM(checkout_events), 0) AS checkout_events
+                    FROM public.conversion_metrics
+                    WHERE store_id = ANY(%s)
+                      AND ts_bucket >= %s
+                      AND ts_bucket < %s
+                      AND (camera_role = 'balcao' OR camera_role IS NULL)
+                    GROUP BY 1
+                )
+                SELECT COALESCE(conversion.bucket, traffic.bucket) AS bucket,
+                       COALESCE(conversion.queue_avg_seconds, 0) AS queue_avg_seconds,
+                       CASE
+                           WHEN COALESCE(traffic.footfall, 0) > 0
+                           THEN ROUND((COALESCE(conversion.checkout_events, 0)::numeric / traffic.footfall::numeric) * 100, 2)
+                           ELSE 0
+                       END AS conversion_rate
+                FROM conversion
+                FULL OUTER JOIN traffic ON traffic.bucket = conversion.bucket
                 ORDER BY 1 ASC
                 """,
-                [store_ids, start, end],
+                [store_ids, start, end, store_ids, start, end],
             )
             for row in cursor.fetchall():
                 conversion_series.append(
@@ -134,7 +155,7 @@ def _build_report_payload(*, org_id: str, store_id: str | None, start, end):
             cursor.execute(
                 """
                 SELECT COALESCE(SUM(footfall), 0) AS total_visitors,
-                       COALESCE(AVG(dwell_seconds_avg), 0) AS avg_dwell_seconds
+                       COALESCE(AVG(NULLIF(dwell_seconds_avg, 0)), 0) AS avg_dwell_seconds
                 FROM public.traffic_metrics
                 WHERE store_id = ANY(%s) AND ts_bucket >= %s AND ts_bucket < %s
                 """,
@@ -147,12 +168,41 @@ def _build_report_payload(*, org_id: str, store_id: str | None, start, end):
 
             cursor.execute(
                 """
-                SELECT COALESCE(AVG(queue_avg_seconds), 0) AS avg_queue_seconds,
-                       COALESCE(AVG(conversion_rate), 0) AS avg_conversion_rate
-                FROM public.conversion_metrics
-                WHERE store_id = ANY(%s) AND ts_bucket >= %s AND ts_bucket < %s
+                WITH traffic AS (
+                    SELECT store_id, ts_bucket,
+                           COALESCE(SUM(footfall), 0) AS footfall
+                    FROM public.traffic_metrics
+                    WHERE store_id = ANY(%s) AND ts_bucket >= %s AND ts_bucket < %s
+                    GROUP BY 1, 2
+                ),
+                conversion AS (
+                    SELECT store_id, ts_bucket,
+                           COALESCE(AVG(queue_avg_seconds), 0) AS queue_avg_seconds,
+                           COALESCE(SUM(checkout_events), 0) AS checkout_events
+                    FROM public.conversion_metrics
+                    WHERE store_id = ANY(%s)
+                      AND ts_bucket >= %s
+                      AND ts_bucket < %s
+                      AND (camera_role = 'balcao' OR camera_role IS NULL)
+                    GROUP BY 1, 2
+                )
+                SELECT COALESCE(AVG(conversion.queue_avg_seconds), 0) AS avg_queue_seconds,
+                       COALESCE(
+                           AVG(
+                               CASE
+                                   WHEN COALESCE(traffic.footfall, 0) > 0
+                                   THEN (COALESCE(conversion.checkout_events, 0)::numeric / traffic.footfall::numeric) * 100
+                                   ELSE 0
+                               END
+                           ),
+                           0
+                       ) AS avg_conversion_rate
+                FROM conversion
+                LEFT JOIN traffic
+                  ON traffic.store_id = conversion.store_id
+                 AND traffic.ts_bucket = conversion.ts_bucket
                 """,
-                [store_ids, start, end],
+                [store_ids, start, end, store_ids, start, end],
             )
             row = cursor.fetchone()
             if row:
@@ -306,12 +356,27 @@ def _build_report_impact_payload(*, org_id: str, store_id: str | None, start, en
                     COALESCE(SUM(
                         COALESCE(cm.queue_avg_seconds, 0) * GREATEST(COALESCE(tm.footfall, 0), 1)
                     ), 0) AS queue_wait_seconds_total
-                FROM public.conversion_metrics cm
-                LEFT JOIN public.traffic_metrics tm
+                FROM (
+                    SELECT store_id, ts_bucket,
+                           COALESCE(AVG(queue_avg_seconds), 0) AS queue_avg_seconds,
+                           COALESCE(AVG(staff_active_est), 0) AS staff_active_est
+                    FROM public.conversion_metrics
+                    WHERE store_id = ANY(%s)
+                      AND ts_bucket >= %s
+                      AND ts_bucket < %s
+                      AND (camera_role = 'balcao' OR camera_role IS NULL)
+                    GROUP BY 1, 2
+                ) cm
+                LEFT JOIN (
+                    SELECT store_id, ts_bucket,
+                           COALESCE(SUM(footfall), 0) AS footfall
+                    FROM public.traffic_metrics
+                    WHERE store_id = ANY(%s) AND ts_bucket >= %s AND ts_bucket < %s
+                    GROUP BY 1, 2
+                ) tm
                   ON tm.store_id = cm.store_id AND tm.ts_bucket = cm.ts_bucket
-                WHERE cm.store_id = ANY(%s) AND cm.ts_bucket >= %s AND cm.ts_bucket < %s
                 """,
-                [store_ids, start, end],
+                [store_ids, start, end, store_ids, start, end],
             )
             row = cursor.fetchone() or (0, 0)
             idle_seconds_total = float(row[0] or 0)

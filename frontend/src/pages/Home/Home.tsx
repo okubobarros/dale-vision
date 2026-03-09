@@ -370,8 +370,8 @@ export default function HomePage() {
                 {[
                   "📊 Ociosidade por turno e loja",
                   "💰 Economia estimada em folha",
-                  "🚨 Fila/atendimento em risco",
-                  "🎯 Escala ideal baseada em fluxo",
+                  "🚨 Filas e atendimento em risco detectados automaticamente",
+                  "🎯 Escala ideal da equipe baseada no fluxo real",
                 ].map((item, i) => (
                   <div
                     key={i}
@@ -388,84 +388,57 @@ export default function HomePage() {
                   🚀 QUERO MEU DIAGNÓSTICO EM 72h
                 </BrandButton>
 
-                <div className="mt-6 flex flex-wrap gap-2 justify-center">
-                  <BrandPill>✅ Setup em 1 chamada</BrandPill>
-                  <BrandPill>✅ Sem custos no teste</BrandPill>
-                  <BrandPill>✅ 100% Compatível Intelbras/CFTV</BrandPill>
+                <div className="mt-6 flex justify-center">
+                  <BrandPill>Diagnóstico gratuito • Sem instalação • Sem compromisso</BrandPill>
                 </div>
               </div>
             </div>
 
-            {/* Dashboard */}
+            {/* Hero visual */}
             <div data-reveal className="dv-reveal relative">
-              <div className="rounded-[28px] border border-white/15 bg-white/5 p-4 shadow-2xl">
-                <div className="flex items-center justify-between mb-6">
-                  <div className="flex items-center gap-2">
-                    <div className="w-3 h-3 rounded-full bg-red-500 animate-pulse" />
-                    <span className="text-sm font-medium text-white/90">LOJA CENTRO • AO VIVO</span>
-                  </div>
-                  <div className="text-xs bg-white/5 border border-white/10 text-white/80 px-3 py-1 rounded-full">
-                    📊 3 alertas
-                  </div>
-                </div>
+              <div className="relative overflow-hidden rounded-[28px] border border-white/15 bg-white/5 p-3 shadow-2xl">
+                <div
+                  className="relative min-h-[520px] overflow-hidden rounded-[24px] border border-white/10 bg-slate-950 bg-cover bg-center bg-no-repeat"
+                  style={{
+                    backgroundImage:
+                      "linear-gradient(180deg, rgba(6,10,24,0.08) 0%, rgba(6,10,24,0.4) 100%), url('/hero-store-floor.png')",
+                  }}
+                >
+                  <div className="absolute inset-0 bg-gradient-to-t from-slate-950/55 via-transparent to-slate-950/15" />
 
-                <div className="space-y-4">
-                  <div className="bg-white/5 border border-white/10 rounded-xl p-4">
-                    <div className="flex items-start justify-between gap-3">
-                      <div className="flex items-start gap-3">
-                        <div className="text-2xl">⏰</div>
-                        <div>
-                          <div className="font-bold text-white/90">Ociosidade crítica</div>
-                          <div className="text-sm text-white/60 mt-1">Turno 12–14h: 72% parado</div>
-                        </div>
+                  <div className="absolute right-4 top-4 z-10 flex flex-col items-end gap-3">
+                    <div className="bg-gradient-to-r from-blue-400 via-cyan-300 to-emerald-300 text-black text-xs font-bold px-4 py-1 rounded-full shadow-lg">
+                      DADOS REAIS
+                    </div>
+
+                    <div className="max-w-[240px] rounded-2xl border border-cyan-300/35 bg-slate-950/72 px-4 py-3 text-right shadow-[0_20px_60px_rgba(14,165,233,0.18)] backdrop-blur-md">
+                      <div className="text-[11px] font-semibold tracking-[0.24em] text-cyan-200/80">
+                        CAM 04 — STORE FLOOR
                       </div>
-                      <div className="text-xs bg-white/5 border border-white/10 text-white/80 px-3 py-1 rounded-full whitespace-nowrap">
-                        Ajustar escala
-                      </div>
+                      <div className="mt-2 text-sm font-bold text-white">AI ANALYSIS ACTIVE</div>
                     </div>
                   </div>
 
-                  <div className="bg-white/5 border border-white/10 rounded-xl p-4">
-                    <div className="flex items-start justify-between gap-3">
-                      <div className="flex items-start gap-3">
-                        <div className="text-2xl">👥</div>
+                  <div className="absolute inset-x-4 bottom-4 z-10">
+                    <div className="rounded-2xl border border-white/10 bg-slate-950/68 px-4 py-4 backdrop-blur-md">
+                      <div className="flex items-center justify-between gap-4">
                         <div>
-                          <div className="font-bold text-white/90">Clientes em risco</div>
-                          <div className="text-sm text-white/60 mt-1">14 sem atendimento há 2+ min</div>
+                          <div className="text-[11px] font-semibold tracking-[0.28em] text-white/55">
+                            LOJA TESTE
+                          </div>
+                          <div className="mt-1 text-lg font-semibold text-white">
+                            Fluxo real analisado em tempo real
+                          </div>
+                        </div>
+
+                        <div className="text-right">
+                          <div className="text-[11px] font-semibold tracking-[0.18em] text-emerald-300/80">
+                            EDGE ONLINE
+                          </div>
+                          <div className="mt-1 text-sm text-white/75">Visão, fila e ocupação por câmera</div>
                         </div>
                       </div>
-                      <div className="text-xs bg-white/5 border border-white/10 text-white/80 px-3 py-1 rounded-full whitespace-nowrap">
-                        Reforçar caixa
-                      </div>
                     </div>
-                  </div>
-
-                  <div className="bg-white/5 border border-white/10 rounded-xl p-4">
-                    <div className="flex items-start justify-between gap-3">
-                      <div className="flex items-start gap-3">
-                        <div className="text-2xl">💰</div>
-                        <div>
-                          <div className="font-bold text-white/90">Economia identificada</div>
-                          <div className="text-sm text-white/60 mt-1">Escala ideal: -1 pessoa/turno</div>
-                        </div>
-                      </div>
-                      <div className="text-xs bg-white/5 border border-white/10 text-white/80 px-3 py-1 rounded-full whitespace-nowrap">
-                        R$2.400/mês
-                      </div>
-                    </div>
-                  </div>
-                </div>
-
-                <div className="mt-6 pt-4 border-t border-white/10">
-                  <div className="flex justify-between text-xs text-white/60">
-                    <span>3 lojas monitoradas</span>
-                    <span>18 câmeras ativas</span>
-                  </div>
-                </div>
-
-                <div className="absolute -top-3 -right-3">
-                  <div className="bg-gradient-to-r from-blue-400 via-cyan-300 to-purple-500 text-black text-xs font-bold px-4 py-1 rounded-full shadow-lg">
-                    📈 DADOS REAIS
                   </div>
                 </div>
               </div>

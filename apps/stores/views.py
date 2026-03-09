@@ -1333,7 +1333,7 @@ class StoreViewSet(viewsets.ModelViewSet):
                 """
                 SELECT date_trunc(%s, ts_bucket) AS bucket,
                        COALESCE(SUM(footfall), 0) AS footfall,
-                       COALESCE(AVG(dwell_seconds_avg), 0) AS dwell_avg
+                       COALESCE(AVG(NULLIF(dwell_seconds_avg, 0)), 0) AS dwell_avg
                 FROM public.traffic_metrics
                 WHERE store_id = %s AND ts_bucket >= %s AND ts_bucket < %s
                 GROUP BY 1
@@ -1352,16 +1352,38 @@ class StoreViewSet(viewsets.ModelViewSet):
 
             cursor.execute(
                 """
-                SELECT date_trunc(%s, ts_bucket) AS bucket,
-                       COALESCE(AVG(queue_avg_seconds), 0) AS queue_avg_seconds,
-                       COALESCE(AVG(staff_active_est), 0) AS staff_active_est,
-                       COALESCE(AVG(conversion_rate), 0) AS conversion_rate
-                FROM public.conversion_metrics
-                WHERE store_id = %s AND ts_bucket >= %s AND ts_bucket < %s
-                GROUP BY 1
+                WITH traffic AS (
+                    SELECT date_trunc(%s, ts_bucket) AS bucket,
+                           COALESCE(SUM(footfall), 0) AS footfall
+                    FROM public.traffic_metrics
+                    WHERE store_id = %s AND ts_bucket >= %s AND ts_bucket < %s
+                    GROUP BY 1
+                ),
+                conversion AS (
+                    SELECT date_trunc(%s, ts_bucket) AS bucket,
+                           COALESCE(AVG(queue_avg_seconds), 0) AS queue_avg_seconds,
+                           COALESCE(AVG(staff_active_est), 0) AS staff_active_est,
+                           COALESCE(SUM(checkout_events), 0) AS checkout_events
+                    FROM public.conversion_metrics
+                    WHERE store_id = %s
+                      AND ts_bucket >= %s
+                      AND ts_bucket < %s
+                      AND (camera_role = 'balcao' OR camera_role IS NULL)
+                    GROUP BY 1
+                )
+                SELECT COALESCE(conversion.bucket, traffic.bucket) AS bucket,
+                       COALESCE(conversion.queue_avg_seconds, 0) AS queue_avg_seconds,
+                       COALESCE(conversion.staff_active_est, 0) AS staff_active_est,
+                       CASE
+                           WHEN COALESCE(traffic.footfall, 0) > 0
+                           THEN ROUND((COALESCE(conversion.checkout_events, 0)::numeric / traffic.footfall::numeric) * 100, 2)
+                           ELSE 0
+                       END AS conversion_rate
+                FROM conversion
+                FULL OUTER JOIN traffic ON traffic.bucket = conversion.bucket
                 ORDER BY 1 ASC
                 """,
-                [bucket, str(store.id), start, end],
+                [bucket, str(store.id), start, end, bucket, str(store.id), start, end],
             )
             for row in cursor.fetchall():
                 conversion_series.append(
@@ -1376,7 +1398,7 @@ class StoreViewSet(viewsets.ModelViewSet):
             cursor.execute(
                 """
                 SELECT COALESCE(SUM(footfall), 0) AS total_visitors,
-                       COALESCE(AVG(dwell_seconds_avg), 0) AS avg_dwell_seconds
+                       COALESCE(AVG(NULLIF(dwell_seconds_avg, 0)), 0) AS avg_dwell_seconds
                 FROM public.traffic_metrics
                 WHERE store_id = %s AND ts_bucket >= %s AND ts_bucket < %s
                 """,
@@ -1389,13 +1411,41 @@ class StoreViewSet(viewsets.ModelViewSet):
 
             cursor.execute(
                 """
-                SELECT COALESCE(AVG(queue_avg_seconds), 0) AS avg_queue_seconds,
-                       COALESCE(AVG(staff_active_est), 0) AS avg_staff_active,
-                       COALESCE(AVG(conversion_rate), 0) AS avg_conversion_rate
-                FROM public.conversion_metrics
-                WHERE store_id = %s AND ts_bucket >= %s AND ts_bucket < %s
+                WITH traffic AS (
+                    SELECT ts_bucket,
+                           COALESCE(SUM(footfall), 0) AS footfall
+                    FROM public.traffic_metrics
+                    WHERE store_id = %s AND ts_bucket >= %s AND ts_bucket < %s
+                    GROUP BY 1
+                ),
+                conversion AS (
+                    SELECT ts_bucket,
+                           COALESCE(AVG(queue_avg_seconds), 0) AS queue_avg_seconds,
+                           COALESCE(AVG(staff_active_est), 0) AS avg_staff_active,
+                           COALESCE(SUM(checkout_events), 0) AS checkout_events
+                    FROM public.conversion_metrics
+                    WHERE store_id = %s
+                      AND ts_bucket >= %s
+                      AND ts_bucket < %s
+                      AND (camera_role = 'balcao' OR camera_role IS NULL)
+                    GROUP BY 1
+                )
+                SELECT COALESCE(AVG(conversion.queue_avg_seconds), 0) AS avg_queue_seconds,
+                       COALESCE(AVG(conversion.avg_staff_active), 0) AS avg_staff_active,
+                       COALESCE(
+                           AVG(
+                               CASE
+                                   WHEN COALESCE(traffic.footfall, 0) > 0
+                                   THEN (COALESCE(conversion.checkout_events, 0)::numeric / traffic.footfall::numeric) * 100
+                                   ELSE 0
+                               END
+                           ),
+                           0
+                       ) AS avg_conversion_rate
+                FROM conversion
+                LEFT JOIN traffic ON traffic.ts_bucket = conversion.ts_bucket
                 """,
-                [str(store.id), start, end],
+                [str(store.id), start, end, str(store.id), start, end],
             )
             row = cursor.fetchone()
             if row:
@@ -1407,7 +1457,7 @@ class StoreViewSet(viewsets.ModelViewSet):
                 """
                 SELECT z.id, z.name,
                        COALESCE(SUM(t.footfall), 0) AS footfall,
-                       COALESCE(AVG(t.dwell_seconds_avg), 0) AS dwell_avg
+                       COALESCE(AVG(NULLIF(t.dwell_seconds_avg, 0)), 0) AS dwell_avg
                 FROM public.store_zones z
                 JOIN public.traffic_metrics t ON t.zone_id = z.id
                 WHERE z.store_id = %s AND t.ts_bucket >= %s AND t.ts_bucket < %s
@@ -1463,7 +1513,7 @@ class StoreViewSet(viewsets.ModelViewSet):
                 """
                 SELECT date_trunc('hour', ts_bucket AT TIME ZONE %s) AS bucket_local,
                        COALESCE(SUM(footfall), 0) AS footfall,
-                       COALESCE(AVG(dwell_seconds_avg), 0) AS dwell_avg
+                       COALESCE(AVG(NULLIF(dwell_seconds_avg, 0)), 0) AS dwell_avg
                 FROM public.traffic_metrics
                 WHERE store_id = %s AND ts_bucket >= %s AND ts_bucket < %s
                 GROUP BY 1
@@ -1486,16 +1536,38 @@ class StoreViewSet(viewsets.ModelViewSet):
 
             cursor.execute(
                 """
-                SELECT date_trunc('hour', ts_bucket AT TIME ZONE %s) AS bucket_local,
-                       COALESCE(AVG(queue_avg_seconds), 0) AS queue_avg_seconds,
-                       COALESCE(AVG(staff_active_est), 0) AS staff_active_est,
-                       COALESCE(AVG(conversion_rate), 0) AS conversion_rate
-                FROM public.conversion_metrics
-                WHERE store_id = %s AND ts_bucket >= %s AND ts_bucket < %s
-                GROUP BY 1
+                WITH traffic AS (
+                    SELECT date_trunc('hour', ts_bucket AT TIME ZONE %s) AS bucket_local,
+                           COALESCE(SUM(footfall), 0) AS footfall
+                    FROM public.traffic_metrics
+                    WHERE store_id = %s AND ts_bucket >= %s AND ts_bucket < %s
+                    GROUP BY 1
+                ),
+                conversion AS (
+                    SELECT date_trunc('hour', ts_bucket AT TIME ZONE %s) AS bucket_local,
+                           COALESCE(AVG(queue_avg_seconds), 0) AS queue_avg_seconds,
+                           COALESCE(AVG(staff_active_est), 0) AS staff_active_est,
+                           COALESCE(SUM(checkout_events), 0) AS checkout_events
+                    FROM public.conversion_metrics
+                    WHERE store_id = %s
+                      AND ts_bucket >= %s
+                      AND ts_bucket < %s
+                      AND (camera_role = 'balcao' OR camera_role IS NULL)
+                    GROUP BY 1
+                )
+                SELECT COALESCE(conversion.bucket_local, traffic.bucket_local) AS bucket_local,
+                       COALESCE(conversion.queue_avg_seconds, 0) AS queue_avg_seconds,
+                       COALESCE(conversion.staff_active_est, 0) AS staff_active_est,
+                       CASE
+                           WHEN COALESCE(traffic.footfall, 0) > 0
+                           THEN ROUND((COALESCE(conversion.checkout_events, 0)::numeric / traffic.footfall::numeric) * 100, 2)
+                           ELSE 0
+                       END AS conversion_rate
+                FROM conversion
+                FULL OUTER JOIN traffic ON traffic.bucket_local = conversion.bucket_local
                 ORDER BY 1 ASC
                 """,
-                [tz.key, str(store.id), start, end],
+                [tz.key, str(store.id), start, end, tz.key, str(store.id), start, end],
             )
             for row in cursor.fetchall():
                 bucket_local = row[0]
@@ -1514,13 +1586,37 @@ class StoreViewSet(viewsets.ModelViewSet):
         with connection.cursor() as cursor:
             cursor.execute(
                 """
-                SELECT ts_bucket, queue_avg_seconds, staff_active_est, conversion_rate
-                FROM public.conversion_metrics
-                WHERE store_id = %s
-                ORDER BY ts_bucket DESC
+                WITH traffic AS (
+                    SELECT ts_bucket,
+                           COALESCE(SUM(footfall), 0) AS footfall
+                    FROM public.traffic_metrics
+                    WHERE store_id = %s
+                    GROUP BY 1
+                ),
+                conversion AS (
+                    SELECT ts_bucket,
+                           COALESCE(AVG(queue_avg_seconds), 0) AS queue_avg_seconds,
+                           COALESCE(AVG(staff_active_est), 0) AS staff_active_est,
+                           COALESCE(SUM(checkout_events), 0) AS checkout_events
+                    FROM public.conversion_metrics
+                    WHERE store_id = %s
+                      AND (camera_role = 'balcao' OR camera_role IS NULL)
+                    GROUP BY 1
+                )
+                SELECT conversion.ts_bucket,
+                       conversion.queue_avg_seconds,
+                       conversion.staff_active_est,
+                       CASE
+                           WHEN COALESCE(traffic.footfall, 0) > 0
+                           THEN ROUND((COALESCE(conversion.checkout_events, 0)::numeric / traffic.footfall::numeric) * 100, 2)
+                           ELSE 0
+                       END AS conversion_rate
+                FROM conversion
+                LEFT JOIN traffic ON traffic.ts_bucket = conversion.ts_bucket
+                ORDER BY conversion.ts_bucket DESC
                 LIMIT 1
                 """,
-                [str(store.id)],
+                [str(store.id), str(store.id)],
             )
             latest_row = cursor.fetchone()
 
