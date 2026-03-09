@@ -93,8 +93,10 @@ describe("EdgeSetupModal step 2", () => {
       "UPDATE_CHANNEL=stable",
       "UPDATE_GITHUB_REPO=daleship/dalevision-edge-agent",
       "UPDATE_INTERVAL_SECONDS=21600",
+      "EDGE_HTTP_TIMEOUT_SECONDS=30",
+      "EDGE_ROI_TIMEOUT_SECONDS=20",
       "VISION_ENABLED=1",
-      "VISION_POLL_SECONDS=5",
+      "VISION_POLL_SECONDS=10",
       "VISION_SNAPSHOT_TIMEOUT_SECONDS=10",
       "VISION_MODEL_PATH=yolov8n.pt",
     ]
