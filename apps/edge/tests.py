@@ -6,7 +6,7 @@ from unittest.mock import MagicMock, patch
 from django.test import TestCase, SimpleTestCase
 from django.http import Http404
 from django.test import override_settings
-from django.db import connection
+from django.db import IntegrityError, connection
 from django.contrib.auth import get_user_model
 from rest_framework.test import APIClient, APIRequestFactory
 from rest_framework.exceptions import PermissionDenied
@@ -22,6 +22,7 @@ from apps.edge.vision_metrics import (
     insert_event_receipt_if_new,
     insert_vision_atomic_event_if_new,
 )
+from apps.edge import vision_metrics
 
 
 class EdgeAuthHeaderPrecedenceTests(SimpleTestCase):
@@ -621,6 +622,46 @@ class VisionMetricsContractTests(TestCase):
         self.assertEqual(traffic_kwargs["camera_role"], "entrada")
         self.assertEqual(conversion_kwargs["camera_id"], "cam-1")
         self.assertEqual(conversion_kwargs["camera_role"], "entrada")
+
+    def test_conversion_metrics_falls_back_on_legacy_unique_constraint(self):
+        cursor = MagicMock()
+        cursor.fetchone.side_effect = [
+            None,
+            ("legacy-row-1",),
+        ]
+        cursor.execute.side_effect = [
+            None,
+            IntegrityError("duplicate key value violates unique constraint"),
+            None,
+            None,
+        ]
+        cursor_cm = MagicMock()
+        cursor_cm.__enter__.return_value = cursor
+        cursor_cm.__exit__.return_value = False
+
+        with patch("apps.edge.vision_metrics.connection.cursor", return_value=cursor_cm):
+            vision_metrics._upsert_conversion_metrics(
+                "store-1",
+                vision_metrics._parse_ts("2026-03-09T12:00:00Z"),
+                {
+                    "queue_avg_seconds": 30,
+                    "staff_active_est": 1,
+                    "checkout_events": 2,
+                    "metric_type": "checkout_proxy",
+                    "roi_entity_id": "queue-zone-1",
+                },
+                camera_id="cam-1",
+                camera_role="balcao",
+            )
+
+        self.assertEqual(cursor.execute.call_count, 4)
+        fallback_sql, fallback_params = cursor.execute.call_args_list[2][0]
+        self.assertIn("SELECT id", fallback_sql)
+        self.assertEqual(fallback_params[0], "store-1")
+        self.assertIsNotNone(fallback_params[1])
+        update_sql, update_params = cursor.execute.call_args_list[3][0]
+        self.assertIn("UPDATE public.conversion_metrics", update_sql)
+        self.assertEqual(update_params[-1], "legacy-row-1")
 
     def test_insert_vision_atomic_event_if_new_includes_crossing_context(self):
         payload = {

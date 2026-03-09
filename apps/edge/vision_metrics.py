@@ -4,11 +4,15 @@ import json
 from datetime import datetime, timezone as dt_timezone
 from typing import Any, Dict, Optional
 
-from django.db import connection
+import logging
+
+from django.db import IntegrityError, connection
 from django.utils import timezone
 from django.utils.dateparse import parse_datetime
 from apps.core.models import Store
 from apps.core.services.journey_events import log_journey_event
+
+logger = logging.getLogger(__name__)
 
 
 def _parse_ts(raw: Optional[str]):
@@ -282,37 +286,89 @@ def _upsert_conversion_metrics(
                 ],
             )
         else:
-            cursor.execute(
-                """
-                INSERT INTO public.conversion_metrics (
-                    store_id,
-                    camera_id,
-                    camera_role,
-                    ownership,
-                    metric_type,
-                    roi_entity_id,
-                    ts_bucket,
-                    conversion_rate,
-                    queue_avg_seconds,
-                    staff_active_est,
-                    checkout_events
+            insert_params = [
+                store_id,
+                camera_id,
+                camera_role,
+                ownership,
+                metric_type,
+                roi_entity_id,
+                ts_bucket,
+                conversion_rate,
+                queue_avg,
+                staff_active,
+                checkout_events,
+            ]
+            try:
+                cursor.execute(
+                    """
+                    INSERT INTO public.conversion_metrics (
+                        store_id,
+                        camera_id,
+                        camera_role,
+                        ownership,
+                        metric_type,
+                        roi_entity_id,
+                        ts_bucket,
+                        conversion_rate,
+                        queue_avg_seconds,
+                        staff_active_est,
+                        checkout_events
+                    )
+                    VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s)
+                    """,
+                    insert_params,
                 )
-                VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s)
-                """,
-                [
+            except IntegrityError:
+                # Legacy databases may still enforce uniqueness on (store_id, ts_bucket)
+                # instead of (store_id, ts_bucket, camera_id). Fall back to the legacy row
+                # to keep ingestion alive until the DB constraint is migrated.
+                logger.warning(
+                    "[EDGE] legacy conversion_metrics uniqueness fallback store_id=%s ts_bucket=%s camera_id=%s",
                     store_id,
-                    camera_id,
-                    camera_role,
-                    ownership,
-                    metric_type,
-                    roi_entity_id,
                     ts_bucket,
-                    conversion_rate,
-                    queue_avg,
-                    staff_active,
-                    checkout_events,
-                ],
-            )
+                    camera_id,
+                )
+                cursor.execute(
+                    """
+                    SELECT id
+                    FROM public.conversion_metrics
+                    WHERE store_id = %s
+                      AND ts_bucket = %s
+                    """,
+                    [store_id, ts_bucket],
+                )
+                legacy_row = cursor.fetchone()
+                if legacy_row:
+                    cursor.execute(
+                        """
+                        UPDATE public.conversion_metrics
+                        SET camera_id = %s,
+                            camera_role = %s,
+                            ownership = %s,
+                            metric_type = %s,
+                            roi_entity_id = %s,
+                            conversion_rate = %s,
+                            queue_avg_seconds = %s,
+                            staff_active_est = %s,
+                            checkout_events = %s
+                        WHERE id = %s
+                        """,
+                        [
+                            camera_id,
+                            camera_role,
+                            ownership,
+                            metric_type,
+                            roi_entity_id,
+                            conversion_rate,
+                            queue_avg,
+                            staff_active,
+                            checkout_events,
+                            legacy_row[0],
+                        ],
+                    )
+                else:
+                    raise
 
 
 def apply_vision_metrics(payload: Dict[str, Any]) -> None:
