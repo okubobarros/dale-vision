@@ -20,6 +20,34 @@ const ChartFallback = () => (
   <div className="h-full w-full rounded-lg bg-gray-200/70 animate-pulse" />
 )
 
+const TARGETS = Object.freeze({
+  conversion: 30,
+  queueMin: 3,
+  dwellMin: 4,
+})
+
+type StatusTone = "good" | "warn" | "bad" | "neutral"
+type MetricStatus = { tone: StatusTone; label: string }
+
+const getMetricStatus = (
+  hasSummary: boolean,
+  value: number,
+  target: number,
+  direction: "higher" | "lower"
+): MetricStatus => {
+  if (!hasSummary) {
+    return { tone: "neutral", label: "Sem dados" }
+  }
+  if (direction === "higher") {
+    if (value >= target) return { tone: "good", label: "Dentro da meta" }
+    if (value >= target * 0.8) return { tone: "warn", label: "Atenção" }
+    return { tone: "bad", label: "Abaixo da meta" }
+  }
+  if (value <= target) return { tone: "good", label: "Dentro da meta" }
+  if (value <= target * 1.3) return { tone: "warn", label: "Atenção" }
+  return { tone: "bad", label: "Acima da meta" }
+}
+
 const Analytics = () => {
   const navigate = useNavigate()
   const [period, setPeriod] = useState("7d")
@@ -27,12 +55,6 @@ const Analytics = () => {
   const [metricView, setMetricView] = useState<"visitantes" | "conversoes" | "fila">("visitantes")
   const [sortKey, setSortKey] = useState<"visitors" | "conversion" | "queue" | "dwell" | "status">("queue")
   const [sortDir, setSortDir] = useState<"asc" | "desc">("desc")
-
-  const TARGETS = {
-    conversion: 30,
-    queueMin: 3,
-    dwellMin: 4,
-  }
 
   const periodLabel = useMemo(() => {
     switch (period) {
@@ -98,31 +120,10 @@ const Analytics = () => {
 
   const formatPercent = (value: number) => `${value.toFixed(1)}%`
   const formatMinutes = (value: number) => `${value} min`
-
-  type StatusTone = "good" | "warn" | "bad" | "neutral"
-  type MetricStatus = { tone: StatusTone; label: string }
-
-  const getMetricStatus = (
-    value: number,
-    target: number,
-    direction: "higher" | "lower"
-  ): MetricStatus => {
-    if (!summary) {
-      return { tone: "neutral", label: "Sem dados" }
-    }
-    if (direction === "higher") {
-      if (value >= target) return { tone: "good", label: "Dentro da meta" }
-      if (value >= target * 0.8) return { tone: "warn", label: "Atenção" }
-      return { tone: "bad", label: "Abaixo da meta" }
-    }
-    if (value <= target) return { tone: "good", label: "Dentro da meta" }
-    if (value <= target * 1.3) return { tone: "warn", label: "Atenção" }
-    return { tone: "bad", label: "Acima da meta" }
-  }
-
-  const conversionStatus = getMetricStatus(conversionRate, TARGETS.conversion, "higher")
-  const queueStatus = getMetricStatus(queueAvgMin, TARGETS.queueMin, "lower")
-  const dwellStatus = getMetricStatus(dwellAvgMin, TARGETS.dwellMin, "lower")
+  const hasSummary = Boolean(summary)
+  const conversionStatus = getMetricStatus(hasSummary, conversionRate, TARGETS.conversion, "higher")
+  const queueStatus = getMetricStatus(hasSummary, queueAvgMin, TARGETS.queueMin, "lower")
+  const dwellStatus = getMetricStatus(hasSummary, dwellAvgMin, TARGETS.dwellMin, "lower")
 
   const statusStyles: Record<StatusTone, string> = {
     good: "bg-emerald-50 text-emerald-700 border-emerald-200",
@@ -131,36 +132,26 @@ const Analytics = () => {
     neutral: "bg-gray-50 text-gray-500 border-gray-200",
   }
 
-  const executiveSummary = useMemo(() => {
-    if (!summary || !defaultStoreId) {
-      return "Selecione uma loja para gerar o resumo executivo."
-    }
-    const painCandidates = [
-      queueAvgMin > TARGETS.queueMin ? "fila acima da meta" : null,
-      conversionRate < TARGETS.conversion ? "conversão abaixo da meta" : null,
-      dwellAvgMin > TARGETS.dwellMin ? "permanência acima da meta" : null,
-    ].filter(Boolean) as string[]
+  const executiveSummary = !summary || !defaultStoreId
+    ? "Selecione uma loja para gerar o resumo executivo."
+    : (() => {
+        const painCandidates = [
+          queueAvgMin > TARGETS.queueMin ? "fila acima da meta" : null,
+          conversionRate < TARGETS.conversion ? "conversão abaixo da meta" : null,
+          dwellAvgMin > TARGETS.dwellMin ? "permanência acima da meta" : null,
+        ].filter(Boolean) as string[]
 
-    const mainPain = painCandidates[0]
-    const painText = mainPain
-      ? `Sua principal dor hoje é ${mainPain}.`
-      : "Saúde dentro das metas principais."
+        const mainPain = painCandidates[0]
+        const painText = mainPain
+          ? `Sua principal dor hoje é ${mainPain}.`
+          : "Saúde dentro das metas principais."
 
-    return `Na ${selectedStoreName}, nos ${periodLabel.toLowerCase()} você recebeu ${totalVisitors.toLocaleString(
-      "pt-BR"
-    )} visitantes, converteu ${formatPercent(conversionRate)} em vendas e teve fila média de ${formatMinutes(
-      queueAvgMin
-    )}. ${painText}`
-  }, [
-    summary,
-    defaultStoreId,
-    selectedStoreName,
-    periodLabel,
-    totalVisitors,
-    conversionRate,
-    queueAvgMin,
-    dwellAvgMin,
-  ])
+        return `Na ${selectedStoreName}, nos ${periodLabel.toLowerCase()} você recebeu ${totalVisitors.toLocaleString(
+          "pt-BR"
+        )} visitantes, converteu ${formatPercent(conversionRate)} em vendas e teve fila média de ${formatMinutes(
+          queueAvgMin
+        )}. ${painText}`
+      })()
 
   const lineData: LineChartPoint[] = useMemo(() => {
     if (!summary) return []
@@ -223,32 +214,37 @@ const Analytics = () => {
     staleTime: 60000,
   })
 
-  const storeRows = useMemo(() => {
-    if (!networkSummaries) return []
-    return networkSummaries.map(({ store, summary: storeSummary }) => {
-      const visitors = storeSummary?.totals.total_visitors ?? 0
-      const conversion = storeSummary?.totals.avg_conversion_rate ?? 0
-      const queueMin = Math.round((storeSummary?.totals.avg_queue_seconds ?? 0) / 60)
-      const dwellMin = Math.round((storeSummary?.totals.avg_dwell_seconds ?? 0) / 60)
-      const conversionTone = getMetricStatus(conversion, TARGETS.conversion, "higher").tone
-      const queueTone = getMetricStatus(queueMin, TARGETS.queueMin, "lower").tone
-      const dwellTone = getMetricStatus(dwellMin, TARGETS.dwellMin, "lower").tone
-      const tones = [conversionTone, queueTone, dwellTone]
-      const status: StatusTone =
-        tones.includes("bad") ? "bad" : tones.includes("warn") ? "warn" : tones.includes("good") ? "good" : "neutral"
-      return {
-        id: store.id,
-        name: store.name,
-        visitors,
-        conversion,
-        queueMin,
-        dwellMin,
-        status,
-      }
-    })
-  }, [networkSummaries])
+  const storeRows = !networkSummaries
+    ? []
+    : networkSummaries.map(({ store, summary: storeSummary }) => {
+        const visitors = storeSummary?.totals.total_visitors ?? 0
+        const conversion = storeSummary?.totals.avg_conversion_rate ?? 0
+        const queueMin = Math.round((storeSummary?.totals.avg_queue_seconds ?? 0) / 60)
+        const dwellMin = Math.round((storeSummary?.totals.avg_dwell_seconds ?? 0) / 60)
+        const hasStoreSummary = Boolean(storeSummary)
+        const conversionTone = getMetricStatus(
+          hasStoreSummary,
+          conversion,
+          TARGETS.conversion,
+          "higher"
+        ).tone
+        const queueTone = getMetricStatus(hasStoreSummary, queueMin, TARGETS.queueMin, "lower").tone
+        const dwellTone = getMetricStatus(hasStoreSummary, dwellMin, TARGETS.dwellMin, "lower").tone
+        const tones = [conversionTone, queueTone, dwellTone]
+        const status: StatusTone =
+          tones.includes("bad") ? "bad" : tones.includes("warn") ? "warn" : tones.includes("good") ? "good" : "neutral"
+        return {
+          id: store.id,
+          name: store.name,
+          visitors,
+          conversion,
+          queueMin,
+          dwellMin,
+          status,
+        }
+      })
 
-  const sortedStoreRows = useMemo(() => {
+  const sortedStoreRows = (() => {
     const rows = [...storeRows]
     const statusRank: Record<StatusTone, number> = { bad: 3, warn: 2, good: 1, neutral: 0 }
     const getValue = (row: (typeof storeRows)[number]) => {
@@ -274,7 +270,7 @@ const Analytics = () => {
       return sortDir === "asc" ? av - bv : bv - av
     })
     return rows
-  }, [storeRows, sortKey, sortDir])
+  })()
 
   const handleSort = useCallback(
     (key: "visitors" | "conversion" | "queue" | "dwell" | "status") => {

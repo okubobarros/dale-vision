@@ -1,5 +1,5 @@
 // src/pages/Alerts/Alerts.tsx
-import { useEffect, useMemo, useState } from "react"
+import { startTransition, useEffect, useMemo, useState } from "react"
 import { useQuery } from "@tanstack/react-query"
 import { useSearchParams } from "react-router-dom"
 
@@ -93,17 +93,19 @@ export default function Alerts() {
     const nextTo = searchParams.get("to") || ""
     const nextEvent = searchParams.get("event_id")
 
-    setStoreId(nextStore)
-    setQuery(nextQuery)
-    if (nextSeverity && ["all", "critical", "warning", "info"].includes(nextSeverity)) {
-      setSeverityFilter(nextSeverity)
-    }
-    if (nextStatus && ["all", "open", "resolved", "ignored"].includes(nextStatus)) {
-      setStatusFilter(nextStatus)
-    }
-    setDateFrom(nextFrom)
-    setDateTo(nextTo)
-    if (nextEvent) setSelectedEventId(nextEvent)
+    startTransition(() => {
+      setStoreId(nextStore)
+      setQuery(nextQuery)
+      if (nextSeverity && ["all", "critical", "warning", "info"].includes(nextSeverity)) {
+        setSeverityFilter(nextSeverity)
+      }
+      if (nextStatus && ["all", "open", "resolved", "ignored"].includes(nextStatus)) {
+        setStatusFilter(nextStatus)
+      }
+      setDateFrom(nextFrom)
+      setDateTo(nextTo)
+      setSelectedEventId(nextEvent)
+    })
   }, [searchParams])
 
   // lojas (CORE UUID) - pra filtro de alerts

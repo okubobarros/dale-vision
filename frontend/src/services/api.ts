@@ -61,7 +61,7 @@ const isAxiosHeaders = (
 ): headers is AxiosHeaders => headers instanceof AxiosHeaders
 
 let hasLoggedAuthHeader = false
-let refreshSessionPromise: Promise<ReturnType<typeof refreshSupabaseSession>> | null = null
+let refreshSessionPromise: ReturnType<typeof refreshSupabaseSession> | null = null
 
 const setDefaultsAuthHeader = (token: string | null) => {
   const commonHeaders = api.defaults.headers.common as Record<
