@@ -406,38 +406,16 @@ export default function HomePage() {
                 >
                   <div className="absolute inset-0 bg-gradient-to-t from-slate-950/55 via-transparent to-slate-950/15" />
 
-                  <div className="absolute right-4 top-4 z-10 flex flex-col items-end gap-3">
+                  <div className="absolute left-4 top-4 z-10 flex flex-col items-start gap-3">
                     <div className="bg-gradient-to-r from-blue-400 via-cyan-300 to-emerald-300 text-black text-xs font-bold px-4 py-1 rounded-full shadow-lg">
                       DADOS REAIS
                     </div>
 
-                    <div className="max-w-[240px] rounded-2xl border border-cyan-300/35 bg-slate-950/72 px-4 py-3 text-right shadow-[0_20px_60px_rgba(14,165,233,0.18)] backdrop-blur-md">
+                    <div className="max-w-[240px] rounded-2xl border border-cyan-300/35 bg-slate-950/60 px-4 py-3 text-left shadow-[0_20px_60px_rgba(14,165,233,0.18)] backdrop-blur-md">
                       <div className="text-[11px] font-semibold tracking-[0.24em] text-cyan-200/80">
                         CAM 04 — STORE FLOOR
                       </div>
                       <div className="mt-2 text-sm font-bold text-white">AI ANALYSIS ACTIVE</div>
-                    </div>
-                  </div>
-
-                  <div className="absolute inset-x-4 bottom-4 z-10">
-                    <div className="rounded-2xl border border-white/10 bg-slate-950/68 px-4 py-4 backdrop-blur-md">
-                      <div className="flex items-center justify-between gap-4">
-                        <div>
-                          <div className="text-[11px] font-semibold tracking-[0.28em] text-white/55">
-                            LOJA TESTE
-                          </div>
-                          <div className="mt-1 text-lg font-semibold text-white">
-                            Fluxo real analisado em tempo real
-                          </div>
-                        </div>
-
-                        <div className="text-right">
-                          <div className="text-[11px] font-semibold tracking-[0.18em] text-emerald-300/80">
-                            EDGE ONLINE
-                          </div>
-                          <div className="mt-1 text-sm text-white/75">Visão, fila e ocupação por câmera</div>
-                        </div>
-                      </div>
                     </div>
                   </div>
                 </div>
