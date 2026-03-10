@@ -84,3 +84,60 @@ Verifique sempre:
 3. Validar heartbeat estável por 10-15 min.
 4. Só depois avançar para perfil backend gerenciado/câmeras.
 
+## Medição automática de startup (5 reboots)
+Script: `scripts/measure_edge_startup.ps1`
+
+Objetivo: medir por reboot:
+- `boot_time_local`
+- `run_agent_start_local`
+- `first_heartbeat_201_local`
+- `boot_to_heartbeat_seconds`
+
+Comando (PowerShell, modo automático):
+
+```powershell
+cd C:\workspace\dale-vision
+powershell -ExecutionPolicy Bypass -File .\scripts\measure_edge_startup.ps1 `
+  -OutputCsvPath ".\logs\edge_startup_measurements.csv"
+```
+
+O script tenta descobrir automaticamente:
+- `InstallDir` via task `DaleVisionEdgeAgent`;
+- `.env` da instalação;
+- `DALE_LOG_DIR` para resolver `agent.log`;
+- `run_agent.log` em `<InstallDir>\logs\run_agent.log`.
+
+Se necessário, você pode forçar paths manualmente:
+
+```powershell
+powershell -ExecutionPolicy Bypass -File .\scripts\measure_edge_startup.ps1 `
+  -InstallDir "C:\Users\<user>\Downloads\dalevision-edge-agent-windows" `
+  -AgentLogPath "C:\ProgramData\DaleVision\logs\agent.log" `
+  -RunAgentLogPath "C:\Users\<user>\Downloads\dalevision-edge-agent-windows\logs\run_agent.log" `
+  -OutputCsvPath ".\logs\edge_startup_measurements.csv"
+```
+
+Rodar uma vez após cada reboot (total 5 ciclos).
+
+Critério sugerido:
+- `PASS`: `boot_to_heartbeat_seconds <= 300`
+- `SLOW`: `> 300`
+- `FAIL`: sem heartbeat encontrado no período
+
+## Quadro operacional: cameras no `.env` vs backend
+Estado atual validado em campo:
+- Heartbeat/autostart estável com `VISION_ENABLED=0` e `CAMERAS_JSON=[]`.
+- Isso valida apenas conectividade do agente, não processamento de visão.
+
+Para processar eventos de câmera:
+- Modo local (hoje, mais previsível em loja):
+  - `VISION_ENABLED=1`
+  - `CAMERA_SYNC_ENABLED=0`
+  - `CAMERAS_JSON=[...]` obrigatório com IDs reais das câmeras cadastradas no backend.
+- Modo backend-gerenciado (alvo de produto):
+  - depende de endpoint e fluxo de sync remoto totalmente validados no edge build em uso;
+  - enquanto isso não estiver fechado em QA de loja, não substituir o `CAMERAS_JSON` local no piloto.
+
+Regra prática para evitar regressão:
+- Se objetivo é provar autostart/sinal: use perfil de estabilização (`VISION_ENABLED=0`).
+- Se objetivo é provar operação de visão na loja: use perfil local com `CAMERAS_JSON` real e mantenha logs ativos.
