@@ -71,6 +71,13 @@ const formatLastSeenDisplay = (iso?: string | null) => {
   return formatRelativeTime(iso);
 };
 
+const formatCreatedAtDisplay = (iso?: string | null) => {
+  if (!iso) return '—';
+  const date = new Date(iso);
+  if (Number.isNaN(date.getTime())) return '—';
+  return date.toLocaleDateString('pt-BR');
+};
+
 const formatHoursDisplay = (store: Store) => {
   const weekday = store.hours_weekdays || '';
   const saturday = store.hours_saturday || '';
@@ -916,13 +923,17 @@ const StoreCard = ({ store, onEdit, trialExpired }: StoreCardProps) => {
     trialExpired ||
     (store.status === "blocked" && store.blocked_reason === "trial_expired");
   const storeLastSeenAt = store.last_seen_at ?? null;
-  const shouldFetchEdgeStatus = !storeLastSeenAt;
+  const shouldFetchEdgeStatus = !isRecent(storeLastSeenAt, 120);
   const { data: edgeStatus } = useQuery<StoreEdgeStatus>({
     queryKey: ['store-edge-status', store.id],
     queryFn: () => storesService.getStoreEdgeStatus(store.id),
     enabled: shouldFetchEdgeStatus,
-    refetchInterval: 20000,
+    refetchInterval: 10000,
     refetchIntervalInBackground: true,
+    refetchOnWindowFocus: "always",
+    refetchOnReconnect: true,
+    refetchOnMount: "always",
+    retry: false,
   });
   const edgeHeartbeatAt =
     edgeStatus?.last_comm_at ||
@@ -1181,8 +1192,8 @@ const StoreCard = ({ store, onEdit, trialExpired }: StoreCardProps) => {
           <svg className="w-4 h-4 mr-2 flex-shrink-0" fill="currentColor" viewBox="0 0 20 20">
             <path fillRule="evenodd" d="M6 2a1 1 0 00-1 1v1H4a2 2 0 00-2 2v10a2 2 0 002 2h12a2 2 0 002-2V6a2 2 0 00-2-2h-1V3a1 1 0 10-2 0v1H7V3a1 1 0 00-1-1zm0 5a1 1 0 000 2h8a1 1 0 100-2H6z" clipRule="evenodd" />
           </svg>
-          <span aria-label={`Criada em: ${new Date(store.created_at).toLocaleDateString('pt-BR')}`}>
-            Criada em {new Date(store.created_at).toLocaleDateString('pt-BR')}
+          <span aria-label={`Criada em: ${formatCreatedAtDisplay(store.created_at)}`}>
+            Criada em {formatCreatedAtDisplay(store.created_at)}
           </span>
         </div>
       </div>
@@ -1226,6 +1237,12 @@ const Stores = () => {
   const { data: stores, isLoading, error } = useQuery({
     queryKey: ['stores'],
     queryFn: storesService.getStores,
+    staleTime: 10000,
+    refetchInterval: 15000,
+    refetchIntervalInBackground: true,
+    refetchOnWindowFocus: "always",
+    refetchOnReconnect: true,
+    refetchOnMount: "always",
   });
 
   const handleEditStore = (store: Store) => {

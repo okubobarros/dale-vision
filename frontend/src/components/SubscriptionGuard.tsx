@@ -59,6 +59,9 @@ const SubscriptionGuard = () => {
 
     const checkAndRedirect = () => {
       const expiredFlag = sessionStorage.getItem(TRIAL_EXPIRED_STORAGE_KEY) === "1"
+      if (!isExpired && expiredFlag) {
+        sessionStorage.removeItem(TRIAL_EXPIRED_STORAGE_KEY)
+      }
       const expired = isExpired || expiredFlag
       if (!expired) return
       void trackJourneyEventOnce("trial_expired_shown", "trial_expired_shown", {

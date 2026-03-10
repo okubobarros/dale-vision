@@ -277,19 +277,19 @@ const Dashboard = () => {
     enabled: canFetchAuth && selectedStore !== ALL_STORES_VALUE,
     refetchInterval: (query) => {
       if (typeof document !== "undefined" && document.visibilityState === "hidden") {
-        return false
-      }
-      if (query.state.error) {
-        return false
+        return 30000
       }
       if (query.state.status !== "success") {
-        return false
+        return 10000
       }
       const data = query.state.data as StoreEdgeStatus | undefined
-      if (!data?.online) return 30000
-      return edgeSetupOpen ? 15000 : 20000
+      if (!data?.online) return 10000
+      return edgeSetupOpen ? 10000 : 15000
     },
-    refetchIntervalInBackground: false,
+    refetchIntervalInBackground: true,
+    refetchOnWindowFocus: "always",
+    refetchOnReconnect: true,
+    refetchOnMount: "always",
     retry: false,
   })
   const selectedStoreRole = selectedStoreItem?.role ?? null
