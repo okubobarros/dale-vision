@@ -103,3 +103,33 @@ export const refreshSupabaseSession = async (): Promise<AuthResponse | null> => 
     return null
   }
 }
+
+export const bootstrapSupabaseSession = async (): Promise<AuthResponse | null> => {
+  const existingToken = getAccessToken()
+  try {
+    const { data, error } = await supabase.auth.getSession()
+    if (error) {
+      if (import.meta.env.DEV) {
+        console.warn("[auth] getSession failed", error)
+      }
+      return null
+    }
+
+    const session = data.session
+    const sbUser = session?.user ?? (await supabase.auth.getUser()).data?.user ?? null
+    if (!session?.access_token || !sbUser) {
+      return null
+    }
+
+    if (existingToken && existingToken === session.access_token) {
+      return null
+    }
+
+    return saveSupabaseSession(session, sbUser, sbUser.email || "")
+  } catch (error) {
+    if (import.meta.env.DEV) {
+      console.warn("[auth] bootstrap session exception", error)
+    }
+    return null
+  }
+}

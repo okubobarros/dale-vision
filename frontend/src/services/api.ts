@@ -11,10 +11,11 @@ import { API_BASE_URL } from "../lib/api"
 import { clearAuthStorage, getAccessToken } from "./authStorage"
 import { refreshSupabaseSession } from "./authSession"
 
-const DEFAULT_TIMEOUT_MS = 10000
+const DEFAULT_TIMEOUT_MS = 15000
+const CRITICAL_TIMEOUT_MS = 30000
 const LONG_TIMEOUT_MS = 120000
 const BEST_EFFORT_TIMEOUT_MS = 3000
-const RETRY_BACKOFF_MS = [1000, 3000]
+const RETRY_BACKOFF_MS = [1000, 3000, 6000]
 const TRIAL_EXPIRED_CODE = "TRIAL_EXPIRED"
 const SUBSCRIPTION_REQUIRED_CODE = "SUBSCRIPTION_REQUIRED"
 const TRIAL_EXPIRED_STORAGE_KEY = "dv_trial_expired"
@@ -191,6 +192,8 @@ api.interceptors.request.use(
     const timeout =
       category === "long"
         ? LONG_TIMEOUT_MS
+        : category === "critical"
+        ? CRITICAL_TIMEOUT_MS
         : category === "best-effort"
         ? BEST_EFFORT_TIMEOUT_MS
         : DEFAULT_TIMEOUT_MS

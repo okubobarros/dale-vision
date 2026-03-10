@@ -8,7 +8,9 @@ import {
 } from "./authStorage"
 import {
   type AuthResponse,
+  bootstrapSupabaseSession,
   buildUserFromSupabase,
+  refreshSupabaseSession,
   saveSupabaseSession,
 } from "./authSession"
 
@@ -98,6 +100,30 @@ export const authService = {
       console.log("auth rehydrated", { hasUser: !!user, hasToken: !!token })
     }
     return { user, token }
+  },
+
+  async bootstrapSession(): Promise<{ user: User | null; token: string | null }> {
+    const localUser = getStoredUser<User>()
+    const localToken = getAccessToken()
+    if (localUser && localToken) {
+      syncApiAuthHeader()
+      return { user: localUser, token: localToken }
+    }
+
+    const refreshed = await refreshSupabaseSession()
+    if (refreshed?.token) {
+      syncApiAuthHeader()
+      return { user: refreshed.user, token: refreshed.token }
+    }
+
+    const bootstrapped = await bootstrapSupabaseSession()
+    if (bootstrapped?.token) {
+      syncApiAuthHeader()
+      return { user: bootstrapped.user, token: bootstrapped.token }
+    }
+
+    syncApiAuthHeader()
+    return { user: null, token: null }
   },
 
   saveSupabaseSession,

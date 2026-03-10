@@ -19,17 +19,18 @@ export const AuthProvider: React.FC<AuthProviderProps> = ({ children }) => {
 
   useEffect(() => {
     let active = true
-    const { user: currentUser, token: currentToken } = authService.rehydrate()
-
-    if (active) {
+    const bootstrap = async () => {
+      const { user: currentUser, token: currentToken } = await authService.bootstrapSession()
+      if (!active) return
       setUser(currentUser)
       setToken(currentToken)
       setIsLoading(false)
       setAuthReady(true)
+      console.log("AuthProvider - Usuário carregado:", currentUser)
+      console.log("AuthProvider - Token existe:", !!currentToken)
     }
 
-    console.log("AuthProvider - Usuário carregado:", currentUser)
-    console.log("AuthProvider - Token existe:", !!currentToken)
+    void bootstrap()
 
     return () => {
       active = false

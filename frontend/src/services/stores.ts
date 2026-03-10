@@ -700,7 +700,9 @@ export const storesService = {
   async getStores(): Promise<Store[]> {
     console.log("🔄 Buscando lojas... (fetching stores)")
     try {
-      const response = await api.get('/v1/stores/');
+      const response = await api.get('/v1/stores/', {
+        timeoutCategory: "critical",
+      });
       console.log('📦 Resposta completa:', response);
 
       const payload = response.data;

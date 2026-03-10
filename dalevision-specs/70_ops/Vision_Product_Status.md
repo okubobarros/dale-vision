@@ -3,6 +3,10 @@
 ## Data de referencia
 - 2026-03-09
 
+## Referencia de sprint
+- Sprint atual: `S0 - Stabilize Edge in Production`
+- Documento de execucao: `dalevision-specs/70_ops/Sprint_Execution_Reference.md`
+
 ## Leitura executiva
 O projeto saiu do estado `Broken` e entrou em `Unreliable`, mas ainda nao chegou em
 `Measurement-Ready` para multilojistas.
