@@ -20,6 +20,8 @@ Padronizar suporte e reduzir tempo de resolução.
 - `Diagnose.bat` (gera ZIP de diagnóstico)
 - `logs\agent.log`
 - `logs\update.log`
+- Runbook de limpeza/reinstalação:
+  - `70_ops/Edge_Autostart_Clean_Reset_Runbook.md`
 
 ## Checagem rápida de Storage (ROI Snapshot)
 - `GET /api/v1/system/storage-status/` (somente staff)

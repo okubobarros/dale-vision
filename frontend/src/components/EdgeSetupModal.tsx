@@ -12,6 +12,8 @@ type EdgeSetupModalProps = {
   defaultStoreId?: string
 }
 
+type EdgeEnvProfile = "stabilization" | "backend_managed"
+
 type EdgeStatusPayload = {
   ok?: boolean
   online?: boolean
@@ -45,9 +47,9 @@ const UPDATE_GITHUB_REPO = "daleship/dalevision-edge-agent"
 const UPDATE_INTERVAL_SECONDS = 21600
 const EDGE_HTTP_TIMEOUT_SECONDS = 30
 const EDGE_ROI_TIMEOUT_SECONDS = 20
-const VISION_ENABLED = 1
 const VISION_POLL_SECONDS = 10
 const VISION_SNAPSHOT_TIMEOUT_SECONDS = 10
+const DEFAULT_LOG_DIR = "C:\\ProgramData\\DaleVision\\logs"
 const TOKEN_ROTATED_INSTRUCTION =
   "Token do Edge rotacionado: atualize o .env no computador da loja com o novo EDGE_TOKEN e reinicie o agente."
 
@@ -147,6 +149,7 @@ const EdgeSetupModal = ({ open, onClose, defaultStoreId }: EdgeSetupModalProps) 
   const [agentId, setAgentId] = useState(DEFAULT_AGENT_ID)
   const [cloudBaseUrl, setCloudBaseUrl] = useState(DEFAULT_CLOUD_BASE_URL)
   const [loadingCreds, setLoadingCreds] = useState(false)
+  const [envProfile, setEnvProfile] = useState<EdgeEnvProfile>("stabilization")
   const [setupError, setSetupError] = useState<string | null>(null)
   const [rotatingToken, setRotatingToken] = useState(false)
   const [tokenRotated, setTokenRotated] = useState(false)
@@ -219,6 +222,7 @@ const EdgeSetupModal = ({ open, onClose, defaultStoreId }: EdgeSetupModalProps) 
     setEdgeToken("")
     setAgentId(DEFAULT_AGENT_ID)
     setCloudBaseUrl(DEFAULT_CLOUD_BASE_URL)
+    setEnvProfile("stabilization")
     setLoadingCreds(false)
     setSetupError(null)
     setRotatingToken(false)
@@ -328,35 +332,48 @@ const EdgeSetupModal = ({ open, onClose, defaultStoreId }: EdgeSetupModalProps) 
   }, [])
 
   const buildEnvPayload = useCallback(
-    (token: string, storeIdValue: string) => [
-      `CLOUD_BASE_URL=${resolvedCloudBaseUrl}`,
-      `STORE_ID=${storeIdValue}`,
-      `EDGE_TOKEN=${token}`,
-      `AGENT_ID=${agentId || DEFAULT_AGENT_ID}`,
-      `HEARTBEAT_INTERVAL_SECONDS=${HEARTBEAT_INTERVAL_SECONDS}`,
-      `CAMERA_HEARTBEAT_INTERVAL_SECONDS=${CAMERA_HEARTBEAT_INTERVAL_SECONDS}`,
-      `DALE_LOG_DIR=./logs`,
-      `CAMERA_SYNC_ENABLED=1`,
-      `CAMERA_SYNC_FATAL=0`,
-      `DASHBOARD_URL=${buildDashboardUrl(storeIdValue)}`,
-      `AUTO_UPDATE_ENABLED=${AUTO_UPDATE_ENABLED}`,
-      `UPDATE_CHANNEL=${UPDATE_CHANNEL}`,
-      `UPDATE_GITHUB_REPO=${UPDATE_GITHUB_REPO}`,
-      `UPDATE_INTERVAL_SECONDS=${UPDATE_INTERVAL_SECONDS}`,
-      `EDGE_HTTP_TIMEOUT_SECONDS=${EDGE_HTTP_TIMEOUT_SECONDS}`,
-      `EDGE_ROI_TIMEOUT_SECONDS=${EDGE_ROI_TIMEOUT_SECONDS}`,
-      `VISION_ENABLED=${VISION_ENABLED}`,
-      `VISION_POLL_SECONDS=${VISION_POLL_SECONDS}`,
-      `VISION_SNAPSHOT_TIMEOUT_SECONDS=${VISION_SNAPSHOT_TIMEOUT_SECONDS}`,
-      `VISION_MODEL_PATH=yolov8n.pt`,
-      ``,
-      `# Avançado (opcional)`,
-      `# VISION_MODEL_PATH=yolov8n.pt`,
-      `# VISION_FRAME_STRIDE=2`,
-      `# VISION_BUCKET_SECONDS=10`,
-      `# VISION_PROXY_ENABLED=1  (demo rapido: gera métricas básicas sem IA)`,
-    ],
-    [agentId, buildDashboardUrl, resolvedCloudBaseUrl]
+    (token: string, storeIdValue: string) => {
+      const stabilization = envProfile === "stabilization"
+      const cameraSyncEnabled = stabilization ? 0 : 1
+      const visionEnabled = stabilization ? 0 : 1
+      const localCamerasOnly = stabilization ? 1 : 0
+      const remoteCameraSyncEnabled = stabilization ? 0 : 1
+
+      return [
+        `CLOUD_BASE_URL=${resolvedCloudBaseUrl}`,
+        `STORE_ID=${storeIdValue}`,
+        `EDGE_TOKEN=${token}`,
+        `AGENT_ID=${agentId || DEFAULT_AGENT_ID}`,
+        `HEARTBEAT_INTERVAL_SECONDS=${HEARTBEAT_INTERVAL_SECONDS}`,
+        `CAMERA_HEARTBEAT_INTERVAL_SECONDS=${CAMERA_HEARTBEAT_INTERVAL_SECONDS}`,
+        `DALE_LOG_DIR=${DEFAULT_LOG_DIR}`,
+        `CAMERA_SYNC_ENABLED=${cameraSyncEnabled}`,
+        `CAMERA_SYNC_FATAL=0`,
+        `DASHBOARD_URL=${buildDashboardUrl(storeIdValue)}`,
+        `AUTO_UPDATE_ENABLED=${AUTO_UPDATE_ENABLED}`,
+        `UPDATE_CHANNEL=${UPDATE_CHANNEL}`,
+        `UPDATE_GITHUB_REPO=${UPDATE_GITHUB_REPO}`,
+        `UPDATE_INTERVAL_SECONDS=${UPDATE_INTERVAL_SECONDS}`,
+        `EDGE_HTTP_TIMEOUT_SECONDS=${EDGE_HTTP_TIMEOUT_SECONDS}`,
+        `EDGE_ROI_TIMEOUT_SECONDS=${EDGE_ROI_TIMEOUT_SECONDS}`,
+        `VISION_ENABLED=${visionEnabled}`,
+        `VISION_POLL_SECONDS=${VISION_POLL_SECONDS}`,
+        `VISION_SNAPSHOT_TIMEOUT_SECONDS=${VISION_SNAPSHOT_TIMEOUT_SECONDS}`,
+        `VISION_MODEL_PATH=yolov8n.pt`,
+        `VISION_LOCAL_CAMERAS_ONLY=${localCamerasOnly}`,
+        `VISION_REMOTE_CAMERA_SYNC_ENABLED=${remoteCameraSyncEnabled}`,
+        `CAMERAS_JSON=[]`,
+        `STARTUP_TASK_ENABLED=0`,
+        ``,
+        `# Perfil selecionado: ${stabilization ? "Estabilização (heartbeat/autostart)" : "Backend gerenciado (câmeras no app)"}`,
+        `# Avançado (opcional)`,
+        `# VISION_MODEL_PATH=yolov8n.pt`,
+        `# VISION_FRAME_STRIDE=2`,
+        `# VISION_BUCKET_SECONDS=10`,
+        `# VISION_PROXY_ENABLED=1  (demo rapido: gera métricas básicas sem IA)`,
+      ]
+    },
+    [agentId, buildDashboardUrl, envProfile, resolvedCloudBaseUrl]
   )
 
   const envContent = useMemo(() => {
@@ -889,6 +906,23 @@ const EdgeSetupModal = ({ open, onClose, defaultStoreId }: EdgeSetupModalProps) 
 
             <div className={step3Enabled ? "rounded-xl border border-gray-200 bg-gray-50 p-4" : "rounded-xl border border-gray-200 bg-gray-50 p-4 opacity-60 pointer-events-none"}>
               <div className="text-sm font-semibold text-gray-700 mb-2">3. Copiar Dados para arquivo .env local</div>
+              <div className="mb-3">
+                <label htmlFor="edge-env-profile" className="block text-xs font-semibold text-gray-600 mb-1">
+                  Perfil de configuração do agente
+                </label>
+                <select
+                  id="edge-env-profile"
+                  value={envProfile}
+                  onChange={(e) => setEnvProfile(e.target.value as EdgeEnvProfile)}
+                  className="w-full rounded-lg border border-gray-300 bg-white px-3 py-2 text-xs"
+                >
+                  <option value="stabilization">Estabilização (somente heartbeat/autostart)</option>
+                  <option value="backend_managed">Backend gerenciado (câmeras no app)</option>
+                </select>
+                <p className="mt-1 text-xs text-gray-500">
+                  Use estabilização para validar sustentação do sinal. Depois troque para backend gerenciado.
+                </p>
+              </div>
               <div className="text-xs text-gray-500 mb-3 space-y-1">
                 <div>
                   1) Copie todo o conteúdo abaixo clicando no botao Copiar dados para .env.
@@ -896,6 +930,17 @@ const EdgeSetupModal = ({ open, onClose, defaultStoreId }: EdgeSetupModalProps) 
                 <div>
                   O bloco “Avançado (opcional)” pode ficar comentado.
                 </div>
+                {envProfile === "stabilization" ? (
+                  <div>
+                    Este perfil mantém <span className="font-mono">VISION_ENABLED=0</span> e{" "}
+                    <span className="font-mono">CAMERA_SYNC_ENABLED=0</span> para foco total em heartbeat.
+                  </div>
+                ) : (
+                  <div>
+                    Este perfil usa backend como fonte única para câmeras, mantendo{" "}
+                    <span className="font-mono">CAMERAS_JSON=[]</span>.
+                  </div>
+                )}
                 <div>
                   Role para baixo para ver o conteúdo completo.
                 </div>

@@ -70,7 +70,7 @@ describe("EdgeSetupModal step 2", () => {
     expect(copyButton).toBeDisabled()
   })
 
-  it("renders env content with all keys in the expected order", async () => {
+  it("renders env content with stabilization profile by default", async () => {
     renderWithProviders(
       <EdgeSetupModal open={true} onClose={() => {}} defaultStoreId="store-1" />
     )
@@ -85,8 +85,8 @@ describe("EdgeSetupModal step 2", () => {
       "AGENT_ID=edge-001",
       "HEARTBEAT_INTERVAL_SECONDS=30",
       "CAMERA_HEARTBEAT_INTERVAL_SECONDS=30",
-      "DALE_LOG_DIR=./logs",
-      "CAMERA_SYNC_ENABLED=1",
+      "DALE_LOG_DIR=C:\\ProgramData\\DaleVision\\logs",
+      "CAMERA_SYNC_ENABLED=0",
       "CAMERA_SYNC_FATAL=0",
       "DASHBOARD_URL=https://app.dalevision.com/app/cameras?store_id=store-1&onboarding=true",
       "AUTO_UPDATE_ENABLED=0",
@@ -95,15 +95,38 @@ describe("EdgeSetupModal step 2", () => {
       "UPDATE_INTERVAL_SECONDS=21600",
       "EDGE_HTTP_TIMEOUT_SECONDS=30",
       "EDGE_ROI_TIMEOUT_SECONDS=20",
-      "VISION_ENABLED=1",
+      "VISION_ENABLED=0",
       "VISION_POLL_SECONDS=10",
       "VISION_SNAPSHOT_TIMEOUT_SECONDS=10",
       "VISION_MODEL_PATH=yolov8n.pt",
+      "VISION_LOCAL_CAMERAS_ONLY=1",
+      "VISION_REMOTE_CAMERA_SYNC_ENABLED=0",
+      "CAMERAS_JSON=[]",
+      "STARTUP_TASK_ENABLED=0",
     ]
 
     expect(lines.slice(0, expectedPrefix.length)).toEqual(expectedPrefix)
     expect(lines).toContain("# Avançado (opcional)")
     expect(lines).toContain("# VISION_MODEL_PATH=yolov8n.pt")
+  })
+
+  it("renders env content for backend managed profile", async () => {
+    renderWithProviders(
+      <EdgeSetupModal open={true} onClose={() => {}} defaultStoreId="store-1" />
+    )
+    const user = userEvent.setup()
+    const profileSelect = await screen.findByLabelText(/Perfil de configuração do agente/i)
+    await user.selectOptions(profileSelect, "backend_managed")
+
+    const textarea = (await screen.findByDisplayValue(/EDGE_TOKEN=token/)) as HTMLTextAreaElement
+    const lines = textarea.value.split("\n")
+
+    expect(lines).toContain("CAMERA_SYNC_ENABLED=1")
+    expect(lines).toContain("VISION_ENABLED=1")
+    expect(lines).toContain("VISION_LOCAL_CAMERAS_ONLY=0")
+    expect(lines).toContain("VISION_REMOTE_CAMERA_SYNC_ENABLED=1")
+    expect(lines).toContain("CAMERAS_JSON=[]")
+    expect(lines).toContain("STARTUP_TASK_ENABLED=0")
   })
 
   it("shows download confirmed inside step 2 when clicking CTA", async () => {
