@@ -272,6 +272,72 @@ class EdgeEventsAuthTests(TestCase):
         self.assertTrue(resp.data.get("stored"))
         self.assertTrue(resp.data.get("receipt_id"))
 
+    def test_vision_event_contract_invalid_returns_400_with_missing_fields(self):
+        self._skip_if_not_pg()
+        store_id = uuid.uuid4()
+        token = "edge-store-token-contract-invalid"
+        self._create_edge_token(store_id, token)
+        payload = {
+            "event_name": "vision.queue_state.v1",
+            "data": {
+                "store_id": str(store_id),
+                "camera_id": "cam-cashier-1",
+                "ts": "2026-03-10T03:00:00Z",
+                "count_value": 2,
+            },
+        }
+        resp = self.client.post(
+            "/api/edge/events/",
+            payload,
+            format="json",
+            HTTP_X_EDGE_TOKEN=token,
+        )
+        self.assertEqual(resp.status_code, 400)
+        self.assertEqual(resp.data.get("reason"), "vision_contract_invalid")
+        self.assertIn("metric_type", resp.data.get("missing_fields", []))
+        self.assertIn("ownership", resp.data.get("missing_fields", []))
+        self.assertIn("roi_entity_id", resp.data.get("missing_fields", []))
+
+    def test_vision_event_contract_valid_accepts_and_projects(self):
+        self._skip_if_not_pg()
+        store_id = uuid.uuid4()
+        token = "edge-store-token-contract-valid"
+        self._create_edge_token(store_id, token)
+        payload = {
+            "event_name": "vision.queue_state.v1",
+            "data": {
+                "store_id": str(store_id),
+                "camera_id": "cam-cashier-1",
+                "ts": "2026-03-10T03:00:00Z",
+                "metric_type": "queue",
+                "ownership": "primary",
+                "roi_entity_id": "queue-zone-1",
+                "count_value": 2,
+                "staff_active_est": 1,
+            },
+        }
+
+        camera_obj = SimpleNamespace(id=uuid.uuid4())
+        camera_qs = MagicMock()
+        camera_external_qs = MagicMock()
+        camera_external_qs.first.return_value = camera_obj
+        camera_qs.filter.return_value = camera_external_qs
+
+        with patch("apps.edge.views.Camera.objects.filter", return_value=camera_qs):
+            with patch("apps.edge.views.insert_vision_atomic_event_if_new", return_value=True) as atomic_insert:
+                with patch("apps.edge.views.apply_vision_queue_state") as apply_queue:
+                    resp = self.client.post(
+                        "/api/edge/events/",
+                        payload,
+                        format="json",
+                        HTTP_X_EDGE_TOKEN=token,
+                    )
+
+        self.assertEqual(resp.status_code, 201)
+        self.assertTrue(resp.data.get("ok"))
+        atomic_insert.assert_called_once()
+        apply_queue.assert_called_once()
+
 
 class EdgeSetupTokenTests(TestCase):
     @classmethod

@@ -1,5 +1,8 @@
 # Referencia de Execucao por Sprint (DaleVision)
 
+## Plano executivo consolidado
+- Ver `70_ops/Plano_Executavel_Edge_to_Product.md` para backlog com DoR, DoD, testes e evidencias por task.
+
 ## Data de referencia
 - 2026-03-09
 

@@ -90,6 +90,65 @@ def _resolve_edge_ts(data: dict, payload: dict):
     return _parse_edge_ts(ts) or timezone.now()
 
 
+def _first_non_empty(*values):
+    for value in values:
+        if value is None:
+            continue
+        if isinstance(value, str):
+            candidate = value.strip()
+            if candidate:
+                return candidate
+            continue
+        if isinstance(value, (dict, list, tuple, set)):
+            if len(value) > 0:
+                return value
+            continue
+        return value
+    return None
+
+
+def _validate_vision_contract(event_name: str, payload: dict, data: dict):
+    if not str(event_name or "").startswith("vision."):
+        return True, []
+
+    traffic = data.get("traffic") if isinstance(data.get("traffic"), dict) else {}
+    conversion = data.get("conversion") if isinstance(data.get("conversion"), dict) else {}
+
+    camera_id = _first_non_empty(data.get("camera_id"), payload.get("camera_id"), data.get("external_id"))
+    ts_raw = _first_non_empty(data.get("ts"), payload.get("ts"))
+    metric_type = _first_non_empty(
+        data.get("metric_type"),
+        traffic.get("metric_type"),
+        conversion.get("metric_type"),
+    )
+    ownership = _first_non_empty(
+        data.get("ownership"),
+        traffic.get("ownership"),
+        conversion.get("ownership"),
+    )
+    roi_entity_id = _first_non_empty(
+        data.get("roi_entity_id"),
+        traffic.get("roi_entity_id"),
+        conversion.get("roi_entity_id"),
+    )
+
+    missing = []
+    if not camera_id:
+        missing.append("camera_id")
+    if not ts_raw:
+        missing.append("ts")
+    elif _parse_edge_ts(ts_raw) is None:
+        missing.append("ts")
+    if not metric_type:
+        missing.append("metric_type")
+    if ownership is None:
+        missing.append("ownership")
+    if not roi_entity_id:
+        missing.append("roi_entity_id")
+
+    return len(missing) == 0, missing
+
+
 def _update_store_last_seen(store_id: str, ts_dt):
     try:
         with connection.cursor() as cursor:
@@ -239,6 +298,24 @@ class EdgeEventsIngestView(APIView):
 
         if not store_id or not _is_uuid(store_id):
             return Response({"detail": "store_id inválido ou ausente."}, status=status.HTTP_400_BAD_REQUEST)
+
+        contract_ok, contract_missing = _validate_vision_contract(event_name=event_name, payload=payload, data=data)
+        if not contract_ok:
+            logger.warning(
+                "[EDGE] vision contract invalid event=%s store=%s missing=%s",
+                event_name,
+                store_id,
+                ",".join(contract_missing),
+            )
+            return Response(
+                {
+                    "ok": False,
+                    "stored": False,
+                    "reason": "vision_contract_invalid",
+                    "missing_fields": contract_missing,
+                },
+                status=status.HTTP_400_BAD_REQUEST,
+            )
 
         # --- update store last_seen_at for heartbeat events (idempotent) ---
         if normalized in ("edge_heartbeat", "camera_heartbeat", "edge_camera_heartbeat"):
