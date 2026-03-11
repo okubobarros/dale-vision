@@ -516,11 +516,18 @@ const STORES_CACHE_KEYS = {
   summary: "dv_stores_summary_cache_v1",
   minimal: "dv_stores_min_cache_v1",
   full: "dv_stores_full_cache_v1",
+  dashboardPrefix: "dv_store_dashboard_cache_v1_",
+  edgeStatusPrefix: "dv_store_edge_status_cache_v1_",
 } as const
 
 type CachedPayload<T> = {
   ts: string
   data: T[]
+}
+
+type CachedObjectPayload<T> = {
+  ts: string
+  data: T
 }
 
 const readStoresCache = <T>(key: string): T[] | null => {
@@ -544,6 +551,31 @@ const writeStoresCache = <T>(key: string, data: T[]) => {
   if (typeof window === "undefined") return
   try {
     const payload: CachedPayload<T> = { ts: new Date().toISOString(), data }
+    localStorage.setItem(key, JSON.stringify(payload))
+  } catch {
+    // ignore storage errors
+  }
+}
+
+const readObjectCache = <T>(key: string): T | null => {
+  if (typeof window === "undefined") return null
+  try {
+    const raw = localStorage.getItem(key)
+    if (!raw) return null
+    const parsed = JSON.parse(raw) as CachedObjectPayload<T> | T
+    if (parsed && typeof parsed === "object" && "data" in (parsed as CachedObjectPayload<T>)) {
+      return (parsed as CachedObjectPayload<T>).data
+    }
+    return parsed as T
+  } catch {
+    return null
+  }
+}
+
+const writeObjectCache = <T>(key: string, data: T) => {
+  if (typeof window === "undefined") return
+  try {
+    const payload: CachedObjectPayload<T> = { ts: new Date().toISOString(), data }
     localStorage.setItem(key, JSON.stringify(payload))
   } catch {
     // ignore storage errors
@@ -730,15 +762,20 @@ export const storesService = {
   // Obter dashboard completo (novo formato)
   async getStoreDashboard(storeId: string): Promise<StoreDashboard> {
     console.log(`🔄 Buscando dashboard para loja ${storeId}`);
+    const cacheKey = `${STORES_CACHE_KEYS.dashboardPrefix}${storeId}`
     try {
       const response = await api.get(`/v1/stores/${storeId}/dashboard/`, {
         timeoutCategory: "critical",
-        noRetry: true,
       });
       console.log('✅ Dashboard response:', response.data);
+      writeObjectCache(cacheKey, response.data as StoreDashboard)
       return response.data;
     } catch (error) {
       console.error('❌ Erro ao buscar dashboard:', error);
+      if (!isAuthError(error)) {
+        const cached = readObjectCache<StoreDashboard>(cacheKey)
+        if (cached) return cached
+      }
       throw error;
     }
   },
@@ -881,13 +918,20 @@ export const storesService = {
   },
 
   async getStoreEdgeStatus(storeId: string): Promise<StoreEdgeStatus> {
+    const cacheKey = `${STORES_CACHE_KEYS.edgeStatusPrefix}${storeId}`
     try {
       const response = await api.get(`/v1/stores/${storeId}/edge-status/`, {
-        noRetry: true,
+        timeoutCategory: "critical",
       });
-      return normalizeEdgeStatus(response.data, storeId);
+      const normalized = normalizeEdgeStatus(response.data, storeId);
+      writeObjectCache(cacheKey, normalized)
+      return normalized;
     } catch (error) {
       console.error('❌ Erro ao consultar status do edge:', error);
+      if (!isAuthError(error)) {
+        const cached = readObjectCache<StoreEdgeStatus>(cacheKey)
+        if (cached) return cached
+      }
       throw normalizeApiError(error, 'Falha ao consultar status do edge.');
     }
   },

@@ -177,14 +177,21 @@ def _serialize_cameras_for_edge(cameras_qs) -> list[dict]:
     payload = []
     for camera in cameras_qs:
         rtsp_url = _resolved_rtsp_for_edge(camera)
+        connection_type = "rtsp_direct" if rtsp_url else ("onvif" if getattr(camera, "onvif", False) else "unknown")
         payload.append(
             {
                 "id": str(camera.id),
                 "camera_id": str(camera.id),
+                "store_id": str(camera.store_id) if getattr(camera, "store_id", None) else None,
+                "zone_id": str(camera.zone_id) if getattr(camera, "zone_id", None) else None,
                 "name": camera.name,
                 "external_id": camera.external_id,
                 "active": bool(getattr(camera, "active", True)),
                 "status": camera.status,
+                "brand": camera.brand,
+                "model": camera.model,
+                "onvif": bool(getattr(camera, "onvif", False)),
+                "connection_type": connection_type,
                 "ip": camera.ip,
                 "username": camera.username,
                 "password": camera.password,
@@ -1331,6 +1338,8 @@ class StoreViewSet(viewsets.ModelViewSet):
                         status.HTTP_401_UNAUTHORIZED,
                         deprecated_detail="Edge token inválido para esta loja.",
                     )
+                # Source-of-truth for edge runtime: only active cameras should be synced.
+                cameras_qs = cameras_qs.filter(active=True)
                 # S1 contract: edge token receives operational payload (single source of truth for RTSP).
                 return Response(_serialize_cameras_for_edge(cameras_qs))
             elif request.user and request.user.is_authenticated:

@@ -1,5 +1,6 @@
 # apps/accounts/views.py
 import logging
+from datetime import timedelta
 from uuid import uuid4
 from rest_framework import status
 from rest_framework.response import Response
@@ -9,7 +10,9 @@ from rest_framework.exceptions import AuthenticationFailed
 from knox.models import AuthToken
 from knox.auth import TokenAuthentication
 from django.contrib.auth import authenticate
+from django.contrib.auth import get_user_model
 from django.db import connection
+from django.utils import timezone
 
 from drf_yasg.utils import swagger_auto_schema  # ✅
 from drf_yasg import openapi  # (opcional)
@@ -23,7 +26,15 @@ from .auth_supabase import (
     consume_org_fallback_used,
     ensure_org_membership,
 )
-from apps.core.models import OrgMember, Store, Camera
+from apps.core.models import (
+    OrgMember,
+    Store,
+    Camera,
+    Organization,
+    Subscription,
+    NotificationLog,
+    OnboardingProgress,
+)
 from apps.stores.services.user_uuid import upsert_user_id_map
 from apps.core.services.journey_events import log_journey_event
 from backend.utils.entitlements import (
@@ -497,3 +508,130 @@ class SetupStateView(APIView):
                 },
                 status.HTTP_500_INTERNAL_SERVER_ERROR,
             )
+
+
+class AdminControlTowerSummaryView(APIView):
+    permission_classes = [IsAuthenticated]
+
+    @staticmethod
+    def _safe_count(label: str, fn):
+        try:
+            return fn()
+        except Exception:
+            logger.exception("[ADMIN_CONTROL_TOWER] count_failed label=%s", label)
+            return None
+
+    @classmethod
+    def _build_summary(cls) -> dict:
+        now = timezone.now()
+        week = now + timedelta(days=7)
+        recent_5m = now - timedelta(minutes=5)
+        day_ago = now - timedelta(hours=24)
+
+        User = get_user_model()
+
+        users = {
+            "total": cls._safe_count("users_total", lambda: User.objects.count()),
+            "active": cls._safe_count("users_active", lambda: User.objects.filter(is_active=True).count()),
+            "staff": cls._safe_count("users_staff", lambda: User.objects.filter(is_staff=True).count()),
+            "superusers": cls._safe_count("users_superusers", lambda: User.objects.filter(is_superuser=True).count()),
+        }
+
+        organizations = {
+            "total": cls._safe_count("org_total", lambda: Organization.objects.count()),
+            "trial_expiring_7d": cls._safe_count(
+                "org_trial_expiring_7d",
+                lambda: Organization.objects.filter(trial_ends_at__gte=now, trial_ends_at__lte=week).count(),
+            ),
+        }
+
+        stores = {
+            "total": cls._safe_count("stores_total", lambda: Store.objects.count()),
+            "active": cls._safe_count("stores_active", lambda: Store.objects.filter(status="active").count()),
+            "trial": cls._safe_count("stores_trial", lambda: Store.objects.filter(status="trial").count()),
+            "blocked": cls._safe_count("stores_blocked", lambda: Store.objects.filter(status="blocked").count()),
+            "inactive": cls._safe_count("stores_inactive", lambda: Store.objects.filter(status="inactive").count()),
+            "signal_recent_5m": cls._safe_count(
+                "stores_signal_recent_5m",
+                lambda: Store.objects.filter(last_seen_at__gte=recent_5m).count(),
+            ),
+            "signal_stale": cls._safe_count(
+                "stores_signal_stale",
+                lambda: Store.objects.filter(last_seen_at__isnull=False, last_seen_at__lt=recent_5m).count(),
+            ),
+            "signal_missing": cls._safe_count(
+                "stores_signal_missing",
+                lambda: Store.objects.filter(last_seen_at__isnull=True).count(),
+            ),
+        }
+
+        cameras = {
+            "total": cls._safe_count("cameras_total", lambda: Camera.objects.count()),
+            "active": cls._safe_count("cameras_active", lambda: Camera.objects.filter(active=True).count()),
+            "online": cls._safe_count("cameras_online", lambda: Camera.objects.filter(status="online").count()),
+            "offline": cls._safe_count("cameras_offline", lambda: Camera.objects.filter(status="offline").count()),
+        }
+
+        subscriptions = {
+            "total": cls._safe_count("subs_total", lambda: Subscription.objects.count()),
+            "trialing": cls._safe_count("subs_trialing", lambda: Subscription.objects.filter(status="trialing").count()),
+            "active": cls._safe_count("subs_active", lambda: Subscription.objects.filter(status="active").count()),
+            "past_due": cls._safe_count("subs_past_due", lambda: Subscription.objects.filter(status="past_due").count()),
+            "blocked": cls._safe_count("subs_blocked", lambda: Subscription.objects.filter(status="blocked").count()),
+            "canceled": cls._safe_count("subs_canceled", lambda: Subscription.objects.filter(status="canceled").count()),
+            "incomplete": cls._safe_count(
+                "subs_incomplete",
+                lambda: Subscription.objects.filter(status="incomplete").count(),
+            ),
+        }
+
+        incidents = {
+            "notification_failed_24h": cls._safe_count(
+                "notification_failed_24h",
+                lambda: NotificationLog.objects.filter(sent_at__gte=day_ago, status__in=["failed", "error"]).count(),
+            ),
+            "blocked_stores": stores.get("blocked"),
+            "stores_without_recent_signal": cls._safe_count(
+                "stores_without_recent_signal",
+                lambda: Store.objects.filter(last_seen_at__lt=recent_5m).count(),
+            ),
+        }
+
+        onboarding = {
+            "total_rows": cls._safe_count("onboarding_total_rows", lambda: OnboardingProgress.objects.count()),
+            "completed": cls._safe_count(
+                "onboarding_completed",
+                lambda: OnboardingProgress.objects.filter(completed=True).count(),
+            ),
+            "in_progress": cls._safe_count(
+                "onboarding_in_progress",
+                lambda: OnboardingProgress.objects.filter(status="in_progress").count(),
+            ),
+            "not_started": cls._safe_count(
+                "onboarding_not_started",
+                lambda: OnboardingProgress.objects.filter(status="not_started").count(),
+            ),
+        }
+
+        return {
+            "generated_at": now.isoformat(),
+            "users": users,
+            "organizations": organizations,
+            "stores": stores,
+            "cameras": cameras,
+            "subscriptions": subscriptions,
+            "incidents": incidents,
+            "onboarding": onboarding,
+        }
+
+    def get(self, request):
+        user = request.user
+        if not (getattr(user, "is_staff", False) or getattr(user, "is_superuser", False)):
+            return Response(
+                {
+                    "code": "PERMISSION_DENIED",
+                    "message": "Acesso restrito ao admin interno.",
+                },
+                status=status.HTTP_403_FORBIDDEN,
+            )
+        return Response(self._build_summary(), status=status.HTTP_200_OK)

@@ -16,6 +16,18 @@ Guiar o usuário na instalação do Edge e validação de heartbeat.
 7. Usuário valida status com `03_VERIFICAR_STATUS.bat`
 8. Sistema valida status via `GET /api/v1/stores/{store_id}/edge-status/`
 
+## Perfis `.env` gerados pelo Wizard
+- `Estabilização (somente heartbeat/autostart)`:
+  - `CAMERA_SOURCE_MODE=local_only`
+  - `CAMERA_SYNC_ENABLED=0`
+  - `VISION_REMOTE_CAMERA_SYNC_ENABLED=0`
+  - `CAMERAS_JSON=[]`
+- `Backend gerenciado (câmeras no app)`:
+  - `CAMERA_SOURCE_MODE=api_first`
+  - `CAMERA_SYNC_ENABLED=1`
+  - `VISION_REMOTE_CAMERA_SYNC_ENABLED=1`
+  - `CAMERAS_JSON=[]`
+
 ## Estados
 - idle
 - fetching_token

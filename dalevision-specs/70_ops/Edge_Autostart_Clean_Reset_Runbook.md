@@ -47,7 +47,7 @@ cmd /c rmdir C:\DV
 ## Reinstalação limpa (padrão recomendado)
 1. Extrair ZIP novo em pasta limpa (ex.: `C:\Users\<user>\Downloads\dalevision-edge-agent-windows`).
 2. Ajustar `.env` com perfil do teste:
-   - estabilização: `VISION_ENABLED=0`, `CAMERA_SYNC_ENABLED=0`, `CAMERAS_JSON=[]`, `STARTUP_TASK_ENABLED=0`
+   - estabilização: `CAMERA_SOURCE_MODE=local_only`, `VISION_ENABLED=0`, `CAMERA_SYNC_ENABLED=0`, `CAMERAS_JSON=[]`, `STARTUP_TASK_ENABLED=0`
    - log absoluto: `DALE_LOG_DIR=C:\ProgramData\DaleVision\logs`
 3. Rodar:
    - `02_TESTE_RAPIDO.bat`
@@ -146,14 +146,56 @@ Estado atual validado em campo:
 - Isso valida apenas conectividade do agente, não processamento de visão.
 
 Para processar eventos de câmera:
-- Modo local (hoje, mais previsível em loja):
+- Modo local (contingência / piloto):
+  - `CAMERA_SOURCE_MODE=local_only`
   - `VISION_ENABLED=1`
   - `CAMERA_SYNC_ENABLED=0`
+  - `VISION_REMOTE_CAMERA_SYNC_ENABLED=0`
   - `CAMERAS_JSON=[...]` obrigatório com IDs reais das câmeras cadastradas no backend.
-- Modo backend-gerenciado (alvo de produto):
-  - depende de endpoint e fluxo de sync remoto totalmente validados no edge build em uso;
-  - enquanto isso não estiver fechado em QA de loja, não substituir o `CAMERAS_JSON` local no piloto.
+- Modo backend-gerenciado (fonte oficial S2):
+  - `CAMERA_SOURCE_MODE=api_first`
+  - `CAMERA_SYNC_ENABLED=1`
+  - `VISION_REMOTE_CAMERA_SYNC_ENABLED=1`
+  - `CAMERAS_JSON=[]` (fallback explícito somente)
 
 Regra prática para evitar regressão:
 - Se objetivo é provar autostart/sinal: use perfil de estabilização (`VISION_ENABLED=0`).
 - Se objetivo é provar operação de visão na loja: use perfil local com `CAMERAS_JSON` real e mantenha logs ativos.
+
+## Perfis oficiais de `.env`
+### Perfil loja (produção / backend gerenciado)
+```env
+CAMERA_SOURCE_MODE=api_first
+CAMERA_SYNC_ENABLED=1
+VISION_REMOTE_CAMERA_SYNC_ENABLED=1
+CAMERAS_JSON=[]
+```
+
+### Perfil teste remoto (estabilização)
+```env
+CLOUD_BASE_URL=https://api.dalevision.com
+STORE_ID=47daec5a-11c3-4556-8dd8-fd2b00aa1bb0
+EDGE_TOKEN=<TOKEN_ATUAL_DA_LOJA>
+AGENT_ID=edge-001
+HEARTBEAT_INTERVAL_SECONDS=30
+CAMERA_HEARTBEAT_INTERVAL_SECONDS=30
+DALE_LOG_DIR=C:\ProgramData\DaleVision\logs
+CAMERA_SOURCE_MODE=local_only
+CAMERA_SYNC_ENABLED=0
+CAMERA_SYNC_FATAL=0
+DASHBOARD_URL=https://app.dalevision.com/app/cameras?store_id=47daec5a-11c3-4556-8dd8-fd2b00aa1bb0&onboarding=true
+AUTO_UPDATE_ENABLED=0
+UPDATE_CHANNEL=stable
+UPDATE_GITHUB_REPO=daleship/dalevision-edge-agent
+UPDATE_INTERVAL_SECONDS=21600
+EDGE_HTTP_TIMEOUT_SECONDS=30
+EDGE_ROI_TIMEOUT_SECONDS=20
+VISION_ENABLED=0
+VISION_POLL_SECONDS=10
+VISION_SNAPSHOT_TIMEOUT_SECONDS=10
+VISION_MODEL_PATH=yolov8n.pt
+VISION_LOCAL_CAMERAS_ONLY=1
+VISION_REMOTE_CAMERA_SYNC_ENABLED=0
+CAMERAS_JSON=[]
+STARTUP_TASK_ENABLED=0
+```

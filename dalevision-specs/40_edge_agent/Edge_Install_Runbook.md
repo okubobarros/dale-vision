@@ -11,6 +11,9 @@ Instalar e iniciar o edge-agent em ambiente de loja.
 1. Solicitar credenciais via `GET /api/v1/stores/{store_id}/edge-setup/`
 2. Baixar e extrair o ZIP do edge-agent (pode ser em qualquer pasta)
 3. Configurar `.env` com `EDGE_TOKEN`, `STORE_ID`, `AGENT_ID`, `CLOUD_BASE_URL`
+   - Fonte de câmeras (padrão produto): `CAMERA_SOURCE_MODE=api_first`
+   - Sync remoto de câmeras: `CAMERA_SYNC_ENABLED=1` e `VISION_REMOTE_CAMERA_SYNC_ENABLED=1`
+   - Fallback explícito: `CAMERAS_JSON=[]`
    - Defaults de visão recomendados:
      - `VISION_ENABLED=1`
      - `VISION_BUCKET_SECONDS=30`

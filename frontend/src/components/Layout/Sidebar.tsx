@@ -7,10 +7,14 @@ import {
   BellAlertIcon,
   Cog6ToothIcon,
   DocumentTextIcon,
+  ShieldCheckIcon,
 } from "@heroicons/react/24/outline"
+import { useAuth } from "../../contexts/useAuth"
 
 const Sidebar = () => {
   const location = useLocation()
+  const { user } = useAuth()
+  const isInternalAdmin = Boolean(user?.is_staff || user?.is_superuser)
 
   // Considera aberto se estiver em qualquer rota de alertas
   const isAlertsOpen = location.pathname.startsWith("/app/alert")
@@ -35,7 +39,20 @@ const Sidebar = () => {
     },
 
     { name: "Configurações", href: "/app/settings", icon: Cog6ToothIcon },
-  ]
+  ] as Array<{
+    name: string
+    href: string
+    icon: typeof HomeIcon
+    children?: Array<{ name: string; href: string }>
+  }>
+
+  if (isInternalAdmin) {
+    navigation.splice(navigation.length - 1, 0, {
+      name: "Admin SaaS",
+      href: "/app/admin",
+      icon: ShieldCheckIcon,
+    })
+  }
 
   return (
     <aside className="hidden md:block w-64 bg-white border-r min-h-[calc(100vh-73px)]">

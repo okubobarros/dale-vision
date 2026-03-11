@@ -334,6 +334,7 @@ const EdgeSetupModal = ({ open, onClose, defaultStoreId }: EdgeSetupModalProps) 
   const buildEnvPayload = useCallback(
     (token: string, storeIdValue: string) => {
       const stabilization = envProfile === "stabilization"
+      const cameraSourceMode = stabilization ? "local_only" : "api_first"
       const cameraSyncEnabled = stabilization ? 0 : 1
       const visionEnabled = stabilization ? 0 : 1
       const localCamerasOnly = stabilization ? 1 : 0
@@ -347,6 +348,7 @@ const EdgeSetupModal = ({ open, onClose, defaultStoreId }: EdgeSetupModalProps) 
         `HEARTBEAT_INTERVAL_SECONDS=${HEARTBEAT_INTERVAL_SECONDS}`,
         `CAMERA_HEARTBEAT_INTERVAL_SECONDS=${CAMERA_HEARTBEAT_INTERVAL_SECONDS}`,
         `DALE_LOG_DIR=${DEFAULT_LOG_DIR}`,
+        `CAMERA_SOURCE_MODE=${cameraSourceMode}`,
         `CAMERA_SYNC_ENABLED=${cameraSyncEnabled}`,
         `CAMERA_SYNC_FATAL=0`,
         `DASHBOARD_URL=${buildDashboardUrl(storeIdValue)}`,

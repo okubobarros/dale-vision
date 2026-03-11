@@ -91,6 +91,7 @@ class StoreCamerasEndpointTests(SimpleTestCase):
 
         self.assertEqual(response.status_code, 200)
         self.assertEqual(response.data, [{"id": "cam-1"}])
+        qs.filter.assert_called_with(active=True)
 
     @patch("apps.stores.views._serialize_cameras_for_edge", return_value=[{"id": "cam-1"}])
     @patch("apps.stores.views.Camera")

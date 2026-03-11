@@ -230,3 +230,35 @@ class MeStatusViewTests(APITestCase):
         self.assertFalse(response.data.get("trial_active"))
         self.assertFalse(response.data.get("has_subscription"))
         self.assertEqual(response.data.get("role"), "owner")
+
+
+class AdminControlTowerSummaryViewTests(APITestCase):
+    def test_requires_staff_or_superuser(self):
+        user = User.objects.create_user(
+            username="normaluser",
+            email="normal@example.com",
+            password="pass1234",
+        )
+        self.client.force_authenticate(user=user)
+        response = self.client.get("/api/v1/me/admin/control-tower/summary/")
+        self.assertEqual(response.status_code, 403)
+        self.assertEqual(response.data.get("code"), "PERMISSION_DENIED")
+
+    def test_staff_receives_summary_payload(self):
+        user = User.objects.create_user(
+            username="staffuser",
+            email="staff@example.com",
+            password="pass1234",
+            is_staff=True,
+        )
+        self.client.force_authenticate(user=user)
+
+        with patch(
+            "apps.accounts.views.AdminControlTowerSummaryView._build_summary",
+            return_value={"generated_at": "2026-03-11T00:00:00Z", "users": {"total": 1}},
+        ):
+            response = self.client.get("/api/v1/me/admin/control-tower/summary/")
+
+        self.assertEqual(response.status_code, 200)
+        self.assertIn("generated_at", response.data)
+        self.assertIn("users", response.data)

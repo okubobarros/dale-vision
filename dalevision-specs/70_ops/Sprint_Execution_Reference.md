@@ -12,6 +12,23 @@
 - Janela alvo: ate retorno em loja (12/03/2026 ou 13/03/2026)
 - Objetivo: sair de `Unreliable` para `Operationally Stable` no piloto.
 
+## Atualizacao de status (11/03/2026)
+- `S0`:
+- autostart install/remove validado em ambiente remoto (task scheduler + encerramento de processos) com evidencia em log.
+- heartbeat do edge recuperado apos ajuste de infraestrutura backend (migrations/render).
+- pendencia: validacao presencial com cameras reais para fechamento completo do S0.
+- `S1`:
+- iniciado hardening de confiabilidade no frontend para timeout de API (fallback por cache em dashboard e edge-status).
+- contrato de projecao com identidade forte ja aplicado no backend/db.
+- `S2`:
+- implementado em codigo:
+- edge-agent com `CAMERA_SOURCE_MODE` (`api_first` default, `local_only` contingencia) e fallback explicito para `CAMERAS_JSON`.
+- wizard/frontend atualizado para gerar perfil com `CAMERA_SOURCE_MODE`.
+- pendencia para fechamento operacional: validacao em 1 loja com perfil `api_first`.
+- `S3`:
+- planejamento de escala iniciado em `70_ops/S3_Product_Scale_Readiness_Plan.md`.
+- execucao de S3 condicionada ao aceite operacional de loja em `api_first`.
+
 ## Regra de mudanca de sprint
 - So muda de sprint quando **todos os gates de saida** do sprint atual forem aprovados com evidencia.
 - Sem evidencia em log/teste repetivel = item nao concluido.

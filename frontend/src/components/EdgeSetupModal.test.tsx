@@ -86,6 +86,7 @@ describe("EdgeSetupModal step 2", () => {
       "HEARTBEAT_INTERVAL_SECONDS=30",
       "CAMERA_HEARTBEAT_INTERVAL_SECONDS=30",
       "DALE_LOG_DIR=C:\\ProgramData\\DaleVision\\logs",
+      "CAMERA_SOURCE_MODE=local_only",
       "CAMERA_SYNC_ENABLED=0",
       "CAMERA_SYNC_FATAL=0",
       "DASHBOARD_URL=https://app.dalevision.com/app/cameras?store_id=store-1&onboarding=true",
@@ -122,6 +123,7 @@ describe("EdgeSetupModal step 2", () => {
     const lines = textarea.value.split("\n")
 
     expect(lines).toContain("CAMERA_SYNC_ENABLED=1")
+    expect(lines).toContain("CAMERA_SOURCE_MODE=api_first")
     expect(lines).toContain("VISION_ENABLED=1")
     expect(lines).toContain("VISION_LOCAL_CAMERAS_ONLY=0")
     expect(lines).toContain("VISION_REMOTE_CAMERA_SYNC_ENABLED=1")
