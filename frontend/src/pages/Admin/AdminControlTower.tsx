@@ -1,9 +1,11 @@
 import { useMemo } from "react"
-import { useQuery } from "@tanstack/react-query"
+import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query"
+import toast from "react-hot-toast"
 
 import { useAuth } from "../../contexts/useAuth"
 import { adminService } from "../../services/admin"
 import { storesService, type StoreSummary } from "../../services/stores"
+import { supportService } from "../../services/support"
 
 const formatNumber = (value: number | null | undefined) => {
   if (value === null || value === undefined) return "—"
@@ -29,6 +31,7 @@ const Card = ({ title, value, hint }: { title: string; value: string; hint?: str
 export default function AdminControlTower() {
   const { user } = useAuth()
   const isInternalAdmin = Boolean(user?.is_staff || user?.is_superuser)
+  const queryClient = useQueryClient()
 
   const summaryQuery = useQuery({
     queryKey: ["admin", "control-tower", "summary"],
@@ -42,6 +45,35 @@ export default function AdminControlTower() {
     queryFn: storesService.getStoresSummary,
     enabled: isInternalAdmin,
     refetchInterval: 60_000,
+  })
+
+  const supportRequestsQuery = useQuery({
+    queryKey: ["admin", "support", "requests", "pending"],
+    queryFn: () => supportService.getAdminSupportRequests("pending"),
+    enabled: isInternalAdmin,
+    refetchInterval: 30_000,
+  })
+
+  const grantSupportMutation = useMutation({
+    mutationFn: (requestId: string) => supportService.grantSupportRequest(requestId, 120),
+    onSuccess: () => {
+      toast.success("Acesso temporário concedido por 2h.")
+      queryClient.invalidateQueries({ queryKey: ["admin", "support", "requests", "pending"] })
+    },
+    onError: (error: unknown) => {
+      toast.error((error as { message?: string })?.message || "Falha ao conceder acesso.")
+    },
+  })
+
+  const closeSupportMutation = useMutation({
+    mutationFn: (requestId: string) => supportService.closeSupportRequest(requestId),
+    onSuccess: () => {
+      toast.success("Solicitação encerrada.")
+      queryClient.invalidateQueries({ queryKey: ["admin", "support", "requests", "pending"] })
+    },
+    onError: (error: unknown) => {
+      toast.error((error as { message?: string })?.message || "Falha ao encerrar solicitação.")
+    },
   })
 
   const storeRisks = useMemo(() => {
@@ -144,6 +176,68 @@ export default function AdminControlTower() {
           <section className="rounded-xl border border-gray-200 bg-white p-4">
             <div className="flex items-center justify-between">
               <h2 className="text-sm font-semibold text-gray-800 uppercase tracking-wide">
+                Fila de suporte (câmeras/ROI)
+              </h2>
+              <span className="text-xs text-gray-500">
+                {(supportRequestsQuery.data || []).length} pendentes
+              </span>
+            </div>
+            {supportRequestsQuery.isLoading ? (
+              <div className="mt-3 text-sm text-gray-600">Carregando fila de suporte...</div>
+            ) : (supportRequestsQuery.data || []).length === 0 ? (
+              <div className="mt-3 text-sm text-gray-600">Sem solicitações pendentes.</div>
+            ) : (
+              <div className="mt-3 overflow-x-auto">
+                <table className="min-w-full text-sm">
+                  <thead className="bg-gray-50 text-gray-600">
+                    <tr>
+                      <th className="px-3 py-2 text-left font-semibold">Loja</th>
+                      <th className="px-3 py-2 text-left font-semibold">Solicitante</th>
+                      <th className="px-3 py-2 text-left font-semibold">Motivo</th>
+                      <th className="px-3 py-2 text-left font-semibold">Solicitado em</th>
+                      <th className="px-3 py-2 text-left font-semibold">Ações</th>
+                    </tr>
+                  </thead>
+                  <tbody className="divide-y">
+                    {(supportRequestsQuery.data || []).map((row) => (
+                      <tr key={row.id}>
+                        <td className="px-3 py-2">{row.store_name || row.store_id}</td>
+                        <td className="px-3 py-2">{row.requester_email || row.requester_name || "—"}</td>
+                        <td className="px-3 py-2">{row.reason || "—"}</td>
+                        <td className="px-3 py-2">
+                          {row.requested_at ? new Date(row.requested_at).toLocaleString("pt-BR") : "—"}
+                        </td>
+                        <td className="px-3 py-2">
+                          <div className="flex gap-2">
+                            <button
+                              type="button"
+                              onClick={() => grantSupportMutation.mutate(row.id)}
+                              disabled={grantSupportMutation.isPending}
+                              className="rounded-lg bg-emerald-600 px-2 py-1 text-xs font-semibold text-white hover:bg-emerald-700 disabled:cursor-not-allowed disabled:bg-emerald-300"
+                            >
+                              Conceder 2h
+                            </button>
+                            <button
+                              type="button"
+                              onClick={() => closeSupportMutation.mutate(row.id)}
+                              disabled={closeSupportMutation.isPending}
+                              className="rounded-lg border border-gray-300 px-2 py-1 text-xs font-semibold text-gray-700 hover:bg-gray-50 disabled:cursor-not-allowed disabled:opacity-50"
+                            >
+                              Encerrar
+                            </button>
+                          </div>
+                        </td>
+                      </tr>
+                    ))}
+                  </tbody>
+                </table>
+              </div>
+            )}
+          </section>
+
+          <section className="rounded-xl border border-gray-200 bg-white p-4">
+            <div className="flex items-center justify-between">
+              <h2 className="text-sm font-semibold text-gray-800 uppercase tracking-wide">
                 Top riscos por loja
               </h2>
               <span className="text-xs text-gray-500">{storeRisks.length} itens</span>
@@ -184,4 +278,3 @@ export default function AdminControlTower() {
     </div>
   )
 }
-

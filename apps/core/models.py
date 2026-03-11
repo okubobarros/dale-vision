@@ -472,6 +472,82 @@ class JourneyEvent(UnmanagedModel):
     class Meta(UnmanagedModel.Meta):
         db_table = "journey_events"
 
+
+SUPPORT_REQUEST_STATUS = (
+    ("pending", "pending"),
+    ("granted", "granted"),
+    ("closed", "closed"),
+    ("rejected", "rejected"),
+)
+
+
+class SupportAccessRequest(models.Model):
+    id = models.UUIDField(primary_key=True, default=uuid.uuid4, editable=False)
+    store = models.ForeignKey(
+        "Store",
+        on_delete=models.DO_NOTHING,
+        db_column="store_id",
+        related_name="support_requests",
+    )
+    requester_user_uuid = models.UUIDField()
+    requester_email = models.TextField(null=True, blank=True)
+    requester_name = models.TextField(null=True, blank=True)
+    reason = models.TextField(null=True, blank=True)
+    status = models.CharField(
+        max_length=20,
+        choices=SUPPORT_REQUEST_STATUS,
+        default="pending",
+    )
+    requested_at = models.DateTimeField(default=timezone.now)
+    handled_at = models.DateTimeField(null=True, blank=True)
+    handled_by_user_uuid = models.UUIDField(null=True, blank=True)
+    handled_notes = models.TextField(null=True, blank=True)
+    expires_at = models.DateTimeField(null=True, blank=True)
+    created_at = models.DateTimeField(default=timezone.now)
+    updated_at = models.DateTimeField(default=timezone.now)
+
+    class Meta:
+        db_table = "support_access_requests"
+        managed = True
+        indexes = [
+            models.Index(fields=["store", "status"], name="support_req_store_status_idx"),
+            models.Index(fields=["status", "requested_at"], name="support_req_status_reqat_idx"),
+        ]
+
+
+class SupportAccessGrant(models.Model):
+    id = models.UUIDField(primary_key=True, default=uuid.uuid4, editable=False)
+    request = models.ForeignKey(
+        "SupportAccessRequest",
+        on_delete=models.SET_NULL,
+        db_column="request_id",
+        related_name="grants",
+        null=True,
+        blank=True,
+    )
+    store = models.ForeignKey(
+        "Store",
+        on_delete=models.DO_NOTHING,
+        db_column="store_id",
+        related_name="support_grants",
+    )
+    user_uuid = models.UUIDField()
+    granted_by_user_uuid = models.UUIDField()
+    role = models.CharField(max_length=20, default="manager")
+    starts_at = models.DateTimeField(default=timezone.now)
+    expires_at = models.DateTimeField()
+    active = models.BooleanField(default=True)
+    created_at = models.DateTimeField(default=timezone.now)
+    updated_at = models.DateTimeField(default=timezone.now)
+
+    class Meta:
+        db_table = "support_access_grants"
+        managed = True
+        indexes = [
+            models.Index(fields=["store", "user_uuid", "active"], name="support_grant_store_user_idx"),
+            models.Index(fields=["expires_at"], name="support_grant_expires_idx"),
+        ]
+
 class StoreManager(UnmanagedModel):
     """
     Membership/RBAC do usuário na loja.

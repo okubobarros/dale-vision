@@ -58,6 +58,10 @@ Entrar em escala comercial com confianca operacional e de dados, sem regredir es
 - Playbook por segmento (acao sugerida + impacto esperado).
 - Kit de rollout: onboarding, QA, suporte e rollback.
 - Pacote de evidencias para vendas enterprise.
+- Fluxo de suporte assistido para Câmeras/ROI:
+  - visao do cliente com botao `Solicitar suporte` em modo leitura.
+  - visao do admin interno com fila de solicitacoes e concessao de acesso temporario.
+  - trilha de auditoria (`support_request_created`, `support_access_granted`, `support_request_closed`).
 
 ### Criterio de aceite
 - 1 ciclo completo de rollout replicado em nova loja sem suporte ad hoc.

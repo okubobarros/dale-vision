@@ -12,6 +12,7 @@ import {
   type Camera,
   type CreateCameraPayload,
 } from "../../services/cameras"
+import { supportService } from "../../services/support"
 import { formatReason, formatStatusLabel, formatTimestamp } from "../../utils/edgeReasons"
 import { useAuth } from "../../contexts/useAuth"
 import EdgeSetupModal from "../../components/EdgeSetupModal"
@@ -127,11 +128,9 @@ const Cameras = () => {
     [stores, selectedStore]
   )
   const selectedStoreRole = selectedStoreItem?.role ?? null
-  const canManageStore =
+  const baseCanManageStore =
     selectedStore !== "all" &&
     (selectedStoreRole ? ["owner", "admin", "manager"].includes(selectedStoreRole) : true)
-  const canEditRoi =
-    canManageStore || Boolean(user?.is_staff || user?.is_superuser)
 
   const { data: edgeStatus } = useQuery<StoreEdgeStatus>({
     queryKey: ["store-edge-status", selectedStore],
@@ -162,22 +161,6 @@ const Cameras = () => {
     staleTime: 15000,
   })
 
-  useEffect(() => {
-    if (!initialOpenRoi || !initialZoneId) return
-    if (zoneOpenHandled.current) return
-    if (!cameras || cameras.length === 0) return
-    const cameraMatch = cameras.find((camera) => camera.zone_id === initialZoneId)
-    zoneOpenHandled.current = true
-    if (!cameraMatch) {
-      toast.error("Nenhuma câmera encontrada para esta zona.")
-      return
-    }
-    if (!canEditRoi) {
-      toast.error("Sem permissão para abrir o ROI desta câmera.")
-      return
-    }
-    setRoiCamera(cameraMatch)
-  }, [initialOpenRoi, initialZoneId, cameras, canEditRoi])
   const edgeOnline =
     (edgeStatus?.connectivity_status
       ? ["online", "degraded"].includes(String(edgeStatus.connectivity_status))
@@ -202,6 +185,64 @@ const Cameras = () => {
     queryFn: () => camerasService.getStoreLimits(selectedStore),
     enabled: Boolean(selectedStore && selectedStore !== "all"),
     staleTime: 30000,
+  })
+
+  const { data: mySupportRequests } = useQuery({
+    queryKey: ["store-support-requests", selectedStore],
+    queryFn: () => supportService.getMyStoreSupportRequests(selectedStore),
+    enabled: Boolean(selectedStore && selectedStore !== "all"),
+    staleTime: 30000,
+  })
+
+  const latestSupportRequest = useMemo(() => {
+    const rows = mySupportRequests ?? []
+    if (rows.length === 0) return null
+    return rows[0]
+  }, [mySupportRequests])
+
+  const hasActiveSupportGrant = useMemo(() => {
+    if (!latestSupportRequest) return false
+    if (latestSupportRequest.status !== "granted") return false
+    if (!latestSupportRequest.expires_at) return false
+    const expiresAt = new Date(latestSupportRequest.expires_at)
+    if (Number.isNaN(expiresAt.getTime())) return false
+    return expiresAt.getTime() > Date.now()
+  }, [latestSupportRequest])
+
+  const canManageStore = baseCanManageStore || hasActiveSupportGrant
+  const canEditRoi = canManageStore || Boolean(user?.is_staff || user?.is_superuser)
+
+  useEffect(() => {
+    if (!initialOpenRoi || !initialZoneId) return
+    if (zoneOpenHandled.current) return
+    if (!cameras || cameras.length === 0) return
+    const cameraMatch = cameras.find((camera) => camera.zone_id === initialZoneId)
+    zoneOpenHandled.current = true
+    if (!cameraMatch) {
+      toast.error("Nenhuma câmera encontrada para esta zona.")
+      return
+    }
+    if (!canEditRoi) {
+      toast.error("Sem permissão para abrir o ROI desta câmera.")
+      return
+    }
+    setRoiCamera(cameraMatch)
+  }, [initialOpenRoi, initialZoneId, cameras, canEditRoi])
+
+  const requestSupportMutation = useMutation({
+    mutationFn: () =>
+      supportService.requestStoreSupport(
+        selectedStore,
+        "Solicitação via página Câmeras: usuário em modo leitura precisa apoio para cadastro/ROI."
+      ),
+    onSuccess: (result) => {
+      queryClient.invalidateQueries({ queryKey: ["store-support-requests", selectedStore] })
+      toast.success(result.message || "Solicitação enviada ao suporte.")
+    },
+    onError: (error: unknown) => {
+      const message = (error as { message?: string })?.message || "Falha ao solicitar suporte."
+      toast.error(message)
+    },
   })
 
   const createCameraMutation = useMutation({
@@ -663,9 +704,43 @@ const Cameras = () => {
                   : `${camerasUsed} câmeras cadastradas`}
               </p>
               {!canManageStore && (
-                <p className="text-xs text-amber-700 mt-2">
-                  Acesso somente leitura. Você não pode editar ou atualizar status nesta loja.
-                </p>
+                <div className="mt-2 rounded-lg border border-amber-200 bg-amber-50 p-3">
+                  <p className="text-xs text-amber-800">
+                    Acesso somente leitura. Você não pode editar ou atualizar status nesta loja.
+                  </p>
+                  <div className="mt-2 flex flex-wrap items-center gap-2">
+                    <button
+                      type="button"
+                      onClick={() => requestSupportMutation.mutate()}
+                      disabled={
+                        selectedStore === "all" ||
+                        requestSupportMutation.isPending ||
+                        latestSupportRequest?.status === "pending"
+                      }
+                      className={`inline-flex items-center rounded-lg px-3 py-1.5 text-xs font-semibold ${
+                        selectedStore === "all" ||
+                        requestSupportMutation.isPending ||
+                        latestSupportRequest?.status === "pending"
+                          ? "cursor-not-allowed bg-amber-100 text-amber-500"
+                          : "bg-amber-600 text-white hover:bg-amber-700"
+                      }`}
+                    >
+                      {latestSupportRequest?.status === "pending"
+                        ? "Suporte já solicitado"
+                        : requestSupportMutation.isPending
+                        ? "Enviando..."
+                        : "Solicitar suporte para câmera/ROI"}
+                    </button>
+                    {latestSupportRequest && (
+                      <span className="text-xs text-amber-700">
+                        Última solicitação: {latestSupportRequest.status}{" "}
+                        {latestSupportRequest.requested_at
+                          ? `(${formatTimestamp(latestSupportRequest.requested_at)})`
+                          : ""}
+                      </span>
+                    )}
+                  </div>
+                </div>
               )}
               <p className="text-xs text-gray-500 mt-2">
                 O status vem do Edge na loja (não é teste do servidor). Se aparecer offline,

@@ -1,7 +1,8 @@
 from typing import Iterable, Optional
 from django.core.exceptions import PermissionDenied
+from django.utils import timezone
 
-from apps.core.models import OrgMember, Store
+from apps.core.models import OrgMember, Store, SupportAccessGrant
 from apps.stores.services.user_uuid import ensure_user_uuid
 
 
@@ -22,12 +23,25 @@ def get_user_role_for_store(user, store_id: str) -> Optional[str]:
         return None
 
     user_uuid = ensure_user_uuid(user)
+    try:
+        has_support_grant = SupportAccessGrant.objects.filter(
+            store_id=store_id,
+            user_uuid=user_uuid,
+            active=True,
+            expires_at__gt=timezone.now(),
+        ).exists()
+    except Exception:
+        has_support_grant = False
     member = OrgMember.objects.filter(
         org_id=store.get("org_id"),
         user_id=user_uuid,
     ).first()
     if member:
+        if member.role == "viewer" and has_support_grant:
+            return "manager"
         return member.role
+    if has_support_grant:
+        return "manager"
     return None
 
 

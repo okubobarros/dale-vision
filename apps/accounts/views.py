@@ -284,6 +284,19 @@ class MeStatusView(APIView):
         if not user or not getattr(user, "id", None):
             return Response({"detail": "Usuário não autenticado."}, status=status.HTTP_403_FORBIDDEN)
 
+        # Staff/superuser internos não devem ser bloqueados por trial.
+        if getattr(user, "is_staff", False) or getattr(user, "is_superuser", False):
+            return Response(
+                {
+                    "trial_active": True,
+                    "trial_ends_at": None,
+                    "has_subscription": True,
+                    "role": "internal_admin",
+                    "is_internal_admin": True,
+                },
+                status=status.HTTP_200_OK,
+            )
+
         with connection.cursor() as cursor:
             cursor.execute(
                 "SELECT user_uuid FROM public.user_id_map WHERE django_user_id = %s",
@@ -312,6 +325,7 @@ class MeStatusView(APIView):
                     "trial_ends_at": None,
                     "has_subscription": False,
                     "role": None,
+                    "is_internal_admin": False,
                 },
                 status=status.HTTP_200_OK,
             )
@@ -325,6 +339,7 @@ class MeStatusView(APIView):
                 "trial_ends_at": trial_ends_at.isoformat() if trial_ends_at else None,
                 "has_subscription": is_subscription_active(org_id),
                 "role": membership.role,
+                "is_internal_admin": False,
             },
             status=status.HTTP_200_OK,
         )

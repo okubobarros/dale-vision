@@ -6,6 +6,7 @@ export type MeStatus = {
   trial_ends_at?: string | null
   has_subscription: boolean
   role?: string | null
+  is_internal_admin?: boolean
 }
 
 const isTimeoutError = (error: unknown) => {

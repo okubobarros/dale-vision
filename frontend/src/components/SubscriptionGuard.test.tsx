@@ -4,6 +4,7 @@ import { QueryClient, QueryClientProvider } from "@tanstack/react-query"
 import SubscriptionGuard from "./SubscriptionGuard"
 
 const navigateMock = vi.fn()
+const useAuthMock = vi.fn()
 
 vi.mock("react-router-dom", async () => {
   const actual = await vi.importActual<typeof import("react-router-dom")>(
@@ -23,6 +24,10 @@ vi.mock("../services/me", () => ({
   },
 }))
 
+vi.mock("../contexts/useAuth", () => ({
+  useAuth: () => useAuthMock(),
+}))
+
 const buildWrapper = () => {
   const queryClient = new QueryClient({
     defaultOptions: { queries: { retry: false } },
@@ -36,6 +41,8 @@ const buildWrapper = () => {
 describe("SubscriptionGuard", () => {
   beforeEach(() => {
     navigateMock.mockReset()
+    useAuthMock.mockReset()
+    useAuthMock.mockReturnValue({ user: null })
     sessionStorage.clear()
   })
 
@@ -105,5 +112,45 @@ describe("SubscriptionGuard", () => {
     await waitFor(() => {
       expect(navigateMock).toHaveBeenCalledWith("/app/upgrade", { replace: true })
     })
+  })
+
+  it("does not redirect internal admin even when trial is expired", async () => {
+    const { meService } = await import("../services/me")
+    useAuthMock.mockReturnValue({
+      user: { is_staff: true, is_superuser: false },
+    })
+
+    vi.mocked(meService.getStatus).mockResolvedValue({
+      trial_active: false,
+      trial_ends_at: "2026-02-01T10:00:00Z",
+      has_subscription: false,
+      role: "owner",
+      is_internal_admin: true,
+    })
+    vi.mocked(meService.getReportSummary).mockResolvedValue({
+      period: "7d",
+      from: "2026-01-25T00:00:00Z",
+      to: "2026-02-01T00:00:00Z",
+      stores_count: 1,
+      kpis: {
+        total_visitors: 0,
+        avg_dwell_seconds: 0,
+        avg_queue_seconds: 0,
+        avg_conversion_rate: 0,
+        total_alerts: 0,
+      },
+      chart_footfall_by_day: [],
+      chart_footfall_by_hour: [],
+      alert_counts_by_type: [],
+      insights: [],
+    })
+
+    const Wrapper = buildWrapper()
+    render(<SubscriptionGuard />, { wrapper: Wrapper })
+
+    await waitFor(() => {
+      expect(meService.getStatus).toHaveBeenCalled()
+    })
+    expect(navigateMock).not.toHaveBeenCalled()
   })
 })

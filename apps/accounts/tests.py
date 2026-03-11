@@ -230,6 +230,24 @@ class MeStatusViewTests(APITestCase):
         self.assertFalse(response.data.get("trial_active"))
         self.assertFalse(response.data.get("has_subscription"))
         self.assertEqual(response.data.get("role"), "owner")
+        self.assertFalse(response.data.get("is_internal_admin"))
+
+    def test_me_status_bypasses_trial_for_internal_admin(self):
+        user = User.objects.create_user(
+            username="internaladmin",
+            email="internal.admin@example.com",
+            password="pass1234",
+            is_staff=True,
+        )
+        self.client.force_authenticate(user=user)
+
+        response = self.client.get("/api/v1/me/status/")
+
+        self.assertEqual(response.status_code, 200)
+        self.assertTrue(response.data.get("trial_active"))
+        self.assertTrue(response.data.get("has_subscription"))
+        self.assertEqual(response.data.get("role"), "internal_admin")
+        self.assertTrue(response.data.get("is_internal_admin"))
 
 
 class AdminControlTowerSummaryViewTests(APITestCase):

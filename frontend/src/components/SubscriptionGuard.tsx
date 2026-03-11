@@ -3,6 +3,7 @@ import { useLocation, useNavigate } from "react-router-dom"
 import { useQuery } from "@tanstack/react-query"
 import { meService } from "../services/me"
 import { trackJourneyEventOnce } from "../services/journey"
+import { useAuth } from "../contexts/useAuth"
 
 const TRIAL_EXPIRED_STORAGE_KEY = "dv_trial_expired"
 const TRIAL_EXPIRED_EVENT = "dv-trial-expired"
@@ -15,6 +16,7 @@ const isAllowedPath = (pathname: string) =>
 const SubscriptionGuard = () => {
   const location = useLocation()
   const navigate = useNavigate()
+  const { user } = useAuth()
   const [allowReportFetch, setAllowReportFetch] = useState(false)
 
   const { data: status } = useQuery({
@@ -26,11 +28,17 @@ const SubscriptionGuard = () => {
     refetchOnReconnect: false,
   })
 
+  const isInternalAdmin = useMemo(
+    () => Boolean(user?.is_staff || user?.is_superuser || status?.is_internal_admin),
+    [status?.is_internal_admin, user?.is_staff, user?.is_superuser]
+  )
+
   const isExpired = useMemo(() => {
     if (!status) return false
+    if (isInternalAdmin) return false
     if (status.has_subscription) return false
     return status.trial_active === false
-  }, [status])
+  }, [isInternalAdmin, status])
 
   const { data: report } = useQuery({
     queryKey: ["report-summary"],
@@ -59,9 +67,13 @@ const SubscriptionGuard = () => {
 
     const checkAndRedirect = () => {
       const expiredFlag = sessionStorage.getItem(TRIAL_EXPIRED_STORAGE_KEY) === "1"
+      if (isInternalAdmin && expiredFlag) {
+        sessionStorage.removeItem(TRIAL_EXPIRED_STORAGE_KEY)
+      }
       if (!isExpired && expiredFlag) {
         sessionStorage.removeItem(TRIAL_EXPIRED_STORAGE_KEY)
       }
+      if (isInternalAdmin) return
       const expired = isExpired || expiredFlag
       if (!expired) return
       void trackJourneyEventOnce("trial_expired_shown", "trial_expired_shown", {
@@ -76,7 +88,7 @@ const SubscriptionGuard = () => {
     const handler = () => checkAndRedirect()
     window.addEventListener(TRIAL_EXPIRED_EVENT, handler)
     return () => window.removeEventListener(TRIAL_EXPIRED_EVENT, handler)
-  }, [hasReportData, isExpired, location.pathname, navigate])
+  }, [hasReportData, isExpired, isInternalAdmin, location.pathname, navigate])
 
   return null
 }
