@@ -87,6 +87,8 @@ def _dest_to_text(dest):
     return str(dest).strip()
 
 def _require_subscription_for_org(*, org_id, request, action: str):
+    if request.method in ("GET", "HEAD", "OPTIONS"):
+        return
     if getattr(request.user, "is_superuser", False) or getattr(request.user, "is_staff", False):
         return
     actor_user_id = None
@@ -108,6 +110,8 @@ def _require_subscription_for_store_id(*, store_id, request, action: str):
         _require_subscription_for_org(org_id=org_id, request=request, action=action)
 
 def _require_subscription_for_user_orgs(*, request, action: str):
+    if request.method in ("GET", "HEAD", "OPTIONS"):
+        return
     if getattr(request.user, "is_superuser", False) or getattr(request.user, "is_staff", False):
         return
     actor_user_id = None
