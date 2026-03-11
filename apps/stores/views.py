@@ -44,6 +44,7 @@ from backend.utils.entitlements import enforce_can_use_product, require_trial_ac
 import hashlib
 import secrets
 import uuid
+from urllib.parse import quote, urlparse, urlunparse
 from .serializers import StoreSerializer, EmployeeSerializer
 from apps.stores.services.user_uuid import ensure_user_uuid
 from apps.stores.services.user_orgs import get_user_org_ids
@@ -123,6 +124,76 @@ def _mask_rtsp(value: str) -> str:
     if len(value) <= 8:
         return "***"
     return f"{value[:4]}***{value[-3:]}"
+
+def _resolved_rtsp_for_edge(camera: Camera) -> str:
+    raw_rtsp = str(getattr(camera, "rtsp_url", "") or "").strip()
+    username = str(getattr(camera, "username", "") or "").strip()
+    password = str(getattr(camera, "password", "") or "").strip()
+    ip = str(getattr(camera, "ip", "") or "").strip()
+
+    if raw_rtsp:
+        parsed = urlparse(raw_rtsp)
+        if parsed.scheme and parsed.hostname:
+            # Keep path/query from dashboard, but enforce current credentials if present.
+            if username or password:
+                auth_user = quote(username, safe="") if username else ""
+                auth_pass = quote(password, safe="") if password else ""
+                if auth_user and auth_pass:
+                    auth = f"{auth_user}:{auth_pass}@"
+                elif auth_user:
+                    auth = f"{auth_user}@"
+                elif auth_pass:
+                    auth = f":{auth_pass}@"
+                else:
+                    auth = ""
+                host = parsed.hostname or ""
+                if parsed.port:
+                    host = f"{host}:{parsed.port}"
+                netloc = f"{auth}{host}"
+                return urlunparse(parsed._replace(netloc=netloc))
+            return raw_rtsp
+
+    # Fallback for legacy rows where only ip/user/password are filled.
+    if ip:
+        host = ip
+        if username or password:
+            auth_user = quote(username, safe="") if username else ""
+            auth_pass = quote(password, safe="") if password else ""
+            if auth_user and auth_pass:
+                auth = f"{auth_user}:{auth_pass}@"
+            elif auth_user:
+                auth = f"{auth_user}@"
+            elif auth_pass:
+                auth = f":{auth_pass}@"
+            else:
+                auth = ""
+            return f"rtsp://{auth}{host}:554/stream"
+        return f"rtsp://{host}:554/stream"
+
+    return raw_rtsp
+
+
+def _serialize_cameras_for_edge(cameras_qs) -> list[dict]:
+    payload = []
+    for camera in cameras_qs:
+        rtsp_url = _resolved_rtsp_for_edge(camera)
+        payload.append(
+            {
+                "id": str(camera.id),
+                "camera_id": str(camera.id),
+                "name": camera.name,
+                "external_id": camera.external_id,
+                "active": bool(getattr(camera, "active", True)),
+                "status": camera.status,
+                "ip": camera.ip,
+                "username": camera.username,
+                "password": camera.password,
+                "rtsp_url": rtsp_url,
+                "rtsp_url_masked": _mask_rtsp(rtsp_url) if rtsp_url else None,
+                "updated_at": camera.updated_at.isoformat() if camera.updated_at else None,
+            }
+        )
+    return payload
 
 
 def _sanitize_camera_payload(payload):
@@ -1251,6 +1322,7 @@ class StoreViewSet(viewsets.ModelViewSet):
             )
         if request.method == "GET":
             edge_token = (request.headers.get("X-EDGE-TOKEN") or "").strip()
+            cameras_qs = Camera.objects.select_related("store").filter(store_id=store.id).order_by("-updated_at")
             if edge_token:
                 if not validate_store_token(request, str(store.id)):
                     return _error_response(
@@ -1259,6 +1331,8 @@ class StoreViewSet(viewsets.ModelViewSet):
                         status.HTTP_401_UNAUTHORIZED,
                         deprecated_detail="Edge token inválido para esta loja.",
                     )
+                # S1 contract: edge token receives operational payload (single source of truth for RTSP).
+                return Response(_serialize_cameras_for_edge(cameras_qs))
             elif request.user and request.user.is_authenticated:
                 require_store_role(request.user, str(store.id), ALLOWED_READ_ROLES)
             else:
@@ -1268,7 +1342,6 @@ class StoreViewSet(viewsets.ModelViewSet):
                     status.HTTP_401_UNAUTHORIZED,
                     deprecated_detail="Edge token inválido para esta loja.",
                 )
-            cameras_qs = Camera.objects.select_related("store").filter(store_id=store.id).order_by("-updated_at")
             serializer = CameraSerializer(cameras_qs, many=True)
             return Response(serializer.data)
 

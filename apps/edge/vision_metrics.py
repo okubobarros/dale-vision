@@ -15,6 +15,10 @@ from apps.core.services.journey_events import log_journey_event
 logger = logging.getLogger(__name__)
 
 
+class ProjectionContractError(Exception):
+    pass
+
+
 def _parse_ts(raw: Optional[str]):
     if not raw:
         return timezone.now()
@@ -255,8 +259,10 @@ def _upsert_conversion_metrics(
             WHERE store_id = %s
               AND ts_bucket = %s
               AND camera_id IS NOT DISTINCT FROM %s
+              AND metric_type IS NOT DISTINCT FROM %s
+              AND roi_entity_id IS NOT DISTINCT FROM %s
             """,
-            [store_id, ts_bucket, camera_id],
+            [store_id, ts_bucket, camera_id, metric_type, roi_entity_id],
         )
         row = cursor.fetchone()
         if row:
@@ -319,56 +325,16 @@ def _upsert_conversion_metrics(
                     """,
                     insert_params,
                 )
-            except IntegrityError:
-                # Legacy databases may still enforce uniqueness on (store_id, ts_bucket)
-                # instead of (store_id, ts_bucket, camera_id). Fall back to the legacy row
-                # to keep ingestion alive until the DB constraint is migrated.
-                logger.warning(
-                    "[EDGE] legacy conversion_metrics uniqueness fallback store_id=%s ts_bucket=%s camera_id=%s",
+            except IntegrityError as exc:
+                logger.error(
+                    "[EDGE] projection_contract_violation conversion_metrics uniqueness store_id=%s ts_bucket=%s camera_id=%s metric_type=%s roi_entity_id=%s",
                     store_id,
                     ts_bucket,
                     camera_id,
+                    metric_type,
+                    roi_entity_id,
                 )
-                cursor.execute(
-                    """
-                    SELECT id
-                    FROM public.conversion_metrics
-                    WHERE store_id = %s
-                      AND ts_bucket = %s
-                    """,
-                    [store_id, ts_bucket],
-                )
-                legacy_row = cursor.fetchone()
-                if legacy_row:
-                    cursor.execute(
-                        """
-                        UPDATE public.conversion_metrics
-                        SET camera_id = %s,
-                            camera_role = %s,
-                            ownership = %s,
-                            metric_type = %s,
-                            roi_entity_id = %s,
-                            conversion_rate = %s,
-                            queue_avg_seconds = %s,
-                            staff_active_est = %s,
-                            checkout_events = %s
-                        WHERE id = %s
-                        """,
-                        [
-                            camera_id,
-                            camera_role,
-                            ownership,
-                            metric_type,
-                            roi_entity_id,
-                            conversion_rate,
-                            queue_avg,
-                            staff_active,
-                            checkout_events,
-                            legacy_row[0],
-                        ],
-                    )
-                else:
-                    raise
+                raise ProjectionContractError("conversion_metrics uniqueness contract violation") from exc
 
 
 def apply_vision_metrics(payload: Dict[str, Any]) -> None:

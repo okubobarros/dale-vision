@@ -689,45 +689,36 @@ class VisionMetricsContractTests(TestCase):
         self.assertEqual(conversion_kwargs["camera_id"], "cam-1")
         self.assertEqual(conversion_kwargs["camera_role"], "entrada")
 
-    def test_conversion_metrics_falls_back_on_legacy_unique_constraint(self):
+    def test_conversion_metrics_contract_violation_raises_without_legacy_fallback(self):
         cursor = MagicMock()
         cursor.fetchone.side_effect = [
             None,
-            ("legacy-row-1",),
         ]
         cursor.execute.side_effect = [
             None,
             IntegrityError("duplicate key value violates unique constraint"),
-            None,
-            None,
         ]
         cursor_cm = MagicMock()
         cursor_cm.__enter__.return_value = cursor
         cursor_cm.__exit__.return_value = False
 
         with patch("apps.edge.vision_metrics.connection.cursor", return_value=cursor_cm):
-            vision_metrics._upsert_conversion_metrics(
-                "store-1",
-                vision_metrics._parse_ts("2026-03-09T12:00:00Z"),
-                {
-                    "queue_avg_seconds": 30,
-                    "staff_active_est": 1,
-                    "checkout_events": 2,
-                    "metric_type": "checkout_proxy",
-                    "roi_entity_id": "queue-zone-1",
-                },
-                camera_id="cam-1",
-                camera_role="balcao",
-            )
+            with self.assertRaises(vision_metrics.ProjectionContractError):
+                vision_metrics._upsert_conversion_metrics(
+                    "store-1",
+                    vision_metrics._parse_ts("2026-03-09T12:00:00Z"),
+                    {
+                        "queue_avg_seconds": 30,
+                        "staff_active_est": 1,
+                        "checkout_events": 2,
+                        "metric_type": "checkout_proxy",
+                        "roi_entity_id": "queue-zone-1",
+                    },
+                    camera_id="cam-1",
+                    camera_role="balcao",
+                )
 
-        self.assertEqual(cursor.execute.call_count, 4)
-        fallback_sql, fallback_params = cursor.execute.call_args_list[2][0]
-        self.assertIn("SELECT id", fallback_sql)
-        self.assertEqual(fallback_params[0], "store-1")
-        self.assertIsNotNone(fallback_params[1])
-        update_sql, update_params = cursor.execute.call_args_list[3][0]
-        self.assertIn("UPDATE public.conversion_metrics", update_sql)
-        self.assertEqual(update_params[-1], "legacy-row-1")
+        self.assertEqual(cursor.execute.call_count, 2)
 
     def test_insert_vision_atomic_event_if_new_includes_crossing_context(self):
         payload = {

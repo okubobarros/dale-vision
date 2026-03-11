@@ -8,7 +8,7 @@ from unittest.mock import MagicMock, patch
 
 from apps.billing.utils import PaywallError, TRIAL_STORE_LIMIT, enforce_trial_store_limit
 from backend.utils.entitlements import TrialExpiredError
-from apps.stores.views import StoreViewSet
+from apps.stores.views import StoreViewSet, _resolved_rtsp_for_edge
 from apps.stores.serializers import EmployeeSerializer
 from apps.stores import views_edge_status
 from apps.edge import views as edge_views
@@ -66,20 +66,19 @@ class StoreCamerasEndpointTests(SimpleTestCase):
         store.org_id = "org-1"
         return store
 
-    @patch("apps.stores.views.CameraSerializer")
+    @patch("apps.stores.views._serialize_cameras_for_edge", return_value=[{"id": "cam-1"}])
     @patch("apps.stores.views.Camera")
     @patch("apps.stores.views.validate_store_token", return_value=True)
     def test_get_cameras_allows_edge_token(
         self,
         _token_mock,
         camera_model,
-        serializer_mock,
+        _edge_serializer_mock,
     ):
         store = self._mock_store("11111111-1111-1111-1111-111111111111")
         qs = MagicMock()
         qs.order_by.return_value = qs
         camera_model.objects.select_related.return_value.filter.return_value = qs
-        serializer_mock.return_value.data = [{"id": "cam-1"}]
 
         view = StoreViewSet.as_view({"get": "cameras"}, **StoreViewSet.cameras.kwargs)
         request = self.factory.get(
@@ -93,20 +92,19 @@ class StoreCamerasEndpointTests(SimpleTestCase):
         self.assertEqual(response.status_code, 200)
         self.assertEqual(response.data, [{"id": "cam-1"}])
 
-    @patch("apps.stores.views.CameraSerializer")
+    @patch("apps.stores.views._serialize_cameras_for_edge", return_value=[{"id": "cam-1"}])
     @patch("apps.stores.views.Camera")
     @patch("apps.stores.views.validate_store_token", return_value=True)
     def test_get_cameras_edge_token_wins_over_invalid_bearer_jwt(
         self,
         _token_mock,
         camera_model,
-        serializer_mock,
+        _edge_serializer_mock,
     ):
         store = self._mock_store("11111111-1111-1111-1111-111111111111")
         qs = MagicMock()
         qs.order_by.return_value = qs
         camera_model.objects.select_related.return_value.filter.return_value = qs
-        serializer_mock.return_value.data = [{"id": "cam-1"}]
 
         view = StoreViewSet.as_view({"get": "cameras"}, **StoreViewSet.cameras.kwargs)
         request = self.factory.get(
@@ -159,7 +157,7 @@ class StoreCamerasEndpointTests(SimpleTestCase):
 
         self.assertEqual(response.status_code, 200)
 
-    @patch("apps.stores.views.CameraSerializer")
+    @patch("apps.stores.views._serialize_cameras_for_edge", return_value=[{"id": "cam-1"}])
     @patch("apps.stores.views.Camera")
     @patch("apps.stores.views.require_store_role")
     @patch("apps.stores.views.validate_store_token", return_value=True)
@@ -168,13 +166,12 @@ class StoreCamerasEndpointTests(SimpleTestCase):
         _token_mock,
         _require_role,
         camera_model,
-        serializer_mock,
+        _edge_serializer_mock,
     ):
         store = self._mock_store("11111111-1111-1111-1111-111111111111")
         qs = MagicMock()
         qs.order_by.return_value = qs
         camera_model.objects.select_related.return_value.filter.return_value = qs
-        serializer_mock.return_value.data = [{"id": "cam-1"}]
 
         view = StoreViewSet.as_view({"get": "cameras"}, **StoreViewSet.cameras.kwargs)
         request = self.factory.get(
@@ -418,6 +415,31 @@ class StoreCamerasEndpointTests(SimpleTestCase):
 
         self.assertEqual(response.status_code, 201)
         self.assertEqual(response.data.get("id"), "cam-2")
+
+
+class EdgeRtspResolutionTests(SimpleTestCase):
+    def test_resolved_rtsp_for_edge_overrides_embedded_credentials(self):
+        camera = SimpleNamespace(
+            rtsp_url="rtsp://admin:senha@192.168.15.4:554/cam/realmonitor?channel=1&subtype=1",
+            username="admin",
+            password="Davvero123",
+            ip="192.168.15.4",
+        )
+        resolved = _resolved_rtsp_for_edge(camera)
+        self.assertEqual(
+            resolved,
+            "rtsp://admin:Davvero123@192.168.15.4:554/cam/realmonitor?channel=1&subtype=1",
+        )
+
+    def test_resolved_rtsp_for_edge_falls_back_to_ip_when_rtsp_missing(self):
+        camera = SimpleNamespace(
+            rtsp_url=None,
+            username="admin",
+            password="123456",
+            ip="192.168.15.4",
+        )
+        resolved = _resolved_rtsp_for_edge(camera)
+        self.assertEqual(resolved, "rtsp://admin:123456@192.168.15.4:554/stream")
 
 
 class StoreOverviewEndpointTests(SimpleTestCase):

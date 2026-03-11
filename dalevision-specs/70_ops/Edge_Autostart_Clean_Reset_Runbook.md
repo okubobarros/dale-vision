@@ -124,6 +124,22 @@ Critério sugerido:
 - `SLOW`: `> 300`
 - `FAIL`: sem heartbeat encontrado no período
 
+Análise automática do CSV (decisão `GO_S1` / `NO_GO`):
+
+```powershell
+cd C:\workspace\dale-vision
+powershell -ExecutionPolicy Bypass -File .\scripts\analyze_edge_startup_measurements.ps1 `
+  -CsvPath ".\logs\edge_startup_measurements.csv" `
+  -PassThresholdSeconds 300 `
+  -RequiredPassRate 1.0 `
+  -MinSamples 5
+```
+
+Regra padrão recomendada para fechar S0:
+- `MinSamples=5`
+- `RequiredPassRate=1.0` (5/5)
+- `max_boot_to_heartbeat_sec <= 300`
+
 ## Quadro operacional: cameras no `.env` vs backend
 Estado atual validado em campo:
 - Heartbeat/autostart estável com `VISION_ENABLED=0` e `CAMERAS_JSON=[]`.
