@@ -19,8 +19,9 @@ export const copilotService = {
     return response.data?.items ?? []
   },
 
-  async getReport72h(storeId: string): Promise<CopilotReport72h | null> {
+  async getReport72h(storeId: string, options?: { refresh?: boolean }): Promise<CopilotReport72h | null> {
     const response = await api.get(`/v1/copilot/stores/${storeId}/report-72h/`, {
+      params: options?.refresh ? { refresh: 1 } : undefined,
       timeoutCategory: "best-effort",
       noRetry: true,
     })
@@ -36,4 +37,3 @@ export const copilotService = {
     return response.data?.items ?? []
   },
 }
-

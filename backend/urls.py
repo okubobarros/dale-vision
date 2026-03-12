@@ -55,6 +55,7 @@ urlpatterns = [
 
     # ✅ Stores
     path("api/v1/", include("apps.stores.urls")),
+    path("api/v1/", include("apps.copilot.urls")),
 
     # ✅ Alerts (demo lead + rules + ingest/event)
     path("api/alerts/", include("apps.alerts.urls")),

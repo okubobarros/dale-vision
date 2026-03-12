@@ -23,6 +23,8 @@ import {
   type OnboardingNextStepResponse,
 } from "../../services/onboarding"
 import { meService, type MeAccount } from "../../services/me"
+import { copilotService } from "../../services/copilot"
+import type { CopilotReport72h } from "../../types/copilot"
 import { getDashboardExperience } from "./dashboardExperience"
 import { TrialDashboardView } from "./views/TrialDashboardView"
 import { PaidSetupDashboardView } from "./views/PaidSetupDashboardView"
@@ -207,6 +209,13 @@ const Dashboard = () => {
     queryFn: () => storesService.getStoreDashboard(selectedStore),
     enabled: canFetchAuth && selectedStore !== ALL_STORES_VALUE && !isTrialCeoMode,
     staleTime: 30000,
+    retry: false,
+  })
+  const { data: copilotReport72h, isLoading: copilotReportLoading } = useQuery<CopilotReport72h | null>({
+    queryKey: ["copilot-report-72h", selectedStore],
+    queryFn: () => copilotService.getReport72h(selectedStore),
+    enabled: canFetchAuth && selectedStore !== ALL_STORES_VALUE,
+    staleTime: 60000,
     retry: false,
   })
   const trialBlockedStore = useMemo(() => {
@@ -565,7 +574,14 @@ const Dashboard = () => {
     return Math.min(71, Math.max(24, 24 + camerasOnline * 6 + (events?.length ?? 0)))
   })()
   const trialProgressPct = Math.max(0, Math.min(100, Math.round((trialCollectedHours / 72) * 100)))
-  const trialHoursRemaining = Math.max(0, 72 - trialCollectedHours)
+  const reportReadinessCollectedHours = copilotReport72h?.readiness?.collected_hours
+  const reportReadinessTargetHours = copilotReport72h?.readiness?.target_hours ?? 72
+  const trialHoursRemaining = Math.max(
+    0,
+    reportReadinessCollectedHours !== undefined
+      ? reportReadinessTargetHours - reportReadinessCollectedHours
+      : 72 - trialCollectedHours
+  )
   const trialEtaText =
     dashboardExperience.dashboardType === "trial"
       ? trialUiState === "report_ready"
@@ -1230,8 +1246,11 @@ const Dashboard = () => {
 
       {selectedStore !== ALL_STORES_VALUE && (
         <OperationalDiagnosisSection
-          isLoading={isLoadingDashboard}
-          reportReady={trialUiState === "report_ready"}
+          isLoading={isLoadingDashboard || copilotReportLoading}
+          reportReady={copilotReport72h?.status === "ready" || trialUiState === "report_ready"}
+          reportFailed={copilotReport72h?.status === "failed"}
+          reportStatusDetail={copilotReport72h?.status_detail ?? null}
+          readinessMessage={copilotReport72h?.readiness?.message ?? null}
           insights={diagnosisInsights}
           trialHoursRemaining={trialHoursRemaining}
           onOpenCopilot={() => openCopilot("Qual o status do diagnóstico operacional desta loja?")}

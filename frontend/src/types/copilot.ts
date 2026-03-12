@@ -63,6 +63,16 @@ export interface CopilotReport72h {
   org_id: string
   store_id: string
   status: "pending" | "ready" | "failed"
+  status_detail?: string
+  next_refresh_suggested_seconds?: number
+  readiness?: {
+    status: "pending" | "ready" | "failed"
+    reason: string
+    message: string
+    collected_hours: number
+    target_hours: number
+    evidence?: Record<string, unknown>
+  }
   generated_at?: string | null
   summary?: {
     headline: string
@@ -85,4 +95,3 @@ export interface CopilotConversationMessage {
   metadata?: Record<string, unknown>
   created_at: string
 }
-

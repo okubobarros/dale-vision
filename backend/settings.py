@@ -60,6 +60,7 @@ INSTALLED_APPS = [
     'apps.alerts',
     'apps.billing',
     "apps.edge",
+    "apps.copilot",
 ]
 
 
