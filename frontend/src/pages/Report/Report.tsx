@@ -1,7 +1,7 @@
 import { useMemo, useState, useEffect } from "react"
 import { useQuery } from "@tanstack/react-query"
 import { Link } from "react-router-dom"
-import { meService, type ReportImpact } from "../../services/me"
+import { meService, type MeStatus, type ReportImpact } from "../../services/me"
 import { storesService, type StoreSummary } from "../../services/stores"
 import { trackJourneyEvent, trackJourneyEventOnce } from "../../services/journey"
 
@@ -36,6 +36,12 @@ const Report = () => {
   })
   const [selectedStore, setSelectedStore] = useState<string>("")
   const [exporting, setExporting] = useState<"csv" | "pdf" | null>(null)
+  const { data: meStatus } = useQuery<MeStatus | null>({
+    queryKey: ["me-status", "report"],
+    queryFn: meService.getStatus,
+    staleTime: 60000,
+    retry: 0,
+  })
 
   const { data, isLoading, error } = useQuery<ReportImpact>({
     queryKey: ["report-impact", selectedStore],
@@ -80,6 +86,8 @@ const Report = () => {
     if (!hourBars.length) return { label: "—", footfall: 0 }
     return hourBars.reduce((acc, cur) => (cur.footfall > acc.footfall ? cur : acc), hourBars[0])
   }, [hourBars])
+  const hasActiveSubscription = meStatus?.has_subscription === true
+  const isTrialExpired = meStatus?.has_subscription === false && meStatus?.trial_active === false
 
   if (isLoading) {
     return (
@@ -106,33 +114,47 @@ const Report = () => {
 
   return (
     <div className="p-6 space-y-6 pb-24">
-      <div className="bg-red-50 border border-red-200 rounded-xl p-4 text-red-700">
-        <div className="font-semibold">Trial expirou</div>
-        <p className="text-sm mt-1">
-          Seu trial terminou. Você ainda pode visualizar este relatório final e fazer
-          upgrade para continuar.
-        </p>
-        <div className="mt-3">
-          <Link
-            to="/app/upgrade"
-            onClick={() =>
-              void trackJourneyEvent("upgrade_clicked", {
-                source: "report_banner",
-              })
-            }
-            className="inline-flex items-center justify-center rounded-lg bg-blue-600 px-4 py-2 text-sm font-semibold text-white hover:bg-blue-700"
-          >
-            Fazer upgrade
-          </Link>
+      {isTrialExpired && (
+        <div className="bg-red-50 border border-red-200 rounded-xl p-4 text-red-700">
+          <div className="font-semibold">Trial expirou</div>
+          <p className="text-sm mt-1">
+            Seu trial terminou. Você ainda pode visualizar este relatório final e fazer
+            upgrade para continuar.
+          </p>
+          <div className="mt-3">
+            <Link
+              to="/app/upgrade"
+              onClick={() =>
+                void trackJourneyEvent("upgrade_clicked", {
+                  source: "report_banner",
+                })
+              }
+              className="inline-flex items-center justify-center rounded-lg bg-blue-600 px-4 py-2 text-sm font-semibold text-white hover:bg-blue-700"
+            >
+              Fazer upgrade
+            </Link>
+          </div>
         </div>
-      </div>
+      )}
+
+      {hasActiveSubscription && (
+        <div className="bg-emerald-50 border border-emerald-200 rounded-xl p-4 text-emerald-800">
+          <div className="font-semibold">Plano ativo</div>
+          <p className="text-sm mt-1">
+            Seu acesso está liberado. Este relatório já faz parte da operação contínua da sua
+            loja.
+          </p>
+        </div>
+      )}
 
       <div>
         <h1 className="text-2xl sm:text-3xl font-bold text-gray-800">
-          O que aconteceu no seu trial
+          {hasActiveSubscription ? "Resumo operacional da loja" : "O que aconteceu no seu trial"}
         </h1>
         <p className="text-sm text-gray-600 mt-1">
-          Resumo executivo para decidir o próximo passo.
+          {hasActiveSubscription
+            ? "Visão executiva para apoiar decisões de operação."
+            : "Resumo executivo para decidir o próximo passo."}
         </p>
       </div>
 
@@ -342,29 +364,31 @@ const Report = () => {
         </div>
       </div>
 
-      <div className="fixed bottom-0 left-0 right-0 bg-white border-t border-gray-200 p-4">
-        <div className="max-w-6xl mx-auto flex flex-col sm:flex-row gap-3 sm:items-center sm:justify-between">
-          <div>
-            <div className="text-sm font-semibold text-gray-800">
-              Continue com insights em tempo real
+      {!hasActiveSubscription && (
+        <div className="fixed bottom-0 left-0 right-0 bg-white border-t border-gray-200 p-4">
+          <div className="max-w-6xl mx-auto flex flex-col sm:flex-row gap-3 sm:items-center sm:justify-between">
+            <div>
+              <div className="text-sm font-semibold text-gray-800">
+                Continue com insights em tempo real
+              </div>
+              <div className="text-xs text-gray-500">
+                Upgrade para liberar monitoramento e alertas ao vivo.
+              </div>
             </div>
-            <div className="text-xs text-gray-500">
-              Upgrade para liberar monitoramento e alertas ao vivo.
-            </div>
+            <Link
+              to="/app/upgrade"
+              onClick={() =>
+                void trackJourneyEvent("upgrade_clicked", {
+                  source: "report_sticky_cta",
+                })
+              }
+              className="inline-flex items-center justify-center rounded-lg bg-blue-600 px-4 py-2 text-sm font-semibold text-white hover:bg-blue-700"
+            >
+              Fazer upgrade agora
+            </Link>
           </div>
-          <Link
-            to="/app/upgrade"
-            onClick={() =>
-              void trackJourneyEvent("upgrade_clicked", {
-                source: "report_sticky_cta",
-              })
-            }
-            className="inline-flex items-center justify-center rounded-lg bg-blue-600 px-4 py-2 text-sm font-semibold text-white hover:bg-blue-700"
-          >
-            Fazer upgrade agora
-          </Link>
         </div>
-      </div>
+      )}
     </div>
   )
 }

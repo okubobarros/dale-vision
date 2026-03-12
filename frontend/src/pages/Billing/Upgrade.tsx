@@ -1,7 +1,7 @@
 import { useEffect } from "react"
 import { useQuery } from "@tanstack/react-query"
 import { trackJourneyEvent, trackJourneyEventOnce } from "../../services/journey"
-import { meService, type ReportImpact } from "../../services/me"
+import { meService, type MeStatus, type ReportImpact } from "../../services/me"
 
 const WHATSAPP_URL =
   "https://api.whatsapp.com/send/?phone=5511996918070&text=Quero%20fazer%20upgrade%20do%20Dale%20Vision&type=phone_number&app_absent=0"
@@ -16,12 +16,21 @@ const formatCurrency = (value?: number | null) => {
 }
 
 const Upgrade = () => {
+  const { data: meStatus } = useQuery<MeStatus | null>({
+    queryKey: ["me-status", "upgrade"],
+    queryFn: meService.getStatus,
+    staleTime: 60000,
+    retry: 0,
+  })
   const { data } = useQuery<ReportImpact>({
     queryKey: ["report-impact-upgrade"],
     queryFn: () => meService.getReportImpact(null, { period: "7d" }),
     staleTime: 60000,
     retry: 1,
   })
+  const hasActiveSubscription = meStatus?.has_subscription === true
+  const isTrialExpired = meStatus?.has_subscription === false && meStatus?.trial_active === false
+  const isTrialActive = meStatus?.trial_active === true && meStatus?.has_subscription !== true
 
   useEffect(() => {
     void trackJourneyEventOnce("upgrade_viewed", "upgrade_viewed", { path: "/app/upgrade" })
@@ -72,22 +81,41 @@ const Upgrade = () => {
 
   return (
     <div className="min-h-screen bg-slate-50 text-slate-900">
-      <div className="bg-amber-50 border-b border-amber-200 text-amber-900 px-6 py-3 text-sm">
-        <span className="font-semibold">Trial expirou.</span> Faça upgrade para reativar o
-        acesso completo.
-      </div>
+      {isTrialExpired && (
+        <div className="bg-amber-50 border-b border-amber-200 text-amber-900 px-6 py-3 text-sm">
+          <span className="font-semibold">Trial expirou.</span> Faça upgrade para reativar o
+          acesso completo.
+        </div>
+      )}
+      {isTrialActive && (
+        <div className="bg-blue-50 border-b border-blue-200 text-blue-900 px-6 py-3 text-sm">
+          <span className="font-semibold">Trial em andamento.</span> Antecipe seu plano para não
+          interromper a operação após o período de avaliação.
+        </div>
+      )}
+      {hasActiveSubscription && (
+        <div className="bg-emerald-50 border-b border-emerald-200 text-emerald-900 px-6 py-3 text-sm">
+          <span className="font-semibold">Plano ativo.</span> Esta página é para expansão de
+          capacidade e upgrade de pacote.
+        </div>
+      )}
 
       <section className="px-6 py-12 bg-gradient-to-br from-slate-900 via-slate-800 to-slate-900 text-white">
         <div className="max-w-5xl mx-auto space-y-6">
           <div className="text-xs uppercase tracking-[0.2em] text-emerald-300">
-            Plano recomendado com base no seu diagnóstico
+            {hasActiveSubscription
+              ? "Plano recomendado para expansão da sua operação"
+              : "Plano recomendado com base no seu diagnóstico"}
           </div>
           <h1 className="text-3xl sm:text-4xl lg:text-5xl font-bold">
-            Transforme o trial em ganhos mensais recorrentes
+            {hasActiveSubscription
+              ? "Escale ganhos mensais com operação contínua"
+              : "Transforme o trial em ganhos mensais recorrentes"}
           </h1>
           <p className="text-base sm:text-lg text-slate-200 max-w-2xl">
-            Continue com monitoramento em tempo real, alertas proativos e relatórios executivos
-            para reduzir filas, ociosidade e perdas.
+            {hasActiveSubscription
+              ? "Compare pacotes para ampliar cobertura de lojas, câmeras e inteligência operacional."
+              : "Continue com monitoramento em tempo real, alertas proativos e relatórios executivos para reduzir filas, ociosidade e perdas."}
           </p>
           <div className="flex flex-col sm:flex-row gap-3">
             <a
