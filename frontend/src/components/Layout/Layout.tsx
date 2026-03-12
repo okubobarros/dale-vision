@@ -1,5 +1,5 @@
 import { Outlet } from "react-router-dom"
-import { useState } from "react"
+import { useEffect, useState } from "react"
 import { Header, Sidebar } from "./index"
 import { useIsMobile } from "../../hooks/useIsMobile"
 
@@ -13,6 +13,23 @@ const Layout = () => {
   const isMobile = useIsMobile(768)
   const [agentOpen, setAgentOpen] = useState(false)
   const { messages, addMessage } = useAgent()
+
+  useEffect(() => {
+    const handler = (event: Event) => {
+      const customEvent = event as CustomEvent<{ prompt?: string }>
+      setAgentOpen(true)
+      const prompt = customEvent.detail?.prompt?.trim()
+      if (prompt) {
+        addMessage({
+          id: crypto.randomUUID(),
+          role: "user",
+          content: prompt,
+        })
+      }
+    }
+    window.addEventListener("dv-open-copilot", handler)
+    return () => window.removeEventListener("dv-open-copilot", handler)
+  }, [addMessage])
 
   return (
     <>

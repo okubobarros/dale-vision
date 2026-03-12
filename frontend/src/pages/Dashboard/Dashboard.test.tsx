@@ -124,7 +124,7 @@ vi.mock("../../services/onboarding", () => ({
   },
 }))
 
-describe("Dashboard empty state", () => {
+describe("Dashboard collecting state", () => {
   beforeEach(() => {
     vi.clearAllMocks()
     localStorage.setItem(
@@ -139,8 +139,7 @@ describe("Dashboard empty state", () => {
     await waitFor(() => {
       expect(screen.queryByText(/Invalid Date/i)).not.toBeInTheDocument()
     })
-    const emptyStates = await screen.findAllByText(/Sem dados ainda/i)
-    expect(emptyStates.length).toBeGreaterThan(0)
+    expect(await screen.findByText(/Trial em andamento/i)).toBeInTheDocument()
   })
 })
 
