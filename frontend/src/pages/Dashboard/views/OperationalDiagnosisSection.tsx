@@ -68,7 +68,7 @@ export function OperationalDiagnosisSection({
             Estamos preparando seu relatório operacional
           </h3>
           <p className="text-sm text-gray-600">
-            Continuamos coletando e calibrando os dados para transformar captação em diagnóstico executivo acionável.
+            Continuamos analisando e calibrando os dados para transformar operação em diagnóstico executivo acionável.
           </p>
           <div className="rounded-lg border border-blue-100 bg-blue-50 px-3 py-2 text-sm text-blue-800">
             Relatório operacional liberado em aproximadamente {trialHoursRemaining}h.
@@ -78,4 +78,3 @@ export function OperationalDiagnosisSection({
     </section>
   )
 }
-

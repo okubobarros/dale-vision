@@ -52,7 +52,7 @@ export function InfrastructureSection({
           <p className="text-sm font-semibold text-gray-800">
             {edgeStatusLoading
               ? "—"
-              : `${edgeStatus?.cameras_online ?? 0}/${edgeStatus?.cameras_total ?? 0} em captação`}
+              : `${edgeStatus?.cameras_online ?? 0}/${edgeStatus?.cameras_total ?? 0} em operação`}
           </p>
         </div>
         <div className="rounded-lg border border-gray-100 px-3 py-2">
@@ -100,11 +100,11 @@ export function InfrastructureSection({
                     }`}
                   >
                     {cam.status === "online"
-                      ? "captação ativa"
+                      ? "operação ativa"
                       : cam.status === "degraded"
                       ? "com instabilidade"
                       : cam.status === "offline"
-                      ? "captação interrompida"
+                      ? "operação interrompida"
                       : "status indefinido"}
                   </span>
                   {cam.reason && (
@@ -125,10 +125,9 @@ export function InfrastructureSection({
           <span className="text-xs text-gray-500 group-open:rotate-180 transition-transform">⌄</span>
         </summary>
         <p className="mt-2 text-xs text-gray-500">
-          Edge, heartbeat e status das câmeras em segundo plano para suporte operacional.
+          Detalhes técnicos em segundo plano para suporte operacional.
         </p>
       </details>
     </div>
   )
 }
-

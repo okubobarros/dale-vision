@@ -247,6 +247,19 @@ const Dashboard = () => {
   const canManageStore = selectedStoreRole
     ? ["owner", "admin", "manager"].includes(selectedStoreRole)
     : true
+  const storesOnlineCount = (stores ?? []).filter((store) => store.status === "active").length
+  const storesOfflineCount = (stores ?? []).filter(
+    (store) => store.status === "blocked" || store.status === "inactive"
+  ).length
+  const storesAttentionCount = (stores ?? []).filter((store) => store.status === "trial").length
+  const filterDashboardByStoreStatus = (status: "active" | "blocked" | "inactive" | "trial") => {
+    const firstMatch = (stores ?? []).find((store) =>
+      status === "blocked"
+        ? store.status === "blocked" || store.status === "inactive"
+        : store.status === status
+    )
+    setSelectedStoreOverride(firstMatch?.id ?? ALL_STORES_VALUE)
+  }
   const storeLastSeenAt = null
   const lastSeenAt = storeLastSeenAt ?? getLastSeenAt(edgeStatus)
   const edgeConnectivityStatus = getConnectivityStatus(edgeStatus)
@@ -552,7 +565,7 @@ const Dashboard = () => {
         ? "Relatório operacional liberado"
         : `Relatório operacional liberado em aproximadamente ${trialHoursRemaining}h`
       : dashboardExperience.dashboardType === "paid_setup"
-      ? "Conclua conexão e captação da loja para liberar visão operacional completa."
+      ? "Conclua a implantação da loja para liberar visão operacional completa."
       : "Operação consolidada com atualização contínua de insights."
 
   const trialHeroTitle =
@@ -565,12 +578,12 @@ const Dashboard = () => {
   const trialHeroSubtitle =
     dashboardExperience.dashboardType === "trial"
       ? trialUiState === "not_started"
-        ? "Vamos iniciar a captação da sua loja para gerar um diagnóstico operacional completo."
+        ? "Vamos iniciar a leitura da sua loja para gerar um diagnóstico operacional completo."
         : trialUiState === "activation"
-        ? "Estamos conectando infraestrutura e calibrando o fluxo da loja para começar a leitura operacional."
-        : "Estamos coletando fluxo, filas e padrões de atendimento com inteligência contínua."
+        ? "Estamos conectando os sinais operacionais da loja para iniciar a leitura executiva."
+        : "Estamos analisando fluxo, filas e padrões de atendimento com inteligência contínua."
       : dashboardExperience.dashboardType === "paid_setup"
-      ? "Seu plano está ativo. Agora o foco é concluir conexão e captação das lojas para liberar visão plena da operação."
+      ? "Seu plano está ativo. Agora o foco é concluir implantação das lojas para liberar visão plena da operação."
       : "Acompanhe desempenho, risco e prioridade das lojas com foco em resultado operacional."
 
   const metricValueOrState = (
@@ -593,7 +606,7 @@ const Dashboard = () => {
       : trialUiState === "collecting"
       ? "Estamos consolidando este indicador"
       : trialUiState === "activation"
-      ? "Disponível após validação da captação"
+      ? "Disponível após validação da operação"
       : "Será liberado após iniciar o trial"
 
   const trialChecklist = [
@@ -638,13 +651,13 @@ const Dashboard = () => {
 
   const operationalInsights = [
     isEdgeConnected
-      ? "Captação ativa e sincronizando dados operacionais da loja."
-      : "Captação interrompida no momento. Retome a conexão para continuar o diagnóstico.",
+      ? "Operação ativa e sincronizando dados de desempenho da loja."
+      : "Operação interrompida no momento. Retome a conexão para continuar o diagnóstico.",
     camerasOnline > 0
-      ? `Já temos ${camerasOnline} câmera(s) em captação para leitura de fluxo e atendimento.`
+      ? `Já temos ${camerasOnline} câmera(s) válidas para leitura de fluxo e atendimento.`
       : shouldShowTrialArtifacts
-      ? "Ainda não há câmera em captação ativa. Valide pelo menos uma câmera para acelerar o trial."
-      : "Ainda não há câmera em captação ativa. Valide pelo menos uma câmera para concluir a implantação.",
+      ? "Ainda não há câmera validada. Ative pelo menos uma câmera para acelerar o trial."
+      : "Ainda não há câmera validada. Ative pelo menos uma câmera para concluir a implantação.",
     trialUiState === "collecting" || trialUiState === "report_ready"
       ? "Já existe base inicial para leitura de fluxo e comportamento de atendimento."
       : "Estamos calibrando a base da loja antes de consolidar os indicadores executivos.",
@@ -843,8 +856,31 @@ const Dashboard = () => {
               Dashboard
             </h1>
             <p className="text-gray-600 mt-1 text-sm sm:text-base">
-              {user?.first_name || user?.username}, bem-vindo ao DALE Vision
+              Olá, {user?.first_name || user?.username}. Aqui está sua operação hoje.
             </p>
+            <div className="mt-3 flex flex-wrap gap-2">
+              <button
+                type="button"
+                onClick={() => filterDashboardByStoreStatus("active")}
+                className="rounded-full border border-emerald-200 bg-emerald-50 px-3 py-1 text-xs font-semibold text-emerald-700"
+              >
+                🟢 {storesOnlineCount} lojas online
+              </button>
+              <button
+                type="button"
+                onClick={() => filterDashboardByStoreStatus("blocked")}
+                className="rounded-full border border-rose-200 bg-rose-50 px-3 py-1 text-xs font-semibold text-rose-700"
+              >
+                🔴 {storesOfflineCount} lojas offline
+              </button>
+              <button
+                type="button"
+                onClick={() => filterDashboardByStoreStatus("trial")}
+                className="rounded-full border border-amber-200 bg-amber-50 px-3 py-1 text-xs font-semibold text-amber-700"
+              >
+                ⚠️ {storesAttentionCount} alertas ativos
+              </button>
+            </div>
 
             {selectedStoreItem && selectedStore !== ALL_STORES_VALUE && (
               <div className="mt-2 flex flex-wrap items-center gap-2">
@@ -898,7 +934,8 @@ const Dashboard = () => {
           )}
         </div>
 
-        {selectedStore !== ALL_STORES_VALUE && (
+        {selectedStore !== ALL_STORES_VALUE &&
+          dashboardExperience.dashboardType !== "paid_executive" && (
           <div className="space-y-3">
             <div className="bg-white rounded-xl border border-gray-100 p-4">
               <p className="text-xs uppercase tracking-wide text-gray-500">
@@ -908,7 +945,7 @@ const Dashboard = () => {
               </p>
               <p className="mt-1 text-sm text-gray-700">
                 {dashboardExperience.dashboardType === "trial"
-                  ? "Conclua conexão e captação para acelerar o diagnóstico."
+                  ? "Conclua a ativação para acelerar o diagnóstico."
                   : "Seu plano já está ativo. Conclua a implantação para liberar o potencial operacional da rede."}
               </p>
               <button
@@ -920,9 +957,9 @@ const Dashboard = () => {
               </button>
             </div>
             <div className="bg-white rounded-xl border border-gray-100 p-4">
-              <p className="text-xs uppercase tracking-wide text-gray-500">Câmeras online/offline</p>
+              <p className="text-xs uppercase tracking-wide text-gray-500">Cobertura de câmeras</p>
               <p className="mt-1 text-lg font-semibold text-gray-800">
-                {camerasOnline} online · {camerasOffline} offline
+                {camerasOnline} ativas · {camerasOffline} indisponíveis
               </p>
               <p className="mt-1 text-xs text-gray-500">
                 Total: {camerasTotal} · Limite: {camerasLimit}
@@ -1009,7 +1046,7 @@ const Dashboard = () => {
                   <div className="text-sm text-red-600">{ceoError}</div>
                 ) : ceoIdle.length === 0 ? (
                   <div className="text-sm text-gray-500">
-                    Calibrando leitura de ociosidade. Este indicador será liberado com mais horas de captação.
+                    Calibrando leitura de ociosidade. Este indicador será liberado com mais horas de operação.
                   </div>
                 ) : (
                   <div className="relative rounded-xl border border-slate-100 bg-gradient-to-b from-slate-50 to-white p-4">
