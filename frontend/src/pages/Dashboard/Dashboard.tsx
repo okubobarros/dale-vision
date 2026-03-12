@@ -1,7 +1,6 @@
 import { useEffect, useMemo, useState } from "react"
 import { useQuery } from "@tanstack/react-query"
 import { Link, useLocation } from "react-router-dom"
-import toast from "react-hot-toast"
 import { useAuth } from "../../contexts/useAuth"
 import {
   storesService,
@@ -19,8 +18,6 @@ import {
   useIgnoreEvent,
   useResolveEvent,
 } from "../../queries/alerts.queries"
-import SetupProgress from "../Onboarding/components/SetupProgress"
-import { useIsMobile } from "../../hooks/useIsMobile"
 import {
   onboardingService,
   type OnboardingNextStepResponse,
@@ -31,7 +28,7 @@ import { TrialDashboardView } from "./views/TrialDashboardView"
 import { PaidSetupDashboardView } from "./views/PaidSetupDashboardView"
 import { PaidExecutiveDashboardView } from "./views/PaidExecutiveDashboardView"
 import { DashboardHeroSection } from "./views/DashboardHeroSection"
-import { DashboardKpiStrip, MetricCard } from "./views/DashboardKpiStrip"
+import { DashboardKpiStrip } from "./views/DashboardKpiStrip"
 import { InfrastructureSection } from "./views/InfrastructureSection"
 import { AlertsSection } from "./views/AlertsSection"
 import { OperationalDiagnosisSection } from "./views/OperationalDiagnosisSection"
@@ -133,27 +130,12 @@ const Dashboard = () => {
     initialParams.get("store_id") ||
     ""
   const initialOpenEdgeSetup = initialParams.get("openEdgeSetup") === "1"
-  const initialFromOnboarding = (() => {
-    if (typeof window === "undefined") return false
-    try {
-      return localStorage.getItem("dv_from_onboarding") === "1"
-    } catch {
-      // ignore storage access issues
-      return false
-    }
-  })()
   const [selectedStoreOverride, setSelectedStoreOverride] = useState<string>(
     initialStoreFromQuery || ALL_STORES_VALUE
   )
   const [resolvingEventId, setResolvingEventId] = useState<string | null>(null)
   const [ignoringEventId, setIgnoringEventId] = useState<string | null>(null)
   const [edgeSetupOpen, setEdgeSetupOpen] = useState(initialOpenEdgeSetup)
-  const [showActivationProgress, setShowActivationProgress] = useState(
-    initialOpenEdgeSetup || initialFromOnboarding
-  )
-  const [activationBannerDismissed, setActivationBannerDismissed] = useState(false)
-  const origin = typeof window !== "undefined" ? window.location.origin : ""
-  const isMobile = useIsMobile(768)
 
   const canFetchAuth = authReady && isAuthenticated
 
@@ -213,7 +195,6 @@ const Dashboard = () => {
   const {
     data: dashboard,
     isLoading: isLoadingDashboard,
-    error: dashboardErrorRaw,
   } = useQuery<StoreDashboard>({
     queryKey: ["store-dashboard", selectedStore],
     queryFn: () => storesService.getStoreDashboard(selectedStore),
@@ -221,9 +202,6 @@ const Dashboard = () => {
     staleTime: 30000,
     retry: false,
   })
-  const dashboardError =
-    dashboardErrorRaw instanceof Error ? dashboardErrorRaw.message : null
-
   const trialBlockedStore = useMemo(() => {
     return (stores ?? []).find(
       (s) => s.status === "blocked" && s.blocked_reason === "trial_expired"
@@ -355,48 +333,6 @@ const Dashboard = () => {
     }
   }, [location.pathname, location.search])
 
-  useEffect(() => {
-    if (selectedStore === ALL_STORES_VALUE) return
-    if (!isEdgeConnected) return
-    try {
-      localStorage.removeItem("dv_from_onboarding")
-    } catch {
-      // ignore storage access issues
-    }
-  }, [selectedStore, isEdgeConnected])
-
-  const dismissActivationProgress = () => {
-    try {
-      localStorage.removeItem("dv_from_onboarding")
-    } catch {
-      // ignore storage access issues
-    }
-    setShowActivationProgress(false)
-    setActivationBannerDismissed(true)
-  }
-
-  const edgeSetupLink = useMemo(() => {
-    if (!origin) return ""
-    const params = new URLSearchParams()
-    if (selectedStore && selectedStore !== ALL_STORES_VALUE) {
-      params.set("store", selectedStore)
-    }
-    params.set("openEdgeSetup", "1")
-    return `${origin}/app/dashboard?${params.toString()}`
-  }, [origin, selectedStore])
-
-  const edgeSetupLinkShort = edgeSetupLink
-    ? edgeSetupLink.replace(/^https?:\/\//, "")
-    : ""
-
-
-  const isTrialCommercialState =
-    meStatus?.has_subscription ? false : meStatus?.trial_active !== false
-
-  const shouldShowActivationBanner =
-    !activationBannerDismissed &&
-    (showActivationProgress || (selectedStore !== ALL_STORES_VALUE && !isEdgeConnected))
-
   const onboardingStage = onboardingNextStep?.stage || null
   const nextStepCta = useMemo(() => {
     if (!canManageStore) return null
@@ -404,210 +340,11 @@ const Dashboard = () => {
     return { label: onboardingNextStep.cta_label, href: onboardingNextStep.cta_url }
   }, [canManageStore, onboardingNextStep])
 
-  const activationBanner = shouldShowActivationBanner ? (
-    <div className="bg-white rounded-xl shadow-sm border border-gray-100 p-4 sm:p-6">
-      <SetupProgress
-        step={4}
-        titleRight="Ativação"
-        className="mb-4"
-      />
-      <h3 className="text-lg font-bold text-gray-800">
-        {isTrialCommercialState ? "Ativação do Trial" : "Ativação Operacional"}
-      </h3>
-      <p className="text-sm text-gray-600 mt-1">
-        {isTrialCommercialState
-          ? "Você só precisa de um computador na loja com acesso às câmeras. Nós guiamos o passo a passo."
-          : "Seu plano já está ativo. Conclua a implantação para liberar o potencial operacional da rede."}
-      </p>
-
-      {selectedStore !== ALL_STORES_VALUE && isEdgeConnected && (
-        <span className="mt-3 inline-flex items-center rounded-full bg-green-100 px-3 py-1 text-xs font-semibold text-green-700">
-          Loja Online
-        </span>
-      )}
-
-      <div className="mt-4 flex flex-col sm:flex-row gap-3">
-        {canManageStore ? (
-          <button
-            type="button"
-            onClick={() => {
-              setEdgeSetupOpen(true)
-              dismissActivationProgress()
-            }}
-            className="inline-flex items-center justify-center rounded-lg bg-blue-600 px-4 py-2 text-sm font-semibold text-white hover:bg-blue-700"
-          >
-            Abrir Assistente de Conexão
-          </button>
-        ) : (
-          <div className="text-sm text-gray-500">
-            Ação restrita: peça ao admin da loja para concluir o Edge Setup.
-          </div>
-        )}
-
-      </div>
-
-      <div className="mt-4">
-        <h4 className="text-sm font-semibold text-gray-700 mb-2">Checklist</h4>
-        <ul className="list-disc pl-5 text-sm text-gray-600 space-y-1">
-          <li>Selecione a loja</li>
-          <li>Abra o Assistente de Conexão (Edge Setup)</li>
-          <li>Baixe o Edge Agent</li>
-          <li>
-            Copie o <span className="font-mono">.env</span> e cole na pasta do agent
-          </li>
-          <li>Inicie o agent no computador da loja</li>
-          <li>Aguarde a confirmação “Loja Online” (heartbeat)</li>
-        </ul>
-      </div>
-
-      {edgeSetupLink && isMobile && (
-        <div className="mt-4 rounded-xl border border-gray-200 bg-gray-50 p-4 space-y-2">
-          <div className="text-sm font-semibold text-gray-800">
-            Continuar no computador
-          </div>
-          <p className="text-xs text-gray-600">
-            Abra este link no computador que fica na loja.
-          </p>
-          <div className="text-xs text-blue-600 break-all">{edgeSetupLinkShort}</div>
-          <button
-            type="button"
-            onClick={async () => {
-              try {
-                await navigator.clipboard.writeText(edgeSetupLink)
-                toast.success("Link copiado")
-              } catch {
-                toast.error("Falha ao copiar link")
-              }
-            }}
-            className="w-full rounded-lg border border-gray-200 bg-white px-4 py-2 text-xs font-semibold text-gray-700 hover:bg-gray-50"
-          >
-            Copiar link
-          </button>
-        </div>
-      )}
-
-      
-
-      {dashboardError && (
-        <p className="text-xs text-gray-500 mt-3">{dashboardError}</p>
-      )}
-    </div>
-  ) : null
-
   const health = onboardingNextStep?.health
   const camerasTotal = health?.cameras_total ?? edgeStatus?.cameras_total ?? 0
   const camerasOnline = health?.cameras_online ?? edgeStatus?.cameras_online ?? 0
   const camerasOffline = health?.cameras_offline ?? Math.max(camerasTotal - camerasOnline, 0)
   const camerasLimit = storeLimits?.limits?.cameras ?? 3
-  const edgeConnectivityValue = getConnectivityStatus(edgeStatus)
-  const isEdgeOnlineByConnectivity = ["online", "degraded"].includes(edgeConnectivityValue)
-  const edgeOnlineLabel = isEdgeOnlineByConnectivity
-    ? "Online"
-    : "Offline"
-  const edgeLastSeenLabel = formatLastSeenDisplay(lastSeenAt)
-  const showFirstCameraCards = onboardingStage === "add_cameras"
-
-  const minimalStatusCards =
-    selectedStore !== ALL_STORES_VALUE ? (
-      <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-        <MetricCard
-          title="Status do Edge"
-          value={edgeOnlineLabel}
-          icon={<span>📡</span>}
-          color={isEdgeOnlineByConnectivity ? "bg-green-100 text-green-800" : "bg-gray-100 text-gray-700"}
-          subtitle={`Último sinal: ${edgeLastSeenLabel}`}
-        />
-        <MetricCard
-          title="Câmeras online/offline"
-          value={`${camerasOnline} online · ${camerasOffline} offline`}
-          icon={<span>🎥</span>}
-          color="bg-blue-100 text-blue-800"
-          subtitle={`Total: ${camerasTotal} · Limite: ${camerasLimit}`}
-        />
-      </div>
-    ) : null
-
-  const firstCameraCards = showFirstCameraCards ? (
-    <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
-      <MetricCard
-        title="Edge Online"
-        value="Conectado"
-        icon={<span>🟢</span>}
-        color="bg-green-100 text-green-800"
-        subtitle={`Último sinal: ${edgeLastSeenLabel}`}
-      />
-      <div className="bg-white rounded-xl shadow-sm border border-gray-100 p-4 sm:p-6">
-        <div className="flex items-start justify-between gap-3 mb-3 sm:mb-4">
-          <div className="p-3 rounded-lg bg-blue-100 text-blue-800">🎥</div>
-        </div>
-        <h3 className="text-lg font-bold text-gray-800 mb-1">
-          {onboardingNextStep?.title || "Adicionar sua primeira câmera"}
-        </h3>
-        <p className="text-gray-600 text-sm mb-3">
-          {onboardingNextStep?.description ||
-            "Leva menos de 2 minutos com IP + usuário + senha do NVR."}
-        </p>
-        {canManageStore ? (
-          <Link
-            to={nextStepCta?.href || `/app/cameras?store_id=${selectedStore}&onboarding=true`}
-            className="inline-flex items-center justify-center rounded-lg bg-blue-600 px-4 py-2 text-sm font-semibold text-white hover:bg-blue-700"
-          >
-            {nextStepCta?.label || "Adicionar primeira câmera"}
-          </Link>
-        ) : (
-          <div className="text-sm text-gray-500">
-            Ação restrita: peça ao admin para adicionar câmeras.
-          </div>
-        )}
-      </div>
-      <div className="bg-white rounded-xl shadow-sm border border-gray-100 p-4 sm:p-6">
-        <div className="flex items-start justify-between gap-3 mb-3 sm:mb-4">
-          <div className="p-3 rounded-lg bg-amber-100 text-amber-800">⏱️</div>
-        </div>
-        <h3 className="text-lg font-bold text-gray-800 mb-2">O que você verá em 72h</h3>
-        <ul className="text-sm text-gray-600 space-y-2">
-          <li>1 snapshot publicado no dashboard</li>
-          <li>ROI configurado e ativo</li>
-          <li>Primeiro alerta ou insight gerado</li>
-        </ul>
-      </div>
-    </div>
-  ) : null
-
-  const statusCards = showFirstCameraCards ? firstCameraCards : minimalStatusCards
-  const onboardingStateCards = onboardingNextStepLoading ? (
-    <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
-      <div className="bg-white rounded-xl border border-gray-100 p-4 sm:p-6 animate-pulse h-28" />
-      <div className="bg-white rounded-xl border border-gray-100 p-4 sm:p-6 animate-pulse h-28" />
-      <div className="bg-white rounded-xl border border-gray-100 p-4 sm:p-6 animate-pulse h-28" />
-    </div>
-  ) : onboardingNextStepError ? (
-    <div className="bg-red-50 border border-red-200 rounded-xl p-4 text-sm text-red-700">
-      Não foi possível carregar o próximo passo. {onboardingNextStepError}
-    </div>
-  ) : onboardingStage === "no_store" ? (
-    <div className="bg-white rounded-xl shadow-sm border border-gray-100 p-4 sm:p-6">
-      <h3 className="text-lg font-bold text-gray-800">
-        {onboardingNextStep?.title || "Crie sua primeira loja"}
-      </h3>
-      <p className="text-sm text-gray-600 mt-1">
-        {onboardingNextStep?.description ||
-          "Cadastre uma loja para liberar o dashboard completo."}
-      </p>
-      {nextStepCta && (
-        <div className="mt-4">
-          <Link
-            to={nextStepCta.href}
-            className="inline-flex items-center justify-center rounded-lg bg-blue-600 px-4 py-2 text-sm font-semibold text-white hover:bg-blue-700"
-          >
-            {nextStepCta.label}
-          </Link>
-        </div>
-      )}
-    </div>
-  ) : (
-    statusCards
-  )
   const [evidenceOpen, setEvidenceOpen] = useState(false)
   const [selectedEvidenceHour, setSelectedEvidenceHour] = useState<string | null>(null)
   const openEvidence = (hourLabel?: string | null) => {
@@ -1098,72 +835,98 @@ const Dashboard = () => {
 
   return (
     <div className="space-y-6 sm:space-y-8">
-      {onboardingStateCards}
-      {activationBanner}
       {/* Header (mobile-first) */}
-      <div className="flex flex-col gap-4">
-        <div className="min-w-0">
-          <h1 className="text-2xl sm:text-3xl font-bold text-gray-800">
-            Dashboard
-          </h1>
-          <p className="text-gray-600 mt-1 text-sm sm:text-base">
-            {user?.first_name || user?.username}, bem-vindo ao DALE Vision
-          </p>
+      <div className="grid grid-cols-1 xl:grid-cols-3 gap-4 items-start">
+        <div className="xl:col-span-2 flex flex-col gap-4">
+          <div className="min-w-0">
+            <h1 className="text-2xl sm:text-3xl font-bold text-gray-800">
+              Dashboard
+            </h1>
+            <p className="text-gray-600 mt-1 text-sm sm:text-base">
+              {user?.first_name || user?.username}, bem-vindo ao DALE Vision
+            </p>
 
-          {selectedStoreItem && selectedStore !== ALL_STORES_VALUE && (
-            <div className="mt-2 flex flex-wrap items-center gap-2">
-              <span
-                className={`px-3 py-1 rounded-full text-xs sm:text-sm font-semibold ${selectedStoreStatusClass}`}
-              >
-                {selectedStoreStatusLabel}
-              </span>
-
-              <span className="text-xs sm:text-sm text-gray-600">
-                Plano:{" "}
-                <span className="font-semibold">
-                  {selectedStorePlan || "—"}
+            {selectedStoreItem && selectedStore !== ALL_STORES_VALUE && (
+              <div className="mt-2 flex flex-wrap items-center gap-2">
+                <span
+                  className={`px-3 py-1 rounded-full text-xs sm:text-sm font-semibold ${selectedStoreStatusClass}`}
+                >
+                  {selectedStoreStatusLabel}
                 </span>
-              </span>
 
-              {selectedStoreOwner && (
-                <span className="text-xs sm:text-sm text-gray-500 truncate max-w-[220px]">
-                  {selectedStoreOwner}
+                <span className="text-xs sm:text-sm text-gray-600">
+                  Plano: <span className="font-semibold">{selectedStorePlan || "—"}</span>
                 </span>
-              )}
-            </div>
-          )}
-        </div>
 
-        {/* Seletor de loja */}
-        {stores && stores.length > 0 && (
-          <div className="flex flex-col sm:flex-row sm:items-center gap-2">
-            <label
-              htmlFor="store-select"
-              className="text-gray-700 font-semibold text-sm"
-            >
-              Loja
-            </label>
+                {selectedStoreOwner && (
+                  <span className="text-xs sm:text-sm text-gray-500 truncate max-w-[220px]">
+                    {selectedStoreOwner}
+                  </span>
+                )}
+              </div>
+            )}
+          </div>
 
-            <div className="flex items-center gap-2">
+          {stores && stores.length > 0 && (
+            <div className="flex flex-col sm:flex-row sm:items-center gap-2">
+              <label htmlFor="store-select" className="text-gray-700 font-semibold text-sm">
+                Loja
+              </label>
+
+              <div className="flex items-center gap-2">
                 <select
                   id="store-select"
                   value={selectedStore}
                   onChange={(e) => setSelectedStoreOverride(e.target.value)}
                   className="w-full sm:w-[320px] border border-gray-300 rounded-lg px-4 py-2 focus:ring-2 focus:ring-blue-500 focus:border-transparent"
                   disabled={isLoadingDashboard}
-                aria-label="Selecionar loja para visualizar dashboard"
-              >
-                <option value={ALL_STORES_VALUE}>Todas as lojas</option>
-                {stores.map((store) => (
-                  <option key={store.id} value={store.id}>
-                    {store.name}
-                  </option>
-                ))}
-              </select>
+                  aria-label="Selecionar loja para visualizar dashboard"
+                >
+                  <option value={ALL_STORES_VALUE}>Todas as lojas</option>
+                  {stores.map((store) => (
+                    <option key={store.id} value={store.id}>
+                      {store.name}
+                    </option>
+                  ))}
+                </select>
 
-              {isLoadingDashboard && (
-                <div className="animate-spin rounded-full h-5 w-5 border-t-2 border-b-2 border-blue-500" />
-              )}
+                {isLoadingDashboard && (
+                  <div className="animate-spin rounded-full h-5 w-5 border-t-2 border-b-2 border-blue-500" />
+                )}
+              </div>
+            </div>
+          )}
+        </div>
+
+        {selectedStore !== ALL_STORES_VALUE && (
+          <div className="space-y-3">
+            <div className="bg-white rounded-xl border border-gray-100 p-4">
+              <p className="text-xs uppercase tracking-wide text-gray-500">
+                {dashboardExperience.dashboardType === "trial"
+                  ? "Ativação do Trial"
+                  : "Ativação Operacional"}
+              </p>
+              <p className="mt-1 text-sm text-gray-700">
+                {dashboardExperience.dashboardType === "trial"
+                  ? "Conclua conexão e captação para acelerar o diagnóstico."
+                  : "Seu plano já está ativo. Conclua a implantação para liberar o potencial operacional da rede."}
+              </p>
+              <button
+                type="button"
+                onClick={() => canManageStore && setEdgeSetupOpen(true)}
+                className="mt-3 w-full rounded-lg bg-blue-600 px-3 py-2 text-sm font-semibold text-white hover:bg-blue-700"
+              >
+                Abrir Assistente de Conexão
+              </button>
+            </div>
+            <div className="bg-white rounded-xl border border-gray-100 p-4">
+              <p className="text-xs uppercase tracking-wide text-gray-500">Câmeras online/offline</p>
+              <p className="mt-1 text-lg font-semibold text-gray-800">
+                {camerasOnline} online · {camerasOffline} offline
+              </p>
+              <p className="mt-1 text-xs text-gray-500">
+                Total: {camerasTotal} · Limite: {camerasLimit}
+              </p>
             </div>
           </div>
         )}
