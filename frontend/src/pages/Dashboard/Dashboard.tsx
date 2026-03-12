@@ -572,7 +572,7 @@ const Dashboard = () => {
     dashboardExperience.dashboardType === "trial"
       ? `Trial em andamento — ${trialCollectedHours}h de 72h concluídas`
       : dashboardExperience.dashboardType === "paid_setup"
-      ? "Implantação operacional em andamento"
+      ? "Visão da rede em evolução"
       : "Visão executiva da rede em tempo real"
 
   const trialHeroSubtitle =
@@ -583,7 +583,7 @@ const Dashboard = () => {
         ? "Estamos conectando os sinais operacionais da loja para iniciar a leitura executiva."
         : "Estamos analisando fluxo, filas e padrões de atendimento com inteligência contínua."
       : dashboardExperience.dashboardType === "paid_setup"
-      ? "Seu plano está ativo. Agora o foco é concluir implantação das lojas para liberar visão plena da operação."
+      ? "Seu plano está ativo. Estamos consolidando a leitura da rede para liberar visão plena da operação."
       : "Acompanhe desempenho, risco e prioridade das lojas com foco em resultado operacional."
 
   const metricValueOrState = (
@@ -612,14 +612,9 @@ const Dashboard = () => {
   const trialChecklist = [
     { label: "Loja conectada", done: selectedStore !== ALL_STORES_VALUE },
     { label: "Edge ativo", done: isEdgeConnected },
-    { label: "Câmeras validadas", done: camerasOnline > 0 },
-    { label: "Coleta iniciada", done: trialCollectedHours >= 1 },
-    { label: "Período mínimo de observação", done: trialCollectedHours >= 24 },
+    { label: "Coleta inicial concluída", done: trialCollectedHours >= 24 },
     {
-      label:
-        dashboardExperience.dashboardType === "trial"
-          ? "Relatório operacional"
-          : "Visão executiva habilitada",
+      label: "Visão executiva habilitada",
       done: trialUiState === "report_ready" || dashboardExperience.dashboardType === "paid_executive",
     },
   ]
@@ -853,7 +848,7 @@ const Dashboard = () => {
         <div className="xl:col-span-2 flex flex-col gap-4">
           <div className="min-w-0">
             <h1 className="text-2xl sm:text-3xl font-bold text-gray-800">
-              Dashboard
+              Dashboard da rede
             </h1>
             <p className="text-gray-600 mt-1 text-sm sm:text-base">
               Olá, {user?.first_name || user?.username}. Aqui está sua operação hoje.
@@ -933,44 +928,29 @@ const Dashboard = () => {
             </div>
           )}
         </div>
-
-        {selectedStore !== ALL_STORES_VALUE &&
-          dashboardExperience.dashboardType !== "paid_executive" && (
-          <div className="space-y-3">
-            <div className="bg-white rounded-xl border border-gray-100 p-4">
-              <p className="text-xs uppercase tracking-wide text-gray-500">
-                {dashboardExperience.dashboardType === "trial"
-                  ? "Ativação do Trial"
-                  : "Ativação Operacional"}
-              </p>
-              <p className="mt-1 text-sm text-gray-700">
-                {dashboardExperience.dashboardType === "trial"
-                  ? "Conclua a ativação para acelerar o diagnóstico."
-                  : "Seu plano já está ativo. Conclua a implantação para liberar o potencial operacional da rede."}
-              </p>
-              <button
-                type="button"
-                onClick={() => canManageStore && setEdgeSetupOpen(true)}
-                className="mt-3 w-full rounded-lg bg-blue-600 px-3 py-2 text-sm font-semibold text-white hover:bg-blue-700"
-              >
-                Abrir Assistente de Conexão
-              </button>
-            </div>
-            <div className="bg-white rounded-xl border border-gray-100 p-4">
-              <p className="text-xs uppercase tracking-wide text-gray-500">Cobertura de câmeras</p>
-              <p className="mt-1 text-lg font-semibold text-gray-800">
-                {camerasOnline} ativas · {camerasOffline} indisponíveis
-              </p>
-              <p className="mt-1 text-xs text-gray-500">
-                Total: {camerasTotal} · Limite: {camerasLimit}
-              </p>
-            </div>
-          </div>
-        )}
       </div>
 
       {selectedStore !== ALL_STORES_VALUE && (
         <section className="space-y-4 sm:space-y-6">
+          <div className="rounded-xl border border-gray-200 bg-white px-4 py-3 shadow-sm">
+            <div className="flex flex-col gap-2 sm:flex-row sm:items-center sm:justify-between">
+              <p className="text-sm font-semibold text-gray-800">
+                Cobertura de câmeras
+              </p>
+              <button
+                type="button"
+                onClick={() => canManageStore && setEdgeSetupOpen(true)}
+                className="text-sm font-semibold text-blue-600 hover:text-blue-700"
+              >
+                Abrir assistente de conexão
+              </button>
+            </div>
+            <p className="mt-1 text-sm text-gray-600">
+              {camerasOnline} ativas · {camerasOffline} indisponíveis (Total: {camerasTotal} ·
+              Limite do plano: {camerasLimit})
+            </p>
+          </div>
+
           <DashboardHeroSection
             dashboardType={dashboardExperience.dashboardType}
             storeName={selectedStoreItem?.name ?? "Loja selecionada"}
@@ -986,6 +966,18 @@ const Dashboard = () => {
             onOpenCopilot={() => openCopilot()}
           />
 
+          <div className="space-y-2">
+            <h2 className="text-[18px] font-semibold text-gray-900">
+              {shouldShowExecutiveArtifacts
+                ? "Métricas executivas da rede"
+                : "Métricas que estamos começando a medir"}
+            </h2>
+            <p className="text-sm text-gray-600">
+              {shouldShowExecutiveArtifacts
+                ? "Visão consolidada para orientar decisões operacionais."
+                : "Esses indicadores entram em evolução contínua conforme a operação amadurece."}
+            </p>
+          </div>
           <DashboardKpiStrip items={kpiItems} />
 
           {shouldShowTrialArtifacts ? (
