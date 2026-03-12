@@ -9,6 +9,21 @@ export type MeStatus = {
   is_internal_admin?: boolean
 }
 
+export type MeAccount = {
+  user: {
+    id: string | number
+    username?: string
+    email?: string
+    first_name?: string
+    last_name?: string
+  }
+  orgs: Array<{
+    id: string
+    name: string
+    role?: string
+  }>
+}
+
 const isTimeoutError = (error: unknown) => {
   if (!axios.isAxiosError(error)) return false
   return (
@@ -74,6 +89,23 @@ export const meService = {
       }
       if (import.meta.env.DEV) {
         console.warn("[me/status] timeout - returning unknown")
+      }
+      return null
+    }
+  },
+  async getAccount(): Promise<MeAccount | null> {
+    try {
+      const response = await api.get("/accounts/me/", {
+        timeoutCategory: "best-effort",
+        noRetry: true,
+      })
+      return response.data as MeAccount
+    } catch (error) {
+      if (!isTimeoutError(error)) {
+        throw error
+      }
+      if (import.meta.env.DEV) {
+        console.warn("[accounts/me] timeout - returning unknown")
       }
       return null
     }

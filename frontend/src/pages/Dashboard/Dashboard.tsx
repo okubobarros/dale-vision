@@ -22,7 +22,7 @@ import {
   onboardingService,
   type OnboardingNextStepResponse,
 } from "../../services/onboarding"
-import { meService } from "../../services/me"
+import { meService, type MeAccount } from "../../services/me"
 import { getDashboardExperience } from "./dashboardExperience"
 import { TrialDashboardView } from "./views/TrialDashboardView"
 import { PaidSetupDashboardView } from "./views/PaidSetupDashboardView"
@@ -187,6 +187,13 @@ const Dashboard = () => {
   const { data: meStatus } = useQuery({
     queryKey: ["me-status-dashboard"],
     queryFn: () => meService.getStatus(),
+    enabled: canFetchAuth,
+    staleTime: 60000,
+    retry: false,
+  })
+  const { data: meAccount } = useQuery<MeAccount | null>({
+    queryKey: ["me-account-dashboard"],
+    queryFn: () => meService.getAccount(),
     enabled: canFetchAuth,
     staleTime: 60000,
     retry: false,
@@ -585,6 +592,10 @@ const Dashboard = () => {
       : dashboardExperience.dashboardType === "paid_setup"
       ? "Seu plano está ativo. Estamos consolidando a leitura da rede para liberar visão plena da operação."
       : "Acompanhe desempenho, risco e prioridade das lojas com foco em resultado operacional."
+  const networkName =
+    meAccount?.orgs?.[0]?.name ||
+    selectedStoreItem?.name ||
+    "Sua rede"
 
   const metricValueOrState = (
     value: number | null | undefined,
@@ -713,6 +724,24 @@ const Dashboard = () => {
       subtitle: metricSubtitleByState,
     },
   ]
+  const diagnosisInsightsRaw: string[] = []
+  const peak = dashboard?.insights?.peak_hour
+  const bestZone = dashboard?.insights?.best_selling_zone
+  const needsAttention = dashboard?.insights?.employee_performance?.needs_attention
+
+  if (peak && peak !== "-") {
+    diagnosisInsightsRaw.push(`Pico operacional identificado às ${peak}.`)
+  }
+  if (bestZone && bestZone !== "-") {
+    diagnosisInsightsRaw.push(`Zona com melhor desempenho: ${bestZone}.`)
+  }
+  if (needsAttention && needsAttention !== "-") {
+    diagnosisInsightsRaw.push(`Equipe que pede atenção: ${needsAttention}.`)
+  }
+  if (ceoDashboard?.overlay?.message) {
+    diagnosisInsightsRaw.push(String(ceoDashboard.overlay.message))
+  }
+  const diagnosisInsights = diagnosisInsightsRaw.slice(0, 4)
 
   if (storesLoading) {
     return (
@@ -928,31 +957,35 @@ const Dashboard = () => {
             </div>
           )}
         </div>
-      </div>
-
-      {selectedStore !== ALL_STORES_VALUE && (
-        <section className="space-y-4 sm:space-y-6">
-          <div className="rounded-xl border border-gray-200 bg-white px-4 py-3 shadow-sm">
-            <div className="flex flex-col gap-2 sm:flex-row sm:items-center sm:justify-between">
-              <p className="text-sm font-semibold text-gray-800">
-                Cobertura de câmeras
-              </p>
+        {selectedStore !== ALL_STORES_VALUE && (
+          <div className="rounded-xl border border-gray-200 bg-white p-4 shadow-sm">
+            <div className="flex items-center justify-between gap-3">
+              <div>
+                <p className="text-sm font-semibold text-gray-800">Cobertura de câmeras</p>
+                <p className="mt-1 text-sm text-gray-600">
+                  {camerasOnline} ativas · {camerasOffline} indisponíveis
+                </p>
+                <p className="text-xs text-gray-500">
+                  Total: {camerasTotal} · Limite do plano: {camerasLimit}
+                </p>
+              </div>
               <button
                 type="button"
                 onClick={() => canManageStore && setEdgeSetupOpen(true)}
-                className="text-sm font-semibold text-blue-600 hover:text-blue-700"
+                className="rounded-lg border border-blue-200 bg-blue-50 px-3 py-2 text-xs font-semibold text-blue-700 hover:bg-blue-100"
               >
                 Abrir assistente de conexão
               </button>
             </div>
-            <p className="mt-1 text-sm text-gray-600">
-              {camerasOnline} ativas · {camerasOffline} indisponíveis (Total: {camerasTotal} ·
-              Limite do plano: {camerasLimit})
-            </p>
           </div>
+        )}
+      </div>
 
+      {selectedStore !== ALL_STORES_VALUE && (
+        <section className="space-y-4 sm:space-y-6">
           <DashboardHeroSection
             dashboardType={dashboardExperience.dashboardType}
+            networkName={networkName}
             storeName={selectedStoreItem?.name ?? "Loja selecionada"}
             title={trialHeroTitle}
             subtitle={trialHeroSubtitle}
@@ -983,6 +1016,8 @@ const Dashboard = () => {
           {shouldShowTrialArtifacts ? (
             <TrialDashboardView
               trialUiState={trialUiState}
+              trialCollectedHours={trialCollectedHours}
+              trialHoursRemaining={trialHoursRemaining}
               trialChecklist={trialChecklist}
               operationalInsights={operationalInsights}
               copilotPrompts={copilotPrompts}
@@ -992,8 +1027,18 @@ const Dashboard = () => {
             />
           ) : shouldShowPaidSetupArtifacts ? (
             <PaidSetupDashboardView
+              setupState={
+                trialUiState === "not_started"
+                  ? "not_started"
+                  : trialUiState === "activation"
+                  ? "setup_in_progress"
+                  : trialUiState === "collecting"
+                  ? "collecting_data"
+                  : "report_ready"
+              }
+              trialCollectedHours={trialCollectedHours}
+              trialHoursRemaining={trialHoursRemaining}
               trialChecklist={trialChecklist}
-              operationalInsights={operationalInsights}
               copilotPrompts={copilotPrompts}
               canManageStore={canManageStore}
               onOpenSetup={() => setEdgeSetupOpen(true)}
@@ -1187,8 +1232,9 @@ const Dashboard = () => {
         <OperationalDiagnosisSection
           isLoading={isLoadingDashboard}
           reportReady={trialUiState === "report_ready"}
-          peakHour={dashboard?.insights?.peak_hour}
+          insights={diagnosisInsights}
           trialHoursRemaining={trialHoursRemaining}
+          onOpenCopilot={() => openCopilot("Qual o status do diagnóstico operacional desta loja?")}
         />
       )}
       {evidenceOpen && (

@@ -4,6 +4,7 @@ type NetworkState = "no_store" | "setup_incomplete" | "operating" | "incident"
 
 interface DashboardHeroSectionProps {
   dashboardType: DashboardType
+  networkName: string
   storeName: string
   title: string
   subtitle: string
@@ -33,6 +34,7 @@ const networkLabel = (state: NetworkState) => {
 
 export function DashboardHeroSection({
   dashboardType,
+  networkName,
   storeName,
   title,
   subtitle,
@@ -54,10 +56,11 @@ export function DashboardHeroSection({
         <div className="max-w-3xl">
           <p className="text-xs uppercase tracking-[0.18em] text-emerald-300">
             {isExecutive ? "Centro Executivo de Operações" : "Operações Inteligentes"} ·{" "}
-            {storeName}
+            {networkName}
           </p>
           <h2 className="mt-2 text-2xl sm:text-3xl font-semibold">{title}</h2>
           <p className="mt-2 text-sm sm:text-base text-slate-200">{subtitle}</p>
+          <p className="mt-2 text-xs text-slate-300">Loja em foco: {storeName}</p>
           {!isExecutive && <p className="mt-3 text-xs sm:text-sm text-slate-300">{etaText}</p>}
         </div>
         <div className="w-full sm:max-w-[280px] rounded-xl border border-white/15 bg-white/5 p-4">
@@ -109,4 +112,3 @@ export function DashboardHeroSection({
     </div>
   )
 }
-

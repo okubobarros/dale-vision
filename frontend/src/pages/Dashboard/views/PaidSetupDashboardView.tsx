@@ -1,11 +1,15 @@
+import { DashboardSetupStateCard } from "./DashboardSetupStateCard"
+
 type ChecklistItem = {
   label: string
   done: boolean
 }
 
 interface PaidSetupDashboardViewProps {
+  setupState: "not_started" | "setup_in_progress" | "collecting_data" | "report_ready"
+  trialCollectedHours: number
+  trialHoursRemaining: number
   trialChecklist: ChecklistItem[]
-  operationalInsights: string[]
   copilotPrompts: string[]
   canManageStore: boolean
   onOpenSetup: () => void
@@ -13,6 +17,9 @@ interface PaidSetupDashboardViewProps {
 }
 
 export function PaidSetupDashboardView({
+  setupState,
+  trialCollectedHours,
+  trialHoursRemaining,
   trialChecklist,
   copilotPrompts,
   canManageStore,
@@ -22,44 +29,15 @@ export function PaidSetupDashboardView({
   const checklist = trialChecklist.slice(0, 4)
   return (
     <div className="grid grid-cols-1 xl:grid-cols-2 gap-4">
-      <div className="bg-white rounded-xl shadow-sm border border-gray-200 p-4 sm:p-6">
-        <h3 className="text-[18px] font-semibold text-gray-900">
-          Implantação operacional em andamento
-        </h3>
-        <p className="mt-2 text-sm text-gray-600">
-          Sua conta já está paga. Conclua a implantação para liberar visão executiva completa.
-        </p>
-        <div className="mt-4 grid grid-cols-1 sm:grid-cols-2 gap-2">
-          {checklist.map((item) => (
-            <div
-              key={item.label}
-              className={`rounded-lg border px-3 py-2 text-sm ${
-                item.done
-                  ? "border-emerald-200 bg-emerald-50 text-emerald-800"
-                  : "border-gray-200 bg-gray-50 text-gray-600"
-              }`}
-            >
-              {item.done ? "✓" : "○"} {item.label}
-            </div>
-          ))}
-        </div>
-        <div className="mt-4 flex flex-wrap gap-2">
-          <button
-            type="button"
-            onClick={() => canManageStore && onOpenSetup()}
-            className="rounded-lg bg-blue-600 px-4 py-2 text-sm font-semibold text-white hover:bg-blue-700"
-          >
-            Ver plano de implantação
-          </button>
-          <button
-            type="button"
-            onClick={() => onOpenCopilot()}
-            className="rounded-lg border border-gray-200 px-4 py-2 text-sm font-semibold text-gray-700 hover:bg-gray-50"
-          >
-            Revisar com o Copiloto
-          </button>
-        </div>
-      </div>
+      <DashboardSetupStateCard
+        state={setupState}
+        checklist={checklist}
+        collectedHours={trialCollectedHours}
+        remainingHours={trialHoursRemaining}
+        canManageStore={canManageStore}
+        onOpenSetup={onOpenSetup}
+        onOpenCopilot={onOpenCopilot}
+      />
 
       <div className="rounded-xl border border-white/10 bg-[#111827] p-4 sm:p-6 text-white shadow-sm">
         <h3 className="text-[18px] font-semibold">DALE Copiloto</h3>
