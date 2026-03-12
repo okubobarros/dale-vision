@@ -124,6 +124,18 @@ vi.mock("../../services/onboarding", () => ({
   },
 }))
 
+vi.mock("../../services/me", () => ({
+  meService: {
+    getStatus: vi.fn().mockResolvedValue({
+      trial_active: true,
+      trial_ends_at: "2026-12-01T10:00:00Z",
+      has_subscription: false,
+      role: "owner",
+      is_internal_admin: false,
+    }),
+  },
+}))
+
 describe("Dashboard collecting state", () => {
   beforeEach(() => {
     vi.clearAllMocks()

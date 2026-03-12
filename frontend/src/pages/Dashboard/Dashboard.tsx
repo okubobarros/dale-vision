@@ -13,7 +13,6 @@ import {
 } from "../../services/stores"
 import type { StoreDashboard } from "../../types/dashboard"
 import { camerasService } from "../../services/cameras"
-import { formatReason, formatTimestamp } from "../../utils/edgeReasons"
 import EdgeSetupModal from "../../components/EdgeSetupModal"
 import {
   useAlertsEvents,
@@ -26,50 +25,16 @@ import {
   onboardingService,
   type OnboardingNextStepResponse,
 } from "../../services/onboarding"
-
-interface MetricCardProps {
-  title: string
-  value: string | number
-  icon: React.ReactNode
-  trend?: number
-  color: string
-  subtitle?: string
-}
-
-const MetricCard = ({
-  title,
-  value,
-  icon,
-  trend,
-  color,
-  subtitle,
-}: MetricCardProps) => (
-  <div className="bg-white rounded-xl shadow-sm border border-gray-100 p-4 sm:p-6 hover:shadow-md transition-shadow min-w-0">
-    <div className="flex items-start justify-between gap-3 mb-3 sm:mb-4">
-      <div className={`p-3 rounded-lg ${color}`}>{icon}</div>
-
-      {trend !== undefined && (
-        <span
-          className={`text-xs sm:text-sm font-medium ${
-            trend > 0 ? "text-green-600" : "text-red-600"
-          }`}
-        >
-          {trend > 0 ? "+" : ""}
-          {trend}%
-        </span>
-      )}
-    </div>
-
-    <h3 className="text-xl sm:text-2xl font-bold text-gray-800 mb-1 break-words">
-      {value}
-    </h3>
-    <p className="text-gray-700 font-semibold text-sm sm:text-base">{title}</p>
-    {subtitle && (
-      <p className="text-gray-400 text-xs sm:text-sm mt-1">{subtitle}</p>
-    )}
-  </div>
-)
-
+import { meService } from "../../services/me"
+import { getDashboardExperience } from "./dashboardExperience"
+import { TrialDashboardView } from "./views/TrialDashboardView"
+import { PaidSetupDashboardView } from "./views/PaidSetupDashboardView"
+import { PaidExecutiveDashboardView } from "./views/PaidExecutiveDashboardView"
+import { DashboardHeroSection } from "./views/DashboardHeroSection"
+import { DashboardKpiStrip, MetricCard } from "./views/DashboardKpiStrip"
+import { InfrastructureSection } from "./views/InfrastructureSection"
+import { AlertsSection } from "./views/AlertsSection"
+import { OperationalDiagnosisSection } from "./views/OperationalDiagnosisSection"
 
 const ONLINE_MAX_AGE_SEC = 120
 
@@ -237,6 +202,14 @@ const Dashboard = () => {
   const isTrialCeoMode =
     selectedStore !== ALL_STORES_VALUE && selectedStoreStatus === "trial"
 
+  const { data: meStatus } = useQuery({
+    queryKey: ["me-status-dashboard"],
+    queryFn: () => meService.getStatus(),
+    enabled: canFetchAuth,
+    staleTime: 60000,
+    retry: false,
+  })
+
   const {
     data: dashboard,
     isLoading: isLoadingDashboard,
@@ -305,7 +278,11 @@ const Dashboard = () => {
     isRecentTimestamp(lastSeenAt, ONLINE_MAX_AGE_SEC)
   const selectedStorePlan =
     selectedStoreItem?.plan ??
-    (selectedStoreStatus === "trial" ? "trial" : null)
+    (meStatus?.has_subscription
+      ? "paid"
+      : selectedStoreStatus === "trial" || meStatus?.trial_active
+      ? "trial"
+      : null)
   const selectedStoreOwner = user?.email || null
 
   const { data: storeLimits } = useQuery({
@@ -413,6 +390,9 @@ const Dashboard = () => {
     : ""
 
 
+  const isTrialCommercialState =
+    meStatus?.has_subscription ? false : meStatus?.trial_active !== false
+
   const shouldShowActivationBanner =
     !activationBannerDismissed &&
     (showActivationProgress || (selectedStore !== ALL_STORES_VALUE && !isEdgeConnected))
@@ -431,9 +411,13 @@ const Dashboard = () => {
         titleRight="Ativação"
         className="mb-4"
       />
-      <h3 className="text-lg font-bold text-gray-800">Ativação do Trial</h3>
+      <h3 className="text-lg font-bold text-gray-800">
+        {isTrialCommercialState ? "Ativação do Trial" : "Ativação Operacional"}
+      </h3>
       <p className="text-sm text-gray-600 mt-1">
-        Você só precisa de um computador na loja com acesso às câmeras. Nós guiamos o passo a passo.
+        {isTrialCommercialState
+          ? "Você só precisa de um computador na loja com acesso às câmeras. Nós guiamos o passo a passo."
+          : "Seu plano já está ativo. Conclua a implantação para liberar o potencial operacional da rede."}
       </p>
 
       {selectedStore !== ALL_STORES_VALUE && isEdgeConnected && (
@@ -783,13 +767,37 @@ const Dashboard = () => {
       ? "bg-red-100 text-red-800"
       : "bg-gray-100 text-gray-800"
 
+  const hasOperationalData = Boolean(
+    dashboard?.metrics?.visitor_flow ||
+      dashboard?.metrics?.conversion_rate ||
+      dashboard?.metrics?.productivity ||
+      dashboard?.insights?.peak_hour ||
+      ceoDashboard?.series?.flow_by_hour?.length ||
+      ceoDashboard?.series?.idle_index_by_hour?.length
+  )
+
+  // Regra central: estado comercial da conta + estado operacional da loja definem a experiência.
+  const dashboardExperience = getDashboardExperience({
+    meStatus,
+    stores,
+    selectedStore: selectedStoreItem,
+    edgeStatus,
+    onboarding: onboardingNextStep,
+    hasOperationalData,
+    camerasOnline,
+  })
+
   type TrialUiState = "not_started" | "activation" | "collecting" | "report_ready"
-  const trialUiState: TrialUiState = (() => {
-    if (onboardingStage === "no_store") return "not_started"
-    if (onboardingStage === "active") return "report_ready"
-    if (onboardingStage === "collecting_data") return "collecting"
-    return "activation"
-  })()
+  const trialUiState: TrialUiState =
+    dashboardExperience.dashboardType !== "trial"
+      ? "report_ready"
+      : onboardingStage === "no_store"
+      ? "not_started"
+      : onboardingStage === "active"
+      ? "report_ready"
+      : onboardingStage === "collecting_data"
+      ? "collecting"
+      : "activation"
 
   const trialCollectedHours = (() => {
     if (trialUiState === "not_started") return 0
@@ -802,49 +810,54 @@ const Dashboard = () => {
   const trialProgressPct = Math.max(0, Math.min(100, Math.round((trialCollectedHours / 72) * 100)))
   const trialHoursRemaining = Math.max(0, 72 - trialCollectedHours)
   const trialEtaText =
-    trialUiState === "report_ready"
-      ? "Relatório operacional liberado"
-      : `Relatório operacional liberado em aproximadamente ${trialHoursRemaining}h`
+    dashboardExperience.dashboardType === "trial"
+      ? trialUiState === "report_ready"
+        ? "Relatório operacional liberado"
+        : `Relatório operacional liberado em aproximadamente ${trialHoursRemaining}h`
+      : dashboardExperience.dashboardType === "paid_setup"
+      ? "Conclua conexão e captação da loja para liberar visão operacional completa."
+      : "Operação consolidada com atualização contínua de insights."
 
   const trialHeroTitle =
-    trialUiState === "report_ready"
-      ? "Seu diagnóstico operacional está pronto"
-      : `Trial em andamento — ${trialCollectedHours}h de 72h concluídas`
+    dashboardExperience.dashboardType === "trial"
+      ? `Trial em andamento — ${trialCollectedHours}h de 72h concluídas`
+      : dashboardExperience.dashboardType === "paid_setup"
+      ? "Implantação operacional em andamento"
+      : "Visão executiva da rede em tempo real"
 
   const trialHeroSubtitle =
-    trialUiState === "not_started"
-      ? "Vamos iniciar a captação da sua loja para gerar um diagnóstico operacional completo."
-      : trialUiState === "activation"
-      ? "Estamos conectando infraestrutura e calibrando o fluxo da loja para começar a leitura operacional."
-      : trialUiState === "collecting"
-      ? "Estamos coletando fluxo, filas e padrões de atendimento com inteligência contínua."
-      : "Identificamos sinais de fluxo, filas e produtividade para sua primeira leitura executiva."
+    dashboardExperience.dashboardType === "trial"
+      ? trialUiState === "not_started"
+        ? "Vamos iniciar a captação da sua loja para gerar um diagnóstico operacional completo."
+        : trialUiState === "activation"
+        ? "Estamos conectando infraestrutura e calibrando o fluxo da loja para começar a leitura operacional."
+        : "Estamos coletando fluxo, filas e padrões de atendimento com inteligência contínua."
+      : dashboardExperience.dashboardType === "paid_setup"
+      ? "Seu plano está ativo. Agora o foco é concluir conexão e captação das lojas para liberar visão plena da operação."
+      : "Acompanhe desempenho, risco e prioridade das lojas com foco em resultado operacional."
 
   const metricValueOrState = (
     value: number | null | undefined,
     format: (v: number) => string
   ) => {
     if (typeof value === "number" && value > 0) return format(value)
-    if (trialUiState === "report_ready") return "Disponível"
+    if (dashboardExperience.dashboardType === "paid_executive") return "Disponível"
     if (trialUiState === "collecting") return "Em calibração"
-    if (trialUiState === "activation") return "Coleta inicial"
+    if (trialUiState === "activation" || dashboardExperience.dashboardType === "paid_setup")
+      return "Coleta inicial"
     return "Aguardando ativação"
   }
 
   const metricSubtitleByState =
-    trialUiState === "report_ready"
+    dashboardExperience.dashboardType === "paid_executive"
       ? "Indicador consolidado para gestão"
+      : dashboardExperience.dashboardType === "paid_setup"
+      ? "Disponível após concluir implantação operacional"
       : trialUiState === "collecting"
       ? "Estamos consolidando este indicador"
       : trialUiState === "activation"
       ? "Disponível após validação da captação"
       : "Será liberado após iniciar o trial"
-
-  const cameraDisplayName = (name: string, index: number) => {
-    const uuidLike = /^[0-9a-f]{8}-[0-9a-f]{4}-/i.test(name)
-    if (uuidLike || !name.trim()) return `Câmera ${index + 1}`
-    return name
-  }
 
   const trialChecklist = [
     { label: "Loja conectada", done: selectedStore !== ALL_STORES_VALUE },
@@ -852,16 +865,39 @@ const Dashboard = () => {
     { label: "Câmeras validadas", done: camerasOnline > 0 },
     { label: "Coleta iniciada", done: trialCollectedHours >= 1 },
     { label: "Período mínimo de observação", done: trialCollectedHours >= 24 },
-    { label: "Relatório operacional", done: trialUiState === "report_ready" },
+    {
+      label:
+        dashboardExperience.dashboardType === "trial"
+          ? "Relatório operacional"
+          : "Visão executiva habilitada",
+      done: trialUiState === "report_ready" || dashboardExperience.dashboardType === "paid_executive",
+    },
   ]
 
-  const copilotPrompts = [
-    "Como está o progresso do meu trial?",
-    "O que falta para liberar meu relatório?",
-    "Quais indicadores vocês já conseguem analisar?",
-    "Como melhorar a conversão da minha loja?",
-    "Qual o próximo passo mais importante agora?",
-  ]
+  const shouldShowTrialArtifacts = dashboardExperience.dashboardType === "trial"
+  const shouldShowPaidSetupArtifacts = dashboardExperience.dashboardType === "paid_setup"
+  const shouldShowExecutiveArtifacts = dashboardExperience.dashboardType === "paid_executive"
+  const openCopilot = (prompt?: string) => {
+    window.dispatchEvent(
+      new CustomEvent("dv-open-copilot", prompt ? { detail: { prompt } } : undefined)
+    )
+  }
+
+  const copilotPrompts = shouldShowExecutiveArtifacts
+    ? [
+        "Quais lojas exigem ação imediata hoje?",
+        "Onde estamos perdendo conversão na rede?",
+        "Qual priorização operacional para esta semana?",
+        "Como reduzir fila sem aumentar custo de equipe?",
+        "Qual insight mais acionável agora?",
+      ]
+    : [
+        "Como está o progresso do meu trial?",
+        "O que falta para liberar meu relatório?",
+        "Quais indicadores vocês já conseguem analisar?",
+        "Como melhorar a conversão da minha loja?",
+        "Qual o próximo passo mais importante agora?",
+      ]
 
   const operationalInsights = [
     isEdgeConnected
@@ -869,25 +905,69 @@ const Dashboard = () => {
       : "Captação interrompida no momento. Retome a conexão para continuar o diagnóstico.",
     camerasOnline > 0
       ? `Já temos ${camerasOnline} câmera(s) em captação para leitura de fluxo e atendimento.`
-      : "Ainda não há câmera em captação ativa. Valide pelo menos uma câmera para acelerar o trial.",
+      : shouldShowTrialArtifacts
+      ? "Ainda não há câmera em captação ativa. Valide pelo menos uma câmera para acelerar o trial."
+      : "Ainda não há câmera em captação ativa. Valide pelo menos uma câmera para concluir a implantação.",
     trialUiState === "collecting" || trialUiState === "report_ready"
       ? "Já existe base inicial para leitura de fluxo e comportamento de atendimento."
       : "Estamos calibrando a base da loja antes de consolidar os indicadores executivos.",
   ]
-
-  const eventStatusClass = (status: string) =>
-    status === "open"
-      ? "bg-red-100 text-red-800"
-      : status === "resolved"
-      ? "bg-green-100 text-green-800"
-      : "bg-gray-100 text-gray-700"
-
-  const eventSeverityClass = (severity: string) =>
-    severity === "critical" || severity === "high"
-      ? "bg-red-100 text-red-800"
-      : severity === "warning" || severity === "medium"
-      ? "bg-yellow-100 text-yellow-800"
-      : "bg-blue-100 text-blue-800"
+  const kpiItems = [
+    {
+      title: "Fluxo de Visitantes",
+      value: metricValueOrState(dashboard?.metrics?.visitor_flow, (value) => `${value}`),
+      icon: icons.visitors,
+      color: "bg-violet-50",
+      subtitle: metricSubtitleByState,
+    },
+    {
+      title: "Taxa de Conversão",
+      value: metricValueOrState(
+        dashboard?.metrics?.conversion_rate,
+        (value) => `${value.toFixed(1)}%`
+      ),
+      icon: icons.conversion,
+      color: "bg-amber-50",
+      subtitle: metricSubtitleByState,
+    },
+    {
+      title: "Tempo Médio de Fila",
+      value: metricValueOrState(
+        isTrialCeoMode ? ceoDashboard?.kpis?.avg_queue_seconds : null,
+        (value) => `${Math.max(1, Math.round(value / 60))} min`
+      ),
+      icon: icons.health,
+      color: "bg-emerald-50",
+      subtitle: metricSubtitleByState,
+    },
+    {
+      title: "Tempo Ocioso Estimado",
+      value: metricValueOrState(dashboard?.metrics?.idle_time, (value) => `${value} min`),
+      icon: icons.idle,
+      color: "bg-rose-50",
+      subtitle: metricSubtitleByState,
+    },
+    {
+      title: "Score de Saúde Operacional",
+      value: metricValueOrState(
+        dashboard?.metrics?.health_score,
+        (value) => `${Math.round(value)}`
+      ),
+      icon: icons.health,
+      color: "bg-green-50",
+      subtitle: metricSubtitleByState,
+    },
+    {
+      title: "Produtividade",
+      value: metricValueOrState(
+        dashboard?.metrics?.productivity,
+        (value) => `${Math.round(value)}`
+      ),
+      icon: icons.productivity,
+      color: "bg-sky-50",
+      subtitle: metricSubtitleByState,
+    },
+  ]
 
   if (storesLoading) {
     return (
@@ -1091,188 +1171,49 @@ const Dashboard = () => {
 
       {selectedStore !== ALL_STORES_VALUE && (
         <section className="space-y-4 sm:space-y-6">
-          <div className="rounded-2xl border border-slate-200 bg-gradient-to-r from-slate-900 to-slate-800 p-5 sm:p-7 text-white">
-            <div className="flex flex-col gap-4 sm:flex-row sm:items-start sm:justify-between">
-              <div className="max-w-3xl">
-                <p className="text-xs uppercase tracking-[0.18em] text-emerald-300">
-                  Operações Inteligentes · {selectedStoreItem?.name ?? "Loja selecionada"}
-                </p>
-                <h2 className="mt-2 text-2xl sm:text-3xl font-semibold">{trialHeroTitle}</h2>
-                <p className="mt-2 text-sm sm:text-base text-slate-200">{trialHeroSubtitle}</p>
-                <p className="mt-3 text-xs sm:text-sm text-slate-300">{trialEtaText}</p>
-              </div>
-              <div className="w-full sm:max-w-[280px] rounded-xl border border-white/15 bg-white/5 p-4">
-                <div className="flex items-center justify-between text-xs text-slate-200">
-                  <span>Progresso do trial</span>
-                  <span>{trialCollectedHours}h / 72h</span>
-                </div>
-                <div className="mt-2 h-2 rounded-full bg-white/20">
-                  <div
-                    className="h-2 rounded-full bg-emerald-400 transition-all"
-                    style={{ width: `${trialProgressPct}%` }}
-                  />
-                </div>
-                <div className="mt-3 grid grid-cols-2 gap-2">
-                  <button
-                    type="button"
-                    onClick={() => {
-                      if (canManageStore) {
-                        setEdgeSetupOpen(true)
-                      }
-                    }}
-                    className="rounded-lg bg-emerald-400 px-3 py-2 text-xs font-semibold text-slate-900 hover:bg-emerald-300"
-                  >
-                    Ver checklist de ativação
-                  </button>
-                  <button
-                    type="button"
-                    onClick={() =>
-                      window.dispatchEvent(new CustomEvent("dv-open-copilot"))
-                    }
-                    className="rounded-lg border border-white/30 bg-white/5 px-3 py-2 text-xs font-semibold text-white hover:bg-white/10"
-                  >
-                    Perguntar ao Copiloto
-                  </button>
-                </div>
-              </div>
-            </div>
-          </div>
+          <DashboardHeroSection
+            dashboardType={dashboardExperience.dashboardType}
+            storeName={selectedStoreItem?.name ?? "Loja selecionada"}
+            title={trialHeroTitle}
+            subtitle={trialHeroSubtitle}
+            etaText={trialEtaText}
+            trialCollectedHours={trialCollectedHours}
+            trialProgressPct={trialProgressPct}
+            accountState={dashboardExperience.accountState}
+            networkState={dashboardExperience.networkState}
+            canManageStore={canManageStore}
+            onOpenSetup={() => setEdgeSetupOpen(true)}
+            onOpenCopilot={() => openCopilot()}
+          />
 
-          <div className="grid grid-cols-1 sm:grid-cols-2 xl:grid-cols-3 gap-4">
-            <MetricCard
-              title="Fluxo de Visitantes"
-              value={metricValueOrState(dashboard?.metrics?.visitor_flow, (value) => `${value}`)}
-              icon={icons.visitors}
-              color="bg-violet-50"
-              subtitle={metricSubtitleByState}
-            />
-            <MetricCard
-              title="Taxa de Conversão"
-              value={metricValueOrState(dashboard?.metrics?.conversion_rate, (value) => `${value.toFixed(1)}%`)}
-              icon={icons.conversion}
-              color="bg-amber-50"
-              subtitle={metricSubtitleByState}
-            />
-            <MetricCard
-              title="Tempo Médio de Fila"
-              value={metricValueOrState(
-                isTrialCeoMode ? ceoDashboard?.kpis?.avg_queue_seconds : null,
-                (value) => `${Math.max(1, Math.round(value / 60))} min`
-              )}
-              icon={icons.health}
-              color="bg-emerald-50"
-              subtitle={metricSubtitleByState}
-            />
-            <MetricCard
-              title="Tempo Ocioso Estimado"
-              value={metricValueOrState(dashboard?.metrics?.idle_time, (value) => `${value} min`)}
-              icon={icons.idle}
-              color="bg-rose-50"
-              subtitle={metricSubtitleByState}
-            />
-            <MetricCard
-              title="Score de Saúde Operacional"
-              value={metricValueOrState(dashboard?.metrics?.health_score, (value) => `${Math.round(value)}`)}
-              icon={icons.health}
-              color="bg-green-50"
-              subtitle={metricSubtitleByState}
-            />
-            <MetricCard
-              title="Produtividade"
-              value={metricValueOrState(dashboard?.metrics?.productivity, (value) => `${Math.round(value)}`)}
-              icon={icons.productivity}
-              color="bg-sky-50"
-              subtitle={metricSubtitleByState}
-            />
-          </div>
+          <DashboardKpiStrip items={kpiItems} />
 
-          <div className="grid grid-cols-1 xl:grid-cols-3 gap-4">
-            <div className="xl:col-span-2 bg-white rounded-xl shadow-sm border border-gray-100 p-4 sm:p-6">
-              <h3 className="text-lg font-semibold text-gray-900">
-                {trialUiState === "report_ready"
-                  ? "Seu relatório operacional está pronto"
-                  : "Sua loja está em fase de aprendizado"}
-              </h3>
-              <p className="mt-2 text-sm text-gray-600">
-                {trialUiState === "report_ready"
-                  ? "Consolidamos os sinais operacionais da loja. Revise gargalos e oportunidades com apoio do Copiloto."
-                  : "Estamos preparando seu diagnóstico operacional com base no comportamento real da loja durante o trial de 72 horas."}
-              </p>
-              <div className="mt-4 grid grid-cols-1 sm:grid-cols-2 gap-2">
-                {trialChecklist.map((item) => (
-                  <div
-                    key={item.label}
-                    className={`rounded-lg border px-3 py-2 text-sm ${
-                      item.done
-                        ? "border-emerald-200 bg-emerald-50 text-emerald-800"
-                        : "border-gray-200 bg-gray-50 text-gray-600"
-                    }`}
-                  >
-                    {item.done ? "✓" : "•"} {item.label}
-                  </div>
-                ))}
-              </div>
-              <div className="mt-4 flex flex-wrap gap-2">
-                {trialUiState === "report_ready" ? (
-                  <Link
-                    to="/app/report"
-                    className="rounded-lg bg-slate-900 px-4 py-2 text-sm font-semibold text-white hover:bg-slate-800"
-                  >
-                    Ver relatório
-                  </Link>
-                ) : (
-                  <button
-                    type="button"
-                    onClick={() => canManageStore && setEdgeSetupOpen(true)}
-                    className="rounded-lg bg-blue-600 px-4 py-2 text-sm font-semibold text-white hover:bg-blue-700"
-                  >
-                    Avançar checklist
-                  </button>
-                )}
-                <button
-                  type="button"
-                  onClick={() =>
-                    window.dispatchEvent(new CustomEvent("dv-open-copilot"))
-                  }
-                  className="rounded-lg border border-gray-200 px-4 py-2 text-sm font-semibold text-gray-700 hover:bg-gray-50"
-                >
-                  Revisar com o Copiloto
-                </button>
-              </div>
-              <div className="mt-5 rounded-xl border border-slate-200 bg-slate-50 p-4">
-                <h4 className="text-sm font-semibold text-slate-900">
-                  Alertas e insights operacionais iniciais
-                </h4>
-                <ul className="mt-2 space-y-2 text-sm text-slate-700">
-                  {operationalInsights.map((insight) => (
-                    <li key={insight}>• {insight}</li>
-                  ))}
-                </ul>
-              </div>
-            </div>
-            <div className="bg-white rounded-xl shadow-sm border border-gray-100 p-4 sm:p-6">
-              <h3 className="text-base font-semibold text-gray-900">Copiloto DaleVision</h3>
-              <p className="mt-1 text-sm text-gray-600">
-                Seu braço direito para interpretar progresso, operação e próximos passos.
-              </p>
-              <div className="mt-3 space-y-2">
-                {copilotPrompts.map((prompt) => (
-                  <button
-                    key={prompt}
-                    type="button"
-                    onClick={() =>
-                      window.dispatchEvent(
-                        new CustomEvent("dv-open-copilot", { detail: { prompt } })
-                      )
-                    }
-                    className="w-full rounded-lg border border-gray-200 px-3 py-2 text-left text-sm text-gray-700 hover:bg-gray-50"
-                  >
-                    {prompt}
-                  </button>
-                ))}
-              </div>
-            </div>
-          </div>
+          {shouldShowTrialArtifacts ? (
+            <TrialDashboardView
+              trialUiState={trialUiState}
+              trialChecklist={trialChecklist}
+              operationalInsights={operationalInsights}
+              copilotPrompts={copilotPrompts}
+              canManageStore={canManageStore}
+              onOpenSetup={() => setEdgeSetupOpen(true)}
+              onOpenCopilot={openCopilot}
+            />
+          ) : shouldShowPaidSetupArtifacts ? (
+            <PaidSetupDashboardView
+              trialChecklist={trialChecklist}
+              operationalInsights={operationalInsights}
+              copilotPrompts={copilotPrompts}
+              canManageStore={canManageStore}
+              onOpenSetup={() => setEdgeSetupOpen(true)}
+              onOpenCopilot={openCopilot}
+            />
+          ) : (
+            <PaidExecutiveDashboardView
+              stores={stores ?? []}
+              copilotPrompts={copilotPrompts}
+              onOpenCopilot={openCopilot}
+            />
+          )}
         </section>
       )}
 
@@ -1417,314 +1358,46 @@ const Dashboard = () => {
           )}
 
           {!isTrialCeoMode && (
-            <div className="bg-white rounded-xl shadow-sm border border-gray-100 p-4 sm:p-6">
-              <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3">
-                <div>
-                  <h2 className="text-lg sm:text-xl font-bold text-gray-800">
-                    Infraestrutura da loja
-                  </h2>
-                  <p className="text-sm text-gray-500 mt-1">
-                    Última comunicação:{" "}
-                    <span className="font-semibold text-gray-700">
-                      {formatLastSeenDisplay(lastSeenAt)}
-                    </span>
-                  </p>
-                  {edgeStatus?.store_status_reason && (
-                    <p className="text-xs text-gray-500 mt-1">
-                      {formatReason(edgeStatus.store_status_reason)}
-                    </p>
-                  )}
-                  {edgeStatus?.last_error && (
-                    <p className="text-xs text-red-600 mt-2">
-                      Erro: {edgeStatus.last_error}
-                    </p>
-                  )}
-                </div>
-                <span
-                  className={`inline-flex items-center px-3 py-1 rounded-full text-xs sm:text-sm font-semibold ${edgeStatusClass}`}
-                >
-                  {edgeStatusLabel}
-                </span>
-              </div>
-
-              <div className="mt-4 grid grid-cols-1 sm:grid-cols-3 gap-3">
-                <div className="rounded-lg border border-gray-100 px-3 py-2">
-                  <p className="text-xs text-gray-500">Câmeras online</p>
-                  <p className="text-sm font-semibold text-gray-800">
-                    {edgeStatusLoading
-                      ? "—"
-                      : `${edgeStatus?.cameras_online ?? 0}/${
-                          edgeStatus?.cameras_total ?? 0
-                        } em captação`}
-                  </p>
-                </div>
-                <div className="rounded-lg border border-gray-100 px-3 py-2">
-                  <p className="text-xs text-gray-500">Situação da captação</p>
-                  <p className="text-sm font-semibold text-gray-800">
-                    {edgeStatusLoading
-                      ? "—"
-                      : (formatReason(edgeStatus?.store_status_reason) ?? "—")}
-                  </p>
-                </div>
-                <div className="rounded-lg border border-gray-100 px-3 py-2">
-                  <p className="text-xs text-gray-500">Última comunicação</p>
-                  <p className="text-sm font-semibold text-gray-800">
-                    {formatLastSeenDisplay(lastSeenAt)}
-                  </p>
-                </div>
-              </div>
-
-              <div className="mt-4">
-                <h3 className="text-sm font-semibold text-gray-700 mb-3">
-                  Câmeras
-                </h3>
-
-                {edgeStatusLoading ? (
-                  <div className="text-sm text-gray-500">
-                    Carregando status...
-                  </div>
-                ) : edgeStatus && edgeStatus.cameras.length > 0 ? (
-                  <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
-                    {edgeStatus.cameras.map((cam, idx) => (
-                      <div
-                        key={cam.camera_id}
-                        className="flex items-center justify-between border border-gray-100 rounded-lg px-3 py-2"
-                      >
-                        <div className="min-w-0">
-                          <p className="text-sm font-medium text-gray-800 truncate">
-                            {cameraDisplayName(cam.name, idx)}
-                          </p>
-                          <p className="text-[11px] text-gray-400">
-                            Último: {formatTimestamp(cam.camera_last_heartbeat_ts)}
-                          </p>
-                        </div>
-                        <div className="flex flex-col items-end gap-1">
-                          <span
-                            className={`px-2 py-1 text-xs rounded-full ${
-                              cam.status === "online"
-                                ? "bg-green-100 text-green-800"
-                                : cam.status === "degraded"
-                                ? "bg-yellow-100 text-yellow-800"
-                                : cam.status === "offline"
-                                ? "bg-gray-100 text-gray-700"
-                                : "bg-gray-100 text-gray-600"
-                            }`}
-                          >
-                            {cam.status === "online"
-                              ? "captação ativa"
-                              : cam.status === "degraded"
-                              ? "com instabilidade"
-                              : cam.status === "offline"
-                              ? "captação interrompida"
-                              : "status indefinido"}
-                          </span>
-                          {cam.reason && (
-                            <span className="text-[11px] text-gray-500">
-                              {formatReason(cam.reason)}
-                            </span>
-                          )}
-                        </div>
-                      </div>
-                    ))}
-                  </div>
-                ) : (
-                  <div className="text-sm text-gray-500">
-                    Nenhuma câmera encontrada.
-                  </div>
-                )}
-              </div>
-              <details className="mt-4 group">
-                <summary className="cursor-pointer list-none text-sm font-semibold text-gray-700 flex items-center justify-between">
-                  <span>Detalhes técnicos da infraestrutura</span>
-                  <span className="text-xs text-gray-500 group-open:rotate-180 transition-transform">⌄</span>
-                </summary>
-                <p className="mt-2 text-xs text-gray-500">
-                  Edge, heartbeat e status das câmeras em segundo plano para suporte operacional.
-                </p>
-              </details>
-            </div>
+            <InfrastructureSection
+              edgeStatusLoading={edgeStatusLoading}
+              edgeStatus={edgeStatus}
+              edgeStatusLabel={edgeStatusLabel}
+              edgeStatusClass={edgeStatusClass}
+              lastSeenLabel={formatLastSeenDisplay(lastSeenAt)}
+            />
           )}
 
-          <div className="bg-white rounded-xl shadow-sm border border-gray-100 p-4 sm:p-6">
-                <div className="flex items-center justify-between gap-3 mb-4">
-                  <h2 className="text-lg sm:text-xl font-bold text-gray-800">
-                    Últimos alertas
-                  </h2>
-                  <span className="px-2.5 py-1 rounded-full text-xs font-semibold bg-gray-100 text-gray-700">
-                    {(events?.length ?? 0) > 0
-                      ? `${Math.min(events?.length ?? 0, 10)} de ${
-                          events?.length ?? 0
-                        }`
-                      : "0"}
-                  </span>
-                </div>
-
-                {!selectedStore || selectedStore === ALL_STORES_VALUE ? (
-                  <div className="text-sm text-gray-500">
-                    Selecione uma loja para ver alertas.
-                  </div>
-                ) : eventsLoading ? (
-                  <div className="text-sm text-gray-500">Carregando alertas...</div>
-                ) : eventsError ? (
-                  <div className="text-sm text-red-600">Falha ao carregar alertas</div>
-                ) : !events || events.length === 0 ? (
-                  <div className="text-sm text-gray-500">Sem alertas operacionais críticos no momento.</div>
-                ) : (
-                  <div className="space-y-3">
-                    {events.slice(0, 10).map((event) => {
-                      const eventTime = event.occurred_at || event.created_at
-                      const isResolving = resolvingEventId === event.id
-                      const isIgnoring = ignoringEventId === event.id
-                      const isMutating = isResolving || isIgnoring
-                      return (
-                        <div
-                          key={event.id}
-                          className="border border-gray-100 rounded-lg px-4 py-3"
-                        >
-                          <div className="flex items-start justify-between gap-3">
-                            <div className="min-w-0">
-                              <p className="text-sm text-gray-500">
-                                {formatTimeSafe(eventTime)}
-                              </p>
-                              <p className="text-sm sm:text-base font-semibold text-gray-800 mt-1">
-                                {event.title}
-                              </p>
-                            </div>
-                            <div className="flex flex-wrap items-center gap-2 justify-end">
-                              <span className="px-2 py-0.5 text-[11px] rounded-full bg-gray-100 text-gray-700">
-                                {event.type}
-                              </span>
-                              <span
-                                className={`px-2 py-0.5 text-[11px] rounded-full ${eventSeverityClass(
-                                  event.severity
-                                )}`}
-                              >
-                                {event.severity}
-                              </span>
-                              <span
-                                className={`px-2 py-0.5 text-[11px] rounded-full ${eventStatusClass(
-                                  event.status
-                                )}`}
-                              >
-                                {event.status}
-                              </span>
-                            </div>
-                          </div>
-                          {event.status === "open" && (
-                            <div className="mt-3 flex flex-wrap items-center gap-2">
-                              <button
-                                type="button"
-                                disabled={isMutating}
-                                onClick={() => {
-                                  setResolvingEventId(event.id)
-                                  resolveEvent.mutate(event.id, {
-                                    onSettled: () => setResolvingEventId(null),
-                                  })
-                                }}
-                                className={`px-3 py-1 text-xs font-semibold rounded border ${
-                                  isMutating
-                                    ? "bg-gray-100 text-gray-400 border-gray-200 cursor-not-allowed"
-                                    : "bg-green-50 text-green-700 border-green-200 hover:bg-green-100"
-                                }`}
-                              >
-                                {isResolving ? "Resolvendo..." : "Resolver"}
-                              </button>
-                              <button
-                                type="button"
-                                disabled={isMutating}
-                                onClick={() => {
-                                  setIgnoringEventId(event.id)
-                                  ignoreEvent.mutate(event.id, {
-                                    onSettled: () => setIgnoringEventId(null),
-                                  })
-                                }}
-                                className={`px-3 py-1 text-xs font-semibold rounded border ${
-                                  isMutating
-                                    ? "bg-gray-100 text-gray-400 border-gray-200 cursor-not-allowed"
-                                    : "bg-yellow-50 text-yellow-800 border-yellow-200 hover:bg-yellow-100"
-                                }`}
-                              >
-                                {isIgnoring ? "Ignorando..." : "Ignorar"}
-                              </button>
-                            </div>
-                          )}
-                          {event.description && (
-                            <p className="text-xs sm:text-sm text-gray-500 mt-2">
-                              {event.description}
-                            </p>
-                          )}
-                        </div>
-                      )
-                    })}
-                  </div>
-                )}
-          </div>
+          <AlertsSection
+            storeSelected={Boolean(selectedStore && selectedStore !== ALL_STORES_VALUE)}
+            eventsLoading={eventsLoading}
+            eventsError={eventsError}
+            events={events}
+            resolvingEventId={resolvingEventId}
+            ignoringEventId={ignoringEventId}
+            formatTimeSafe={formatTimeSafe}
+            onResolveEvent={(eventId) => {
+              setResolvingEventId(eventId)
+              resolveEvent.mutate(eventId, {
+                onSettled: () => setResolvingEventId(null),
+              })
+            }}
+            onIgnoreEvent={(eventId) => {
+              setIgnoringEventId(eventId)
+              ignoreEvent.mutate(eventId, {
+                onSettled: () => setIgnoringEventId(null),
+              })
+            }}
+          />
         </div>
       )}
 
       {selectedStore !== ALL_STORES_VALUE && (
-        <section className="bg-white rounded-xl shadow-sm border border-gray-100 p-4 sm:p-6">
-          {isLoadingDashboard ? (
-            <div className="text-sm text-gray-500">Atualizando visão executiva...</div>
-          ) : trialUiState === "report_ready" ? (
-            <div className="space-y-4">
-              <h3 className="text-xl font-semibold text-gray-900">
-                Seu diagnóstico operacional está pronto
-              </h3>
-              <p className="text-sm text-gray-600">
-                Identificamos gargalos e oportunidades de melhoria com base na operação real da loja.
-              </p>
-              <div className="grid grid-cols-1 md:grid-cols-3 gap-3">
-                <div className="rounded-lg border border-gray-200 bg-gray-50 p-3">
-                  <p className="text-xs text-gray-500">Principal gargalo</p>
-                  <p className="mt-1 text-sm font-semibold text-gray-800">
-                    {dashboard?.insights?.peak_hour
-                      ? `Pico operacional às ${dashboard.insights.peak_hour}`
-                      : "Pico operacional em consolidação"}
-                  </p>
-                </div>
-                <div className="rounded-lg border border-gray-200 bg-gray-50 p-3">
-                  <p className="text-xs text-gray-500">Oportunidade</p>
-                  <p className="mt-1 text-sm font-semibold text-gray-800">
-                    Melhorar conversão com ajuste de atendimento em horários críticos.
-                  </p>
-                </div>
-                <div className="rounded-lg border border-gray-200 bg-gray-50 p-3">
-                  <p className="text-xs text-gray-500">Próximo passo</p>
-                  <p className="mt-1 text-sm font-semibold text-gray-800">
-                    Revisar plano com o Copiloto e priorizar ações de execução.
-                  </p>
-                </div>
-              </div>
-              <div className="flex flex-wrap gap-2">
-                <Link
-                  to="/app/report"
-                  className="rounded-lg bg-slate-900 px-4 py-2 text-sm font-semibold text-white hover:bg-slate-800"
-                >
-                  Ver relatório completo
-                </Link>
-                <Link
-                  to="/app/upgrade"
-                  className="rounded-lg border border-gray-200 px-4 py-2 text-sm font-semibold text-gray-700 hover:bg-gray-50"
-                >
-                  Garantir continuidade do monitoramento
-                </Link>
-              </div>
-            </div>
-          ) : (
-            <div className="space-y-3">
-              <h3 className="text-lg font-semibold text-gray-900">
-                Estamos preparando seu relatório operacional
-              </h3>
-              <p className="text-sm text-gray-600">
-                Continuamos coletando e calibrando os dados para transformar captação em diagnóstico executivo acionável.
-              </p>
-              <div className="rounded-lg border border-blue-100 bg-blue-50 px-3 py-2 text-sm text-blue-800">
-                Relatório operacional liberado em aproximadamente {trialHoursRemaining}h.
-              </div>
-            </div>
-          )}
-        </section>
+        <OperationalDiagnosisSection
+          isLoading={isLoadingDashboard}
+          reportReady={trialUiState === "report_ready"}
+          peakHour={dashboard?.insights?.peak_hour}
+          trialHoursRemaining={trialHoursRemaining}
+        />
       )}
       {evidenceOpen && (
         <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/40 p-4">
