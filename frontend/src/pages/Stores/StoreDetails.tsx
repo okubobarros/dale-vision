@@ -1,9 +1,18 @@
 import { useMemo } from "react"
-import { Link, useParams } from "react-router-dom"
+import { Link, useParams, useSearchParams } from "react-router-dom"
 import { useQuery } from "@tanstack/react-query"
-import { storesService, type StoreOverview } from "../../services/stores"
+import { storesService, type StoreOverviewCamera, type StoreOverview } from "../../services/stores"
 
 const ONLINE_MAX_AGE_SEC = 120
+
+type StoreTab = "overview" | "cameras" | "insights" | "infrastructure"
+
+const STORE_TABS: Array<{ key: StoreTab; label: string }> = [
+  { key: "overview", label: "Overview" },
+  { key: "cameras", label: "Câmeras" },
+  { key: "insights", label: "Insights" },
+  { key: "infrastructure", label: "Infraestrutura" },
+]
 
 const isRecent = (iso?: string | null, maxAgeSec = ONLINE_MAX_AGE_SEC) => {
   if (!iso) return false
@@ -49,22 +58,50 @@ const statusClass = (status?: string | null) =>
   status === "active"
     ? "bg-green-100 text-green-800"
     : status === "trial"
-    ? "bg-yellow-100 text-yellow-800"
-    : status === "blocked"
-    ? "bg-red-100 text-red-800"
-    : "bg-gray-100 text-gray-800"
+      ? "bg-yellow-100 text-yellow-800"
+      : status === "blocked"
+        ? "bg-red-100 text-red-800"
+        : "bg-gray-100 text-gray-800"
+
+const toCameraPresentationName = (camera: StoreOverviewCamera, index: number) => {
+  const candidate = (camera.name || "").trim()
+  if (!candidate) return `Câmera ${index + 1}`
+  const uuidLike = /^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i
+  if (uuidLike.test(candidate)) return `Câmera ${index + 1}`
+  return candidate
+}
+
+const cameraStatusText = (status?: string | null) => {
+  const normalized = (status || "").toLowerCase()
+  if (normalized === "online" || normalized === "degraded") return "Ativa"
+  if (normalized === "offline") return "Indisponível"
+  return "Em validação"
+}
+
+const cameraStatusClass = (status?: string | null) => {
+  const normalized = (status || "").toLowerCase()
+  if (normalized === "online" || normalized === "degraded") return "bg-green-100 text-green-700"
+  if (normalized === "offline") return "bg-red-100 text-red-700"
+  return "bg-gray-100 text-gray-700"
+}
 
 const StoreDetails = () => {
-  const { id } = useParams()
+  const params = useParams()
+  const storeId = params.storeId || params.id
+  const [searchParams, setSearchParams] = useSearchParams()
+  const tabParam = searchParams.get("tab")
+  const activeTab: StoreTab = STORE_TABS.some((tab) => tab.key === tabParam)
+    ? (tabParam as StoreTab)
+    : "overview"
 
   const {
     data,
     isLoading,
     error,
   } = useQuery<StoreOverview>({
-    queryKey: ["store-overview", id],
-    queryFn: () => storesService.getStoreOverview(String(id)),
-    enabled: Boolean(id),
+    queryKey: ["store-overview", storeId],
+    queryFn: () => storesService.getStoreOverview(String(storeId)),
+    enabled: Boolean(storeId),
   })
 
   const metrics = data?.metrics_summary?.totals
@@ -83,10 +120,14 @@ const StoreDetails = () => {
 
   const lastSeenAt = data?.edge_health?.last_seen_at || null
   const edgeOnline = isRecent(lastSeenAt)
-  const edgeStatusLabel = edgeOnline ? "Online" : "Offline"
-  const edgeStatusClass = edgeOnline
-    ? "bg-green-100 text-green-800"
-    : "bg-gray-100 text-gray-800"
+  const edgeStatusLabel = edgeOnline ? "Operação conectada" : "Conexão indisponível"
+  const edgeStatusClass = edgeOnline ? "bg-green-100 text-green-800" : "bg-red-100 text-red-800"
+
+  const setTab = (tab: StoreTab) => {
+    const next = new URLSearchParams(searchParams)
+    next.set("tab", tab)
+    setSearchParams(next)
+  }
 
   if (isLoading) {
     return (
@@ -141,133 +182,268 @@ const StoreDetails = () => {
             {statusLabel(data.store.status)}
           </span>
         </div>
-      </div>
 
-      <div className="grid grid-cols-1 md:grid-cols-4 gap-4">
-        <div className="bg-white rounded-xl border border-gray-100 p-4">
-          <div className="text-xs text-gray-500">Visitantes (7d)</div>
-          <div className="text-2xl font-bold text-gray-800 mt-2">
-            {metrics?.total_visitors ?? 0}
-          </div>
-        </div>
-        <div className="bg-white rounded-xl border border-gray-100 p-4">
-          <div className="text-xs text-gray-500">Permanência média</div>
-          <div className="text-2xl font-bold text-gray-800 mt-2">
-            {formatSeconds(metrics?.avg_dwell_seconds)}
-          </div>
-        </div>
-        <div className="bg-white rounded-xl border border-gray-100 p-4">
-          <div className="text-xs text-gray-500">Fila média</div>
-          <div className="text-2xl font-bold text-gray-800 mt-2">
-            {formatSeconds(metrics?.avg_queue_seconds)}
-          </div>
-        </div>
-        <div className="bg-white rounded-xl border border-gray-100 p-4">
-          <div className="text-xs text-gray-500">Conversão média</div>
-          <div className="text-2xl font-bold text-gray-800 mt-2">
-            {formatPercent(metrics?.avg_conversion_rate)}
-          </div>
+        <div className="inline-flex gap-2 rounded-xl border border-gray-200 bg-white p-1 w-fit">
+          {STORE_TABS.map((tab) => (
+            <button
+              key={tab.key}
+              type="button"
+              onClick={() => setTab(tab.key)}
+              className={`rounded-lg px-3 py-1.5 text-sm font-medium transition ${
+                activeTab === tab.key
+                  ? "bg-blue-600 text-white"
+                  : "text-gray-700 hover:bg-gray-100"
+              }`}
+            >
+              {tab.label}
+            </button>
+          ))}
         </div>
       </div>
 
-      <div className="bg-white rounded-xl border border-gray-100 p-4 sm:p-6">
-        <div className="flex items-center justify-between gap-3 flex-wrap">
-          <div>
-            <h2 className="text-lg font-bold text-gray-800">Operação agora</h2>
-            <p className="text-sm text-gray-600">Saúde do Edge e câmeras</p>
-          </div>
-          <span className={`px-3 py-1 rounded-full text-xs font-semibold ${edgeStatusClass}`}>
-            Edge {edgeStatusLabel}
-          </span>
-        </div>
-        <div className="grid grid-cols-1 md:grid-cols-2 gap-4 mt-4">
-          <div className="rounded-lg border border-gray-100 bg-gray-50 p-4">
-            <div className="text-xs text-gray-500">Câmeras online/offline</div>
-            <div className="text-lg font-semibold text-gray-800 mt-2">
-              {camerasOnline} online · {camerasOffline} offline
-            </div>
-            <div className="text-xs text-gray-500 mt-1">
-              Total: {cameras.length}
-            </div>
-          </div>
-          <div className="rounded-lg border border-gray-100 bg-gray-50 p-4">
-            <div className="text-xs text-gray-500">Último sinal do Edge</div>
-            <div className="text-lg font-semibold text-gray-800 mt-2">
-              {lastSeenAt
-                ? new Date(lastSeenAt).toLocaleString("pt-BR")
-                : "—"}
-            </div>
-            {data.edge_health?.last_error && (
-              <div className="text-xs text-red-600 mt-2">
-                Erro: {data.edge_health.last_error}
+      {activeTab === "overview" && (
+        <>
+          <div className="grid grid-cols-1 md:grid-cols-4 gap-4">
+            <div className="bg-white rounded-xl border border-gray-100 p-4">
+              <div className="text-xs text-gray-500">Visitantes (7d)</div>
+              <div className="text-2xl font-bold text-gray-800 mt-2">
+                {metrics?.total_visitors ?? 0}
               </div>
+            </div>
+            <div className="bg-white rounded-xl border border-gray-100 p-4">
+              <div className="text-xs text-gray-500">Tempo médio na loja</div>
+              <div className="text-2xl font-bold text-gray-800 mt-2">
+                {formatSeconds(metrics?.avg_dwell_seconds)}
+              </div>
+            </div>
+            <div className="bg-white rounded-xl border border-gray-100 p-4">
+              <div className="text-xs text-gray-500">Tempo médio de fila</div>
+              <div className="text-2xl font-bold text-gray-800 mt-2">
+                {formatSeconds(metrics?.avg_queue_seconds)}
+              </div>
+            </div>
+            <div className="bg-white rounded-xl border border-gray-100 p-4">
+              <div className="text-xs text-gray-500">Conversão estimada</div>
+              <div className="text-2xl font-bold text-gray-800 mt-2">
+                {formatPercent(metrics?.avg_conversion_rate)}
+              </div>
+            </div>
+          </div>
+
+          <div className="bg-white rounded-xl border border-gray-100 p-4 sm:p-6">
+            <div className="flex items-center justify-between gap-3 flex-wrap">
+              <div>
+                <h2 className="text-lg font-bold text-gray-800">Saúde operacional da loja</h2>
+                <p className="text-sm text-gray-600">Visão resumida de operação e infraestrutura</p>
+              </div>
+              <span className={`px-3 py-1 rounded-full text-xs font-semibold ${edgeStatusClass}`}>
+                {edgeStatusLabel}
+              </span>
+            </div>
+            <div className="grid grid-cols-1 md:grid-cols-2 gap-4 mt-4">
+              <div className="rounded-lg border border-gray-100 bg-gray-50 p-4">
+                <div className="text-xs text-gray-500">Cobertura de câmeras</div>
+                <div className="text-lg font-semibold text-gray-800 mt-2">
+                  {camerasOnline} ativas · {camerasOffline} indisponíveis
+                </div>
+                <div className="text-xs text-gray-500 mt-1">Total: {cameras.length}</div>
+              </div>
+              <div className="rounded-lg border border-gray-100 bg-gray-50 p-4">
+                <div className="text-xs text-gray-500">Última atualização da loja</div>
+                <div className="text-lg font-semibold text-gray-800 mt-2">
+                  {lastSeenAt ? new Date(lastSeenAt).toLocaleString("pt-BR") : "—"}
+                </div>
+                {data.edge_health?.last_error && (
+                  <div className="text-xs text-red-600 mt-2">
+                    Ajuste recomendado: {data.edge_health.last_error}
+                  </div>
+                )}
+              </div>
+            </div>
+          </div>
+        </>
+      )}
+
+      {activeTab === "cameras" && (
+        <div className="bg-white rounded-xl border border-gray-100 p-4 sm:p-6">
+          <div className="flex items-center justify-between gap-3 flex-wrap">
+            <div>
+              <h2 className="text-lg font-bold text-gray-800">Câmeras da operação</h2>
+              <p className="text-sm text-gray-600">Ajustes e diagnóstico por ponto de cobertura</p>
+            </div>
+            <span className="text-xs text-gray-500">{cameras.length} câmeras</span>
+          </div>
+
+          {cameras.length === 0 ? (
+            <div className="mt-4 rounded-lg border border-dashed border-gray-300 p-5 text-sm text-gray-600">
+              Nenhuma câmera cadastrada para esta loja.
+            </div>
+          ) : (
+            <div className="mt-4 grid grid-cols-1 md:grid-cols-2 xl:grid-cols-3 gap-4">
+              {cameras.map((camera, index) => (
+                <article key={camera.id} className="rounded-xl border border-gray-200 bg-gray-50 p-4">
+                  <div className="flex items-start justify-between gap-2">
+                    <h3 className="font-semibold text-gray-800">
+                      {toCameraPresentationName(camera, index)}
+                    </h3>
+                    <span
+                      className={`rounded-full px-2 py-1 text-[10px] font-semibold ${cameraStatusClass(
+                        camera.status
+                      )}`}
+                    >
+                      {cameraStatusText(camera.status)}
+                    </span>
+                  </div>
+
+                  {camera.last_snapshot_url ? (
+                    <img
+                      src={camera.last_snapshot_url}
+                      alt={`Snapshot ${toCameraPresentationName(camera, index)}`}
+                      className="mt-3 h-28 w-full rounded-lg object-cover border border-gray-200"
+                    />
+                  ) : (
+                    <div className="mt-3 h-28 w-full rounded-lg border border-dashed border-gray-300 bg-white flex items-center justify-center text-xs text-gray-500">
+                      Snapshot indisponível
+                    </div>
+                  )}
+
+                  <div className="mt-3 text-xs text-gray-500">
+                    Última atividade:{" "}
+                    {camera.last_seen_at ? new Date(camera.last_seen_at).toLocaleString("pt-BR") : "—"}
+                  </div>
+
+                  <div className="mt-3 grid grid-cols-1 gap-2">
+                    <Link
+                      to={`/app/alerts?store_id=${data.store.id}`}
+                      className="rounded-lg border border-gray-200 bg-white px-3 py-2 text-sm font-medium text-gray-700 hover:bg-gray-100"
+                    >
+                      Diagnóstico
+                    </Link>
+                    <Link
+                      to={`/app/cameras?store_id=${data.store.id}`}
+                      className="rounded-lg border border-gray-200 bg-white px-3 py-2 text-sm font-medium text-gray-700 hover:bg-gray-100"
+                    >
+                      Configurar ROI
+                    </Link>
+                    <details className="rounded-lg border border-gray-200 bg-white px-3 py-2 text-sm text-gray-700">
+                      <summary className="cursor-pointer font-medium">Detalhes técnicos</summary>
+                      <div className="mt-2 space-y-1 text-xs text-gray-600 font-mono break-all">
+                        <div>ID: {camera.id}</div>
+                        <div>Zona: {camera.zone_id || "—"}</div>
+                        <div>Status bruto: {camera.status || "unknown"}</div>
+                        <div>Erro: {camera.last_error || "—"}</div>
+                      </div>
+                    </details>
+                  </div>
+                </article>
+              ))}
+            </div>
+          )}
+        </div>
+      )}
+
+      {activeTab === "insights" && (
+        <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
+          <div className="bg-white rounded-xl border border-gray-100 p-4 sm:p-6">
+            <h2 className="text-lg font-bold text-gray-800">Insights da operação</h2>
+            <div className="mt-4 space-y-3 text-sm text-gray-700">
+              <p>Fluxo acumulado no período: <span className="font-semibold">{metrics?.total_visitors ?? 0}</span> visitantes.</p>
+              <p>Conversão estimada atual: <span className="font-semibold">{formatPercent(metrics?.avg_conversion_rate)}</span>.</p>
+              <p>Fila média observada: <span className="font-semibold">{formatSeconds(metrics?.avg_queue_seconds)}</span>.</p>
+              <p className="text-gray-500">
+                Esses indicadores evoluem conforme a base operacional da loja aumenta.
+              </p>
+            </div>
+          </div>
+
+          <div className="bg-white rounded-xl border border-gray-100 p-4 sm:p-6">
+            <div className="flex items-center justify-between gap-3">
+              <h2 className="text-lg font-bold text-gray-800">Alertas recentes</h2>
+              <Link
+                to={`/app/alerts?store_id=${data.store.id}`}
+                className="text-xs font-semibold text-blue-600 hover:text-blue-700"
+              >
+                Ver todos
+              </Link>
+            </div>
+            {alerts.length === 0 ? (
+              <p className="text-sm text-gray-500 mt-3">Sem alertas recentes.</p>
+            ) : (
+              <ul className="mt-4 space-y-3">
+                {alerts.map((alert) => (
+                  <li key={alert.id} className="rounded-lg border border-gray-100 p-3">
+                    <div className="flex items-center justify-between gap-2 flex-wrap">
+                      <span className="text-sm font-medium text-gray-800">
+                        {alert.title || "Alerta operacional"}
+                      </span>
+                      <span
+                        className={`px-2 py-1 rounded-full text-[10px] font-semibold ${severityColor(
+                          alert.severity
+                        )}`}
+                      >
+                        {(alert.severity || "info").toUpperCase()}
+                      </span>
+                    </div>
+                    <div className="text-xs text-gray-500 mt-2">
+                      {alert.occurred_at ? new Date(alert.occurred_at).toLocaleString("pt-BR") : "—"}
+                    </div>
+                  </li>
+                ))}
+              </ul>
             )}
           </div>
         </div>
-      </div>
+      )}
 
-      <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
-        <div className="bg-white rounded-xl border border-gray-100 p-4 sm:p-6">
-          <h2 className="text-lg font-bold text-gray-800">Funcionários</h2>
-          {employees.length === 0 ? (
-            <p className="text-sm text-gray-500 mt-3">Nenhum funcionário ativo.</p>
-          ) : (
-            <ul className="mt-4 space-y-3">
-              {employees.map((employee) => (
-                <li
-                  key={employee.id}
-                  className="flex items-center justify-between text-sm text-gray-700"
-                >
-                  <span className="font-medium">{employee.full_name}</span>
-                  <span className="text-gray-500">{employee.role || "—"}</span>
-                </li>
-              ))}
-            </ul>
-          )}
-        </div>
-
-        <div className="bg-white rounded-xl border border-gray-100 p-4 sm:p-6">
-          <div className="flex items-center justify-between gap-3">
-            <h2 className="text-lg font-bold text-gray-800">Alertas recentes</h2>
-            <Link
-              to={`/app/alerts?store_id=${data.store.id}`}
-              className="text-xs font-semibold text-blue-600 hover:text-blue-700"
-            >
-              Ver todos
-            </Link>
+      {activeTab === "infrastructure" && (
+        <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
+          <div className="bg-white rounded-xl border border-gray-100 p-4 sm:p-6">
+            <h2 className="text-lg font-bold text-gray-800">Infraestrutura da loja</h2>
+            <div className="mt-4 space-y-3 text-sm text-gray-700">
+              <div className="flex items-center justify-between">
+                <span>Status do Edge</span>
+                <span className={`px-2 py-1 rounded-full text-xs font-semibold ${edgeStatusClass}`}>
+                  {edgeStatusLabel}
+                </span>
+              </div>
+              <div className="flex items-center justify-between">
+                <span>Último heartbeat</span>
+                <span className="text-gray-600">
+                  {lastSeenAt ? new Date(lastSeenAt).toLocaleString("pt-BR") : "—"}
+                </span>
+              </div>
+              <div className="flex items-center justify-between">
+                <span>Câmeras ativas</span>
+                <span className="font-semibold text-gray-900">{camerasOnline}/{cameras.length}</span>
+              </div>
+              {data.edge_health?.last_error && (
+                <div className="rounded-lg border border-red-200 bg-red-50 p-3 text-red-700 text-xs">
+                  Último erro registrado: {data.edge_health.last_error}
+                </div>
+              )}
+            </div>
           </div>
-          {alerts.length === 0 ? (
-            <p className="text-sm text-gray-500 mt-3">Sem alertas recentes.</p>
-          ) : (
-            <ul className="mt-4 space-y-3">
-              {alerts.map((alert) => (
-                <li
-                  key={alert.id}
-                  className="rounded-lg border border-gray-100 p-3"
-                >
-                  <div className="flex items-center justify-between gap-2 flex-wrap">
-                    <span className="text-sm font-medium text-gray-800">
-                      {alert.title || "Alerta"}
-                    </span>
-                    <span
-                      className={`px-2 py-1 rounded-full text-[10px] font-semibold ${severityColor(
-                        alert.severity
-                      )}`}
-                    >
-                      {(alert.severity || "info").toUpperCase()}
-                    </span>
-                  </div>
-                  <div className="text-xs text-gray-500 mt-2">
-                    {alert.occurred_at
-                      ? new Date(alert.occurred_at).toLocaleString("pt-BR")
-                      : "—"}
-                  </div>
-                </li>
-              ))}
-            </ul>
-          )}
+
+          <div className="bg-white rounded-xl border border-gray-100 p-4 sm:p-6">
+            <h2 className="text-lg font-bold text-gray-800">Equipe vinculada</h2>
+            {employees.length === 0 ? (
+              <p className="text-sm text-gray-500 mt-3">Nenhum funcionário ativo.</p>
+            ) : (
+              <ul className="mt-4 space-y-3">
+                {employees.map((employee) => (
+                  <li
+                    key={employee.id}
+                    className="flex items-center justify-between text-sm text-gray-700"
+                  >
+                    <span className="font-medium">{employee.full_name}</span>
+                    <span className="text-gray-500">{employee.role || "—"}</span>
+                  </li>
+                ))}
+              </ul>
+            )}
+          </div>
         </div>
-      </div>
+      )}
     </div>
   )
 }

@@ -12,8 +12,8 @@ export default function BottomNav({ onOpenAgent }: BottomNavProps) {
   const items = useMemo(
     () => [
       { label: "Dashboard", to: "/app/dashboard", icon: "🏠" },
+      { label: "Operação", to: "/app/operations", icon: "🏬" },
       { label: "Alertas", to: "/app/alerts", icon: "🔔" },
-      { label: "Analytics", to: "/app/analytics", icon: "📈" },
     ],
     []
   )
@@ -41,18 +41,18 @@ export default function BottomNav({ onOpenAgent }: BottomNavProps) {
             </div>
             <div className="grid grid-cols-1 gap-2">
               <NavLink
-                to="/app/stores"
+                to="/app/operations/stores"
                 onClick={() => setInfraOpen(false)}
                 className="rounded-lg border border-gray-200 px-4 py-3 text-sm font-semibold text-gray-700 hover:bg-gray-50"
               >
                 Lojas
               </NavLink>
               <NavLink
-                to="/app/cameras"
+                to="/app/reports"
                 onClick={() => setInfraOpen(false)}
                 className="rounded-lg border border-gray-200 px-4 py-3 text-sm font-semibold text-gray-700 hover:bg-gray-50"
               >
-                Câmeras
+                Relatórios
               </NavLink>
               <NavLink
                 to="/app/settings"
@@ -114,10 +114,10 @@ export default function BottomNav({ onOpenAgent }: BottomNavProps) {
             type="button"
             onClick={() => setInfraOpen((v) => !v)}
             className={`dv-bottomnav__item ${infraOpen ? "is-active" : ""}`}
-            aria-label="Infra"
+            aria-label="Mais"
           >
             <div className="dv-bottomnav__icon">🧰</div>
-            <span className="dv-bottomnav__label">Infra</span>
+            <span className="dv-bottomnav__label">Mais</span>
           </button>
         </div>
       </nav>

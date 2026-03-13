@@ -1,5 +1,5 @@
 import { Suspense, lazy } from "react"
-import { Routes, Route, Navigate } from "react-router-dom"
+import { Routes, Route, Navigate, useParams } from "react-router-dom"
 import PrivateRoute from "./components/PrivateRoute"
 
 const Layout = lazy(() => import("./components/Layout/Layout"))
@@ -14,6 +14,7 @@ const Privacy = lazy(() => import("./pages/Privacy/Privacy"))
 const Terms = lazy(() => import("./pages/Terms/Terms"))
 
 const Dashboard = lazy(() => import("./pages/Dashboard/Dashboard"))
+const Operations = lazy(() => import("./pages/Operations/Operations"))
 const Stores = lazy(() => import("./pages/Stores/Stores"))
 const StoreDetails = lazy(() => import("./pages/Stores/StoreDetails"))
 const Analytics = lazy(() => import("./pages/Analytics/Analytics"))
@@ -44,6 +45,11 @@ const RouteFallback = () => (
   </div>
 )
 
+const LegacyStoreRedirect = () => {
+  const { id } = useParams<{ id: string }>()
+  return <Navigate to={`/app/operations/stores/${id || ""}`} replace />
+}
+
 function App() {
   return (
     <Suspense fallback={<RouteFallback />}>
@@ -73,15 +79,20 @@ function App() {
       >
         <Route index element={<Navigate to="/app/dashboard" replace />} />
         <Route path="dashboard" element={<Dashboard />} />
-        <Route path="stores" element={<Stores />} />
-        <Route path="stores/:id" element={<StoreDetails />} />
+        <Route path="operations" element={<Operations />} />
+        <Route path="operations/stores" element={<Stores />} />
+        <Route path="operations/stores/:storeId" element={<StoreDetails />} />
+        <Route path="stores" element={<Navigate to="/app/operations/stores" replace />} />
+        <Route path="stores/:id" element={<LegacyStoreRedirect />} />
         <Route path="analytics" element={<Analytics />} />
         <Route path="cameras" element={<Cameras />} />
         <Route path="alerts" element={<Alerts />} />
 
         {/* ✅ Alerts stack */}
-        <Route path="alert-rules" element={<AlertRules />} />
-        <Route path="notification-logs" element={<NotificationLogs />} />
+        <Route path="alerts/rules" element={<AlertRules />} />
+        <Route path="alerts/history" element={<NotificationLogs />} />
+        <Route path="alert-rules" element={<Navigate to="/app/alerts/rules" replace />} />
+        <Route path="notification-logs" element={<Navigate to="/app/alerts/history" replace />} />
 
         {/* 🧩 SETUP TÉCNICO */}
         <Route path="setup" element={<Setup />} />
@@ -97,7 +108,7 @@ function App() {
 
       {/* Compat redirects (rotas antigas sem /app) */}
       <Route path="/dashboard" element={<Navigate to="/app/dashboard" replace />} />
-      <Route path="/stores" element={<Navigate to="/app/stores" replace />} />
+      <Route path="/stores" element={<Navigate to="/app/operations/stores" replace />} />
       <Route path="/analytics" element={<Navigate to="/app/analytics" replace />} />
       <Route path="/cameras" element={<Navigate to="/app/cameras" replace />} />
       <Route path="/alerts" element={<Navigate to="/app/alerts" replace />} />
@@ -105,8 +116,8 @@ function App() {
       <Route path="/admin" element={<Navigate to="/app/admin" replace />} />
 
       {/* ✅ Redirects Alerts */}
-      <Route path="/alert-rules" element={<Navigate to="/app/alert-rules" replace />} />
-      <Route path="/notification-logs" element={<Navigate to="/app/notification-logs" replace />} />
+      <Route path="/alert-rules" element={<Navigate to="/app/alerts/rules" replace />} />
+      <Route path="/notification-logs" element={<Navigate to="/app/alerts/history" replace />} />
       <Route path="/politica-de-privacidade" element={<Navigate to="/privacy" replace />} />
       <Route path="/termos" element={<Navigate to="/terms" replace />} />
 
