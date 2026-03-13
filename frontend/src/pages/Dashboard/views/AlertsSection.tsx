@@ -1,7 +1,9 @@
+import { Link } from "react-router-dom"
 import type { DetectionEvent } from "../../../services/alerts"
 
 interface AlertsSectionProps {
   storeSelected: boolean
+  storeName?: string | null
   eventsLoading: boolean
   eventsError: unknown
   events: DetectionEvent[] | undefined
@@ -28,6 +30,7 @@ const eventSeverityClass = (severity: string) =>
 
 export function AlertsSection({
   storeSelected,
+  storeName,
   eventsLoading,
   eventsError,
   events,
@@ -41,11 +44,19 @@ export function AlertsSection({
     <div className="bg-white rounded-xl shadow-sm border border-gray-100 p-4 sm:p-6">
       <div className="flex items-center justify-between gap-3 mb-4">
         <h2 className="text-lg sm:text-xl font-bold text-gray-800">Últimos alertas</h2>
-        <span className="px-2.5 py-1 rounded-full text-xs font-semibold bg-gray-100 text-gray-700">
-          {(events?.length ?? 0) > 0
-            ? `${Math.min(events?.length ?? 0, 10)} de ${events?.length ?? 0}`
-            : "0"}
-        </span>
+        <div className="flex items-center gap-2">
+          <Link
+            to="/app/alerts"
+            className="rounded-lg border border-gray-200 bg-white px-3 py-1.5 text-xs font-semibold text-gray-700 hover:bg-gray-50"
+          >
+            Ver todos em Alertas
+          </Link>
+          <span className="px-2.5 py-1 rounded-full text-xs font-semibold bg-gray-100 text-gray-700">
+            {(events?.length ?? 0) > 0
+              ? `${Math.min(events?.length ?? 0, 10)} de ${events?.length ?? 0}`
+              : "0"}
+          </span>
+        </div>
       </div>
 
       {!storeSelected ? (
@@ -70,6 +81,9 @@ export function AlertsSection({
                     <p className="text-sm text-gray-500">{formatTimeSafe(eventTime)}</p>
                     <p className="text-sm sm:text-base font-semibold text-gray-800 mt-1">
                       {event.title}
+                    </p>
+                    <p className="mt-1 text-xs text-gray-500">
+                      Loja: {storeName || "Loja selecionada"}
                     </p>
                   </div>
                   <div className="flex flex-wrap items-center gap-2 justify-end">
@@ -131,4 +145,3 @@ export function AlertsSection({
     </div>
   )
 }
-

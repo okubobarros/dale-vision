@@ -26,18 +26,14 @@ import {
   onboardingService,
   type OnboardingNextStepResponse,
 } from "../../services/onboarding"
-import { meService, type MeAccount } from "../../services/me"
-import { copilotService } from "../../services/copilot"
-import type { CopilotReport72h } from "../../types/copilot"
+import { meService } from "../../services/me"
 import { getDashboardExperience } from "./dashboardExperience"
 import { TrialDashboardView } from "./views/TrialDashboardView"
 import { PaidSetupDashboardView } from "./views/PaidSetupDashboardView"
 import { PaidExecutiveDashboardView } from "./views/PaidExecutiveDashboardView"
-import { DashboardHeroSection } from "./views/DashboardHeroSection"
 import { DashboardKpiStrip } from "./views/DashboardKpiStrip"
 import { InfrastructureSection } from "./views/InfrastructureSection"
 import { AlertsSection } from "./views/AlertsSection"
-import { OperationalDiagnosisSection } from "./views/OperationalDiagnosisSection"
 
 const ONLINE_MAX_AGE_SEC = 120
 
@@ -120,6 +116,18 @@ const normalizePlanCode = (plan?: string | null) => {
   return value
 }
 
+const PLAN_CAMERA_LIMITS: Record<string, number | null> = {
+  trial: 3,
+  free: 3,
+  start: 3,
+  basic: 3,
+  paid: 3,
+  pro: 12,
+  growth: null,
+  enterprise: null,
+  entrepise: null,
+}
+
 const ALL_STORES_VALUE = "all"
 const CEO_PERIOD: "day" | "7d" = "day"
 type DashboardMetricGovernance = MetricGovernanceItem
@@ -195,9 +203,6 @@ const Dashboard = () => {
     if (selectedStoreOverride && selectedStoreOverride !== ALL_STORES_VALUE) {
       return selectedStoreOverride
     }
-    if ((stores ?? []).length === 1) {
-      return stores?.[0]?.id ?? ALL_STORES_VALUE
-    }
     return selectedStoreOverride || ALL_STORES_VALUE
   }, [selectedStoreOverride, stores])
 
@@ -212,13 +217,6 @@ const Dashboard = () => {
   const { data: meStatus } = useQuery({
     queryKey: ["me-status-dashboard"],
     queryFn: () => meService.getStatus(),
-    enabled: canFetchAuth,
-    staleTime: 60000,
-    retry: false,
-  })
-  const { data: meAccount } = useQuery<MeAccount | null>({
-    queryKey: ["me-account-dashboard"],
-    queryFn: () => meService.getAccount(),
     enabled: canFetchAuth,
     staleTime: 60000,
     retry: false,
@@ -250,13 +248,6 @@ const Dashboard = () => {
     queryFn: () => storesService.getNetworkDashboard(),
     enabled: canFetchAuth,
     staleTime: 30000,
-    retry: false,
-  })
-  const { data: copilotReport72h, isLoading: copilotReportLoading } = useQuery<CopilotReport72h | null>({
-    queryKey: ["copilot-report-72h", selectedStore],
-    queryFn: () => copilotService.getReport72h(selectedStore),
-    enabled: canFetchAuth && selectedStore !== ALL_STORES_VALUE,
-    staleTime: 60000,
     retry: false,
   })
   const trialBlockedStore = useMemo(() => {
@@ -308,7 +299,6 @@ const Dashboard = () => {
   const storesOfflineCount = (stores ?? []).filter(
     (store) => store.status === "blocked" || store.status === "inactive"
   ).length
-  const storesAttentionCount = (stores ?? []).filter((store) => store.status === "trial").length
   const filterDashboardByStoreStatus = (status: "active" | "blocked" | "inactive" | "trial") => {
     const firstMatch = (stores ?? []).find((store) =>
       status === "blocked"
@@ -413,6 +403,41 @@ const Dashboard = () => {
       : normalizedStoreLimitPlan && normalizedStoreLimitPlan !== "trial"
       ? "Sem limite"
       : "—"
+  const totalStoresCount = networkDashboard?.total_stores ?? stores?.length ?? 0
+  const networkAlertsCount =
+    networkDashboard?.stores?.reduce((acc, store) => {
+      const value = typeof store.alerts === "number" ? store.alerts : 0
+      return acc + value
+    }, 0) ?? 0
+  const alertsActiveCount =
+    selectedStore === ALL_STORES_VALUE ? networkAlertsCount : (events?.length ?? 0)
+  const inferredNetworkCamerasTotal = (stores ?? []).reduce((acc, store) => {
+    const camerasCount = (store as StoreSummary & { cameras_count?: number }).cameras_count
+    return acc + (typeof camerasCount === "number" ? camerasCount : 0)
+  }, 0)
+  const networkPlanLimit = (stores ?? []).reduce<number | null>((acc, store) => {
+    const normalized = normalizePlanCode(store.plan ?? null)
+    const limit = normalized ? PLAN_CAMERA_LIMITS[normalized] : null
+    if (limit === null || limit === undefined) return null
+    if (acc === null) return null
+    return acc + limit
+  }, 0)
+  const coverageCamerasTotal =
+    selectedStore === ALL_STORES_VALUE ? inferredNetworkCamerasTotal : camerasTotal
+  const coverageCamerasOnline =
+    selectedStore === ALL_STORES_VALUE
+      ? null
+      : camerasOnline
+  const coverageCamerasOffline =
+    selectedStore === ALL_STORES_VALUE
+      ? null
+      : camerasOffline
+  const coverageLimitLabel =
+    selectedStore === ALL_STORES_VALUE
+      ? networkPlanLimit === null
+        ? "Sob consulta"
+        : String(networkPlanLimit)
+      : camerasLimitLabel
   const [evidenceOpen, setEvidenceOpen] = useState(false)
   const [selectedEvidenceHour, setSelectedEvidenceHour] = useState<string | null>(null)
   const openEvidence = (hourLabel?: string | null) => {
@@ -616,45 +641,7 @@ const Dashboard = () => {
     }
     return Math.min(71, Math.max(24, 24 + camerasOnline * 6 + (events?.length ?? 0)))
   })()
-  const trialProgressPct = Math.max(0, Math.min(100, Math.round((trialCollectedHours / 72) * 100)))
-  const reportReadinessCollectedHours = copilotReport72h?.readiness?.collected_hours
-  const reportReadinessTargetHours = copilotReport72h?.readiness?.target_hours ?? 72
-  const trialHoursRemaining = Math.max(
-    0,
-    reportReadinessCollectedHours !== undefined
-      ? reportReadinessTargetHours - reportReadinessCollectedHours
-      : 72 - trialCollectedHours
-  )
-  const trialEtaText =
-    dashboardExperience.dashboardType === "trial"
-      ? trialUiState === "report_ready"
-        ? "Relatório operacional liberado"
-        : `Relatório operacional liberado em aproximadamente ${trialHoursRemaining}h`
-      : dashboardExperience.dashboardType === "paid_setup"
-      ? "Conclua a implantação da loja para liberar visão operacional completa."
-      : "Operação consolidada com atualização contínua de insights."
-
-  const trialHeroTitle =
-    dashboardExperience.dashboardType === "trial"
-      ? `Trial em andamento — ${trialCollectedHours}h de 72h concluídas`
-      : dashboardExperience.dashboardType === "paid_setup"
-      ? "Visão da rede em evolução"
-      : "Visão executiva da rede em tempo real"
-
-  const trialHeroSubtitle =
-    dashboardExperience.dashboardType === "trial"
-      ? trialUiState === "not_started"
-        ? "Vamos iniciar a leitura da sua loja para gerar um diagnóstico operacional completo."
-        : trialUiState === "activation"
-        ? "Estamos conectando os sinais operacionais da loja para iniciar a leitura executiva."
-        : "Estamos analisando fluxo, filas e padrões de atendimento com inteligência contínua."
-      : dashboardExperience.dashboardType === "paid_setup"
-      ? "Seu plano está ativo. Estamos consolidando a leitura da rede para liberar visão plena da operação."
-      : "Acompanhe desempenho, risco e prioridade das lojas com foco em resultado operacional."
-  const networkName =
-    meAccount?.orgs?.[0]?.name ||
-    selectedStoreItem?.name ||
-    "Sua rede"
+  const trialHoursRemaining = Math.max(0, 72 - trialCollectedHours)
 
   const metricValueOrState = (
     value: number | null | undefined,
@@ -939,7 +926,7 @@ const Dashboard = () => {
     {
       title: "Alertas Críticos Ativos",
       value: `${criticalAlertsOpen}`,
-      subtitle: "Ações imediatas em aberto",
+      subtitle: "Eventos críticos em aberto",
       tone: criticalAlertsOpen > 0 ? "text-rose-700" : "text-slate-700",
       bg: criticalAlertsOpen > 0 ? "bg-rose-50" : "bg-slate-50",
     },
@@ -1002,25 +989,6 @@ const Dashboard = () => {
       subtitle: metricSubtitleForValue(computedProductivity),
     },
   ]
-  const diagnosisInsightsRaw: string[] = []
-  const peak = dashboard?.insights?.peak_hour
-  const bestZone = dashboard?.insights?.best_selling_zone
-  const needsAttention = dashboard?.insights?.employee_performance?.needs_attention
-
-  if (peak && peak !== "-") {
-    diagnosisInsightsRaw.push(`Pico operacional identificado às ${peak}.`)
-  }
-  if (bestZone && bestZone !== "-") {
-    diagnosisInsightsRaw.push(`Zona com melhor desempenho: ${bestZone}.`)
-  }
-  if (needsAttention && needsAttention !== "-") {
-    diagnosisInsightsRaw.push(`Equipe que pede atenção: ${needsAttention}.`)
-  }
-  if (ceoDashboard?.overlay?.message) {
-    diagnosisInsightsRaw.push(String(ceoDashboard.overlay.message))
-  }
-  const diagnosisInsights = diagnosisInsightsRaw.slice(0, 4)
-
   if (storesLoading) {
     return (
       <div className="flex items-center justify-center h-64">
@@ -1175,13 +1143,12 @@ const Dashboard = () => {
               >
                 🔴 {storesOfflineCount} lojas offline
               </button>
-              <button
-                type="button"
-                onClick={() => filterDashboardByStoreStatus("trial")}
-                className="rounded-full border border-amber-200 bg-amber-50 px-3 py-1 text-xs font-semibold text-amber-700"
-              >
-                ⚠️ {storesAttentionCount} alertas ativos
-              </button>
+              <span className="rounded-full border border-amber-200 bg-amber-50 px-3 py-1 text-xs font-semibold text-amber-700">
+                ⚠️ {alertsActiveCount} alertas ativos
+              </span>
+              <span className="rounded-full border border-slate-200 bg-slate-50 px-3 py-1 text-xs font-semibold text-slate-700">
+                🏬 {totalStoresCount} lojas cadastradas
+              </span>
             </div>
 
             {selectedStoreItem && selectedStore !== ALL_STORES_VALUE && (
@@ -1211,7 +1178,7 @@ const Dashboard = () => {
                   disabled={isLoadingDashboard}
                   aria-label="Selecionar loja para visualizar dashboard"
                 >
-                  <option value={ALL_STORES_VALUE}>Todas as lojas</option>
+                  <option value={ALL_STORES_VALUE}>Todas as Lojas</option>
                   {stores.map((store) => (
                     <option key={store.id} value={store.id}>
                       {store.name}
@@ -1226,47 +1193,37 @@ const Dashboard = () => {
             </div>
           )}
         </div>
-        {selectedStore !== ALL_STORES_VALUE && (
-          <div className="rounded-xl border border-gray-200 bg-white p-4 shadow-sm">
-            <div className="flex items-center justify-between gap-3">
-              <div>
-                <p className="text-sm font-semibold text-gray-800">Cobertura de câmeras</p>
-                <p className="mt-1 text-sm text-gray-600">
-                  {camerasOnline} ativas · {camerasOffline} indisponíveis
-                </p>
-                <p className="text-xs text-gray-500">
-                  Total: {camerasTotal} · Limite do plano: {camerasLimitLabel}
-                </p>
-              </div>
-              <button
-                type="button"
-                onClick={() => canManageStore && setEdgeSetupOpen(true)}
-                className="rounded-lg border border-blue-200 bg-blue-50 px-3 py-2 text-xs font-semibold text-blue-700 hover:bg-blue-100"
-              >
-                Abrir assistente de conexão
-              </button>
+        <div className="rounded-xl border border-gray-200 bg-white p-4 shadow-sm">
+          <div className="flex items-center justify-between gap-3">
+            <div>
+              <p className="text-sm font-semibold text-gray-800">Farol operacional da rede</p>
+              <p className="mt-1 text-sm text-gray-600">
+                {coverageCamerasOnline === null || coverageCamerasOffline === null
+                  ? "— ativas · — indisponíveis"
+                  : `${coverageCamerasOnline} ativas · ${coverageCamerasOffline} indisponíveis`}
+              </p>
+              <p className="text-xs text-gray-500">
+                Total: {coverageCamerasTotal} · Limite do plano: {coverageLimitLabel}
+              </p>
             </div>
+            <button
+              type="button"
+              onClick={() =>
+                canManageStore &&
+                selectedStore !== ALL_STORES_VALUE &&
+                setEdgeSetupOpen(true)
+              }
+              disabled={selectedStore === ALL_STORES_VALUE}
+              className="rounded-lg border border-blue-200 bg-blue-50 px-3 py-2 text-xs font-semibold text-blue-700 hover:bg-blue-100 disabled:cursor-not-allowed disabled:opacity-60"
+            >
+              Abrir assistente de conexão
+            </button>
           </div>
-        )}
+        </div>
       </div>
 
       {selectedStore !== ALL_STORES_VALUE && (
         <section className="space-y-4 sm:space-y-6">
-          <DashboardHeroSection
-            dashboardType={dashboardExperience.dashboardType}
-            networkName={networkName}
-            storeName={selectedStoreItem?.name ?? "Loja selecionada"}
-            title={trialHeroTitle}
-            subtitle={trialHeroSubtitle}
-            etaText={trialEtaText}
-            trialCollectedHours={trialCollectedHours}
-            trialProgressPct={trialProgressPct}
-            accountState={dashboardExperience.accountState}
-            networkState={dashboardExperience.networkState}
-            canManageStore={canManageStore}
-            onOpenSetup={() => setEdgeSetupOpen(true)}
-            onOpenCopilot={() => openCopilot()}
-          />
           <section className="grid grid-cols-1 xl:grid-cols-3 gap-4">
             <div className="xl:col-span-2 grid grid-cols-1 sm:grid-cols-2 gap-4">
               {executiveKpis.map((item) => (
@@ -1428,19 +1385,6 @@ const Dashboard = () => {
               stores={stores ?? []}
               copilotPrompts={copilotPrompts}
               onOpenCopilot={openCopilot}
-            />
-          ) : null}
-
-          {hasOperationalData ? (
-            <OperationalDiagnosisSection
-              isLoading={isLoadingDashboard || copilotReportLoading}
-              reportReady={copilotReport72h?.status === "ready" || trialUiState === "report_ready"}
-              reportFailed={copilotReport72h?.status === "failed"}
-              reportStatusDetail={copilotReport72h?.status_detail ?? null}
-              readinessMessage={copilotReport72h?.readiness?.message ?? null}
-              insights={diagnosisInsights}
-              trialHoursRemaining={trialHoursRemaining}
-              onOpenCopilot={() => openCopilot("Qual o status do diagnóstico operacional desta loja?")}
             />
           ) : null}
 
@@ -1637,6 +1581,7 @@ const Dashboard = () => {
             <>
               <AlertsSection
                 storeSelected={Boolean(selectedStore && selectedStore !== ALL_STORES_VALUE)}
+                storeName={selectedStoreItem?.name ?? null}
                 eventsLoading={eventsLoading}
                 eventsError={eventsError}
                 events={events}
@@ -1668,6 +1613,7 @@ const Dashboard = () => {
           {isTrialCeoMode && (
             <AlertsSection
               storeSelected={Boolean(selectedStore && selectedStore !== ALL_STORES_VALUE)}
+              storeName={selectedStoreItem?.name ?? null}
               eventsLoading={eventsLoading}
               eventsError={eventsError}
               events={events}

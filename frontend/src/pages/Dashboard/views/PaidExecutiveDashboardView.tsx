@@ -26,36 +26,6 @@ export function PaidExecutiveDashboardView({
     return { healthy, attention, critical, total: stores.length }
   }, [stores])
 
-  const primaryActions = useMemo(() => {
-    const actions: Array<{ id: string; title: string; prompt: string; tone: "critical" | "attention" }> =
-      []
-    if (summary.critical > 0) {
-      actions.push({
-        id: "critical-stores",
-        title: `Atuar em ${summary.critical} loja(s) com operação interrompida`,
-        prompt: "Qual o plano de retomada para lojas críticas hoje?",
-        tone: "critical",
-      })
-    }
-    if (summary.attention > 0) {
-      actions.push({
-        id: "attention-stores",
-        title: `Estabilizar ${summary.attention} loja(s) com sinal de atenção`,
-        prompt: "Como estabilizar lojas em atenção com menor esforço?",
-        tone: "attention",
-      })
-    }
-    if (!actions.length) {
-      actions.push({
-        id: "optimize",
-        title: "Operação estável: revisar oportunidades de ganho",
-        prompt: "Onde posso capturar ganho de conversão hoje?",
-        tone: "attention",
-      })
-    }
-    return actions
-  }, [summary.attention, summary.critical])
-
   return (
     <div className="space-y-5">
       <section className="rounded-2xl border border-gray-200 bg-white p-4 sm:p-6">
@@ -91,40 +61,7 @@ export function PaidExecutiveDashboardView({
         </div>
       </section>
 
-      <section className="grid grid-cols-1 xl:grid-cols-3 gap-5">
-        <div className="xl:col-span-2 rounded-2xl border border-gray-200 bg-white p-4 sm:p-6">
-          <h4 className="text-base font-semibold text-gray-900">Ações imediatas</h4>
-          <div className="mt-3 space-y-3">
-            {primaryActions.map((action) => (
-              <article
-                key={action.id}
-                className={`rounded-xl border-l-4 p-4 ${
-                  action.tone === "critical"
-                    ? "border-l-red-500 bg-red-50"
-                    : "border-l-amber-500 bg-amber-50"
-                }`}
-              >
-                <p className="text-sm font-semibold text-gray-900">{action.title}</p>
-                <div className="mt-3 flex flex-wrap gap-2">
-                  <button
-                    type="button"
-                    onClick={() => onOpenCopilot(action.prompt)}
-                    className="rounded-lg bg-gray-900 px-3 py-1.5 text-xs font-semibold text-white hover:bg-gray-800"
-                  >
-                    Priorizar com Copiloto
-                  </button>
-                  <Link
-                    to="/app/operations"
-                    className="rounded-lg border border-gray-300 bg-white px-3 py-1.5 text-xs font-semibold text-gray-700 hover:bg-gray-100"
-                  >
-                    Executar na Central
-                  </Link>
-                </div>
-              </article>
-            ))}
-          </div>
-        </div>
-
+      <section className="grid grid-cols-1 gap-5">
         <aside className="rounded-2xl border border-white/10 bg-[#111827] p-4 sm:p-6 text-white">
           <h4 className="text-base font-semibold">Copiloto DALE Vision</h4>
           <p className="mt-1 text-sm text-slate-300">
@@ -162,4 +99,3 @@ export function PaidExecutiveDashboardView({
     </div>
   )
 }
-
