@@ -92,6 +92,26 @@ export interface AlertIngestPayload {
   }
 }
 
+export interface DelegateWhatsappPayload {
+  employee_id?: string
+  manager_name?: string
+  note?: string
+}
+
+export interface DelegateWhatsappResponse {
+  ok: boolean
+  activity_status: "open" | string
+  message: string
+  notification_log_id?: string
+  event_id?: string
+  employee?: {
+    id: string
+    name: string
+    destination: string
+  }
+  n8n?: unknown
+}
+
 type CoreStore = { id: string; name: string }
 type UnknownRecord = Record<string, unknown>
 type RuleStoreLike = { store_id?: string; store?: string }
@@ -237,6 +257,14 @@ export const alertsService = {
   async ignoreEvent(eventId: string): Promise<DetectionEvent> {
     const res = await api.post(`/alerts/events/${eventId}/ignore/`)
     return res.data
+  },
+
+  async delegateEventWhatsapp(
+    eventId: string,
+    payload?: DelegateWhatsappPayload
+  ): Promise<DelegateWhatsappResponse> {
+    const res = await api.post(`/alerts/events/${eventId}/delegate-whatsapp/`, payload ?? {})
+    return res.data as DelegateWhatsappResponse
   },
 
   async addEventMedia(eventId: string, media: Partial<EventMedia>) {

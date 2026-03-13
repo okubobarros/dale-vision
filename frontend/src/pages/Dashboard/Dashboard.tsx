@@ -1,10 +1,12 @@
 import { useEffect, useMemo, useState } from "react"
 import { useQuery } from "@tanstack/react-query"
 import { Link, useLocation } from "react-router-dom"
+import toast from "react-hot-toast"
 import { useAuth } from "../../contexts/useAuth"
 import {
   storesService,
   type MetricGovernanceItem,
+  type NetworkDashboard,
   type StoreAnalyticsSummary,
   type StoreSummary,
   type StoreEdgeStatus,
@@ -13,6 +15,7 @@ import {
 } from "../../services/stores"
 import type { StoreDashboard } from "../../types/dashboard"
 import { camerasService } from "../../services/cameras"
+import { alertsService } from "../../services/alerts"
 import EdgeSetupModal from "../../components/EdgeSetupModal"
 import {
   useAlertsEvents,
@@ -98,6 +101,14 @@ const formatTimeSafe = (iso?: string | null) => {
   if (Number.isNaN(date.getTime())) return "—"
   return date.toLocaleTimeString("pt-BR", { hour: "2-digit", minute: "2-digit" })
 }
+
+const formatCurrencyBRL = (value: number) =>
+  value.toLocaleString("pt-BR", {
+    style: "currency",
+    currency: "BRL",
+    maximumFractionDigits: 0,
+  })
+
 const normalizePlanCode = (plan?: string | null) => {
   if (!plan) return null
   const value = plan.toLowerCase()
@@ -148,6 +159,7 @@ const Dashboard = () => {
   )
   const [resolvingEventId, setResolvingEventId] = useState<string | null>(null)
   const [ignoringEventId, setIgnoringEventId] = useState<string | null>(null)
+  const [delegatingEventId, setDelegatingEventId] = useState<string | null>(null)
   const [edgeSetupOpen, setEdgeSetupOpen] = useState(initialOpenEdgeSetup)
 
   const canFetchAuth = authReady && isAuthenticated
@@ -230,6 +242,13 @@ const Dashboard = () => {
         bucket: "hour",
       }),
     enabled: canFetchAuth && selectedStore !== ALL_STORES_VALUE,
+    staleTime: 30000,
+    retry: false,
+  })
+  const { data: networkDashboard } = useQuery<NetworkDashboard>({
+    queryKey: ["network-dashboard-home"],
+    queryFn: () => storesService.getNetworkDashboard(),
+    enabled: canFetchAuth,
     staleTime: 30000,
     retry: false,
   })
@@ -800,7 +819,15 @@ const Dashboard = () => {
       id: String(event.id),
       title: event.title || "Ação operacional",
       storeId: String(event.store_id),
+      occurredAt: event.occurred_at,
+      evidenceUrl: event.media?.[0]?.url || null,
       severity: String(event.severity || "info").toLowerCase(),
+      impact:
+        event.type === "queue_long"
+          ? "Risco de perda de conversão em horário de pico."
+          : event.type === "staff_missing"
+          ? "Risco de queda na produtividade da equipe."
+          : "Risco operacional aberto com potencial impacto em atendimento.",
       action:
         event.type === "queue_long"
           ? "Abrir segundo caixa no pico."
@@ -809,6 +836,128 @@ const Dashboard = () => {
           : "Atuar com liderança local.",
     }))
   }, [events])
+
+  const buildDelegationMessage = (action: {
+    title: string
+    impact: string
+    action: string
+    occurredAt?: string | null
+    evidenceUrl?: string | null
+  }) =>
+    `Delegar ação operacional\n\nProblema: ${action.title}\nImpacto: ${action.impact}\nAção sugerida: ${
+      action.action
+    }\nHorário: ${action.occurredAt ? formatTimestampShort(action.occurredAt) : "agora"}\n${
+      action.evidenceUrl ? `Evidência: ${action.evidenceUrl}` : "Evidência: disponível no dashboard"
+    }`
+
+  const handleDelegateWhatsapp = async (action: {
+    id: string
+    title: string
+    impact: string
+    action: string
+    occurredAt?: string | null
+    evidenceUrl?: string | null
+  }) => {
+    setDelegatingEventId(action.id)
+    try {
+      const note = buildDelegationMessage(action)
+      const response = await alertsService.delegateEventWhatsapp(action.id, { note })
+      if (response?.ok) {
+        toast.success(
+          response?.employee?.name
+            ? `Delegação enviada para ${response.employee.name}.`
+            : "Delegação enviada para fila de entrega via WhatsApp."
+        )
+        return
+      }
+      throw new Error(response?.message || "Falha ao delegar")
+    } catch (error) {
+      const payload = (error as { response?: { data?: Record<string, unknown> } })?.response?.data
+      const message =
+        (typeof payload?.employee_phone === "string" && payload.employee_phone) ||
+        (typeof payload?.employee_id === "string" && payload.employee_id) ||
+        (typeof payload?.detail === "string" && payload.detail) ||
+        "Delegação indisponível: vincule um telefone válido a um colaborador da loja."
+      toast.error(message)
+    } finally {
+      setDelegatingEventId(null)
+    }
+  }
+
+  const avgQueueSecondsForRoi =
+    computedQueueSeconds ?? summaryTotals?.avg_queue_seconds ?? ceoDashboard?.kpis?.avg_queue_seconds ?? 0
+  const avgVisitorsPerHour =
+    ceoFlow.length > 0
+      ? ceoFlow.reduce((acc, row) => acc + (row.footfall || 0), 0) / ceoFlow.length
+      : summaryTotals?.total_visitors
+      ? summaryTotals.total_visitors / (24 * 7)
+      : 0
+  const estimatedAbandonRate = Math.max(0, Math.min(0.35, (avgQueueSecondsForRoi - 180) / 1200))
+  const estimatedLostCustomers = Math.round(avgVisitorsPerHour * estimatedAbandonRate * 8)
+  const estimatedTicket = 85
+  const estimatedRevenueGapComputed = Math.max(0, estimatedLostCustomers * estimatedTicket)
+  const estimatedRevenueGap =
+    dashboard?.executive?.estimated_revenue_gap_brl ?? estimatedRevenueGapComputed
+  const criticalAlertsOpen =
+    dashboard?.executive?.critical_alerts_open ??
+    (events ?? []).filter((e) => String(e.severity).toLowerCase() === "critical").length
+  const networkHealthScore = (() => {
+    const storeHealth = typeof computedHealthScore === "number" ? computedHealthScore : 0
+    const healthFromNetwork =
+      networkDashboard?.active_stores && networkDashboard.total_stores
+        ? Math.round((networkDashboard.active_stores / Math.max(networkDashboard.total_stores, 1)) * 100)
+        : null
+    if (typeof healthFromNetwork === "number" && storeHealth > 0) {
+      return Math.round((healthFromNetwork + storeHealth) / 2)
+    }
+    if (typeof healthFromNetwork === "number") return healthFromNetwork
+    return storeHealth > 0 ? storeHealth : 0
+  })()
+
+  const executiveKpis = [
+    {
+      title: "Score de Saúde da Rede",
+      value: networkHealthScore > 0 ? `${networkHealthScore}` : "—",
+      subtitle: "Média operacional das lojas",
+      tone: "text-emerald-700",
+      bg: "bg-emerald-50",
+    },
+    {
+      title: "Taxa de Conversão Real",
+      value: computedConversionRate ? `${computedConversionRate.toFixed(1)}%` : "—",
+      subtitle: "Visitantes x transações estimadas",
+      tone: "text-blue-700",
+      bg: "bg-blue-50",
+    },
+    {
+      title: "Gap de Receita Estimado",
+      value: estimatedRevenueGap > 0 ? formatCurrencyBRL(estimatedRevenueGap) : "—",
+      subtitle: "Perda potencial por fila e ociosidade",
+      tone: "text-amber-700",
+      bg: "bg-amber-50",
+    },
+    {
+      title: "Alertas Críticos Ativos",
+      value: `${criticalAlertsOpen}`,
+      subtitle: "Ações imediatas em aberto",
+      tone: criticalAlertsOpen > 0 ? "text-rose-700" : "text-slate-700",
+      bg: criticalAlertsOpen > 0 ? "bg-rose-50" : "bg-slate-50",
+    },
+  ] as const
+
+  const rankingRows = (networkDashboard?.stores ?? [])
+    .map((store) => {
+      const efficiency = typeof store.health === "number" ? Math.round(store.health) : null
+      const conversion = typeof store.conversion === "number" ? Number(store.conversion.toFixed(1)) : null
+      return {
+        id: store.id,
+        name: store.name,
+        efficiency,
+        conversion,
+        status: store.status,
+      }
+    })
+    .sort((a, b) => (b.efficiency ?? -1) - (a.efficiency ?? -1))
   const kpiItems = [
     {
       title: "Fluxo de Visitantes",
@@ -1118,48 +1267,55 @@ const Dashboard = () => {
             onOpenSetup={() => setEdgeSetupOpen(true)}
             onOpenCopilot={() => openCopilot()}
           />
-
-          <article className="rounded-2xl border border-white/10 bg-[#0f172a] p-4 sm:p-6 text-white shadow-sm">
-            <p className="text-xs font-semibold uppercase tracking-wide text-blue-200">
-              Recomendação principal do Copiloto
-            </p>
-            <h2 className="mt-1 text-lg font-semibold">{copilotRecommendationNow.title}</h2>
-            <p className="mt-2 text-sm text-slate-200">
-              <span className="font-semibold text-white">Ação sugerida:</span> {copilotRecommendationNow.action}
-            </p>
-            <p className="mt-1 text-sm text-slate-200">
-              <span className="font-semibold text-white">Impacto estimado:</span> {copilotRecommendationNow.impact}
-            </p>
-            <div className="mt-3 flex flex-wrap gap-2">
-              <Link
-                to={`/app/operations/stores/${copilotRecommendationNow.storeId}`}
-                className="rounded-lg bg-gradient-to-r from-blue-600 to-indigo-600 px-3 py-2 text-xs font-semibold text-white hover:brightness-95"
-              >
-                Abrir loja
-              </Link>
-              <Link
-                to={`/app/operations/stores/${copilotRecommendationNow.storeId}?tab=cameras`}
-                className="rounded-lg border border-white/20 bg-white/10 px-3 py-2 text-xs font-semibold text-white hover:bg-white/20"
-              >
-                Ver evidência
-              </Link>
-              <button
-                type="button"
-                onClick={() =>
-                  openCopilot(`Avalie esta recomendação e proponha alternativa: ${copilotRecommendationNow.title}`)
-                }
-                className="rounded-lg border border-white/20 bg-white/10 px-3 py-2 text-xs font-semibold text-white hover:bg-white/20"
-              >
-                Revisar com Copiloto
-              </button>
+          <section className="grid grid-cols-1 xl:grid-cols-3 gap-4">
+            <div className="xl:col-span-2 grid grid-cols-1 sm:grid-cols-2 gap-4">
+              {executiveKpis.map((item) => (
+                <article
+                  key={item.title}
+                  className={`rounded-2xl border border-gray-200 ${item.bg} p-5 shadow-sm`}
+                >
+                  <p className="text-xs font-semibold uppercase tracking-wide text-gray-500">{item.title}</p>
+                  <p className={`mt-2 text-3xl font-bold ${item.tone}`}>{item.value}</p>
+                  <p className="mt-1 text-xs text-gray-600">{item.subtitle}</p>
+                </article>
+              ))}
             </div>
-          </article>
+            <article className="rounded-2xl border border-white/10 bg-[#0f172a] p-5 text-white shadow-sm">
+              <p className="text-xs font-semibold uppercase tracking-wide text-blue-200">
+                Recomendação do Dia
+              </p>
+              <h2 className="mt-2 text-lg font-semibold leading-tight">{copilotRecommendationNow.title}</h2>
+              <p className="mt-2 text-sm text-slate-200">
+                <span className="font-semibold text-white">Ação:</span> {copilotRecommendationNow.action}
+              </p>
+              <p className="mt-1 text-sm text-slate-200">
+                <span className="font-semibold text-white">Impacto:</span> {copilotRecommendationNow.impact}
+              </p>
+              <div className="mt-4 flex flex-wrap gap-2">
+                <Link
+                  to={`/app/operations/stores/${copilotRecommendationNow.storeId}`}
+                  className="rounded-lg bg-gradient-to-r from-blue-600 to-indigo-600 px-3 py-2 text-xs font-semibold text-white hover:brightness-95"
+                >
+                  Abrir loja
+                </Link>
+                <button
+                  type="button"
+                  onClick={() =>
+                    openCopilot(`Refine esta recomendação para execução imediata: ${copilotRecommendationNow.title}`)
+                  }
+                  className="rounded-lg border border-white/20 bg-white/10 px-3 py-2 text-xs font-semibold text-white hover:bg-white/20"
+                >
+                  Revisar com Copiloto
+                </button>
+              </div>
+            </article>
+          </section>
 
           <section className="rounded-xl border border-gray-200 bg-white p-4 sm:p-6 shadow-sm">
             <div className="flex items-center justify-between gap-3">
               <div>
-                <h3 className="text-base sm:text-lg font-semibold text-gray-900">Ações prioritárias</h3>
-                <p className="text-sm text-gray-600 mt-1">Foco no que exige ação imediata nesta loja.</p>
+                <h3 className="text-base sm:text-lg font-semibold text-gray-900">Ações Prioritárias</h3>
+                <p className="text-sm text-gray-600 mt-1">Gestão por exceção: resolver o que afeta resultado agora.</p>
               </div>
               <Link
                 to="/app/operations"
@@ -1190,7 +1346,12 @@ const Dashboard = () => {
                         {action.severity.toUpperCase()}
                       </span>
                     </div>
-                    <p className="mt-1 text-xs text-gray-600">{action.action}</p>
+                    <p className="mt-1 text-xs text-gray-700">
+                      <span className="font-semibold">Impacto:</span> {action.impact}
+                    </p>
+                    <p className="mt-1 text-xs text-gray-700">
+                      <span className="font-semibold">Ação:</span> {action.action}
+                    </p>
                     <div className="mt-2 flex flex-wrap gap-2">
                       <Link
                         to={`/app/operations/stores/${action.storeId}`}
@@ -1198,6 +1359,16 @@ const Dashboard = () => {
                       >
                         Abrir loja
                       </Link>
+                      <button
+                        type="button"
+                        onClick={() => handleDelegateWhatsapp(action)}
+                        disabled={delegatingEventId === action.id}
+                        className="rounded-lg bg-green-600 px-3 py-1.5 text-xs font-semibold text-white hover:bg-green-700"
+                      >
+                        {delegatingEventId === action.id
+                          ? "Delegando..."
+                          : "Delegar para Gerente via WhatsApp"}
+                      </button>
                       <button
                         type="button"
                         onClick={() => openCopilot(`Qual plano de ação para: ${action.title}?`)}
@@ -1212,7 +1383,16 @@ const Dashboard = () => {
             )}
           </section>
 
-          {shouldShowTrialArtifacts ? (
+          {!hasOperationalData ? (
+            <section className="rounded-xl border border-indigo-200 bg-gradient-to-r from-indigo-50 to-blue-50 p-4 sm:p-6">
+              <h3 className="text-base sm:text-lg font-semibold text-gray-900">Carregando Inteligência</h3>
+              <p className="mt-1 text-sm text-gray-700">
+                Estamos consolidando os sinais operacionais para liberar recomendações prescritivas com maior precisão.
+              </p>
+            </section>
+          ) : null}
+
+          {shouldShowTrialArtifacts && !hasOperationalData ? (
             <TrialDashboardView
               trialUiState={trialUiState}
               trialCollectedHours={trialCollectedHours}
@@ -1224,7 +1404,7 @@ const Dashboard = () => {
               onOpenSetup={() => setEdgeSetupOpen(true)}
               onOpenCopilot={openCopilot}
             />
-          ) : shouldShowPaidSetupArtifacts ? (
+          ) : shouldShowPaidSetupArtifacts && !hasOperationalData ? (
             <PaidSetupDashboardView
               setupState={
                 trialUiState === "not_started"
@@ -1243,35 +1423,70 @@ const Dashboard = () => {
               onOpenSetup={() => setEdgeSetupOpen(true)}
               onOpenCopilot={openCopilot}
             />
-          ) : (
+          ) : hasOperationalData ? (
             <PaidExecutiveDashboardView
               stores={stores ?? []}
               copilotPrompts={copilotPrompts}
               onOpenCopilot={openCopilot}
             />
-          )}
+          ) : null}
 
-          <OperationalDiagnosisSection
-            isLoading={isLoadingDashboard || copilotReportLoading}
-            reportReady={copilotReport72h?.status === "ready" || trialUiState === "report_ready"}
-            reportFailed={copilotReport72h?.status === "failed"}
-            reportStatusDetail={copilotReport72h?.status_detail ?? null}
-            readinessMessage={copilotReport72h?.readiness?.message ?? null}
-            insights={diagnosisInsights}
-            trialHoursRemaining={trialHoursRemaining}
-            onOpenCopilot={() => openCopilot("Qual o status do diagnóstico operacional desta loja?")}
-          />
+          {hasOperationalData ? (
+            <OperationalDiagnosisSection
+              isLoading={isLoadingDashboard || copilotReportLoading}
+              reportReady={copilotReport72h?.status === "ready" || trialUiState === "report_ready"}
+              reportFailed={copilotReport72h?.status === "failed"}
+              reportStatusDetail={copilotReport72h?.status_detail ?? null}
+              readinessMessage={copilotReport72h?.readiness?.message ?? null}
+              insights={diagnosisInsights}
+              trialHoursRemaining={trialHoursRemaining}
+              onOpenCopilot={() => openCopilot("Qual o status do diagnóstico operacional desta loja?")}
+            />
+          ) : null}
+
+          {rankingRows.length > 0 ? (
+            <section className="rounded-xl border border-gray-200 bg-white p-4 sm:p-6 shadow-sm">
+              <div className="flex items-center justify-between gap-3">
+                <div>
+                  <h3 className="text-base sm:text-lg font-semibold text-gray-900">Ranking de Performance</h3>
+                  <p className="text-sm text-gray-600 mt-1">Comparativo por eficiência de equipe e conversão.</p>
+                </div>
+              </div>
+              <div className="mt-4 overflow-x-auto">
+                <table className="min-w-full text-sm">
+                  <thead className="text-left text-gray-500">
+                    <tr>
+                      <th className="pb-2 pr-4 font-medium">Loja</th>
+                      <th className="pb-2 pr-4 font-medium">Eficiência de equipe</th>
+                      <th className="pb-2 pr-4 font-medium">Conversão</th>
+                      <th className="pb-2 pr-4 font-medium">Status</th>
+                    </tr>
+                  </thead>
+                  <tbody className="divide-y divide-gray-100">
+                    {rankingRows.slice(0, 8).map((row) => (
+                      <tr key={row.id}>
+                        <td className="py-2 pr-4 font-semibold text-gray-900">{row.name}</td>
+                        <td className="py-2 pr-4 text-gray-700">{row.efficiency !== null ? `${row.efficiency}` : "—"}</td>
+                        <td className="py-2 pr-4 text-gray-700">{row.conversion !== null ? `${row.conversion.toFixed(1)}%` : "—"}</td>
+                        <td className="py-2 pr-4">
+                          <span className="rounded-full bg-gray-100 px-2 py-0.5 text-xs text-gray-700">
+                            {row.status}
+                          </span>
+                        </td>
+                      </tr>
+                    ))}
+                  </tbody>
+                </table>
+              </div>
+            </section>
+          ) : null}
 
           <div className="space-y-2">
             <h2 className="text-[18px] font-semibold text-gray-900">
-              {shouldShowExecutiveArtifacts
-                ? "Resumo de métricas executivas"
-                : "Métricas que estamos começando a medir"}
+              Resumo de métricas executivas
             </h2>
             <p className="text-sm text-gray-600">
-              {shouldShowExecutiveArtifacts
-                ? "Indicadores consolidados para apoiar decisão diária de gestão."
-                : "Indicadores em evolução conforme a base operacional amadurece."}
+              Indicadores consolidados para apoiar decisão diária de gestão.
             </p>
           </div>
           <DashboardKpiStrip items={kpiItems} />

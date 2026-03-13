@@ -82,6 +82,7 @@ export default function Alerts() {
   const [selectedEventId, setSelectedEventId] = useState<string | null>(() =>
     searchParams.get("event_id")
   )
+  const [delegatingEventId, setDelegatingEventId] = useState<string | null>(null)
   const [dateFrom, setDateFrom] = useState<string>("")
   const [dateTo, setDateTo] = useState<string>("")
 
@@ -196,6 +197,56 @@ export default function Alerts() {
         toast.error("Falha ao simular evento. Veja console / backend.")
       },
     })
+  }
+
+  const buildDelegationMessage = (event: AlertEvent, storeName: string, evidenceUrl?: string) => {
+    const hhmm = formatHHMM(event.occurred_at)
+    const problem = event.title || "Evento operacional"
+    const impact =
+      event.type === "queue_long"
+        ? "Risco de perda de conversão por fila elevada."
+        : "Risco operacional com potencial impacto no atendimento."
+    const action =
+      event.type === "queue_long"
+        ? "Abrir segundo caixa no pico e redistribuir equipe."
+        : "Atuar com a liderança local para conter o desvio."
+
+    return `Delegar ação operacional\n\nLoja: ${storeName}\nProblema: ${problem}\nImpacto: ${impact}\nAção sugerida: ${action}\nHorário: ${hhmm}\n${
+      evidenceUrl ? `Evidência: ${evidenceUrl}` : "Evidência: disponível no painel"
+    }`
+  }
+
+  const delegateToWhatsapp = async (event: AlertEvent) => {
+    if (!event?.id) return
+    const eventId = String(event.id)
+    const storeName = storesMap.get(String(event.store_id || "")) || "Loja não identificada"
+    const evidenceUrl = event?.media?.[0]?.url
+    const note = buildDelegationMessage(event, storeName, evidenceUrl)
+    setDelegatingEventId(eventId)
+    try {
+      const response = await alertsService.delegateEventWhatsapp(eventId, {
+        note,
+      })
+      if (response?.ok) {
+        toast.success(
+          response?.employee?.name
+            ? `Delegação enviada para ${response.employee.name}.`
+            : "Delegação enviada para fila de entrega via WhatsApp."
+        )
+      } else {
+        throw new Error(response?.message || "Falha ao delegar")
+      }
+    } catch (error) {
+      const payload = (error as { response?: { data?: Record<string, unknown> } })?.response?.data
+      const message =
+        (typeof payload?.employee_phone === "string" && payload.employee_phone) ||
+        (typeof payload?.employee_id === "string" && payload.employee_id) ||
+        (typeof payload?.detail === "string" && payload.detail) ||
+        "Delegação indisponível: vincule um telefone válido a um colaborador da loja."
+      toast.error(message)
+    } finally {
+      setDelegatingEventId(null)
+    }
   }
 
   const filtered = useMemo(() => {
@@ -468,26 +519,38 @@ export default function Alerts() {
                   </button>
 
                   {e.status === "open" ? (
-                    <button
-                      className="rounded-lg bg-blue-600 px-3 py-2 text-sm font-semibold text-white hover:bg-blue-700 disabled:opacity-60"
-                      onClick={() =>
-                        resolveMut.mutate(String(e.id), {
-                          onSuccess: () => {
-                            toast.success("Alerta resolvido ✅")
-                            // se estava aberto no drawer também, fecha
-                            if (String(selectedEventId) === String(e.id)) {
-                              setSelectedEventId(null)
-                            }
-                            eventsQuery.refetch()
-                          },
-                          onError: () => toast.error("Falha ao resolver alerta."),
-                        })
-                      }
-                      disabled={resolveMut.isPending}
-                      type="button"
-                    >
-                      {resolveMut.isPending ? "Resolvendo..." : "Resolver"}
-                    </button>
+                    <>
+                      <button
+                        className="rounded-lg bg-green-600 px-3 py-2 text-sm font-semibold text-white hover:bg-green-700 disabled:opacity-60"
+                        onClick={() => delegateToWhatsapp(e)}
+                        disabled={delegatingEventId === String(e.id)}
+                        type="button"
+                      >
+                        {delegatingEventId === String(e.id)
+                          ? "Delegando..."
+                          : "Delegar no WhatsApp"}
+                      </button>
+                      <button
+                        className="rounded-lg bg-blue-600 px-3 py-2 text-sm font-semibold text-white hover:bg-blue-700 disabled:opacity-60"
+                        onClick={() =>
+                          resolveMut.mutate(String(e.id), {
+                            onSuccess: () => {
+                              toast.success("Alerta resolvido ✅")
+                              // se estava aberto no drawer também, fecha
+                              if (String(selectedEventId) === String(e.id)) {
+                                setSelectedEventId(null)
+                              }
+                              eventsQuery.refetch()
+                            },
+                            onError: () => toast.error("Falha ao resolver alerta."),
+                          })
+                        }
+                        disabled={resolveMut.isPending}
+                        type="button"
+                      >
+                        {resolveMut.isPending ? "Resolvendo..." : "Resolver"}
+                      </button>
+                    </>
                   ) : (
                     <button
                       className="rounded-lg border border-gray-200 px-3 py-2 text-sm font-semibold text-gray-700 hover:bg-gray-50"
@@ -658,6 +721,19 @@ export default function Alerts() {
             </div>
 
             <div className="flex flex-col gap-2 border-t border-gray-100 p-5 sm:flex-row sm:justify-end">
+              {selectedEvent?.status === "open" && (
+                <button
+                  className="rounded-xl bg-green-600 px-4 py-2 text-sm font-semibold text-white hover:bg-green-700 disabled:opacity-60"
+                  onClick={() => delegateToWhatsapp(selectedEvent)}
+                  disabled={delegatingEventId === String(selectedEvent.id)}
+                  type="button"
+                >
+                  {delegatingEventId === String(selectedEvent.id)
+                    ? "Delegando..."
+                    : "Delegar no WhatsApp"}
+                </button>
+              )}
+
               {/* ✅ Resolver fecha drawer automaticamente */}
               {selectedEvent?.status === "open" && (
                 <button

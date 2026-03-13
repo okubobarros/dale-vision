@@ -4,7 +4,7 @@ from datetime import timedelta
 from uuid import UUID, uuid4
 from django.conf import settings
 from django.contrib.auth import get_user_model
-from django.db import connection, transaction
+from django.db import connection, transaction, models
 from apps.core.models import StoreManager
 
 
@@ -20,6 +20,7 @@ from psycopg2.extras import Json
 from apps.core.models import (
     AlertRule,
     DetectionEvent,
+    Employee,
     EventMedia,
     NotificationLog,
     Store,
@@ -85,6 +86,59 @@ def _dest_to_text(dest):
     if isinstance(dest, list):
         return ",".join([str(x).strip() for x in dest if str(x).strip()])
     return str(dest).strip()
+
+
+def _normalize_whatsapp_number(value: str | None) -> str | None:
+    if not value:
+        return None
+    digits = "".join(ch for ch in str(value) if ch.isdigit())
+    if not digits:
+        return None
+    # BR local (10/11) -> prefixa 55
+    if len(digits) in (10, 11):
+        digits = f"55{digits}"
+    # BR country code (12/13) esperado
+    if len(digits) not in (12, 13):
+        return None
+    if not digits.startswith("55"):
+        return None
+    return digits
+
+
+def _resolve_employee_for_whatsapp(*, store_id, employee_id: str | None = None):
+    qs = Employee.objects.filter(store_id=store_id, active=True)
+    if employee_id:
+        qs = qs.filter(id=employee_id)
+    employee = (
+        qs.order_by(
+            models.Case(
+                models.When(role="manager", then=models.Value(0)),
+                models.When(role="owner", then=models.Value(1)),
+                default=models.Value(2),
+                output_field=models.IntegerField(),
+            ),
+            "created_at",
+        )
+        .first()
+    )
+    if not employee:
+        raise ValidationError(
+            {"employee_id": "Nenhum colaborador ativo da loja encontrado para delegação."}
+        )
+
+    # Observação: usamos external_id como telefone operacional até adicionar coluna dedicada.
+    phone = _normalize_whatsapp_number(getattr(employee, "external_id", None))
+    if not phone:
+        raise ValidationError(
+            {
+                "employee_phone": (
+                    "Colaborador sem telefone válido para WhatsApp. "
+                    "Cadastre o número no campo external_id da equipe (formato BR com DDD)."
+                )
+            }
+        )
+
+    return employee, phone
 
 def _require_subscription_for_org(*, org_id, request, action: str):
     if request.method in ("GET", "HEAD", "OPTIONS"):
@@ -917,6 +971,122 @@ class DetectionEventViewSet(viewsets.ModelViewSet):
         event.status = "ignored"
         event.save(update_fields=["status"])
         return Response(DetectionEventSerializer(event).data)
+
+    @action(detail=True, methods=["post"], url_path="delegate-whatsapp")
+    def delegate_whatsapp(self, request, pk=None):
+        """
+        Cria uma solicitação de delegação operacional via WhatsApp e envia para n8n.
+        Fluxo atual:
+        - registra NotificationLog (channel=whatsapp)
+        - envia envelope para N8N_EVENTS_WEBHOOK
+        - retorna status da solicitação
+        """
+        event = self.get_object()
+        _require_subscription_for_org(
+            org_id=event.org_id, request=request, action="event_delegate_whatsapp"
+        )
+
+        employee_id = str(request.data.get("employee_id") or "").strip() or None
+        employee, destination_phone = _resolve_employee_for_whatsapp(
+            store_id=event.store_id,
+            employee_id=employee_id,
+        )
+        destination = _dest_to_text(destination_phone)
+        manager_name = str(request.data.get("manager_name") or "").strip() or None
+        note = str(request.data.get("note") or "").strip() or None
+
+        media_qs = EventMedia.objects.filter(event_id=event.id).order_by("-created_at")
+        media_payload = EventMediaSerializer(media_qs, many=True).data
+        evidence_url = None
+        if media_payload:
+            evidence_url = media_payload[0].get("url")
+
+        payload = {
+            "event_category": "alert",
+            "type": "operational_delegation",
+            "channel": "whatsapp",
+            "store_id": str(event.store_id),
+            "org_id": str(event.org_id) if event.org_id else None,
+            "event_id": str(event.id),
+            "title": event.title,
+            "description": event.description,
+            "severity": event.severity,
+            "event_type": event.type,
+            "occurred_at": event.occurred_at.isoformat() if event.occurred_at else None,
+            "destination": destination,
+            "manager_name": manager_name or employee.full_name,
+            "employee_id": str(employee.id),
+            "employee_name": employee.full_name,
+            "note": note,
+            "evidence_url": evidence_url,
+            "media": media_payload,
+            "metadata": event.metadata or {},
+            "status": event.status,
+        }
+
+        now = timezone.now()
+        journey_event = JourneyEvent.objects.create(
+            lead_id=None,
+            org_id=event.org_id,
+            event_name="alert_delegate_whatsapp_requested",
+            payload=payload,
+            created_at=now,
+        )
+
+        n8n_result = send_event_to_n8n(
+            event_name="alert_delegate_whatsapp_requested",
+            event_id=str(journey_event.id),
+            lead_id=None,
+            org_id=event.org_id,
+            data=payload,
+            meta={
+                "source": "alerts_delegate",
+                "request_user": getattr(request.user, "email", None),
+            },
+        )
+
+        log_status = "queued" if n8n_result.get("ok") else "failed"
+        provider_message_id = None
+        try:
+            provider_message_id = (
+                n8n_result.get("data", {}).get("id")
+                if isinstance(n8n_result.get("data"), dict)
+                else None
+            )
+        except Exception:
+            provider_message_id = None
+
+        notification_log = NotificationLog.objects.create(
+            org_id=event.org_id,
+            store_id=event.store_id,
+            event_id=event.id,
+            rule_id=None,
+            channel="whatsapp",
+            destination=destination,
+            provider="n8n",
+            status=log_status,
+            provider_message_id=provider_message_id,
+            error=None if n8n_result.get("ok") else str(n8n_result),
+            sent_at=now,
+        )
+
+        status_code = status.HTTP_202_ACCEPTED if n8n_result.get("ok") else status.HTTP_502_BAD_GATEWAY
+        return Response(
+            {
+                "ok": bool(n8n_result.get("ok")),
+                "activity_status": "open",
+                "message": "Solicitação de delegação registrada. Entrega final pelo canal WhatsApp segue em evolução.",
+                "notification_log_id": str(notification_log.id),
+                "event_id": str(event.id),
+                "employee": {
+                    "id": str(employee.id),
+                    "name": employee.full_name,
+                    "destination": destination,
+                },
+                "n8n": n8n_result,
+            },
+            status=status_code,
+        )
 
     @action(detail=True, methods=["post"], url_path="media")
     def add_media(self, request, pk=None):

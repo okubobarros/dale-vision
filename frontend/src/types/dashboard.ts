@@ -23,6 +23,12 @@ export interface StoreDashboard {
       needs_attention: string;
     };
   };
+  executive?: {
+    estimated_revenue_gap_brl?: number;
+    estimated_lost_customers?: number;
+    critical_alerts_open?: number;
+    window?: string;
+  };
   recommendations: Array<{
     id: string;
     title: string;
@@ -35,7 +41,7 @@ export interface StoreDashboard {
     type: string;
     message: string;
     severity: string;
-    time: string;
+    time?: string | null;
   }>;
 }
 

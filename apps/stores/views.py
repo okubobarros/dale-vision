@@ -1678,7 +1678,169 @@ class StoreViewSet(viewsets.ModelViewSet):
             status_ui = "active" if store_status in ("active", "trial") else "inactive"
             plan_value = "trial" if store_status == "trial" else None
 
-            # Sem dados reais ainda (estrutura vazia)
+            end = timezone.now()
+            start = end - timedelta(days=7)
+
+            total_visitors = 0
+            avg_dwell_seconds = 0.0
+            avg_conversion_rate = 0.0
+            avg_queue_seconds = 0.0
+            avg_staff_active = 0.0
+            peak_hour = "-"
+            best_selling_zone = "-"
+            open_events = []
+            critical_alerts_open = 0
+
+            with connection.cursor() as cursor:
+                cursor.execute(
+                    """
+                    SELECT
+                        COALESCE(SUM(footfall), 0) AS total_visitors,
+                        COALESCE(AVG(NULLIF(dwell_seconds_avg, 0)), 0) AS avg_dwell_seconds
+                    FROM public.traffic_metrics
+                    WHERE store_id = %s
+                      AND ts_bucket >= %s
+                      AND ts_bucket < %s
+                      AND (camera_role = 'entrada' OR camera_role IS NULL)
+                      AND (ownership = 'primary' OR ownership IS NULL)
+                    """,
+                    [str(store.id), start, end],
+                )
+                row = cursor.fetchone()
+                if row:
+                    total_visitors = int(row[0] or 0)
+                    avg_dwell_seconds = float(row[1] or 0)
+
+                cursor.execute(
+                    """
+                    SELECT
+                        COALESCE(AVG(NULLIF(conversion_rate, 0)), 0) AS avg_conversion_rate,
+                        COALESCE(AVG(queue_avg_seconds), 0) AS avg_queue_seconds,
+                        COALESCE(AVG(staff_active_est), 0) AS avg_staff_active
+                    FROM public.conversion_metrics
+                    WHERE store_id = %s
+                      AND ts_bucket >= %s
+                      AND ts_bucket < %s
+                      AND (camera_role = 'balcao' OR camera_role IS NULL)
+                      AND (ownership = 'primary' OR ownership IS NULL)
+                    """,
+                    [str(store.id), start, end],
+                )
+                row = cursor.fetchone()
+                if row:
+                    avg_conversion_rate = float(row[0] or 0)
+                    avg_queue_seconds = float(row[1] or 0)
+                    avg_staff_active = float(row[2] or 0)
+
+                cursor.execute(
+                    """
+                    SELECT
+                        date_trunc('hour', ts_bucket) AS bucket,
+                        COALESCE(SUM(footfall), 0) AS flow
+                    FROM public.traffic_metrics
+                    WHERE store_id = %s
+                      AND ts_bucket >= %s
+                      AND ts_bucket < %s
+                      AND (camera_role = 'entrada' OR camera_role IS NULL)
+                      AND (ownership = 'primary' OR ownership IS NULL)
+                    GROUP BY 1
+                    ORDER BY flow DESC
+                    LIMIT 1
+                    """,
+                    [str(store.id), start, end],
+                )
+                row = cursor.fetchone()
+                if row and row[0]:
+                    peak_hour = timezone.localtime(row[0]).strftime("%H:%M")
+
+                cursor.execute(
+                    """
+                    SELECT z.name, COALESCE(SUM(t.footfall), 0) AS flow
+                    FROM public.store_zones z
+                    JOIN public.traffic_metrics t ON t.zone_id = z.id
+                    WHERE z.store_id = %s
+                      AND t.ts_bucket >= %s
+                      AND t.ts_bucket < %s
+                    GROUP BY z.id, z.name
+                    ORDER BY flow DESC
+                    LIMIT 1
+                    """,
+                    [str(store.id), start, end],
+                )
+                row = cursor.fetchone()
+                if row and row[0]:
+                    best_selling_zone = str(row[0])
+
+            open_events_qs = (
+                DetectionEvent.objects.filter(store_id=store.id, status="open")
+                .order_by("-occurred_at")
+            )
+            critical_alerts_open = open_events_qs.filter(severity="critical").count()
+            open_events = list(open_events_qs[:5])
+
+            queue_penalty = min(45, max(0.0, avg_queue_seconds / 15.0))
+            incident_penalty = critical_alerts_open * 12
+            health_score = max(0, min(100, round(100 - queue_penalty - incident_penalty)))
+
+            avg_visitors_per_hour = float(total_visitors) / (24.0 * 7.0) if total_visitors > 0 else 0.0
+            estimated_abandon_rate = max(0.0, min(0.35, (avg_queue_seconds - 180.0) / 1200.0))
+            estimated_lost_customers = int(round(avg_visitors_per_hour * estimated_abandon_rate * 8.0))
+            estimated_ticket_brl = 85.0
+            estimated_revenue_gap_brl = int(max(0.0, estimated_lost_customers * estimated_ticket_brl))
+
+            needs_attention = (
+                "Cobertura de caixa no pico"
+                if avg_queue_seconds >= 300
+                else "Eficiência de atendimento"
+                if avg_queue_seconds >= 180
+                else "Operação estável"
+            )
+
+            recommendations = []
+            if avg_queue_seconds >= 300:
+                recommendations.append(
+                    {
+                        "id": "queue-peak",
+                        "title": "Reforçar equipe no caixa em horário crítico",
+                        "description": "Fila média acima de 5 minutos. Priorize abertura de caixa adicional no pico.",
+                        "priority": "high",
+                        "action": "Abrir segundo caixa entre 17h e 19h",
+                        "estimated_impact": "Redução esperada de até 30% no tempo de espera",
+                    }
+                )
+            if estimated_revenue_gap_brl > 0:
+                recommendations.append(
+                    {
+                        "id": "revenue-gap",
+                        "title": "Mitigar gap de receita por abandono de fila",
+                        "description": f"Estimativa atual de perda potencial em 7 dias: R$ {estimated_revenue_gap_brl:,.0f}".replace(",", "."),
+                        "priority": "high" if estimated_revenue_gap_brl >= 2000 else "medium",
+                        "action": "Ajustar escala de atendimento nos horários de maior fluxo",
+                        "estimated_impact": "Recuperação progressiva de conversão e receita",
+                    }
+                )
+            if not recommendations:
+                recommendations.append(
+                    {
+                        "id": "monitoring",
+                        "title": "Operação sob controle",
+                        "description": "Sem desvios críticos. Continue monitorando as lojas com foco em conversão.",
+                        "priority": "low",
+                        "action": "Revisar tendências com o Copiloto",
+                        "estimated_impact": "Manutenção da consistência operacional",
+                    }
+                )
+
+            alerts_payload = [
+                {
+                    "type": str(evt.type or "event"),
+                    "message": str(evt.title or evt.description or "Evento operacional"),
+                    "severity": str(evt.severity or "info"),
+                    "time": timezone.localtime(evt.occurred_at).isoformat() if evt.occurred_at else None,
+                }
+                for evt in open_events
+            ]
+
             dashboard_data = {
                 'store': {
                     'id': str(store.id),
@@ -1687,10 +1849,30 @@ class StoreViewSet(viewsets.ModelViewSet):
                     'plan': plan_value,
                     'status': status_ui,
                 },
-                'metrics': None,
-                'insights': None,
-                'recommendations': [],
-                'alerts': [],
+                'metrics': {
+                    'health_score': int(health_score),
+                    'productivity': int(round(avg_staff_active)),
+                    'idle_time': int(max(0, round((1 - min(avg_staff_active / 3.0, 1.0)) * 60))),
+                    'visitor_flow': int(total_visitors),
+                    'conversion_rate': float(round(avg_conversion_rate, 2)),
+                    'avg_cart_value': int(round(estimated_ticket_brl)),
+                },
+                'insights': {
+                    'peak_hour': peak_hour,
+                    'best_selling_zone': best_selling_zone,
+                    'employee_performance': {
+                        'best': "Equipe base estabilizada",
+                        'needs_attention': needs_attention,
+                    },
+                },
+                'executive': {
+                    'estimated_revenue_gap_brl': int(estimated_revenue_gap_brl),
+                    'estimated_lost_customers': int(estimated_lost_customers),
+                    'critical_alerts_open': int(critical_alerts_open),
+                    'window': '7d',
+                },
+                'recommendations': recommendations,
+                'alerts': alerts_payload,
             }
 
             return Response(dashboard_data)
