@@ -110,6 +110,31 @@ Payload:
 - `cooldown_minutes`
 - `suppressed_reason`
 
+### `alert_delegate_whatsapp_requested`
+When: manager delegation via WhatsApp is requested for an operational event.
+Emitted by: backend `DetectionEventViewSet.delegate_whatsapp`.
+Payload:
+- `event_category` (`alert`)
+- `type` (`operational_delegation`)
+- `channel` (`whatsapp`)
+- `store_id`
+- `org_id`
+- `event_id`
+- `title`
+- `description`
+- `severity`
+- `event_type`
+- `occurred_at`
+- `destination`
+- `manager_name`
+- `employee_id`
+- `employee_name`
+- `note`
+- `evidence_url`
+- `media`
+- `metadata`
+- `status`
+
 ## Dedupe Rules
 - `upgrade_viewed`: session-based dedupe (1 per tab/session).
 - `trial_expired_shown`: session-based dedupe on frontend; backend also throttles per org.
