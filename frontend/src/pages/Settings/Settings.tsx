@@ -36,6 +36,19 @@ const Settings = () => {
         </button>
       </div>
 
+      <div className="bg-white border border-gray-200 rounded-xl p-6">
+        <h2 className="text-lg font-semibold text-gray-800">Configurações de câmeras</h2>
+        <p className="text-sm text-gray-600 mt-1">
+          Inclua, remova e ajuste câmeras da operação.
+        </p>
+        <Link
+          to="/app/cameras"
+          className="mt-4 inline-flex items-center rounded-lg bg-slate-900 px-4 py-2 text-sm font-semibold text-white hover:bg-slate-800"
+        >
+          Gerenciar câmeras
+        </Link>
+      </div>
+
       <EdgeSetupModal open={edgeSetupOpen} onClose={() => setEdgeSetupOpen(false)} />
     </div>
   )
