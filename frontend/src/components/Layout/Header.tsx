@@ -2,7 +2,7 @@ import { useAuth } from "../../contexts/useAuth"
 import { useNavigate } from "react-router-dom"
 import { useQuery } from "@tanstack/react-query"
 import logo from "../../assets/logo.png"
-import RevenueProgressBar from "./RevenueProgressBar"
+import SalesGoalWidget from "./SalesGoalWidget"
 import { salesService } from "../../services/sales"
 
 type HeaderProps = {
@@ -79,14 +79,12 @@ const Header = ({ onOpenAgent }: HeaderProps) => {
             </button>
           )}
 
-          <RevenueProgressBar
-            state={revenueProgress?.state ?? "not_configured"}
+          <SalesGoalWidget
             currentRevenue={revenueProgress?.current_revenue ?? 0}
-            targetRevenue={revenueProgress?.target_revenue ?? 100000}
-            currency={revenueProgress?.currency ?? "BRL"}
-            lastSyncAt={revenueProgress?.last_sync_at ?? null}
-            onConnectSystem={() => navigate("/app/settings")}
-            className="hidden lg:flex lg:w-[230px] lg:flex-col lg:justify-center"
+            isIntegrationConfigured={
+              revenueProgress?.state === "connected" || revenueProgress?.state === "syncing"
+            }
+            className="hidden lg:flex lg:w-[250px] lg:flex-col lg:justify-center"
           />
 
           {/* Dropdown */}
