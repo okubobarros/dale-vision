@@ -11,11 +11,11 @@ import { API_BASE_URL } from "../lib/api"
 import { clearAuthStorage, getAccessToken } from "./authStorage"
 import { refreshSupabaseSession } from "./authSession"
 
-const DEFAULT_TIMEOUT_MS = 15000
-const CRITICAL_TIMEOUT_MS = 30000
-const LONG_TIMEOUT_MS = 120000
+const DEFAULT_TIMEOUT_MS = 10000
+const CRITICAL_TIMEOUT_MS = 12000
+const LONG_TIMEOUT_MS = 45000
 const BEST_EFFORT_TIMEOUT_MS = 3000
-const RETRY_BACKOFF_MS = [1000, 3000, 6000]
+const RETRY_BACKOFF_MS = [800]
 const TRIAL_EXPIRED_CODE = "TRIAL_EXPIRED"
 const SUBSCRIPTION_REQUIRED_CODE = "SUBSCRIPTION_REQUIRED"
 const TRIAL_EXPIRED_STORAGE_KEY = "dv_trial_expired"
@@ -212,16 +212,18 @@ api.interceptors.request.use(
     setAuthHeader(config, token)
 
     // ✅ DEBUG depois de setar token (agora é real)
-    console.log("🔵 API Request:", {
-      url: `${config.baseURL}${config.url}`,
-      method: config.method,
-      auth: (() => {
-        const headerValue = getAuthHeaderValue(config)
-        const scheme = typeof headerValue === "string" ? headerValue.split(" ")[0] : null
-        return { present: !!headerValue, scheme }
-      })(),
-      data: config.data,
-    })
+    if (import.meta.env.DEV) {
+      console.log("🔵 API Request:", {
+        url: `${config.baseURL}${config.url}`,
+        method: config.method,
+        auth: (() => {
+          const headerValue = getAuthHeaderValue(config)
+          const scheme = typeof headerValue === "string" ? headerValue.split(" ")[0] : null
+          return { present: !!headerValue, scheme }
+        })(),
+        data: config.data,
+      })
+    }
 
     return config
   },
@@ -246,10 +248,12 @@ api.interceptors.response.use(
         })
       }
     }
-    console.log("🟢 API Response:", {
-      url: response.config.url,
-      status: response.status,
-    })
+    if (import.meta.env.DEV) {
+      console.log("🟢 API Response:", {
+        url: response.config.url,
+        status: response.status,
+      })
+    }
     return response
   },
   async (error: unknown) => {
@@ -282,7 +286,8 @@ api.interceptors.response.use(
     const shouldRetry =
       !config?.noRetry &&
       isGet &&
-      (isTimeout || (status !== undefined && [502, 503, 504].includes(status)))
+      !isTimeout &&
+      (status !== undefined && [502, 503, 504].includes(status))
     const retryCount = config?._retryCount ?? 0
 
     if (shouldRetry && config && retryCount < RETRY_BACKOFF_MS.length) {
@@ -324,20 +329,20 @@ api.interceptors.response.use(
       notifyTrialExpired()
     }
 
-    if (isTimeout) {
+    if (isTimeout && import.meta.env.DEV) {
       console.warn("🟠 API Timeout:", {
         url: axiosError.config?.url,
         timeoutMs: axiosError.config?.timeout,
         message: axiosError.message,
       })
-    } else if (axiosError.response) {
+    } else if (axiosError.response && import.meta.env.DEV) {
       console.error("🔴 API HTTP Error:", {
         url: axiosError.config?.url,
         status: axiosError.response?.status,
         data: axiosError.response?.data,
         message: axiosError.message,
       })
-    } else {
+    } else if (import.meta.env.DEV) {
       console.error("🔴 API Network Error:", {
         url: axiosError.config?.url,
         code: axiosError.code,

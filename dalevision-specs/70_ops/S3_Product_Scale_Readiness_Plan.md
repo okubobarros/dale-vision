@@ -3,6 +3,18 @@
 ## Data de inicio
 - 2026-03-11
 
+## Checkpoint de execucao (2026-03-13)
+- Status geral: `IN_PROGRESS` (S3 aberto, com base tecnica consolidada).
+- Concluido ate agora:
+  - separacao de dashboard por estado de conta (`trial`, `paid_setup`, `paid_executive`);
+  - dominio de dados do Copilot criado (`copilot_*`) e migrado;
+  - melhorias de resiliencia frontend para reduzir timeouts em cascata;
+  - ajuste de regra de negocio para evitar bypass de limite no update de camera.
+- Em aberto critico:
+  - validacao em loja fisica de cameras/eventos com cobertura real;
+  - SLI/SLO operacionais com baseline semanal oficial;
+  - relatorio 72h com ciclo de vida completo e leitura executiva confiavel.
+
 ## Objetivo
 Entrar em escala comercial com confianca operacional e de dados, sem regredir estabilidade do edge.
 
@@ -97,6 +109,23 @@ Entrar em escala comercial com confianca operacional e de dados, sem regredir es
 ### Semana 4
 - Consolidar playbooks e kit operacional/comercial.
 - Revisao executiva com decisao GO/NO-GO de escala.
+
+## Replanejamento pragmatico (proximos 10 dias uteis)
+1. Trilha de valor imediato (ICP multilojista)
+- consolidar `Top Acoes da Rede` no `/app/operations` com severidade + impacto + acao.
+- reduzir ruido tecnico na home e reforcar recomendacao acionavel do Copilot.
+
+2. Trilha de confiabilidade
+- fechar SLI/SLO minimos: heartbeat freshness, camera freshness, event lag.
+- publicar painel unico de incidentes com causa-raiz padronizada.
+
+3. Trilha de confianca de dados
+- ativar gates de elegibilidade por loja para exibir KPI oficial.
+- exibir explicitamente `official | proxy | estimated` com score.
+
+4. Trilha de suporte e rollout
+- padronizar runbook de loja e pacote de evidencias para CS/suporte.
+- fechar ciclo de atendimento com auditoria (solicitacao, concessao, encerramento).
 
 ## Gates GO/NO-GO
 ### GO para escala

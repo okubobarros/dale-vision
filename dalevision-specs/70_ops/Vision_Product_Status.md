@@ -141,3 +141,49 @@ Vender como:
 - monitoramento operacional assistido
 - deteccao de fila e suporte a calibracao
 - inteligencia operacional com metricas oficiais e metricas proxy claramente separadas
+
+---
+
+## Atualizacao executiva (2026-03-13)
+
+### Onde estamos agora (visao total)
+- Fase macro: transicao de `S0 estabilizacao edge` para `S3 readiness de escala`.
+- Maturidade atual estimada: `78-82/100`.
+- Estado comercial-produto: pronto para operacao assistida e onboarding guiado; ainda nao pronto para prometer benchmark multi-loja como verdade oficial.
+
+### O que avancou desde a ultima leitura
+- Edge autostart/remocao: fluxo estabilizado com evidencias de remocao de tasks + kill de processos residuais.
+- Dashboard: separacao entre experiencia `trial`, `paid_setup` e `paid_executive` implementada no frontend.
+- Copilot data foundation: dominio `copilot_*` criado no backend e migracao aplicada.
+- Navegacao operacional: consolidacao de rotas para leitura executiva (Dashboard/Operations/Alerts/Reports/Settings).
+- Performance frontend: ajuste de timeouts e politicas de retry para reduzir cascata de timeouts.
+
+### Erros relevantes encontrados (e aprendizado)
+1. Regra de limite de cameras parecia quebrada.
+- Fato tecnico: org com `subscription active/pro` pode ter mais de 3 cameras; limite 3 e regra de trial.
+- Problema real de UX: fallback no dashboard mostrava "Limite do plano: 3" mesmo sem retorno confiavel do endpoint.
+- Acao: remover fallback enganoso e exibir "Sem limite" quando plano nao possui limite numerico.
+
+2. Possivel bypass de limite no update de camera.
+- Fato tecnico: criacao de camera validava limite, mas ativacao via `PATCH /v1/cameras/{id}/` podia nao revalidar transicao `inactive -> active`.
+- Acao: revalidacao de limite adicionada no `perform_update` + tratamento de `PaywallError` no update.
+
+3. Latencia percebida alta (ate ~2 min).
+- Causa: retries no interceptor HTTP + timeouts longos.
+- Acao: timeout/retry reduzidos, retries limitados para 502/503/504 e logs pesados restritos a DEV.
+
+### Risco atual por trilha de valor ICP multilojista
+- Verde:
+  - visao operacional por loja com sinais reais de edge/camera/eventos.
+  - onboarding e suporte assistido mais previsiveis.
+- Amarelo:
+  - confianca metrica heterogenea por loja/turno (depende calibracao e cobertura).
+  - qualidade de experiencia sob degradacao de rede ainda exige hardening continuo.
+- Vermelho:
+  - comparabilidade oficial de rede sem gate de elegibilidade e cobertura minima.
+
+### Foco de valor (o que o cliente paga para receber)
+- Menos tempo do dono/gestor em operacao reativa.
+- Mais acao orientada por prioridade (onde agir agora).
+- Menos risco de perda operacional por fila/equipe/cobertura.
+- Mais controle executivo da rede sem expor complexidade tecnica.

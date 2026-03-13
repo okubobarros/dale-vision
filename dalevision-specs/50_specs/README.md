@@ -9,3 +9,4 @@
 6. SPEC-006-Alerts
 7. SPEC-007-Event-Pipeline
 8. SPEC-008-Auth-Password-Recovery
+9. SPEC-009-App-Routes-Product-Contract

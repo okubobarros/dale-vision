@@ -314,6 +314,12 @@ class CameraViewSet(viewsets.ModelViewSet):
         headers = self.get_success_headers(serializer.data)
         return Response(serializer.data, status=status.HTTP_201_CREATED, headers=headers)
 
+    def update(self, request, *args, **kwargs):
+        try:
+            return super().update(request, *args, **kwargs)
+        except PaywallError as exc:
+            return _camera_limit_response(exc)
+
     def perform_create(self, serializer, store=None):
         store_id = getattr(store, "id", None)
         requested_active = serializer.validated_data.get("active", True)
@@ -365,6 +371,21 @@ class CameraViewSet(viewsets.ModelViewSet):
 
     def perform_update(self, serializer):
         require_store_role(self.request.user, str(serializer.instance.store_id), ALLOWED_MANAGE_ROLES)
+        previous_active = bool(getattr(serializer.instance, "active", True))
+        requested_active = serializer.validated_data.get("active", previous_active)
+        if requested_active and not previous_active:
+            actor_user_id = None
+            try:
+                actor_user_id = ensure_user_uuid(self.request.user)
+            except Exception:
+                actor_user_id = None
+            enforce_trial_camera_limit(
+                str(serializer.instance.store_id),
+                requested_active=True,
+                exclude_camera_id=str(serializer.instance.id),
+                actor_user_id=actor_user_id,
+                user=self.request.user,
+            )
         instance = serializer.save(updated_at=timezone.now())
         _log_staff_action(
             self.request,

@@ -13,6 +13,7 @@ export function AlertsModuleTabs() {
         <NavLink
           key={tab.to}
           to={tab.to}
+          end={tab.to === "/app/alerts"}
           className={({ isActive }) =>
             `rounded-lg px-3 py-1.5 text-sm font-medium transition ${
               isActive ? "bg-blue-600 text-white" : "text-gray-700 hover:bg-gray-100"
@@ -25,4 +26,3 @@ export function AlertsModuleTabs() {
     </div>
   )
 }
-

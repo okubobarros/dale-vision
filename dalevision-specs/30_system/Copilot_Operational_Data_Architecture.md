@@ -18,19 +18,32 @@
   - `/api/v1/report/summary|impact|export/`
 
 ### Copiloto (estado atual)
-- Frontend: mensagens em memória no `AgentProvider` (`local state`), sem persistência.
-- Não existe no backend um domínio dedicado para:
-  - memória conversacional por loja/org
-  - insights estruturados versionados
-  - relatório 72h com ciclo de vida (`pending/ready/failed`)
+- Frontend: existe experiencia contextual no dashboard/operations, mas ainda sem fluxo completo de inteligencia operacional em tempo real.
+- Backend: dominio dedicado ja criado e migrado:
+  - `copilot_dashboard_context_snapshots`
+  - `copilot_operational_insights`
+  - `copilot_reports_72h`
+  - `copilot_conversations`
+  - `copilot_messages`
+- Estado funcional atual:
+  - persistencia estrutural pronta;
+  - contratos basicos preparados;
+  - geracao automatica de insight/relatorio ainda em evolucao (sem LLM obrigatoria no loop principal).
 
 ## 2) Lacunas para Copiloto como “cérebro”
 
 - Falta um **context snapshot** único para home do dashboard.
-- Falta persistência de chat e contexto da pergunta (store, período, filtros).
-- Falta pipeline de geração de insight com rastreabilidade de evidências.
-- Falta contrato estável para relatório operacional de 72h.
-- Falta camada de calibração auditável para admin e cliente (hoje existem partes em `vision_calibration_runs`, mas sem amarração no dashboard/coplilot como memória).
+- Falta pipeline online para manter snapshots atualizados com SLO definido.
+- Falta geracao deterministica de insight baseada em regras/thresholds antes da camada LLM.
+- Falta contrato final do relatorio 72h com versao, status e publish controlado.
+- Falta amarracao completa entre calibracao (`vision_calibration_runs`) e confianca exibida no Copilot/dashboard.
+- Falta observabilidade de ponta a ponta (coleta -> insight -> recomendacao -> acao do usuario).
+
+## 2.1 Aprendizados recentes (2026-03-13)
+- Nao existe valor em IA sem base operacional confiavel por loja/turno.
+- Erro de UX em plano/limite derruba confianca mesmo quando regra tecnica esta correta.
+- O Copilot precisa nascer com evidencias e trilha auditavel, nao com texto generico.
+- Primeiro ganho real deve vir de recomendacao acionavel e priorizacao, nao de narrativa longa.
 
 ## 3) Arquitetura recomendada
 
@@ -52,6 +65,21 @@
 - `GET /api/v1/copilot/stores/{store_id}/report-72h/`
 - `GET /api/v1/copilot/stores/{store_id}/conversations/`
 - `POST /api/v1/copilot/stores/{store_id}/chat/`
+
+### 3.2.1 Estrategia de entrega por fases
+1. Fase A (deterministica, sem LLM obrigatoria)
+- gerar insights por regras e thresholds auditaveis;
+- preencher dashboard e operations com recomendacoes de acao;
+- registrar tudo em `copilot_operational_insights`.
+
+2. Fase B (LLM assistida)
+- usar LLM para sumarizacao, explicacao e priorizacao contextual;
+- sempre com citacao de evidencia (`evidence_json` + `citations_json`);
+- fallback deterministico quando LLM indisponivel.
+
+3. Fase C (orquestracao)
+- disparo por canal (dashboard/email/whatsapp) conforme regra e severidade;
+- fechamento de loop com status de entrega e acao tomada.
 
 ### 3.3 Pipeline de dados (CV -> Copilot)
 1. Edge publica eventos e saúde (`vision_atomic_events`, `camera_health_logs`, `edge receipts`).
@@ -91,6 +119,26 @@
 - Degradação graciosa:
   - quando não houver evidência suficiente, responder com estado “consolidando sinais”, sem inventar análise.
 
+## 7) Norte de valor para ICP multilojista
+- O usuario paga para decidir mais rapido e com menos risco.
+- O Copilot deve responder: onde agir agora, qual impacto esperado e qual evidência suporta a recomendacao.
+- Toda tela principal precisa priorizar:
+  1. risco operacional atual,
+  2. acao recomendada,
+  3. impacto esperado,
+  4. nivel de confianca da leitura.
+
+## 8) UX do Copiloto (decisão de produto)
+- O Copiloto nao depende de experiencia full-screen para gerar valor.
+- Forma principal:
+  - painel contextual em `dashboard`, `operations` e `store view`.
+- Forma opcional:
+  - tela dedicada quando houver necessidade de analise longa.
+- Obrigatorio:
+  - historico de consulta persistido (`copilot_conversations` + `copilot_messages`);
+  - contexto da pergunta persistido (`context_json`);
+  - trilha de evidencias (`citations_json`) para resposta auditavel.
+
 ## 6) Payload ideal da home (referência)
 
 ```json
@@ -111,4 +159,3 @@
   "generated_at": "2026-03-12T12:00:00Z"
 }
 ```
-

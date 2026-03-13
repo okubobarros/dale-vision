@@ -7,6 +7,10 @@ import { alertsService, type AlertRule } from "../../services/alerts"
 import { AlertsModuleTabs } from "../../components/Alerts/AlertsModuleTabs"
 
 type Severity = "critical" | "warning" | "info"
+type RuleCreateErrorInfo = {
+  message: string
+  details: string[]
+}
 
 const defaultChannels = { dashboard: true, email: false, whatsapp: false }
 const severityLabel: Record<Severity, string> = {
@@ -19,6 +23,61 @@ const eventTypeLabel: Record<string, string> = {
   staff_missing: "Equipe insuficiente",
   suspicious_cancel: "Cancelamento suspeito",
 }
+const validEventTypes = Object.keys(eventTypeLabel)
+
+const parseRuleCreateError = (err: unknown): RuleCreateErrorInfo => {
+  const error = err as {
+    message?: string
+    response?: {
+      status?: number
+      data?: {
+        detail?: string
+        message?: string
+        details?: unknown
+        type?: string[]
+      } & Record<string, unknown>
+    }
+  }
+  const data = error.response?.data
+  const details: string[] = []
+
+  if (data?.detail) details.push(String(data.detail))
+  if (data?.message && data.message !== data.detail) details.push(String(data.message))
+
+  const backendDetails = data?.details
+  if (Array.isArray(backendDetails)) {
+    details.push(...backendDetails.map(String))
+  } else if (backendDetails && typeof backendDetails === "object") {
+    Object.entries(backendDetails as Record<string, unknown>).forEach(([field, value]) => {
+      if (Array.isArray(value)) {
+        value.forEach((item) => details.push(`${field}: ${String(item)}`))
+      } else if (value != null) {
+        details.push(`${field}: ${String(value)}`)
+      }
+    })
+  }
+
+  if (Array.isArray(data?.type) && data.type.length > 0) {
+    details.push(`Evento inválido: ${data.type.join(", ")}`)
+  }
+
+  const rawMessage = (error.message || "").toLowerCase()
+  const hasEventHint = details.some((item) => item.toLowerCase().includes("evento")) ||
+    rawMessage.includes("queue_long") ||
+    rawMessage.includes("tipo")
+  if (hasEventHint) {
+    details.push(`Eventos válidos: ${validEventTypes.join(", ")}`)
+  }
+
+  if (details.length === 0 && error.message) {
+    details.push(error.message)
+  }
+
+  return {
+    message: details[0] || "Erro ao salvar regra.",
+    details,
+  }
+}
 
 export default function AlertRulesPage() {
   const qc = useQueryClient()
@@ -29,6 +88,7 @@ export default function AlertRulesPage() {
   const [cooldown, setCooldown] = useState<number>(15)
   const [active, setActive] = useState(true)
   const [channels, setChannels] = useState(defaultChannels)
+  const [createError, setCreateError] = useState<RuleCreateErrorInfo | null>(null)
 
   const [showCreate, setShowCreate] = useState(true)
 
@@ -55,13 +115,16 @@ export default function AlertRulesPage() {
     mutationFn: (payload: Partial<AlertRule> & { store_id: string }) =>
       alertsService.createRule(payload),
     onSuccess: async () => {
+      setCreateError(null)
       toast.success("Regra criada ✅")
       await qc.invalidateQueries({ queryKey: ["alerts", "rules", storeId] })
       setShowCreate(false)
     },
     onError: (err: unknown) => {
       console.error(err)
-      toast.error("Erro ao salvar regra. Verifique o backend e tente novamente.")
+      const parsed = parseRuleCreateError(err)
+      setCreateError(parsed)
+      toast.error(parsed.message)
     },
   })
 
@@ -80,6 +143,7 @@ export default function AlertRulesPage() {
       toast.error("Informe o tipo do evento")
       return
     }
+    setCreateError(null)
 
     createMut.mutate({
       store_id: storeId, // service converte pra "store"
@@ -277,9 +341,19 @@ export default function AlertRulesPage() {
             </button>
           </div>
 
-          {createMut.isError && (
-            <div className="mt-3 text-sm text-red-600">
-              Erro ao salvar regra. Verifique o backend e tente novamente.
+          {createError && (
+            <div className="mt-3 rounded-lg border border-red-200 bg-red-50 p-3 text-sm text-red-700">
+              <p className="font-semibold">{createError.message}</p>
+              {createError.details.length > 1 && (
+                <ul className="mt-1 list-disc pl-5 text-xs">
+                  {createError.details.slice(1).map((detail, index) => (
+                    <li key={`${detail}-${index}`}>{detail}</li>
+                  ))}
+                </ul>
+              )}
+              <p className="mt-2 text-xs">
+                Eventos válidos: <span className="font-semibold">{validEventTypes.join(", ")}</span>
+              </p>
             </div>
           )}
         </div>

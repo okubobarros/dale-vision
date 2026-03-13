@@ -3,6 +3,14 @@
 ## Objetivo
 Gerenciar alertas de eventos e notificações.
 
+## Regra de produto (atualizada 2026-03-13)
+- Alertas devem funcionar como módulo único (`Feed`, `Regras`, `Histórico`) em `/app/alerts`.
+- O app oferece baseline padrão de regras por tipo de operação.
+- Cada loja pode customizar metas e thresholds por contexto local (segmento, equipe, capacidade, faturamento).
+- Customização pode ser:
+  - manual (edição na aba Regras);
+  - assistida pelo Copiloto (sugestão + confirmação explícita do usuário).
+
 ## Não-objetivos
 - Regras avançadas de ML
 
@@ -11,6 +19,7 @@ Gerenciar alertas de eventos e notificações.
 2. Regra aplica cooldown
 3. Notification logs criados
 4. Usuário resolve/ignora
+5. Regra é revisada e ajustada por loja quando necessário
 
 ## Estados
 - open

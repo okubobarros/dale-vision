@@ -1,7 +1,7 @@
 import { useMemo, useState } from "react"
 import { useQuery } from "@tanstack/react-query"
 import { meService, type ReportSummary } from "../../services/me"
-import { storesService, type StoreSummary } from "../../services/stores"
+import { storesService, type Store, type StoreSummary } from "../../services/stores"
 
 const BAR_COLORS = ["#1d4ed8", "#0ea5e9", "#22c55e", "#f59e0b", "#ef4444"]
 
@@ -26,11 +26,28 @@ const downloadBlob = (blob: Blob, filename: string) => {
   window.URL.revokeObjectURL(url)
 }
 
+const parseOpeningHours = (value?: string | null): { startHour: number; endHour: number } | null => {
+  if (!value) return null
+  const match = value.match(/(\d{1,2})[:h]?(\d{2})?\s*[-–a]\s*(\d{1,2})[:h]?(\d{2})?/i)
+  if (!match) return null
+  const startHour = Number(match[1])
+  const endHour = Number(match[3])
+  if (!Number.isFinite(startHour) || !Number.isFinite(endHour)) return null
+  if (startHour < 0 || startHour > 23 || endHour < 0 || endHour > 23) return null
+  return { startHour, endHour }
+}
+
 const Reports = () => {
   const { data: stores } = useQuery<StoreSummary[]>({
     queryKey: ["stores-summary"],
     queryFn: storesService.getStoresSummary,
     staleTime: 60000,
+  })
+  const { data: storesFull = [] } = useQuery<Store[]>({
+    queryKey: ["stores-full-report"],
+    queryFn: storesService.getStores,
+    staleTime: 60000,
+    retry: false,
   })
 
   const [selectedStore, setSelectedStore] = useState<string>("")
@@ -53,13 +70,29 @@ const Reports = () => {
     retry: 1,
   })
 
+  const selectedStoreMeta = useMemo(
+    () => storesFull.find((store) => store.id === selectedStore) ?? null,
+    [storesFull, selectedStore]
+  )
+  const openingWindow = useMemo(
+    () => parseOpeningHours(selectedStoreMeta?.hours_weekdays),
+    [selectedStoreMeta?.hours_weekdays]
+  )
+
   const hourBars = useMemo(() => {
     if (!data) return []
-    return data.chart_footfall_by_hour.map((entry) => ({
+    const baseBars = data.chart_footfall_by_hour.map((entry) => ({
       ...entry,
       label: `${String(entry.hour).padStart(2, "0")}:00`,
     }))
-  }, [data])
+    if (!openingWindow) return baseBars
+    return baseBars.filter((entry) => {
+      if (openingWindow.startHour <= openingWindow.endHour) {
+        return entry.hour >= openingWindow.startHour && entry.hour < openingWindow.endHour
+      }
+      return entry.hour >= openingWindow.startHour || entry.hour < openingWindow.endHour
+    })
+  }, [data, openingWindow])
   const maxFootfall = useMemo(() => {
     if (!hourBars.length) return 1
     return Math.max(...hourBars.map((entry) => entry.footfall), 1)
@@ -255,6 +288,12 @@ const Reports = () => {
           </div>
           <div className="mt-3 text-xs text-gray-500">
             Pico horário: {peakHour.label} • {peakHour.footfall} visitantes
+            {openingWindow && (
+              <span>
+                {" "}· Janela operacional: {String(openingWindow.startHour).padStart(2, "0")}:00 às{" "}
+                {String(openingWindow.endHour).padStart(2, "0")}:00
+              </span>
+            )}
           </div>
         </div>
       </div>

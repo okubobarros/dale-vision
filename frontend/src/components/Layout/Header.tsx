@@ -1,6 +1,9 @@
 import { useAuth } from "../../contexts/useAuth"
 import { useNavigate } from "react-router-dom"
+import { useQuery } from "@tanstack/react-query"
 import logo from "../../assets/logo.png"
+import RevenueProgressBar from "./RevenueProgressBar"
+import { salesService } from "../../services/sales"
 
 type HeaderProps = {
   onOpenAgent?: () => void
@@ -9,6 +12,12 @@ type HeaderProps = {
 const Header = ({ onOpenAgent }: HeaderProps) => {
   const { user, logout } = useAuth()
   const navigate = useNavigate()
+  const { data: revenueProgress } = useQuery({
+    queryKey: ["revenue-progress"],
+    queryFn: salesService.getRevenueProgress,
+    staleTime: 60000,
+    retry: false,
+  })
 
   const handleLogout = async () => {
     if (window.confirm("Tem certeza que deseja sair?")) {
@@ -47,13 +56,25 @@ const Header = ({ onOpenAgent }: HeaderProps) => {
 
         </div>
 
+        {/* Center: Revenue progress (desktop) */}
+        <div className="hidden lg:block flex-1 px-3 max-w-xl">
+          <RevenueProgressBar
+            state={revenueProgress?.state ?? "not_configured"}
+            currentRevenue={revenueProgress?.current_revenue ?? 0}
+            targetRevenue={revenueProgress?.target_revenue ?? 1000000}
+            currency={revenueProgress?.currency ?? "BRL"}
+            lastSyncAt={revenueProgress?.last_sync_at ?? null}
+            onConnectSystem={() => navigate("/app/settings")}
+          />
+        </div>
+
         {/* Right: Actions + User */}
         <div className="flex items-center gap-3 sm:gap-4 min-w-0">
           {/* ✅ Desktop Agent button */}
           {onOpenAgent && (
             <button
               type="button"
-              onClick={onOpenAgent}
+              onClick={() => navigate("/app/copilot")}
               className="hidden md:inline-flex items-center gap-2 px-4 py-2 rounded-lg
               bg-gradient-to-r from-blue-500 to-purple-600
               text-white text-sm font-semibold shadow-sm
@@ -120,6 +141,18 @@ const Header = ({ onOpenAgent }: HeaderProps) => {
             </div>
           </div>
         </div>
+      </div>
+
+      {/* Mobile/tablet: Revenue progress below brand/actions */}
+      <div className="px-3 pb-3 lg:hidden sm:px-6">
+        <RevenueProgressBar
+          state={revenueProgress?.state ?? "not_configured"}
+          currentRevenue={revenueProgress?.current_revenue ?? 0}
+          targetRevenue={revenueProgress?.target_revenue ?? 1000000}
+          currency={revenueProgress?.currency ?? "BRL"}
+          lastSyncAt={revenueProgress?.last_sync_at ?? null}
+          onConnectSystem={() => navigate("/app/settings")}
+        />
       </div>
     </header>
   )

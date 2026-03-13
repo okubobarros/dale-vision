@@ -372,8 +372,14 @@ const Dashboard = () => {
   const health = onboardingNextStep?.health
   const camerasTotal = health?.cameras_total ?? edgeStatus?.cameras_total ?? 0
   const camerasOnline = health?.cameras_online ?? edgeStatus?.cameras_online ?? 0
-  const camerasOffline = health?.cameras_offline ?? Math.max(camerasTotal - camerasOnline, 0)
-  const camerasLimit = storeLimits?.limits?.cameras ?? 3
+  const camerasOffline = Math.max(camerasTotal - camerasOnline, 0)
+  const camerasLimit = storeLimits?.limits?.cameras ?? null
+  const camerasLimitLabel =
+    typeof camerasLimit === "number"
+      ? String(camerasLimit)
+      : storeLimits?.plan === "paid"
+      ? "Sem limite"
+      : "—"
   const [evidenceOpen, setEvidenceOpen] = useState(false)
   const [selectedEvidenceHour, setSelectedEvidenceHour] = useState<string | null>(null)
   const openEvidence = (hourLabel?: string | null) => {
@@ -684,6 +690,46 @@ const Dashboard = () => {
       ? "Já existe base inicial para leitura de fluxo e comportamento de atendimento."
       : "Estamos calibrando a base da loja antes de consolidar os indicadores executivos.",
   ]
+  const copilotRecommendationNow = useMemo(() => {
+    const orderedEvents = [...(events ?? [])].sort((a, b) => {
+      const weight = (severity?: string) =>
+        severity === "critical" ? 3 : severity === "warning" ? 2 : 1
+      return weight(b.severity) - weight(a.severity)
+    })
+    const topEvent = orderedEvents[0]
+    if (topEvent) {
+      return {
+        title: topEvent.title || "Evento operacional em aberto",
+        action:
+          topEvent.type === "queue_long"
+            ? "Abrir segundo caixa e redistribuir equipe no pico."
+            : topEvent.type === "staff_missing"
+            ? "Reforçar cobertura no ponto de maior fluxo."
+            : "Priorizar intervenção da liderança local nesta loja.",
+        impact:
+          topEvent.type === "queue_long"
+            ? "Reduzir tempo médio de espera e risco de perda de venda."
+            : "Mitigar impacto operacional e estabilizar atendimento.",
+        storeId: String(topEvent.store_id),
+      }
+    }
+
+    if (!isEdgeConnected) {
+      return {
+        title: "Conexão da loja interrompida",
+        action: "Restabelecer conexão do Edge para retomar a leitura operacional.",
+        impact: "Reativar visão da operação e recomendações em tempo real.",
+        storeId: selectedStore,
+      }
+    }
+
+    return {
+      title: "Operação estável neste momento",
+      action: "Revisar prioridades com o Copiloto para antecipar riscos do dia.",
+      impact: "Manter consistência operacional e acelerar tomada de decisão.",
+      storeId: selectedStore,
+    }
+  }, [events, isEdgeConnected, selectedStore])
   const kpiItems = [
     {
       title: "Fluxo de Visitantes",
@@ -982,7 +1028,7 @@ const Dashboard = () => {
                   {camerasOnline} ativas · {camerasOffline} indisponíveis
                 </p>
                 <p className="text-xs text-gray-500">
-                  Total: {camerasTotal} · Limite do plano: {camerasLimit}
+                  Total: {camerasTotal} · Limite do plano: {camerasLimitLabel}
                 </p>
               </div>
               <button
@@ -999,6 +1045,42 @@ const Dashboard = () => {
 
       {selectedStore !== ALL_STORES_VALUE && (
         <section className="space-y-4 sm:space-y-6">
+          <article className="rounded-xl border border-indigo-200 bg-indigo-50/60 p-4 sm:p-5 shadow-sm">
+            <p className="text-xs font-semibold uppercase tracking-wide text-indigo-700">
+              Copiloto recomenda agora
+            </p>
+            <h2 className="mt-1 text-lg font-semibold text-indigo-950">{copilotRecommendationNow.title}</h2>
+            <p className="mt-2 text-sm text-indigo-900">
+              <span className="font-semibold">Ação sugerida:</span> {copilotRecommendationNow.action}
+            </p>
+            <p className="mt-1 text-sm text-indigo-900">
+              <span className="font-semibold">Impacto estimado:</span> {copilotRecommendationNow.impact}
+            </p>
+            <div className="mt-3 flex flex-wrap gap-2">
+              <Link
+                to={`/app/operations/stores/${copilotRecommendationNow.storeId}`}
+                className="rounded-lg bg-indigo-700 px-3 py-2 text-xs font-semibold text-white hover:bg-indigo-800"
+              >
+                Abrir loja
+              </Link>
+              <Link
+                to={`/app/operations/stores/${copilotRecommendationNow.storeId}?tab=cameras`}
+                className="rounded-lg border border-indigo-200 bg-white px-3 py-2 text-xs font-semibold text-indigo-700 hover:bg-indigo-100"
+              >
+                Ver câmeras
+              </Link>
+              <button
+                type="button"
+                onClick={() =>
+                  openCopilot(`Avalie esta recomendação e proponha alternativa: ${copilotRecommendationNow.title}`)
+                }
+                className="rounded-lg border border-indigo-200 bg-white px-3 py-2 text-xs font-semibold text-indigo-700 hover:bg-indigo-100"
+              >
+                Ignorar recomendação
+              </button>
+            </div>
+          </article>
+
           <DashboardHeroSection
             dashboardType={dashboardExperience.dashboardType}
             networkName={networkName}

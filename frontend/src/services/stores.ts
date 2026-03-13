@@ -587,6 +587,14 @@ const isAuthError = (error: ApiErrorLike | unknown) => {
   return status === 401 || status === 403
 }
 
+const logDev = (...args: unknown[]) => {
+  if (import.meta.env.DEV) console.log(...args)
+}
+
+const logDevError = (...args: unknown[]) => {
+  if (import.meta.env.DEV) console.error(...args)
+}
+
 const normalizeApiError = (error: unknown, fallbackMessage: string) => {
   const err = (error || {}) as ApiErrorLike;
   const detail =
@@ -670,7 +678,7 @@ export const storesService = {
   },
   // Listar lojas com payload mínimo (para telas rápidas)
   async getStoresMinimal(): Promise<StoreMinimal[]> {
-    console.log("🔄 Buscando lojas (view=min)...")
+    logDev("🔄 Buscando lojas (view=min)...")
     try {
       const response = await api.get("/v1/stores/", {
         params: { view: "min" },
@@ -685,11 +693,11 @@ export const storesService = {
         : Array.isArray(payload?.results)
         ? payload.results
         : [];
-      console.log(`✅ Encontradas ${stores?.length || 0} lojas (min)`);
+      logDev(`✅ Encontradas ${stores?.length || 0} lojas (min)`);
       writeStoresCache(STORES_CACHE_KEYS.minimal, stores)
       return stores;
     } catch (error) {
-      console.error("❌ Erro ao buscar lojas (min):", error);
+      logDevError("❌ Erro ao buscar lojas (min):", error);
       if (!isAuthError(error)) {
         const cached = readStoresCache<StoreMinimal>(STORES_CACHE_KEYS.minimal)
         if (cached?.length) return cached
@@ -700,7 +708,7 @@ export const storesService = {
 
   // Listar lojas com payload summary (status/role/plan)
   async getStoresSummary(): Promise<StoreSummary[]> {
-    console.log("🔄 Buscando lojas (view=summary)...")
+    logDev("🔄 Buscando lojas (view=summary)...")
     try {
       const response = await api.get("/v1/stores/", {
         params: { view: "summary" },
@@ -715,11 +723,11 @@ export const storesService = {
         : Array.isArray(payload?.results)
         ? payload.results
         : [];
-      console.log(`✅ Encontradas ${stores?.length || 0} lojas (summary)`);
+      logDev(`✅ Encontradas ${stores?.length || 0} lojas (summary)`);
       writeStoresCache(STORES_CACHE_KEYS.summary, stores)
       return stores;
     } catch (error) {
-      console.error("❌ Erro ao buscar lojas (summary):", error);
+      logDevError("❌ Erro ao buscar lojas (summary):", error);
       if (!isAuthError(error)) {
         const cached = readStoresCache<StoreSummary>(STORES_CACHE_KEYS.summary)
         if (cached?.length) return cached
@@ -730,12 +738,12 @@ export const storesService = {
 
   // Listar todas as lojas do usuário
   async getStores(): Promise<Store[]> {
-    console.log("🔄 Buscando lojas... (fetching stores)")
+    logDev("🔄 Buscando lojas... (fetching stores)")
     try {
       const response = await api.get('/v1/stores/', {
         timeoutCategory: "critical",
       });
-      console.log('📦 Resposta completa:', response);
+      logDev('📦 Resposta completa:', response);
 
       const payload = response.data;
       const stores = Array.isArray(payload)
@@ -745,12 +753,12 @@ export const storesService = {
         : Array.isArray(payload?.results)
         ? payload.results
         : [];
-      console.log(`✅ Encontradas ${stores?.length || 0} lojas`);
+      logDev(`✅ Encontradas ${stores?.length || 0} lojas`);
       writeStoresCache(STORES_CACHE_KEYS.full, stores)
 
       return stores;
     } catch (error) {
-      console.error('❌ Erro ao buscar lojas:', error);
+      logDevError('❌ Erro ao buscar lojas:', error);
       if (!isAuthError(error)) {
         const cached = readStoresCache<Store>(STORES_CACHE_KEYS.full)
         if (cached?.length) return cached
@@ -761,17 +769,18 @@ export const storesService = {
 
   // Obter dashboard completo (novo formato)
   async getStoreDashboard(storeId: string): Promise<StoreDashboard> {
-    console.log(`🔄 Buscando dashboard para loja ${storeId}`);
+    logDev(`🔄 Buscando dashboard para loja ${storeId}`);
     const cacheKey = `${STORES_CACHE_KEYS.dashboardPrefix}${storeId}`
     try {
       const response = await api.get(`/v1/stores/${storeId}/dashboard/`, {
         timeoutCategory: "critical",
+        noRetry: true,
       });
-      console.log('✅ Dashboard response:', response.data);
+      logDev('✅ Dashboard response:', response.data);
       writeObjectCache(cacheKey, response.data as StoreDashboard)
       return response.data;
     } catch (error) {
-      console.error('❌ Erro ao buscar dashboard:', error);
+      logDevError('❌ Erro ao buscar dashboard:', error);
       if (!isAuthError(error)) {
         const cached = readObjectCache<StoreDashboard>(cacheKey)
         if (cached) return cached
@@ -881,10 +890,13 @@ export const storesService = {
   // Obter visão da rede (todas as lojas)
   async getNetworkDashboard(): Promise<NetworkDashboard> {
     try {
-      const response = await api.get('/v1/stores/network_dashboard/');
+      const response = await api.get('/v1/stores/network_dashboard/', {
+        timeoutCategory: "critical",
+        noRetry: true,
+      });
       return response.data;
     } catch (error) {
-      console.error('❌ Erro ao buscar network dashboard:', error);
+      logDevError('❌ Erro ao buscar network dashboard:', error);
       throw error;
     }
   },
@@ -894,7 +906,7 @@ export const storesService = {
       const response = await api.get(`/v1/stores/${storeId}/edge-setup/`);
       return normalizeEdgeSetup(response.data, storeId);
     } catch (error) {
-      console.error('❌ Erro ao obter credenciais do edge:', error);
+      logDevError('❌ Erro ao obter credenciais do edge:', error);
       throw normalizeApiError(error, 'Falha ao obter credenciais do edge.');
     }
   },
@@ -912,7 +924,7 @@ export const storesService = {
       if (apiError.response?.status === 404) {
         return { supported: false };
       }
-      console.error('❌ Erro ao rotacionar token do edge:', error);
+      logDevError('❌ Erro ao rotacionar token do edge:', error);
       throw normalizeApiError(error, 'Falha ao gerar novo token do edge.');
     }
   },
@@ -922,12 +934,13 @@ export const storesService = {
     try {
       const response = await api.get(`/v1/stores/${storeId}/edge-status/`, {
         timeoutCategory: "critical",
+        noRetry: true,
       });
       const normalized = normalizeEdgeStatus(response.data, storeId);
       writeObjectCache(cacheKey, normalized)
       return normalized;
     } catch (error) {
-      console.error('❌ Erro ao consultar status do edge:', error);
+      logDevError('❌ Erro ao consultar status do edge:', error);
       if (!isAuthError(error)) {
         const cached = readObjectCache<StoreEdgeStatus>(cacheKey)
         if (cached) return cached

@@ -3,7 +3,7 @@ import { Link } from "react-router-dom"
 import { useQuery } from "@tanstack/react-query"
 import { storesService, type NetworkDashboard, type StoreSummary } from "../../services/stores"
 import { useAlertsEvents } from "../../queries/alerts.queries"
-import { meService, type MeAccount } from "../../services/me"
+import { meService, type MeAccount, type MeStatus } from "../../services/me"
 import type { DetectionEvent } from "../../services/alerts"
 import type { OperationalEvent, OperationalPillar } from "../../types/operations"
 
@@ -40,6 +40,11 @@ const quickPrompts = [
   "Onde há problema de equipe ou comportamento?",
   "O que devo priorizar nesta tarde?",
 ]
+const OPERATIONAL_SCORE_WEIGHTS = {
+  critical: 5,
+  warning: 3,
+  productivity: 2,
+} as const
 
 const formatTime = (iso?: string) => {
   if (!iso) return "—"
@@ -133,6 +138,12 @@ const Operations = () => {
   const { data: account } = useQuery<MeAccount | null>({
     queryKey: ["operations-account"],
     queryFn: () => meService.getAccount(),
+    staleTime: 60000,
+    retry: false,
+  })
+  const { data: meStatus } = useQuery<MeStatus | null>({
+    queryKey: ["operations-status"],
+    queryFn: () => meService.getStatus(),
     staleTime: 60000,
     retry: false,
   })
@@ -234,6 +245,57 @@ const Operations = () => {
     prioritizedEvents[0]?.suggestion ||
     "Operação estável até o momento. Use o Copiloto para revisar oportunidades por loja."
 
+  const hasProPlan = useMemo(
+    () =>
+      stores.some(
+        (store) => store.plan === "pro" || store.plan === "enterprise"
+      ),
+    [stores]
+  )
+  const isTrialOrStart =
+    !meStatus?.has_subscription ||
+    storesTotal <= 1 ||
+    stores.every((store) => !store.plan || store.plan === "trial" || store.plan === "basic")
+  const shouldShowRanking = hasProPlan && storesTotal > 1 && !isTrialOrStart
+  const rankingRows = useMemo(() => {
+    const byStore = new Map<
+      string,
+      {
+        storeId: string
+        storeName: string
+        critical: number
+        warning: number
+        productivity: number
+        score: number
+      }
+    >()
+
+    operationalEvents.forEach((event) => {
+      const current = byStore.get(event.store_id) ?? {
+        storeId: event.store_id,
+        storeName: event.store_name,
+        critical: 0,
+        warning: 0,
+        productivity: 0,
+        score: 0,
+      }
+
+      if (event.severity === "critical") current.critical += 1
+      if (event.severity === "warning") current.warning += 1
+      if (event.pillar === "productivity") current.productivity += 1
+
+      current.score =
+        current.critical * OPERATIONAL_SCORE_WEIGHTS.critical +
+        current.warning * OPERATIONAL_SCORE_WEIGHTS.warning +
+        current.productivity * OPERATIONAL_SCORE_WEIGHTS.productivity
+      byStore.set(event.store_id, current)
+    })
+
+    return Array.from(byStore.values())
+      .sort((a, b) => b.score - a.score)
+      .slice(0, 5)
+  }, [operationalEvents])
+
   const networkRows = networkDashboard?.stores ?? []
   const isEmptyNetwork = !storesLoading && stores.length === 0
 
@@ -329,6 +391,76 @@ const Operations = () => {
             <p className="mt-1 text-xs text-gray-500">{kpi.helper}</p>
           </article>
         ))}
+      </section>
+
+      <section className="rounded-2xl border border-gray-200 bg-white p-5 shadow-sm">
+        <div className="flex items-center justify-between gap-3 flex-wrap">
+          <div>
+            <h2 className="text-xl font-semibold text-gray-900">Ranking de prioridade da rede</h2>
+            <p className="text-sm text-gray-600 mt-1">
+              Priorização automática por impacto operacional das lojas.
+            </p>
+          </div>
+          {shouldShowRanking && (
+            <span className="rounded-full border border-indigo-200 bg-indigo-50 px-3 py-1 text-xs font-semibold text-indigo-700">
+              Plano Pro
+            </span>
+          )}
+        </div>
+
+        {shouldShowRanking ? (
+          rankingRows.length > 0 ? (
+            <div className="mt-4 space-y-3">
+              {rankingRows.map((row, index) => (
+                <article
+                  key={row.storeId}
+                  className="rounded-xl border border-gray-200 bg-gray-50 p-4"
+                >
+                  <div className="flex flex-wrap items-center justify-between gap-2">
+                    <div>
+                      <p className="text-sm font-semibold text-gray-900">
+                        {index + 1}º {row.storeName}
+                      </p>
+                      <p className="text-xs text-gray-600">
+                        Score {row.score} · críticos {row.critical} · atenção {row.warning}
+                      </p>
+                    </div>
+                    <Link
+                      to={`/app/operations/stores/${row.storeId}`}
+                      className="rounded-lg border border-gray-200 bg-white px-3 py-1.5 text-xs font-semibold text-gray-700 hover:bg-gray-100"
+                    >
+                      Abrir loja
+                    </Link>
+                  </div>
+                </article>
+              ))}
+            </div>
+          ) : (
+            <div className="mt-4 rounded-xl border border-dashed border-gray-300 p-4 text-sm text-gray-600">
+              Sem eventos suficientes para calcular ranking no momento.
+            </div>
+          )
+        ) : (
+          <div className="mt-4 rounded-xl border border-indigo-100 bg-indigo-50 p-4">
+            <p className="text-sm font-semibold text-indigo-900">Gerencie sua rede com o plano Pro</p>
+            <p className="mt-1 text-xs text-indigo-800">
+              Monitore múltiplas lojas em uma única tela e priorize intervenções automaticamente.
+            </p>
+            <ul className="mt-3 space-y-1 text-xs text-indigo-800">
+              <li>• Ranking de prioridade automática por loja</li>
+              <li>• Recomendações do Copiloto por unidade</li>
+              <li>• Gestão centralizada da operação da rede</li>
+            </ul>
+            <div className="mt-3">
+              <Link
+                to="/app/upgrade"
+                className="inline-flex rounded-lg bg-indigo-600 px-3 py-2 text-xs font-semibold text-white hover:bg-indigo-700"
+              >
+                Conhecer plano Pro
+              </Link>
+            </div>
+          </div>
+        )}
       </section>
 
       <section className="grid grid-cols-1 xl:grid-cols-3 gap-5">

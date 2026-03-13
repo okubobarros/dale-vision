@@ -3,6 +3,11 @@
 ## Objetivo
 Entregar relatórios v1 que comprovem valor operacional e ROI por **Store** e por **Org**, alinhado aos limites do **Trial** e planos pagos (ver `10_product/Pricing_Plans.md`) e à fase “Relatórios por loja” do `10_product/Roadmap.md`.
 
+## Regra de produto (atualizada 2026-03-13)
+- O diagnóstico operacional de **72h** é exclusivo para contexto de **trial ativo**.
+- Conta com **plano ativo** não deve receber narrativa de "trial expirado" na experiência principal.
+- Para planos ativos, a experiência de reports deve ser contínua e orientada a operação.
+
 ## Personas
 - **Store Manager**: precisa de resumo semanal por loja para orientar equipe.
 - **Org Owner**: precisa de visão mensal multi‑loja para decidir expansão.
