@@ -3,18 +3,21 @@ import { useSearchParams } from "react-router-dom"
 import { useAgent } from "../../contexts/useAgent"
 
 const defaultPrompts = [
-  "Resumo executivo da rede hoje",
-  "Quais lojas exigem ação imediata?",
-  "Onde há risco de perda de venda agora?",
-  "Qual prioridade operacional para esta tarde?",
+  "Qual a prioridade operacional da rede neste momento?",
+  "Quais lojas exigem ação imediata hoje?",
+  "Onde está o maior risco de perda de venda agora?",
+  "Qual decisão de equipe traz maior impacto nesta tarde?",
 ]
 
 const storePrompt = (storeId?: string | null) =>
-  storeId ? `Analisar a operação da loja ${storeId}` : "Analisar a operação da rede"
+  storeId
+    ? `Faça uma leitura executiva da operação da loja ${storeId}`
+    : "Faça uma leitura executiva da operação da rede"
 
 export default function CopilotPage() {
   const [params] = useSearchParams()
   const storeId = params.get("store_id")
+  const orgName = params.get("org_name")
   const { messages, addMessage, clearChat } = useAgent()
   const [draft, setDraft] = useState("")
 
@@ -22,6 +25,27 @@ export default function CopilotPage() {
     () => [storePrompt(storeId), ...defaultPrompts],
     [storeId]
   )
+
+  const contextualOpening = useMemo(() => {
+    const baseScope = storeId
+      ? `na loja ${storeId}`
+      : orgName
+        ? `na rede ${orgName}`
+        : "na rede"
+    return {
+      title: "Análise inicial do Copiloto",
+      summary: `Analisei os sinais operacionais disponíveis ${baseScope} e identifiquei uma prioridade prática para agora.`,
+      reason:
+        "Quando há alerta operacional aberto, agir na primeira prioridade reduz risco de perda de venda e evita efeito cascata no restante do turno.",
+      suggestedAction: storeId
+        ? `Abra a visão da loja ${storeId} e valide o primeiro evento com maior severidade.`
+        : "Abra a loja com maior pressão operacional e execute a primeira ação recomendada.",
+      cta:
+        storeId
+          ? `Abrir visão da loja ${storeId}`
+          : "Comparar prioridades por loja",
+    }
+  }, [orgName, storeId])
 
   const send = (content: string) => {
     const value = content.trim()
@@ -53,6 +77,21 @@ export default function CopilotPage() {
       </div>
 
       <div className="border-b border-white/10 px-4 py-3">
+        <div className="mb-3 rounded-xl border border-blue-400/20 bg-blue-500/10 p-3">
+          <p className="text-xs uppercase tracking-[0.16em] text-blue-200">{contextualOpening.title}</p>
+          <p className="mt-1 text-sm text-white">{contextualOpening.summary}</p>
+          <p className="mt-1 text-xs text-slate-300">{contextualOpening.reason}</p>
+          <div className="mt-2 rounded-lg bg-white/5 p-2 text-xs text-slate-100">
+            <span className="font-semibold text-blue-200">Ação sugerida:</span> {contextualOpening.suggestedAction}
+          </div>
+          <button
+            type="button"
+            onClick={() => send(contextualOpening.suggestedAction)}
+            className="mt-2 rounded-lg border border-blue-300/30 bg-blue-500/20 px-3 py-1.5 text-xs font-semibold text-blue-100 hover:bg-blue-500/30"
+          >
+            {contextualOpening.cta}
+          </button>
+        </div>
         <div className="flex flex-wrap gap-2">
           {quickPrompts.map((prompt) => (
             <button
@@ -70,7 +109,7 @@ export default function CopilotPage() {
       <div className="h-[calc(100%-210px)] overflow-y-auto p-4 space-y-3">
         {messages.length === 0 && (
           <div className="rounded-xl border border-white/10 bg-white/5 p-4 text-sm text-slate-300">
-            Comece perguntando sobre prioridades da rede, risco de conversão ou ações por loja.
+            Comece pela prioridade operacional do momento e aprofunde por loja conforme necessário.
           </div>
         )}
         {messages.map((message) => (
@@ -117,4 +156,3 @@ export default function CopilotPage() {
     </div>
   )
 }
-

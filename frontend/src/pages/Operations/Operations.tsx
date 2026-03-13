@@ -1,4 +1,4 @@
-import { useMemo } from "react"
+import { useMemo, useState } from "react"
 import { Link } from "react-router-dom"
 import { useQuery } from "@tanstack/react-query"
 import { storesService, type NetworkDashboard, type StoreSummary } from "../../services/stores"
@@ -45,6 +45,47 @@ const OPERATIONAL_SCORE_WEIGHTS = {
   warning: 3,
   productivity: 2,
 } as const
+
+type QuickFilter = "all" | "critical" | "offline" | "people"
+type InterventionStatus = "pending" | "viewed" | "resolved"
+type GroupedOperationalEvent = {
+  id: string
+  store_id: string
+  store_name: string
+  pillar: OperationalPillar
+  category_label: string
+  severity: "critical" | "warning" | "info"
+  occurred_at: string
+  count: number
+  status: InterventionStatus
+  suggestion: string
+}
+
+const interventionLabel: Record<InterventionStatus, string> = {
+  pending: "Pendente",
+  viewed: "Visualizado pelo Gerente",
+  resolved: "Resolvido",
+}
+
+const interventionStyles: Record<InterventionStatus, string> = {
+  pending: "bg-rose-50 text-rose-700 border-rose-200",
+  viewed: "bg-amber-50 text-amber-700 border-amber-200",
+  resolved: "bg-emerald-50 text-emerald-700 border-emerald-200",
+}
+
+const severityWeight = (severity: string) =>
+  severity === "critical" ? 3 : severity === "warning" ? 2 : 1
+
+const resolveInterventionStatus = (statuses: string[]): InterventionStatus => {
+  if (statuses.some((status) => String(status).toLowerCase() === "open")) return "pending"
+  if (statuses.some((status) => String(status).toLowerCase() === "ignored")) return "viewed"
+  return "resolved"
+}
+
+const formatGroupedTitle = (group: GroupedOperationalEvent) => {
+  const base = group.category_label.toLowerCase()
+  return `${group.count} alerta${group.count > 1 ? "s" : ""} de ${base} na ${group.store_name}`
+}
 
 const formatTime = (iso?: string) => {
   if (!iso) return "—"
@@ -135,6 +176,8 @@ const networkStatusLabel = (
 }
 
 const Operations = () => {
+  const [quickFilter, setQuickFilter] = useState<QuickFilter>("all")
+
   const { data: account } = useQuery<MeAccount | null>({
     queryKey: ["operations-account"],
     queryFn: () => meService.getAccount(),
@@ -169,9 +212,7 @@ const Operations = () => {
     data: events = [],
     isLoading: eventsLoading,
   } = useAlertsEvents(
-    {
-      status: "open",
-    },
+    {},
     { enabled: true, retry: false }
   )
 
@@ -211,26 +252,119 @@ const Operations = () => {
     [events, storeNameById]
   )
 
-  const prioritizedEvents = useMemo(
-    () =>
-      [...operationalEvents]
-        .sort((a, b) => {
-          const weight = (sev: string) => (sev === "critical" ? 3 : sev === "warning" ? 2 : 1)
-          return weight(b.severity) - weight(a.severity)
+  const groupedEvents = useMemo<GroupedOperationalEvent[]>(() => {
+    const grouped = new Map<
+      string,
+      {
+        id: string
+        store_id: string
+        store_name: string
+        pillar: OperationalPillar
+        category_label: string
+        severity: "critical" | "warning" | "info"
+        occurred_at: string
+        count: number
+        statuses: string[]
+        suggestion: string
+      }
+    >()
+
+    operationalEvents.forEach((event) => {
+      const key = `${event.store_id}:${event.source_type}:${event.pillar}`
+      const current = grouped.get(key)
+      if (!current) {
+        grouped.set(key, {
+          id: key,
+          store_id: event.store_id,
+          store_name: event.store_name,
+          pillar: event.pillar,
+          category_label: event.category_label,
+          severity: event.severity,
+          occurred_at: event.occurred_at,
+          count: 1,
+          statuses: [event.status],
+          suggestion:
+            event.suggestion || suggestionByPillar(event.pillar),
         })
-        .slice(0, 8),
-    [operationalEvents]
-  )
+        return
+      }
+
+      current.count += 1
+      current.statuses.push(event.status)
+      if (severityWeight(event.severity) > severityWeight(current.severity)) {
+        current.severity = event.severity
+      }
+      const currentDate = new Date(current.occurred_at).getTime()
+      const eventDate = new Date(event.occurred_at).getTime()
+      if (!Number.isNaN(eventDate) && (Number.isNaN(currentDate) || eventDate > currentDate)) {
+        current.occurred_at = event.occurred_at
+      }
+    })
+
+    return Array.from(grouped.values())
+      .map((group) => ({
+        id: group.id,
+        store_id: group.store_id,
+        store_name: group.store_name,
+        pillar: group.pillar,
+        category_label: group.category_label,
+        severity: group.severity,
+        occurred_at: group.occurred_at,
+        count: group.count,
+        status: resolveInterventionStatus(group.statuses),
+        suggestion: group.suggestion,
+      }))
+      .sort((a, b) => {
+        const statusWeight = (status: InterventionStatus) =>
+          status === "pending" ? 3 : status === "viewed" ? 2 : 1
+        const statusDiff = statusWeight(b.status) - statusWeight(a.status)
+        if (statusDiff !== 0) return statusDiff
+        const severityDiff = severityWeight(b.severity) - severityWeight(a.severity)
+        if (severityDiff !== 0) return severityDiff
+        return new Date(b.occurred_at).getTime() - new Date(a.occurred_at).getTime()
+      })
+  }, [operationalEvents])
 
   const storesTotal = networkDashboard?.total_stores ?? stores.length
   const storesHealthy =
     networkDashboard?.stores?.filter((store) => String(store.status).toLowerCase() === "active")
       .length ?? stores.filter((store) => store.status === "active").length
   const storesAttention = Math.max(storesTotal - storesHealthy, 0)
-  const criticalOpenEvents = prioritizedEvents.filter((event) => event.severity === "critical").length
-  const salesOccurrences = prioritizedEvents.filter((event) => event.pillar === "sales").length
-  const productivityOccurrences = prioritizedEvents.filter((event) => event.pillar === "productivity").length
-  const peopleOccurrences = prioritizedEvents.filter((event) => event.pillar === "people_behavior").length
+  const offlineStoreIds = useMemo(() => {
+    const set = new Set<string>()
+    networkDashboard?.stores?.forEach((store) => {
+      const status = String(store.status || "").toLowerCase()
+      if (status === "blocked" || status === "inactive" || status === "offline") {
+        set.add(store.id)
+      }
+    })
+    stores.forEach((store) => {
+      const status = String(store.status || "").toLowerCase()
+      if (status === "blocked" || status === "inactive") {
+        set.add(store.id)
+      }
+    })
+    return set
+  }, [networkDashboard?.stores, stores])
+
+  const filteredGroupedEvents = useMemo(() => {
+    if (quickFilter === "all") return groupedEvents
+    if (quickFilter === "critical") {
+      return groupedEvents.filter((group) => group.severity === "critical")
+    }
+    if (quickFilter === "offline") {
+      return groupedEvents.filter((group) => offlineStoreIds.has(group.store_id))
+    }
+    return groupedEvents.filter((group) => group.pillar === "people_behavior")
+  }, [groupedEvents, quickFilter, offlineStoreIds])
+
+  const priorityGroups = useMemo(() => filteredGroupedEvents.slice(0, 8), [filteredGroupedEvents])
+  const criticalOpenEvents = groupedEvents.filter(
+    (event) => event.severity === "critical" && event.status === "pending"
+  ).length
+  const salesOccurrences = groupedEvents.filter((event) => event.pillar === "sales").length
+  const productivityOccurrences = groupedEvents.filter((event) => event.pillar === "productivity").length
+  const peopleOccurrences = groupedEvents.filter((event) => event.pillar === "people_behavior").length
 
   const orgName = account?.orgs?.[0]?.name || "Sua rede"
   const heroStatus = networkStatusLabel(storesHealthy, storesTotal, criticalOpenEvents)
@@ -242,10 +376,12 @@ const Operations = () => {
   }
 
   const recommendationOfDay =
-    prioritizedEvents[0]?.suggestion ||
+    groupedEvents[0]?.suggestion ||
     "Operação estável até o momento. Use o Copiloto para revisar oportunidades por loja."
   const topOperationalRisk =
-    prioritizedEvents[0]?.title || "Sem risco crítico aberto neste momento."
+    groupedEvents[0]
+      ? formatGroupedTitle(groupedEvents[0])
+      : "Sem risco crítico aberto neste momento."
 
   const hasProPlan = useMemo(
     () =>
@@ -404,24 +540,14 @@ const Operations = () => {
             </div>
           )
         ) : (
-          <div className="mt-4 rounded-xl border border-indigo-100 bg-indigo-50 p-4">
-            <p className="text-sm font-semibold text-indigo-900">Gerencie sua rede com o plano Pro</p>
-            <p className="mt-1 text-xs text-indigo-800">
-              Monitore múltiplas lojas em uma única tela e priorize intervenções automaticamente.
+          <div className="mt-4 rounded-xl border border-slate-200 bg-slate-50 p-4">
+            <p className="text-sm font-semibold text-slate-900 inline-flex items-center gap-2">
+              <span aria-hidden>🔒</span>
+              Ranking da rede disponível no plano Pro
             </p>
-            <ul className="mt-3 space-y-1 text-xs text-indigo-800">
-              <li>• Ranking de prioridade automática por loja</li>
-              <li>• Recomendações do Copiloto por unidade</li>
-              <li>• Gestão centralizada da operação da rede</li>
-            </ul>
-            <div className="mt-3">
-              <Link
-                to="/app/upgrade"
-                className="inline-flex rounded-lg bg-indigo-600 px-3 py-2 text-xs font-semibold text-white hover:bg-indigo-700"
-              >
-                Conhecer plano Pro
-              </Link>
-            </div>
+            <p className="mt-1 text-xs text-slate-700">
+              O foco atual permanece em decisão por loja. O ranking multiloja segue bloqueado para este perfil.
+            </p>
           </div>
         )}
       </section>
@@ -432,7 +558,7 @@ const Operations = () => {
             <div>
               <h2 className="text-xl font-semibold text-gray-900">Ações prioritárias da rede</h2>
               <p className="text-sm text-gray-600 mt-1">
-                Eventos operacionais acionáveis para decisão rápida.
+                Eventos agrupados por tipo e loja para decisão rápida.
               </p>
             </div>
             <Link
@@ -443,20 +569,45 @@ const Operations = () => {
             </Link>
           </div>
 
+          <div className="mt-4 flex flex-wrap gap-2">
+            {[
+              { key: "all" as const, label: "Todos" },
+              { key: "critical" as const, label: "Apenas Críticos" },
+              { key: "offline" as const, label: "Apenas Lojas Offline" },
+              { key: "people" as const, label: "Apenas Problemas de Equipe" },
+            ].map((filter) => {
+              const active = quickFilter === filter.key
+              return (
+                <button
+                  key={filter.key}
+                  type="button"
+                  onClick={() => setQuickFilter(filter.key)}
+                  className={`rounded-full border px-3 py-1.5 text-xs font-semibold transition ${
+                    active
+                      ? "border-indigo-200 bg-indigo-50 text-indigo-700"
+                      : "border-slate-200 bg-white text-slate-600 hover:bg-slate-50"
+                  }`}
+                >
+                  {filter.label}
+                </button>
+              )
+            })}
+          </div>
+
           {eventsLoading ? (
             <div className="mt-4 grid grid-cols-1 gap-3">
               {[1, 2, 3].map((i) => (
                 <div key={i} className="h-24 rounded-xl bg-gray-100 animate-pulse" />
               ))}
             </div>
-          ) : prioritizedEvents.length === 0 ? (
+          ) : priorityGroups.length === 0 ? (
             <div className="mt-4 rounded-xl border border-dashed border-gray-300 p-5 text-sm text-gray-600">
-              Nenhum evento operacional aberto no momento. A operação aparenta estabilidade.
+              Nenhum evento operacional encontrado para este filtro.
             </div>
           ) : (
             <div className="mt-4 space-y-3">
-              {prioritizedEvents.map((event) => (
-                <article key={event.id} className="rounded-xl border border-gray-200 bg-gray-50 p-4">
+              {priorityGroups.map((event) => (
+                <article key={event.id} className="rounded-xl border border-slate-200 bg-slate-50 p-4">
                   <div className="flex flex-wrap items-center gap-2">
                     <span
                       className={`rounded-full border px-2 py-1 text-[10px] font-semibold ${
@@ -472,16 +623,21 @@ const Operations = () => {
                     >
                       {pillarLabel[event.pillar]}
                     </span>
+                    <span
+                      className={`rounded-full border px-2 py-1 text-[10px] font-semibold ${
+                        interventionStyles[event.status]
+                      }`}
+                    >
+                      {interventionLabel[event.status]}
+                    </span>
                     <span className="text-xs text-gray-500">{formatTime(event.occurred_at)}</span>
                   </div>
-                  <h3 className="mt-2 text-sm font-semibold text-gray-900">{event.title}</h3>
-                  <p className="mt-1 text-xs text-gray-600">
-                    {event.store_name} · {event.category_label}
-                  </p>
+                  <h3 className="mt-2 text-sm font-semibold text-slate-900">{formatGroupedTitle(event)}</h3>
+                  <p className="mt-1 text-xs text-slate-600">{event.store_name} · {event.category_label}</p>
                   <p className="mt-2 text-xs text-gray-600">{event.suggestion}</p>
                   <div className="mt-3 flex flex-wrap gap-2">
                     <Link
-                      to={`/app/alerts?event_id=${encodeURIComponent(event.id)}`}
+                      to={`/app/alerts?store_id=${encodeURIComponent(event.store_id)}`}
                       className="rounded-lg border border-gray-200 bg-white px-3 py-1.5 text-xs font-semibold text-gray-700 hover:bg-gray-100"
                     >
                       Ver detalhes
@@ -494,7 +650,11 @@ const Operations = () => {
                     </Link>
                     <button
                       type="button"
-                      onClick={() => openCopilot(`Como resolver: ${event.title} na ${event.store_name}?`)}
+                      onClick={() =>
+                        openCopilot(
+                          `Como resolver: ${formatGroupedTitle(event)}?`
+                        )
+                      }
                       className="rounded-lg bg-blue-600 px-3 py-1.5 text-xs font-semibold text-white hover:bg-blue-700"
                     >
                       Resolver com Copiloto

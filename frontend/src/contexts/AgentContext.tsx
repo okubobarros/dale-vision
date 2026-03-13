@@ -9,7 +9,7 @@ export function AgentProvider({ children }: { children: ReactNode }) {
       id: "welcome",
       role: "assistant",
       content:
-        "Olá! Sou o DALE Copiloto. Como posso ajudar com os dados da sua rede hoje?",
+        "Analisando sua operação, identifiquei prioridades para agora. Posso começar pela loja com maior risco ou pela maior oportunidade de conversão.",
     },
   ])
 
