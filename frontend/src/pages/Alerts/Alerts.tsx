@@ -114,13 +114,6 @@ export default function Alerts() {
     queryFn: alertsService.listCoreStores,
   })
   const stores = normalizeArray<StoreOption>(storesRaw)
-  const storesMap = useMemo(
-    () =>
-      new Map(
-        stores.map((store) => [String(store.id), store.name || `Loja ${store.id}`])
-      ),
-    [stores]
-  )
 
   // eventos
   const occurredFrom = useMemo(() => {
@@ -231,7 +224,7 @@ export default function Alerts() {
             Alertas
           </h1>
           <p className="text-gray-600 mt-1">
-            Painel operacional de eventos por loja, equipe e atendimento
+            Feed de eventos e recomendações acionáveis (dados reais)
           </p>
 
           {/* ✅ DEV-ONLY */}
@@ -377,7 +370,6 @@ export default function Alerts() {
             const hhmm = formatHHMM(e.occurred_at)
             const receiptId = e?.metadata?.receipt_id
             const evidenceUrl = e?.media?.[0]?.url
-            const storeName = storesMap.get(String(e.store_id || "")) || "Loja não identificada"
 
             return (
               <div
@@ -396,7 +388,7 @@ export default function Alerts() {
                       </span>
 
                       <span className="text-xs text-gray-500">
-                        {hhmm} • {storeName}
+                        {hhmm} • store_id {String(e.store_id)}
                       </span>
 
                       {e.status !== "open" && (
@@ -601,8 +593,8 @@ export default function Alerts() {
 
               {/* Logs */}
               <div className="rounded-xl border border-gray-100 bg-gray-50 p-4">
-                      <div className="text-sm font-semibold text-gray-800">
-                  Histórico de envios
+                <div className="text-sm font-semibold text-gray-800">
+                  Logs de notificação
                 </div>
 
                 {logsQuery.isLoading && (

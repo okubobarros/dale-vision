@@ -8,16 +8,6 @@ import { alertsService, type AlertRule } from "../../services/alerts"
 type Severity = "critical" | "warning" | "info"
 
 const defaultChannels = { dashboard: true, email: false, whatsapp: false }
-const severityLabel: Record<Severity, string> = {
-  critical: "Crítico",
-  warning: "Atenção",
-  info: "Informativo",
-}
-const eventTypeLabel: Record<string, string> = {
-  queue_long: "Fila longa",
-  staff_missing: "Equipe insuficiente",
-  suspicious_cancel: "Cancelamento suspeito",
-}
 
 export default function AlertRulesPage() {
   const qc = useQueryClient()
@@ -98,7 +88,7 @@ export default function AlertRulesPage() {
         <div>
           <h1 className="text-2xl font-bold text-gray-900">Regras de Alertas</h1>
           <p className="text-gray-600">
-            Defina quando a operação deve disparar alertas e por quais canais.
+            Configure quais eventos geram alertas e por quais canais.
           </p>
         </div>
 
@@ -166,15 +156,15 @@ export default function AlertRulesPage() {
 
           <div className="mt-4 grid grid-cols-1 gap-4 md:grid-cols-2">
             <div>
-              <label className="text-sm font-semibold text-gray-700">Evento monitorado</label>
+              <label className="text-sm font-semibold text-gray-700">Tipo do evento</label>
               <input
                 value={type}
                 onChange={(e) => setType(e.target.value)}
                 className="mt-2 w-full rounded-lg border border-gray-300 px-4 py-2"
-                placeholder="Ex.: queue_long (fila longa)"
+                placeholder="queue_long"
               />
               <div className="mt-2 text-xs text-gray-500">
-                Use chaves operacionais existentes: queue_long, staff_missing, suspicious_cancel.
+                Ex.: queue_long, staff_missing, suspicious_cancel
               </div>
             </div>
 
@@ -191,9 +181,9 @@ export default function AlertRulesPage() {
                 onChange={(e) => setSeverity(e.target.value as Severity)}
                 className="mt-2 w-full rounded-lg border border-gray-300 px-4 py-2"
               >
-                <option value="critical">Crítico</option>
-                <option value="warning">Atenção</option>
-                <option value="info">Informativo</option>
+                <option value="critical">critical</option>
+                <option value="warning">warning</option>
+                <option value="info">info</option>
               </select>
             </div>
 
@@ -249,7 +239,7 @@ export default function AlertRulesPage() {
                     onChange={() => toggleChannel(k)}
                     className="h-4 w-4"
                   />
-                  {k === "dashboard" ? "Dashboard" : k === "email" ? "E-mail" : "WhatsApp"}
+                  {k}
                 </label>
               ))}
             </div>
@@ -301,9 +291,9 @@ export default function AlertRulesPage() {
               {rules.map((r) => (
                 <div key={r.id} className="rounded-lg border border-gray-200 p-4">
                   <div className="flex flex-wrap items-center justify-between gap-2">
-                    <div className="font-semibold text-gray-900">{eventTypeLabel[r.type] || r.type}</div>
+                    <div className="font-semibold text-gray-900">{r.type}</div>
                     <div className="text-xs text-gray-500">
-                      severidade: {severityLabel[(r.severity || "info") as Severity] || r.severity} • cooldown: {r.cooldown_minutes}m • {r.active ? "ativa" : "inativa"}
+                      sev: {r.severity} • cooldown: {r.cooldown_minutes}m • {r.active ? "ativa" : "inativa"}
                     </div>
                   </div>
 
@@ -311,7 +301,7 @@ export default function AlertRulesPage() {
                     canais:{" "}
                     {Object.entries(r.channels ?? defaultChannels)
                       .filter(([, v]) => v)
-                      .map(([k]) => (k === "dashboard" ? "Dashboard" : k === "email" ? "E-mail" : "WhatsApp"))
+                      .map(([k]) => k)
                       .join(", ") || "nenhum"}
                   </div>
                 </div>

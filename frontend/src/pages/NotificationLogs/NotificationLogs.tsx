@@ -65,9 +65,9 @@ export default function NotificationLogs() {
       {/* Header */}
       <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
         <div>
-          <h2 className="text-2xl font-bold text-gray-900">Histórico de Alertas</h2>
+          <h2 className="text-2xl font-bold text-gray-900">Logs de Notificação</h2>
           <p className="text-sm text-gray-600">
-            Acompanhe o histórico de entrega dos alertas para a operação.
+            Auditoria de envios (dashboard/email/whatsapp) por loja e evento.
           </p>
         </div>
 
@@ -124,7 +124,7 @@ export default function NotificationLogs() {
           {/* Event ID */}
           <div>
             <label htmlFor="eventIdFilter" className="block text-sm font-medium text-gray-900">
-              Referência do alerta (opcional)
+              Filtrar por Event ID (opcional)
             </label>
             <input
               id="eventIdFilter"
@@ -132,7 +132,7 @@ export default function NotificationLogs() {
               className="mt-2 w-full px-3 py-2 rounded-lg border border-gray-200"
               value={eventIdFilter}
               onChange={(e) => setEventIdFilter(e.target.value)}
-              placeholder="ex: 123 ou identificador do alerta"
+              placeholder="ex: 123 ou UUID"
               aria-label="Filtrar logs por Event ID"
               title="Filtrar por Event ID"
             />
@@ -145,7 +145,8 @@ export default function NotificationLogs() {
           <div className="bg-gray-50 rounded-lg p-3 border border-gray-100">
             <p className="text-sm font-semibold text-gray-900">Dica</p>
             <p className="mt-1 text-xs text-gray-600">
-              Em caso de falha de entrega, use o campo <span className="font-mono">erro</span> para orientar a correção.
+              Se algum envio falhar, o campo <span className="font-mono">error</span> ajuda a debugar
+              o n8n/integrações.
             </p>
           </div>
         </div>
@@ -171,13 +172,13 @@ export default function NotificationLogs() {
             <table className="min-w-full text-sm">
               <thead className="bg-gray-50 text-gray-600">
                 <tr>
-                  <th scope="col" className="text-left font-semibold px-4 py-3">Momento</th>
+                  <th scope="col" className="text-left font-semibold px-4 py-3">Quando</th>
                   <th scope="col" className="text-left font-semibold px-4 py-3">Canal</th>
-                  <th scope="col" className="text-left font-semibold px-4 py-3">Entrega</th>
+                  <th scope="col" className="text-left font-semibold px-4 py-3">Status</th>
                   <th scope="col" className="text-left font-semibold px-4 py-3">Destino</th>
-                  <th scope="col" className="text-left font-semibold px-4 py-3">Referência</th>
-                  <th scope="col" className="text-left font-semibold px-4 py-3">Recibo</th>
-                  <th scope="col" className="text-left font-semibold px-4 py-3">Provedor</th>
+                  <th scope="col" className="text-left font-semibold px-4 py-3">Event ID</th>
+                  <th scope="col" className="text-left font-semibold px-4 py-3">Receipt</th>
+                  <th scope="col" className="text-left font-semibold px-4 py-3">Provider ID</th>
                   <th scope="col" className="text-left font-semibold px-4 py-3">Erro</th>
                 </tr>
               </thead>
