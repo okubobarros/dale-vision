@@ -75,14 +75,15 @@ def insert_event_receipt_if_new(*, event_id: str, event_name: str, payload: dict
         or conversion.get("metric_type")
         or data.get("metric_type"),
     }
+    event_ts = _parse_ts(data.get("ts") or payload.get("ts"))
     with connection.cursor() as cursor:
         cursor.execute(
             """
             INSERT INTO public.event_receipts (event_id, event_name, event_version, ts, source, raw, meta)
-            VALUES (%s, %s, %s, now(), %s, %s::jsonb, %s::jsonb)
+            VALUES (%s, %s, %s, %s, %s, %s::jsonb, %s::jsonb)
             ON CONFLICT (event_id) DO NOTHING
             """,
-            [event_id, event_name, 1, source, raw, json.dumps(meta)],
+            [event_id, event_name, 1, event_ts, source, raw, json.dumps(meta)],
         )
         return cursor.rowcount == 1
 

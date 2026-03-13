@@ -565,7 +565,7 @@ class EdgeStatusNoCamerasTests(SimpleTestCase):
     @patch("apps.stores.views_edge_status._get_last_heartbeat", return_value=None)
     @patch("apps.stores.views_edge_status.Camera")
     @patch("apps.stores.views_edge_status.Store")
-    @patch("apps.stores.views_edge_status._get_last_edge_heartbeat_receipt")
+    @patch("apps.stores.views_edge_status._get_last_event_receipt_heartbeat")
     def test_no_cameras_recent_edge_heartbeat(
         self,
         last_edge_receipt_mock,
@@ -596,7 +596,7 @@ class EdgeStatusNoCamerasTests(SimpleTestCase):
     @patch("apps.stores.views_edge_status._get_last_heartbeat", return_value=None)
     @patch("apps.stores.views_edge_status.Camera")
     @patch("apps.stores.views_edge_status.Store")
-    @patch("apps.stores.views_edge_status._get_last_edge_heartbeat_receipt")
+    @patch("apps.stores.views_edge_status._get_last_event_receipt_heartbeat")
     def test_no_cameras_old_edge_heartbeat_offline(
         self,
         last_edge_receipt_mock,
@@ -627,7 +627,7 @@ class EdgeStatusNoCamerasTests(SimpleTestCase):
     @patch("apps.stores.views_edge_status._get_last_heartbeat", return_value=None)
     @patch("apps.stores.views_edge_status.Camera")
     @patch("apps.stores.views_edge_status.Store")
-    @patch("apps.stores.views_edge_status._get_last_edge_heartbeat_receipt")
+    @patch("apps.stores.views_edge_status._get_last_event_receipt_heartbeat")
     def test_no_cameras_without_edge_heartbeat(
         self,
         last_edge_receipt_mock,
@@ -679,7 +679,7 @@ class EdgeStatusNoCamerasTests(SimpleTestCase):
         self.assertEqual(payload.get("cameras_total"), 1)
         self.assertIsNotNone(payload.get("request_id"))
 
-    @patch("apps.stores.views_edge_status._get_last_edge_heartbeat_receipt")
+    @patch("apps.stores.views_edge_status._get_last_event_receipt_heartbeat")
     @patch("apps.stores.views_edge_status._get_last_heartbeat")
     @patch("apps.stores.views_edge_status._get_latest_camera_health_map")
     @patch("apps.stores.views_edge_status.Camera")
@@ -716,7 +716,7 @@ class EdgeStatusNoCamerasTests(SimpleTestCase):
         self.assertEqual(payload.get("store_status_reason"), "all_cameras_online")
         last_edge_receipt_mock.assert_called_once_with(store_id)
 
-    @patch("apps.stores.views_edge_status._get_last_edge_heartbeat_receipt")
+    @patch("apps.stores.views_edge_status._get_last_event_receipt_heartbeat")
     @patch("apps.stores.views_edge_status._get_last_heartbeat")
     @patch("apps.stores.views_edge_status._get_latest_camera_health_map")
     @patch("apps.stores.views_edge_status.Camera")
@@ -765,7 +765,7 @@ class EdgeStatusCameraHealthRecencyTests(SimpleTestCase):
         store.last_error = "rtsp_timeout"
         return store
 
-    @patch("apps.stores.views_edge_status._get_last_edge_heartbeat_receipt", return_value=None)
+    @patch("apps.stores.views_edge_status._get_last_event_receipt_heartbeat", return_value=(None, None, None))
     @patch("apps.stores.views_edge_status._get_last_heartbeat", return_value=None)
     @patch("apps.stores.views_edge_status._get_latest_error", return_value="rtsp_timeout")
     @patch("apps.stores.views_edge_status._get_latest_camera_health_map")
@@ -807,7 +807,7 @@ class EdgeStatusCameraHealthRecencyTests(SimpleTestCase):
         self.assertEqual(payload.get("cameras")[0].get("status"), "online")
         self.assertEqual(payload.get("cameras")[0].get("reason"), "health_recent")
 
-    @patch("apps.stores.views_edge_status._get_last_edge_heartbeat_receipt", return_value=None)
+    @patch("apps.stores.views_edge_status._get_last_event_receipt_heartbeat", return_value=(None, None, None))
     @patch("apps.stores.views_edge_status._get_latest_error", return_value="rtsp_timeout")
     @patch("apps.stores.views_edge_status._get_latest_camera_health_map")
     @patch("apps.stores.views_edge_status.Camera")
@@ -848,7 +848,7 @@ class EdgeStatusCameraHealthRecencyTests(SimpleTestCase):
 
 
 class EdgeHeartbeatIngestTests(SimpleTestCase):
-    @patch("apps.edge.views.EdgeEventReceipt.objects.get_or_create")
+    @patch("apps.edge.views.insert_event_receipt_if_new")
     @patch("apps.edge.views.Store.objects.filter")
     @patch(
         "apps.edge.views.EdgeEventsIngestView._is_edge_request",
@@ -862,11 +862,11 @@ class EdgeHeartbeatIngestTests(SimpleTestCase):
         _auth_mock,
         _edge_auth_mock,
         store_filter_mock,
-        receipt_get_or_create_mock,
+        insert_receipt_mock,
     ):
         store_id = str(uuid.uuid4())
         store_filter_mock.return_value.exists.return_value = True
-        receipt_get_or_create_mock.return_value = (MagicMock(), False)
+        insert_receipt_mock.return_value = False
 
         ts = (timezone.now() - timezone.timedelta(seconds=10)).isoformat()
         payload = {
@@ -888,7 +888,7 @@ class EdgeHeartbeatIngestTests(SimpleTestCase):
 
 
 class EdgeEventsStoreTouchTests(SimpleTestCase):
-    @patch("apps.edge.views.EdgeEventReceipt.objects.get_or_create")
+    @patch("apps.edge.views.insert_event_receipt_if_new")
     @patch("apps.edge.views.Store.objects.filter")
     @patch(
         "apps.edge.views.EdgeEventsIngestView._is_edge_request",
@@ -898,14 +898,14 @@ class EdgeEventsStoreTouchTests(SimpleTestCase):
         self,
         _edge_auth_mock,
         store_filter_mock,
-        receipt_get_or_create_mock,
+        insert_receipt_mock,
     ):
         store_id = str(uuid.uuid4())
         qs = MagicMock()
         qs.exists.return_value = True
         qs.update.return_value = 1
         store_filter_mock.return_value = qs
-        receipt_get_or_create_mock.return_value = (MagicMock(), True)
+        insert_receipt_mock.return_value = True
 
         payload = {
             "event_name": "edge_metric_bucket",
@@ -929,7 +929,7 @@ class EdgeStatusLastCommTests(SimpleTestCase):
         store.last_seen_at = timezone.now() - timezone.timedelta(seconds=600)
         return store
 
-    @patch("apps.stores.views_edge_status._get_last_edge_heartbeat_receipt", return_value=None)
+    @patch("apps.stores.views_edge_status._get_last_event_receipt_heartbeat", return_value=(None, None, None))
     @patch("apps.stores.views_edge_status._get_latest_camera_health_map")
     @patch("apps.stores.views_edge_status.Camera")
     @patch("apps.stores.views_edge_status.Store")

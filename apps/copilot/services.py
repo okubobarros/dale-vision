@@ -6,7 +6,6 @@ from django.db import connection, transaction
 from django.utils import timezone
 
 from apps.core.models import Camera, Store, Subscription
-from apps.edge.models import EdgeEventReceipt
 
 from .models import (
     CopilotDashboardContextSnapshot,
@@ -59,13 +58,31 @@ def resolve_account_state(store: Store) -> str:
 
 
 def resolve_last_heartbeat(store_id) -> Optional[timezone.datetime]:
-    receipt = (
-        EdgeEventReceipt.objects.filter(event_name="edge_heartbeat", store_id=str(store_id))
-        .order_by("-created_at")
-        .first()
-    )
-    if receipt:
-        return receipt.created_at
+    try:
+        with connection.cursor() as cursor:
+            cursor.execute(
+                """
+                SELECT ts
+                FROM public.event_receipts
+                WHERE source = 'edge'
+                  AND event_name IN ('edge_heartbeat', 'camera_heartbeat', 'edge_camera_heartbeat')
+                  AND (
+                    meta->>'store_id' = %s
+                    OR raw->'data'->>'store_id' = %s
+                    OR raw->>'store_id' = %s
+                  )
+                ORDER BY ts DESC, received_at DESC NULLS LAST
+                LIMIT 1
+                """,
+                [str(store_id), str(store_id), str(store_id)],
+            )
+            row = cursor.fetchone()
+    except Exception:
+        row = None
+
+    if row and row[0]:
+        return row[0]
+
     store = Store.objects.filter(id=store_id).values("last_seen_at").first()
     if not store:
         return None

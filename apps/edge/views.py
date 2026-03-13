@@ -18,7 +18,7 @@ from rest_framework.permissions import AllowAny
 from knox.auth import TokenAuthentication
 
 from .serializers import EdgeEventSerializer
-from .models import EdgeEventReceipt, EdgeEventMinuteStats
+from .models import EdgeEventMinuteStats
 from .auth import authenticate_edge_token
 
 from apps.alerts.views import AlertRuleViewSet
@@ -222,7 +222,7 @@ class EdgeEventsIngestView(APIView):
       - alert
     Faz:
       - valida envelope
-      - dedupe por receipt_id (EdgeEventReceipt)
+      - dedupe por receipt_id (event_receipts canônico)
       - encaminha "alert" para AlertRuleViewSet.ingest (internamente)
       - para edge_metric_bucket / heartbeat: só registra receipt e retorna ok
     """
@@ -339,20 +339,17 @@ class EdgeEventsIngestView(APIView):
                     status=status.HTTP_400_BAD_REQUEST,
                 )
 
-        # --- dedupe por receipt_id ---
+        # --- dedupe por receipt_id no recibo canônico ---
         stored = False
         deduped = False
         if not receipt_id:
             receipt_id = _compute_receipt_id(payload)
         try:
-            _, created = EdgeEventReceipt.objects.get_or_create(
-                receipt_id=receipt_id,
-                defaults={
-                    "event_name": event_name,
-                    "source": source,
-                    "store_id": store_id,
-                    "payload": payload,
-                },
+            created = insert_event_receipt_if_new(
+                event_id=receipt_id,
+                event_name=normalized,
+                payload=payload,
+                source=source or "edge",
             )
         except (OperationalError, ProgrammingError):
             logger.exception("[EDGE] receipt write failed")
@@ -415,17 +412,11 @@ class EdgeEventsIngestView(APIView):
         # --- vision metrics (v1) ---
         if event_name == "vision.metrics.v1":
             try:
-                inserted = insert_event_receipt_if_new(
-                    event_id=receipt_id,
-                    event_name=event_name,
-                    payload=payload,
-                    source=source or "edge",
-                )
-                if inserted:
+                if stored:
                     apply_vision_metrics(payload)
                 return Response(
-                    {"ok": True, "receipt_id": receipt_id or None, "stored": True, "deduped": not inserted},
-                    status=status.HTTP_201_CREATED if inserted else status.HTTP_200_OK,
+                    {"ok": True, "receipt_id": receipt_id or None, "stored": True, "deduped": not stored},
+                    status=status.HTTP_201_CREATED if stored else status.HTTP_200_OK,
                 )
             except Exception:
                 logger.exception("[EDGE] vision metrics ingest failed")
@@ -747,16 +738,6 @@ class EdgeEventsIngestView(APIView):
 
         # --- encaminhar ALERT do edge para o ingest do Alerts ---
         if event_name == "alert":
-            try:
-                insert_event_receipt_if_new(
-                    event_id=receipt_id,
-                    event_name=event_name,
-                    payload=payload,
-                    source=source or "edge",
-                )
-            except Exception:
-                logger.exception("[EDGE] alert receipt insert failed")
-
             ingest_payload = {
                 "store_id": data.get("store_id"),
                 "camera_id": data.get("camera_id"),

@@ -14,7 +14,6 @@ from rest_framework.views import APIView
 
 from apps.core.models import Camera, CameraHealthLog, Store, OrgMember
 from apps.cameras.permissions import get_user_role_for_store, ALLOWED_READ_ROLES
-from apps.edge.models import EdgeEventReceipt
 from apps.core.services.onboarding_progress import OnboardingProgressService
 
 ONLINE_SEC = 120
@@ -114,25 +113,46 @@ def _parse_edge_ts(raw_ts):
         return None
 
 
-def _get_last_edge_heartbeat_receipt(store_id):
-    return (
-        EdgeEventReceipt.objects
-        .filter(event_name="edge_heartbeat", store_id=str(store_id))
-        .order_by("-created_at")
-        .first()
-    )
+def _get_last_event_receipt_heartbeat(store_id):
+    try:
+        with connection.cursor() as cursor:
+            cursor.execute(
+                """
+                SELECT ts, raw
+                FROM public.event_receipts
+                WHERE source = 'edge'
+                  AND event_name IN ('edge_heartbeat', 'camera_heartbeat', 'edge_camera_heartbeat')
+                  AND (
+                    meta->>'store_id' = %s
+                    OR raw->'data'->>'store_id' = %s
+                    OR raw->>'store_id' = %s
+                  )
+                ORDER BY ts DESC, received_at DESC NULLS LAST
+                LIMIT 1
+                """,
+                [str(store_id), str(store_id), str(store_id)],
+            )
+            row = cursor.fetchone()
+    except Exception:
+        logger.exception("[EDGE_STATUS] event_receipts heartbeat lookup failed store_id=%s", store_id)
+        return (None, None, None)
+
+    if not row:
+        return (None, None, None)
+
+    ts_value = row[0]
+    raw = row[1] or {}
+    data = raw.get("data") if isinstance(raw, dict) else {}
+    ts = _parse_edge_ts((data or {}).get("ts") or (raw or {}).get("ts"))
+    if ts is None and isinstance(ts_value, datetime):
+        ts = ts_value
+    agent_id = (data or {}).get("agent_id") or (raw or {}).get("agent_id")
+    version = (data or {}).get("version") or (raw or {}).get("version")
+    return (ts, agent_id, version)
 
 
 def _get_edge_heartbeat_fallback(store_id):
-    receipt = _get_last_edge_heartbeat_receipt(store_id)
-    if not receipt:
-        return (None, None, None)
-    payload = receipt.payload or {}
-    data = payload.get("data") or {}
-    ts = _parse_edge_ts(data.get("ts") or payload.get("ts"))
-    agent_id = data.get("agent_id") or payload.get("agent_id")
-    version = data.get("version") or payload.get("version")
-    return (ts, agent_id, version)
+    return _get_last_event_receipt_heartbeat(store_id)
 
 
 def compute_store_edge_status_snapshot(store_id):
