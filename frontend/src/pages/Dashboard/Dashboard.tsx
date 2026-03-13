@@ -205,6 +205,7 @@ const Dashboard = () => {
     }
     return selectedStoreOverride || ALL_STORES_VALUE
   }, [selectedStoreOverride])
+  const isNetworkMode = selectedStore === ALL_STORES_VALUE
 
   const selectedStoreItem = useMemo(
     () => (stores ?? []).find((s) => s.id === selectedStore) ?? null,
@@ -228,7 +229,7 @@ const Dashboard = () => {
   } = useQuery<StoreDashboard>({
     queryKey: ["store-dashboard", selectedStore],
     queryFn: () => storesService.getStoreDashboard(selectedStore),
-    enabled: canFetchAuth && selectedStore !== ALL_STORES_VALUE && !isTrialCeoMode,
+    enabled: canFetchAuth && !isNetworkMode && !isTrialCeoMode,
     staleTime: 30000,
     retry: false,
   })
@@ -239,11 +240,11 @@ const Dashboard = () => {
         period: "7d",
         bucket: "hour",
       }),
-    enabled: canFetchAuth && selectedStore !== ALL_STORES_VALUE,
+    enabled: canFetchAuth && !isNetworkMode,
     staleTime: 30000,
     retry: false,
   })
-  const { data: networkDashboard } = useQuery<NetworkDashboard>({
+  const { data: networkDashboard, isLoading: networkDashboardLoading } = useQuery<NetworkDashboard>({
     queryKey: ["network-dashboard-home"],
     queryFn: () => storesService.getNetworkDashboard(),
     enabled: canFetchAuth,
@@ -273,7 +274,7 @@ const Dashboard = () => {
   } = useQuery<StoreEdgeStatus>({
     queryKey: ["store-edge-status", selectedStore],
     queryFn: () => storesService.getStoreEdgeStatus(selectedStore),
-    enabled: canFetchAuth && selectedStore !== ALL_STORES_VALUE,
+    enabled: canFetchAuth && !isNetworkMode,
     refetchInterval: (query) => {
       if (typeof document !== "undefined" && document.visibilityState === "hidden") {
         return 30000
@@ -317,7 +318,7 @@ const Dashboard = () => {
   const { data: storeLimits } = useQuery({
     queryKey: ["store-limits", selectedStore],
     queryFn: () => camerasService.getStoreLimits(selectedStore),
-    enabled: canFetchAuth && Boolean(selectedStore && selectedStore !== ALL_STORES_VALUE),
+    enabled: canFetchAuth && Boolean(selectedStore && !isNetworkMode),
     retry: false,
   })
 
@@ -329,7 +330,7 @@ const Dashboard = () => {
     store_id: selectedStore === ALL_STORES_VALUE ? undefined : selectedStore,
     status: "open",
   }, {
-    enabled: canFetchAuth && Boolean(selectedStore && selectedStore !== ALL_STORES_VALUE),
+    enabled: canFetchAuth,
     retry: false,
   })
 
@@ -351,7 +352,7 @@ const Dashboard = () => {
   const ignoreEvent = useIgnoreEvent()
 
   const shouldFetchOnboardingNextStep =
-    canFetchAuth && !storesLoading && selectedStore !== ALL_STORES_VALUE
+    canFetchAuth && !storesLoading && !isNetworkMode
   const {
     data: onboardingNextStep,
     isLoading: onboardingNextStepLoading,
@@ -360,7 +361,7 @@ const Dashboard = () => {
     queryKey: ["onboarding-next-step", selectedStore],
     queryFn: () =>
       onboardingService.getNextStep(
-        selectedStore !== ALL_STORES_VALUE ? selectedStore : undefined
+        !isNetworkMode ? selectedStore : undefined
       ),
     enabled: shouldFetchOnboardingNextStep,
     staleTime: 30000,
@@ -409,8 +410,9 @@ const Dashboard = () => {
       const value = typeof store.alerts === "number" ? store.alerts : 0
       return acc + value
     }, 0) ?? 0
+  const activeEvents = useMemo(() => events ?? [], [events])
   const alertsActiveCount =
-    selectedStore === ALL_STORES_VALUE ? networkAlertsCount : (events?.length ?? 0)
+    isNetworkMode ? Math.max(networkAlertsCount, activeEvents.length) : activeEvents.length
   const inferredNetworkCamerasTotal = (stores ?? []).reduce((acc, store) => {
     const camerasCount = (store as StoreSummary & { cameras_count?: number }).cameras_count
     return acc + (typeof camerasCount === "number" ? camerasCount : 0)
@@ -423,17 +425,17 @@ const Dashboard = () => {
     return acc + limit
   }, 0)
   const coverageCamerasTotal =
-    selectedStore === ALL_STORES_VALUE ? inferredNetworkCamerasTotal : camerasTotal
+    isNetworkMode ? inferredNetworkCamerasTotal : camerasTotal
   const coverageCamerasOnline =
-    selectedStore === ALL_STORES_VALUE
+    isNetworkMode
       ? null
       : camerasOnline
   const coverageCamerasOffline =
-    selectedStore === ALL_STORES_VALUE
+    isNetworkMode
       ? null
       : camerasOffline
   const coverageLimitLabel =
-    selectedStore === ALL_STORES_VALUE
+    isNetworkMode
       ? networkPlanLimit === null
         ? "Sob consulta"
         : String(networkPlanLimit)
@@ -598,16 +600,20 @@ const Dashboard = () => {
       : "bg-gray-100 text-gray-800"
 
   const hasOperationalData = Boolean(
-    dashboard?.metrics?.visitor_flow ||
-      dashboard?.metrics?.conversion_rate ||
-      dashboard?.metrics?.productivity ||
-      dashboard?.insights?.peak_hour ||
-      metricsSummary?.totals?.total_visitors ||
-      metricsSummary?.totals?.avg_conversion_rate ||
-      metricsSummary?.totals?.avg_queue_seconds ||
-      metricsSummary?.totals?.avg_staff_active ||
-      ceoDashboard?.series?.flow_by_hour?.length ||
-      ceoDashboard?.series?.idle_index_by_hour?.length
+    isNetworkMode
+      ? networkDashboard?.total_visitors ||
+        networkDashboard?.avg_conversion ||
+        (networkDashboard?.stores?.length ?? 0) > 0
+      : dashboard?.metrics?.visitor_flow ||
+        dashboard?.metrics?.conversion_rate ||
+        dashboard?.metrics?.productivity ||
+        dashboard?.insights?.peak_hour ||
+        metricsSummary?.totals?.total_visitors ||
+        metricsSummary?.totals?.avg_conversion_rate ||
+        metricsSummary?.totals?.avg_queue_seconds ||
+        metricsSummary?.totals?.avg_staff_active ||
+        ceoDashboard?.series?.flow_by_hour?.length ||
+        ceoDashboard?.series?.idle_index_by_hour?.length
   )
 
   // Regra central: estado comercial da conta + estado operacional da loja definem a experiência.
@@ -676,18 +682,27 @@ const Dashboard = () => {
       ? ceoIdle.reduce((acc, item) => acc + (item.idle_index || 0), 0) / ceoIdle.length
       : null
   const computedVisitorFlow =
-    summaryTotals?.total_visitors ?? dashboard?.metrics?.visitor_flow ?? null
+    (isNetworkMode ? networkDashboard?.total_visitors : summaryTotals?.total_visitors) ??
+    dashboard?.metrics?.visitor_flow ??
+    null
   const computedConversionRate =
-    summaryTotals?.avg_conversion_rate ?? dashboard?.metrics?.conversion_rate ?? null
+    (isNetworkMode ? networkDashboard?.avg_conversion : summaryTotals?.avg_conversion_rate) ??
+    dashboard?.metrics?.conversion_rate ??
+    null
   const computedQueueSeconds =
+    isNetworkMode
+      ? null
+      :
     (isTrialCeoMode ? ceoDashboard?.kpis?.avg_queue_seconds : null) ??
     summaryTotals?.avg_queue_seconds ??
     ceoDashboard?.kpis?.avg_queue_seconds ??
     null
   const computedProductivity =
-    summaryTotals?.avg_staff_active ?? dashboard?.metrics?.productivity ?? null
+    isNetworkMode
+      ? null
+      : summaryTotals?.avg_staff_active ?? dashboard?.metrics?.productivity ?? null
   const computedIdleMinutes =
-    dashboard?.metrics?.idle_time ??
+    (isNetworkMode ? null : dashboard?.metrics?.idle_time) ??
     (typeof avgIdleIndex === "number" ? Math.round(avgIdleIndex * 60) : null)
   const computedHealthScore = (() => {
     if (dashboard?.metrics?.health_score && dashboard.metrics.health_score > 0) {
@@ -700,8 +715,8 @@ const Dashboard = () => {
     ) {
       return null
     }
-    const critical = (events ?? []).filter((e) => String(e.severity).toLowerCase() === "critical").length
-    const warning = (events ?? []).filter((e) => String(e.severity).toLowerCase() === "warning").length
+    const critical = activeEvents.filter((e) => String(e.severity).toLowerCase() === "critical").length
+    const warning = activeEvents.filter((e) => String(e.severity).toLowerCase() === "warning").length
     const queuePenalty = typeof computedQueueSeconds === "number" ? Math.min(45, computedQueueSeconds / 15) : 0
     const incidentPenalty = critical * 12 + warning * 6
     const connectivityPenalty = isEdgeConnected ? 0 : 20
@@ -709,7 +724,7 @@ const Dashboard = () => {
   })()
 
   const trialChecklist = [
-    { label: "Loja conectada", done: selectedStore !== ALL_STORES_VALUE },
+    { label: "Loja conectada", done: !isNetworkMode },
     { label: "Edge ativo", done: isEdgeConnected },
     { label: "Coleta inicial concluída", done: trialCollectedHours >= 24 },
     {
@@ -757,7 +772,7 @@ const Dashboard = () => {
       : "Estamos calibrando a base da loja antes de consolidar os indicadores executivos.",
   ]
   const copilotRecommendationNow = useMemo(() => {
-    const orderedEvents = [...(events ?? [])].sort((a, b) => {
+    const orderedEvents = [...activeEvents].sort((a, b) => {
       const weight = (severity?: string) =>
         severity === "critical" ? 3 : severity === "warning" ? 2 : 1
       return weight(b.severity) - weight(a.severity)
@@ -789,15 +804,28 @@ const Dashboard = () => {
       }
     }
 
+    if (isNetworkMode) {
+      const highestRiskStore = [...(networkDashboard?.stores ?? [])]
+        .sort((a, b) => (b.alerts ?? 0) - (a.alerts ?? 0))[0]
+      if (highestRiskStore?.id) {
+        return {
+          title: `${highestRiskStore.name} exige atenção imediata`,
+          action: "Reforçar cobertura no pico e revisar fila com o gerente local.",
+          impact: "Reduzir risco operacional e perda de conversão na rede.",
+          storeId: highestRiskStore.id,
+        }
+      }
+    }
+
     return {
       title: "Operação estável neste momento",
       action: "Revisar prioridades com o Copiloto para antecipar riscos do dia.",
       impact: "Manter consistência operacional e acelerar tomada de decisão.",
       storeId: selectedStore,
     }
-  }, [events, isEdgeConnected, selectedStore])
+  }, [activeEvents, isEdgeConnected, isNetworkMode, networkDashboard?.stores, selectedStore])
   const priorityActions = useMemo(() => {
-    const ordered = [...(events ?? [])].sort((a, b) => {
+    const ordered = [...activeEvents].sort((a, b) => {
       const weight = (severity?: string) =>
         severity === "critical" ? 3 : severity === "warning" ? 2 : 1
       return weight(b.severity) - weight(a.severity)
@@ -822,7 +850,7 @@ const Dashboard = () => {
           ? "Reforçar cobertura da equipe."
           : "Atuar com liderança local.",
     }))
-  }, [events])
+  }, [activeEvents])
 
   const buildDelegationMessage = (action: {
     title: string
@@ -887,7 +915,7 @@ const Dashboard = () => {
     dashboard?.executive?.estimated_revenue_gap_brl ?? estimatedRevenueGapComputed
   const criticalAlertsOpen =
     dashboard?.executive?.critical_alerts_open ??
-    (events ?? []).filter((e) => String(e.severity).toLowerCase() === "critical").length
+    activeEvents.filter((e) => String(e.severity).toLowerCase() === "critical").length
   const networkHealthScore = (() => {
     const storeHealth = typeof computedHealthScore === "number" ? computedHealthScore : 0
     const healthFromNetwork =
@@ -1030,18 +1058,18 @@ const Dashboard = () => {
           </svg>
         </div>
         <h3 className="text-xl font-semibold text-gray-900 mb-3">
-          {onboardingNextStep?.title || "Nenhuma loja cadastrada"}
+          {onboardingNextStep?.title || "Você ainda não cadastrou nenhuma loja."}
         </h3>
         <p className="text-gray-600 max-w-md mx-auto mb-8">
           {onboardingNextStep?.description ||
-            "Crie sua primeira loja para visualizar o dashboard."}
+            "Cadastre a primeira loja para começar a leitura executiva da rede."}
         </p>
         {nextStepCta && (
           <Link
             to={nextStepCta.href}
             className="bg-blue-500 hover:bg-blue-600 text-white px-6 py-3 rounded-lg font-medium inline-flex items-center"
           >
-            {nextStepCta.label}
+            Cadastrar primeira loja
           </Link>
         )}
       </div>
@@ -1175,7 +1203,7 @@ const Dashboard = () => {
                   value={selectedStore}
                   onChange={(e) => setSelectedStoreOverride(e.target.value)}
                   className="w-full sm:w-[320px] border border-gray-300 rounded-lg px-4 py-2 focus:ring-2 focus:ring-blue-500 focus:border-transparent"
-                  disabled={isLoadingDashboard}
+                  disabled={isNetworkMode ? networkDashboardLoading : isLoadingDashboard}
                   aria-label="Selecionar loja para visualizar dashboard"
                 >
                   <option value={ALL_STORES_VALUE}>Todas as Lojas</option>
@@ -1186,7 +1214,7 @@ const Dashboard = () => {
                   ))}
                 </select>
 
-                {isLoadingDashboard && (
+                {(isNetworkMode ? networkDashboardLoading : isLoadingDashboard) && (
                   <div className="animate-spin rounded-full h-5 w-5 border-t-2 border-b-2 border-blue-500" />
                 )}
               </div>
@@ -1222,8 +1250,7 @@ const Dashboard = () => {
         </div>
       </div>
 
-      {selectedStore !== ALL_STORES_VALUE && (
-        <section className="space-y-4 sm:space-y-6">
+      <section className="space-y-4 sm:space-y-6">
           <section className="grid grid-cols-1 xl:grid-cols-3 gap-4">
             <div className="xl:col-span-2 grid grid-cols-1 sm:grid-cols-2 gap-4">
               {executiveKpis.map((item) => (
@@ -1344,12 +1371,14 @@ const Dashboard = () => {
             <section className="rounded-xl border border-indigo-200 bg-gradient-to-r from-indigo-50 to-blue-50 p-4 sm:p-6">
               <h3 className="text-base sm:text-lg font-semibold text-gray-900">Carregando Inteligência</h3>
               <p className="mt-1 text-sm text-gray-700">
-                Estamos consolidando os sinais operacionais para liberar recomendações prescritivas com maior precisão.
+                {isNetworkMode
+                  ? "Estamos iniciando a leitura operacional da sua rede. Assim que as lojas enviarem dados, os indicadores aparecerão aqui."
+                  : "Estamos consolidando os sinais operacionais para liberar recomendações prescritivas com maior precisão."}
               </p>
             </section>
           ) : null}
 
-          {shouldShowTrialArtifacts && !hasOperationalData ? (
+          {!isNetworkMode && shouldShowTrialArtifacts && !hasOperationalData ? (
             <TrialDashboardView
               trialUiState={trialUiState}
               trialCollectedHours={trialCollectedHours}
@@ -1361,7 +1390,7 @@ const Dashboard = () => {
               onOpenSetup={() => setEdgeSetupOpen(true)}
               onOpenCopilot={openCopilot}
             />
-          ) : shouldShowPaidSetupArtifacts && !hasOperationalData ? (
+          ) : !isNetworkMode && shouldShowPaidSetupArtifacts && !hasOperationalData ? (
             <PaidSetupDashboardView
               setupState={
                 trialUiState === "not_started"
@@ -1380,7 +1409,7 @@ const Dashboard = () => {
               onOpenSetup={() => setEdgeSetupOpen(true)}
               onOpenCopilot={openCopilot}
             />
-          ) : hasOperationalData ? (
+          ) : !isNetworkMode && hasOperationalData ? (
             <PaidExecutiveDashboardView
               stores={stores ?? []}
               copilotPrompts={copilotPrompts}
@@ -1434,11 +1463,9 @@ const Dashboard = () => {
             </p>
           </div>
           <DashboardKpiStrip items={kpiItems} />
-        </section>
-      )}
+      </section>
 
-      {selectedStore !== ALL_STORES_VALUE && (
-        <div className="space-y-4 sm:space-y-6">
+      <div className="space-y-4 sm:space-y-6">
           {isTrialCeoMode && (
             <div className="space-y-4 sm:space-y-6">
               <div className="bg-white rounded-xl shadow-sm border border-gray-100 p-4 sm:p-6">
@@ -1601,13 +1628,15 @@ const Dashboard = () => {
                   })
                 }}
               />
-              <InfrastructureSection
-                edgeStatusLoading={edgeStatusLoading}
-                edgeStatus={edgeStatus}
-                edgeStatusLabel={edgeStatusLabel}
-                edgeStatusClass={edgeStatusClass}
-                lastSeenLabel={formatLastSeenDisplay(lastSeenAt)}
-              />
+              {!isNetworkMode && (
+                <InfrastructureSection
+                  edgeStatusLoading={edgeStatusLoading}
+                  edgeStatus={edgeStatus}
+                  edgeStatusLabel={edgeStatusLabel}
+                  edgeStatusClass={edgeStatusClass}
+                  lastSeenLabel={formatLastSeenDisplay(lastSeenAt)}
+                />
+              )}
             </>
           )}
           {isTrialCeoMode && (
@@ -1634,8 +1663,7 @@ const Dashboard = () => {
               }}
             />
           )}
-        </div>
-      )}
+      </div>
 
       {evidenceOpen && (
         <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/40 p-4">
