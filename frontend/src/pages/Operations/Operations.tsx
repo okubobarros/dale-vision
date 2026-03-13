@@ -244,6 +244,8 @@ const Operations = () => {
   const recommendationOfDay =
     prioritizedEvents[0]?.suggestion ||
     "Operação estável até o momento. Use o Copiloto para revisar oportunidades por loja."
+  const topOperationalRisk =
+    prioritizedEvents[0]?.title || "Sem risco crítico aberto neste momento."
 
   const hasProPlan = useMemo(
     () =>
@@ -311,9 +313,9 @@ const Operations = () => {
       <section className="rounded-2xl border border-gray-200 bg-gradient-to-r from-white via-slate-50 to-blue-50 p-5 sm:p-6 shadow-sm">
         <div className="flex flex-col gap-4 lg:flex-row lg:items-center lg:justify-between">
           <div className="space-y-2">
-            <h1 className="text-2xl sm:text-3xl font-bold text-gray-900">Operação da Rede · {orgName}</h1>
+            <h1 className="text-2xl sm:text-3xl font-bold text-gray-900">Central de execução · {orgName}</h1>
             <p className="text-sm text-gray-600">
-              Central executiva para monitorar lojas, priorizar ações e coordenar decisões com apoio de IA.
+              Onde agir agora, com prioridade operacional e apoio do Copiloto.
             </p>
             <div className="flex flex-wrap gap-2 text-xs">
               <span className="rounded-full border border-emerald-200 bg-emerald-50 px-3 py-1 font-semibold text-emerald-700">
@@ -328,7 +330,7 @@ const Operations = () => {
             </div>
           </div>
           <div className="rounded-xl border border-blue-100 bg-gradient-to-r from-blue-50 to-indigo-50 p-4 min-w-[260px]">
-            <p className="text-xs font-semibold text-blue-700 uppercase tracking-wide">Status geral</p>
+            <p className="text-xs font-semibold text-blue-700 uppercase tracking-wide">Leitura executiva</p>
             <p className="mt-1 text-sm font-semibold text-blue-900">{heroStatus}</p>
             <p className="mt-2 text-xs text-blue-800">
               {storesTotal} loja(s) monitoradas no dia.
@@ -344,60 +346,14 @@ const Operations = () => {
         </div>
       </section>
 
-      <section className="grid grid-cols-1 sm:grid-cols-2 xl:grid-cols-3 gap-4">
-        {[
-          {
-            id: "healthy",
-            label: "Lojas com operação saudável",
-            value: storesHealthy,
-            helper: "Status operacional consolidado",
-            state: "ready" as const,
-          },
-          {
-            id: "attention",
-            label: "Lojas com atenção",
-            value: storesAttention,
-            helper: "Necessitam intervenção de gestão",
-            state: "ready" as const,
-          },
-          {
-            id: "critical",
-            label: "Eventos críticos em aberto",
-            value: criticalOpenEvents,
-            helper: "Ações prioritárias da rede",
-            state: "ready" as const,
-          },
-          {
-            id: "sales",
-            label: "Oportunidades de conversão",
-            value: salesOccurrences,
-            helper: salesOccurrences > 0 ? "Pontos com risco de perda de venda" : "Em coleta",
-            state: salesOccurrences > 0 ? ("ready" as const) : ("collecting" as const),
-          },
-          {
-            id: "productivity",
-            label: "Ocorrências de produtividade",
-            value: productivityOccurrences,
-            helper:
-              productivityOccurrences > 0 ? "Desbalanceamento de equipe e fluxo" : "Disponível em breve",
-            state: productivityOccurrences > 0 ? ("ready" as const) : ("collecting" as const),
-          },
-          {
-            id: "people",
-            label: "Ocorrências de RH/comportamento",
-            value: peopleOccurrences,
-            helper: peopleOccurrences > 0 ? "Sinais de comportamento fora do padrão" : "Em calibração",
-            state: peopleOccurrences > 0 ? ("ready" as const) : ("collecting" as const),
-          },
-        ].map((kpi) => (
-          <article key={kpi.id} className="rounded-xl border border-gray-200 bg-white p-4 shadow-sm">
-            <p className="text-xs font-medium text-gray-500">{kpi.label}</p>
-            <p className="mt-2 text-2xl font-bold text-gray-900">
-              {kpi.state === "ready" ? kpi.value : "—"}
-            </p>
-            <p className="mt-1 text-xs text-gray-500">{kpi.helper}</p>
-          </article>
-        ))}
+      <section className="rounded-2xl border border-indigo-200 bg-indigo-50/60 p-4 sm:p-5 shadow-sm">
+        <p className="text-xs font-semibold uppercase tracking-wide text-indigo-700">Risco ou oportunidade principal</p>
+        <h2 className="mt-1 text-lg font-semibold text-indigo-950">{topOperationalRisk}</h2>
+        <p className="mt-2 text-sm text-indigo-900">
+          {criticalOpenEvents > 0
+            ? "Priorize a execução imediata para reduzir impacto operacional."
+            : "Sem evento crítico agora. Direcione energia para ganho de conversão e produtividade."}
+        </p>
       </section>
 
       <section className="rounded-2xl border border-gray-200 bg-white p-5 shadow-sm">
@@ -693,6 +649,68 @@ const Operations = () => {
             Parte das métricas da rede está indisponível no momento. Exibindo dados base de lojas.
           </p>
         )}
+      </section>
+
+      <section className="rounded-2xl border border-gray-200 bg-white p-5 shadow-sm">
+        <div>
+          <h2 className="text-lg font-semibold text-gray-900">Resumo executivo da rede</h2>
+          <p className="text-sm text-gray-600 mt-1">Contexto consolidado para suportar decisão, sem travar a execução.</p>
+        </div>
+        <div className="mt-4 grid grid-cols-1 sm:grid-cols-2 xl:grid-cols-3 gap-4">
+          {[
+            {
+              id: "healthy",
+              label: "Lojas com operação saudável",
+              value: storesHealthy,
+              helper: "Status operacional consolidado",
+              state: "ready" as const,
+            },
+            {
+              id: "attention",
+              label: "Lojas com atenção",
+              value: storesAttention,
+              helper: "Necessitam intervenção de gestão",
+              state: "ready" as const,
+            },
+            {
+              id: "critical",
+              label: "Eventos críticos em aberto",
+              value: criticalOpenEvents,
+              helper: "Ações prioritárias da rede",
+              state: "ready" as const,
+            },
+            {
+              id: "sales",
+              label: "Oportunidades de conversão",
+              value: salesOccurrences,
+              helper: salesOccurrences > 0 ? "Pontos com risco de perda de venda" : "Em coleta",
+              state: salesOccurrences > 0 ? ("ready" as const) : ("collecting" as const),
+            },
+            {
+              id: "productivity",
+              label: "Ocorrências de produtividade",
+              value: productivityOccurrences,
+              helper:
+                productivityOccurrences > 0 ? "Desbalanceamento de equipe e fluxo" : "Disponível em breve",
+              state: productivityOccurrences > 0 ? ("ready" as const) : ("collecting" as const),
+            },
+            {
+              id: "people",
+              label: "Ocorrências de RH/comportamento",
+              value: peopleOccurrences,
+              helper: peopleOccurrences > 0 ? "Sinais de comportamento fora do padrão" : "Em calibração",
+              state: peopleOccurrences > 0 ? ("ready" as const) : ("collecting" as const),
+            },
+          ].map((kpi) => (
+            <article key={kpi.id} className="rounded-xl border border-gray-200 bg-gray-50 p-4">
+              <p className="text-xs font-medium text-gray-500">{kpi.label}</p>
+              <p className="mt-2 text-2xl font-bold text-gray-900">
+                {kpi.state === "ready" ? kpi.value : "—"}
+              </p>
+              <p className="mt-1 text-xs text-gray-500">{kpi.helper}</p>
+            </article>
+          ))}
+        </div>
       </section>
     </div>
   )

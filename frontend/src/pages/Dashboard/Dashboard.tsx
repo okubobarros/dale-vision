@@ -293,15 +293,6 @@ const Dashboard = () => {
     edgeConnectivityStatus === "online" ||
     edgeConnectivityStatus === "degraded" ||
     isRecentTimestamp(lastSeenAt, ONLINE_MAX_AGE_SEC)
-  const selectedStorePlan =
-    normalizePlanCode(selectedStoreItem?.plan) ??
-    (meStatus?.has_subscription
-      ? "start"
-      : selectedStoreStatus === "trial" || meStatus?.trial_active
-      ? "trial"
-      : null)
-  const selectedStoreOwner = user?.email || null
-
   const { data: storeLimits } = useQuery({
     queryKey: ["store-limits", selectedStore],
     queryFn: () => camerasService.getStoreLimits(selectedStore),
@@ -741,6 +732,25 @@ const Dashboard = () => {
       storeId: selectedStore,
     }
   }, [events, isEdgeConnected, selectedStore])
+  const priorityActions = useMemo(() => {
+    const ordered = [...(events ?? [])].sort((a, b) => {
+      const weight = (severity?: string) =>
+        severity === "critical" ? 3 : severity === "warning" ? 2 : 1
+      return weight(b.severity) - weight(a.severity)
+    })
+    return ordered.slice(0, 3).map((event) => ({
+      id: String(event.id),
+      title: event.title || "Ação operacional",
+      storeId: String(event.store_id),
+      severity: String(event.severity || "info").toLowerCase(),
+      action:
+        event.type === "queue_long"
+          ? "Abrir segundo caixa no pico."
+          : event.type === "staff_missing"
+          ? "Reforçar cobertura da equipe."
+          : "Atuar com liderança local.",
+    }))
+  }, [events])
   const kpiItems = [
     {
       title: "Fluxo de Visitantes",
@@ -953,7 +963,7 @@ const Dashboard = () => {
               Dashboard da rede
             </h1>
             <p className="text-gray-600 mt-1 text-sm sm:text-base">
-              Olá, {user?.first_name || user?.username}. Aqui está sua operação hoje.
+              Olá, {user?.first_name || user?.username}. Leitura executiva da operação para decisão imediata.
             </p>
             <div className="mt-3 flex flex-wrap gap-2">
               <button
@@ -986,16 +996,7 @@ const Dashboard = () => {
                 >
                   {selectedStoreStatusLabel}
                 </span>
-
-                <span className="text-xs sm:text-sm text-gray-600">
-                  Plano: <span className="font-semibold">{selectedStorePlan || "—"}</span>
-                </span>
-
-                {selectedStoreOwner && (
-                  <span className="text-xs sm:text-sm text-gray-500 truncate max-w-[220px]">
-                    {selectedStoreOwner}
-                  </span>
-                )}
+                <span className="text-xs sm:text-sm text-gray-600">{selectedStoreItem.name}</span>
               </div>
             )}
           </div>
@@ -1056,42 +1057,6 @@ const Dashboard = () => {
 
       {selectedStore !== ALL_STORES_VALUE && (
         <section className="space-y-4 sm:space-y-6">
-          <article className="rounded-xl border border-indigo-200 bg-indigo-50/60 p-4 sm:p-5 shadow-sm">
-            <p className="text-xs font-semibold uppercase tracking-wide text-indigo-700">
-              Copiloto recomenda agora
-            </p>
-            <h2 className="mt-1 text-lg font-semibold text-indigo-950">{copilotRecommendationNow.title}</h2>
-            <p className="mt-2 text-sm text-indigo-900">
-              <span className="font-semibold">Ação sugerida:</span> {copilotRecommendationNow.action}
-            </p>
-            <p className="mt-1 text-sm text-indigo-900">
-              <span className="font-semibold">Impacto estimado:</span> {copilotRecommendationNow.impact}
-            </p>
-            <div className="mt-3 flex flex-wrap gap-2">
-              <Link
-                to={`/app/operations/stores/${copilotRecommendationNow.storeId}`}
-                className="rounded-lg bg-indigo-700 px-3 py-2 text-xs font-semibold text-white hover:bg-indigo-800"
-              >
-                Abrir loja
-              </Link>
-              <Link
-                to={`/app/operations/stores/${copilotRecommendationNow.storeId}?tab=cameras`}
-                className="rounded-lg border border-indigo-200 bg-white px-3 py-2 text-xs font-semibold text-indigo-700 hover:bg-indigo-100"
-              >
-                Ver câmeras
-              </Link>
-              <button
-                type="button"
-                onClick={() =>
-                  openCopilot(`Avalie esta recomendação e proponha alternativa: ${copilotRecommendationNow.title}`)
-                }
-                className="rounded-lg border border-indigo-200 bg-white px-3 py-2 text-xs font-semibold text-indigo-700 hover:bg-indigo-100"
-              >
-                Ignorar recomendação
-              </button>
-            </div>
-          </article>
-
           <DashboardHeroSection
             dashboardType={dashboardExperience.dashboardType}
             networkName={networkName}
@@ -1108,19 +1073,98 @@ const Dashboard = () => {
             onOpenCopilot={() => openCopilot()}
           />
 
-          <div className="space-y-2">
-            <h2 className="text-[18px] font-semibold text-gray-900">
-              {shouldShowExecutiveArtifacts
-                ? "Métricas executivas da rede"
-                : "Métricas que estamos começando a medir"}
-            </h2>
-            <p className="text-sm text-gray-600">
-              {shouldShowExecutiveArtifacts
-                ? "Visão consolidada para orientar decisões operacionais."
-                : "Esses indicadores entram em evolução contínua conforme a operação amadurece."}
+          <article className="rounded-2xl border border-white/10 bg-[#0f172a] p-4 sm:p-6 text-white shadow-sm">
+            <p className="text-xs font-semibold uppercase tracking-wide text-blue-200">
+              Recomendação principal do Copiloto
             </p>
-          </div>
-          <DashboardKpiStrip items={kpiItems} />
+            <h2 className="mt-1 text-lg font-semibold">{copilotRecommendationNow.title}</h2>
+            <p className="mt-2 text-sm text-slate-200">
+              <span className="font-semibold text-white">Ação sugerida:</span> {copilotRecommendationNow.action}
+            </p>
+            <p className="mt-1 text-sm text-slate-200">
+              <span className="font-semibold text-white">Impacto estimado:</span> {copilotRecommendationNow.impact}
+            </p>
+            <div className="mt-3 flex flex-wrap gap-2">
+              <Link
+                to={`/app/operations/stores/${copilotRecommendationNow.storeId}`}
+                className="rounded-lg bg-gradient-to-r from-blue-600 to-indigo-600 px-3 py-2 text-xs font-semibold text-white hover:brightness-95"
+              >
+                Abrir loja
+              </Link>
+              <Link
+                to={`/app/operations/stores/${copilotRecommendationNow.storeId}?tab=cameras`}
+                className="rounded-lg border border-white/20 bg-white/10 px-3 py-2 text-xs font-semibold text-white hover:bg-white/20"
+              >
+                Ver evidência
+              </Link>
+              <button
+                type="button"
+                onClick={() =>
+                  openCopilot(`Avalie esta recomendação e proponha alternativa: ${copilotRecommendationNow.title}`)
+                }
+                className="rounded-lg border border-white/20 bg-white/10 px-3 py-2 text-xs font-semibold text-white hover:bg-white/20"
+              >
+                Revisar com Copiloto
+              </button>
+            </div>
+          </article>
+
+          <section className="rounded-xl border border-gray-200 bg-white p-4 sm:p-6 shadow-sm">
+            <div className="flex items-center justify-between gap-3">
+              <div>
+                <h3 className="text-base sm:text-lg font-semibold text-gray-900">Ações prioritárias</h3>
+                <p className="text-sm text-gray-600 mt-1">Foco no que exige ação imediata nesta loja.</p>
+              </div>
+              <Link
+                to="/app/operations"
+                className="rounded-lg border border-gray-200 px-3 py-2 text-xs font-semibold text-gray-700 hover:bg-gray-50"
+              >
+                Ver execução da rede
+              </Link>
+            </div>
+            {priorityActions.length === 0 ? (
+              <p className="mt-4 text-sm text-gray-600">
+                Nenhuma ação crítica aberta agora. Recomendado revisar oportunidades com o Copiloto.
+              </p>
+            ) : (
+              <div className="mt-4 space-y-3">
+                {priorityActions.map((action) => (
+                  <article key={action.id} className="rounded-lg border border-gray-200 bg-gray-50 p-3">
+                    <div className="flex items-center justify-between gap-2">
+                      <p className="text-sm font-semibold text-gray-900">{action.title}</p>
+                      <span
+                        className={`rounded-full px-2 py-0.5 text-[10px] font-semibold ${
+                          action.severity === "critical"
+                            ? "bg-red-100 text-red-700"
+                            : action.severity === "warning"
+                            ? "bg-amber-100 text-amber-700"
+                            : "bg-blue-100 text-blue-700"
+                        }`}
+                      >
+                        {action.severity.toUpperCase()}
+                      </span>
+                    </div>
+                    <p className="mt-1 text-xs text-gray-600">{action.action}</p>
+                    <div className="mt-2 flex flex-wrap gap-2">
+                      <Link
+                        to={`/app/operations/stores/${action.storeId}`}
+                        className="rounded-lg border border-gray-200 bg-white px-3 py-1.5 text-xs font-semibold text-gray-700 hover:bg-gray-100"
+                      >
+                        Abrir loja
+                      </Link>
+                      <button
+                        type="button"
+                        onClick={() => openCopilot(`Qual plano de ação para: ${action.title}?`)}
+                        className="rounded-lg bg-gray-900 px-3 py-1.5 text-xs font-semibold text-white hover:bg-gray-800"
+                      >
+                        Orientar ação
+                      </button>
+                    </div>
+                  </article>
+                ))}
+              </div>
+            )}
+          </section>
 
           {shouldShowTrialArtifacts ? (
             <TrialDashboardView
@@ -1160,6 +1204,31 @@ const Dashboard = () => {
               onOpenCopilot={openCopilot}
             />
           )}
+
+          <OperationalDiagnosisSection
+            isLoading={isLoadingDashboard || copilotReportLoading}
+            reportReady={copilotReport72h?.status === "ready" || trialUiState === "report_ready"}
+            reportFailed={copilotReport72h?.status === "failed"}
+            reportStatusDetail={copilotReport72h?.status_detail ?? null}
+            readinessMessage={copilotReport72h?.readiness?.message ?? null}
+            insights={diagnosisInsights}
+            trialHoursRemaining={trialHoursRemaining}
+            onOpenCopilot={() => openCopilot("Qual o status do diagnóstico operacional desta loja?")}
+          />
+
+          <div className="space-y-2">
+            <h2 className="text-[18px] font-semibold text-gray-900">
+              {shouldShowExecutiveArtifacts
+                ? "Resumo de métricas executivas"
+                : "Métricas que estamos começando a medir"}
+            </h2>
+            <p className="text-sm text-gray-600">
+              {shouldShowExecutiveArtifacts
+                ? "Indicadores consolidados para apoiar decisão diária de gestão."
+                : "Indicadores em evolução conforme a base operacional amadurece."}
+            </p>
+          </div>
+          <DashboardKpiStrip items={kpiItems} />
         </section>
       )}
 
@@ -1304,51 +1373,63 @@ const Dashboard = () => {
           )}
 
           {!isTrialCeoMode && (
-            <InfrastructureSection
-              edgeStatusLoading={edgeStatusLoading}
-              edgeStatus={edgeStatus}
-              edgeStatusLabel={edgeStatusLabel}
-              edgeStatusClass={edgeStatusClass}
-              lastSeenLabel={formatLastSeenDisplay(lastSeenAt)}
+            <>
+              <AlertsSection
+                storeSelected={Boolean(selectedStore && selectedStore !== ALL_STORES_VALUE)}
+                eventsLoading={eventsLoading}
+                eventsError={eventsError}
+                events={events}
+                resolvingEventId={resolvingEventId}
+                ignoringEventId={ignoringEventId}
+                formatTimeSafe={formatTimeSafe}
+                onResolveEvent={(eventId) => {
+                  setResolvingEventId(eventId)
+                  resolveEvent.mutate(eventId, {
+                    onSettled: () => setResolvingEventId(null),
+                  })
+                }}
+                onIgnoreEvent={(eventId) => {
+                  setIgnoringEventId(eventId)
+                  ignoreEvent.mutate(eventId, {
+                    onSettled: () => setIgnoringEventId(null),
+                  })
+                }}
+              />
+              <InfrastructureSection
+                edgeStatusLoading={edgeStatusLoading}
+                edgeStatus={edgeStatus}
+                edgeStatusLabel={edgeStatusLabel}
+                edgeStatusClass={edgeStatusClass}
+                lastSeenLabel={formatLastSeenDisplay(lastSeenAt)}
+              />
+            </>
+          )}
+          {isTrialCeoMode && (
+            <AlertsSection
+              storeSelected={Boolean(selectedStore && selectedStore !== ALL_STORES_VALUE)}
+              eventsLoading={eventsLoading}
+              eventsError={eventsError}
+              events={events}
+              resolvingEventId={resolvingEventId}
+              ignoringEventId={ignoringEventId}
+              formatTimeSafe={formatTimeSafe}
+              onResolveEvent={(eventId) => {
+                setResolvingEventId(eventId)
+                resolveEvent.mutate(eventId, {
+                  onSettled: () => setResolvingEventId(null),
+                })
+              }}
+              onIgnoreEvent={(eventId) => {
+                setIgnoringEventId(eventId)
+                ignoreEvent.mutate(eventId, {
+                  onSettled: () => setIgnoringEventId(null),
+                })
+              }}
             />
           )}
-
-          <AlertsSection
-            storeSelected={Boolean(selectedStore && selectedStore !== ALL_STORES_VALUE)}
-            eventsLoading={eventsLoading}
-            eventsError={eventsError}
-            events={events}
-            resolvingEventId={resolvingEventId}
-            ignoringEventId={ignoringEventId}
-            formatTimeSafe={formatTimeSafe}
-            onResolveEvent={(eventId) => {
-              setResolvingEventId(eventId)
-              resolveEvent.mutate(eventId, {
-                onSettled: () => setResolvingEventId(null),
-              })
-            }}
-            onIgnoreEvent={(eventId) => {
-              setIgnoringEventId(eventId)
-              ignoreEvent.mutate(eventId, {
-                onSettled: () => setIgnoringEventId(null),
-              })
-            }}
-          />
         </div>
       )}
 
-      {selectedStore !== ALL_STORES_VALUE && (
-        <OperationalDiagnosisSection
-          isLoading={isLoadingDashboard || copilotReportLoading}
-          reportReady={copilotReport72h?.status === "ready" || trialUiState === "report_ready"}
-          reportFailed={copilotReport72h?.status === "failed"}
-          reportStatusDetail={copilotReport72h?.status_detail ?? null}
-          readinessMessage={copilotReport72h?.readiness?.message ?? null}
-          insights={diagnosisInsights}
-          trialHoursRemaining={trialHoursRemaining}
-          onOpenCopilot={() => openCopilot("Qual o status do diagnóstico operacional desta loja?")}
-        />
-      )}
       {evidenceOpen && (
         <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/40 p-4">
           <div className="bg-white rounded-xl shadow-xl max-w-3xl w-full p-6">

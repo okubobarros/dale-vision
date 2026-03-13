@@ -174,10 +174,11 @@ const StoreDetails = () => {
 
   return (
     <div className="p-6 space-y-6">
-      <div className="flex flex-col gap-3">
+      <div className="rounded-2xl border border-gray-200 bg-white p-5 shadow-sm">
         <div className="flex items-center justify-between gap-4 flex-wrap">
           <div>
-            <h1 className="text-2xl sm:text-3xl font-bold text-gray-800">
+            <p className="text-xs uppercase tracking-[0.14em] text-gray-500">Visão tática da unidade</p>
+            <h1 className="text-2xl sm:text-3xl font-bold text-gray-900 mt-1">
               {data.store.name}
             </h1>
             <p className="text-sm text-gray-600 mt-1">
@@ -193,7 +194,56 @@ const StoreDetails = () => {
           </span>
         </div>
 
-        <div className="inline-flex gap-2 rounded-xl border border-gray-200 bg-white p-1 w-fit">
+        <div className="mt-4 grid grid-cols-1 lg:grid-cols-3 gap-4">
+          <article className="rounded-xl border border-gray-200 bg-gradient-to-br from-slate-100 to-white p-4">
+            <div className="flex items-center gap-3">
+              <div className="h-14 w-14 rounded-xl border border-gray-200 bg-white flex items-center justify-center text-lg font-semibold text-gray-700">
+                {placeholder.letter}
+              </div>
+              <div>
+                <p className="text-sm font-semibold text-gray-900">{data.store.name}</p>
+                <p className="text-xs text-gray-500">{placeholder.label}</p>
+              </div>
+            </div>
+            <p className="mt-3 text-xs text-gray-600">
+              A imagem da fachada melhora identificação rápida da unidade para gestão remota.
+            </p>
+          </article>
+
+          <article className="lg:col-span-2 rounded-xl border border-white/10 bg-[#111827] p-4 text-white">
+            <p className="text-xs uppercase tracking-[0.14em] text-blue-200">Copiloto da unidade</p>
+            <h2 className="mt-1 text-lg font-semibold">Prioridade local agora</h2>
+            <p className="mt-2 text-sm text-slate-200">
+              {edgeOnline
+                ? "Cruzar pico de fluxo com fila média para reduzir risco de perda de venda nesta unidade."
+                : "Restabeleça conexão da operação para retomar leitura confiável e priorização automática."}
+            </p>
+            <div className="mt-3 flex flex-wrap gap-2">
+              <button
+                type="button"
+                onClick={() => openCopilot(`Onde está o gargalo agora na loja ${data.store.name}?`)}
+                className="rounded-full border border-white/20 px-3 py-1 text-xs text-slate-100 hover:bg-white/10"
+              >
+                Onde está o gargalo?
+              </button>
+              <button
+                type="button"
+                onClick={() => openCopilot(`Qual ação com maior impacto imediato na loja ${data.store.name}?`)}
+                className="rounded-full border border-white/20 px-3 py-1 text-xs text-slate-100 hover:bg-white/10"
+              >
+                Qual ação de maior impacto?
+              </button>
+              <Link
+                to={`/app/copilot?store_id=${data.store.id}`}
+                className="rounded-full bg-gradient-to-r from-blue-600 to-indigo-600 px-3 py-1 text-xs font-semibold text-white hover:brightness-95"
+              >
+                Revisar com Copiloto
+              </Link>
+            </div>
+          </article>
+        </div>
+
+        <div className="mt-4 inline-flex gap-2 rounded-xl border border-gray-200 bg-white p-1 w-fit">
           {STORE_TABS.map((tab) => (
             <button
               key={tab.key}
@@ -213,53 +263,6 @@ const StoreDetails = () => {
 
       {activeTab === "overview" && (
         <>
-          <div className="grid grid-cols-1 lg:grid-cols-3 gap-4">
-            <article className="rounded-xl border border-gray-200 bg-white p-4">
-              <div className="flex items-center gap-3">
-                <div className="h-14 w-14 rounded-xl border border-gray-200 bg-gradient-to-br from-slate-100 to-white flex items-center justify-center text-lg font-semibold text-gray-700">
-                  {placeholder.letter}
-                </div>
-                <div>
-                  <p className="text-sm font-semibold text-gray-900">{data.store.name}</p>
-                  <p className="text-xs text-gray-500">{placeholder.label}</p>
-                </div>
-              </div>
-              <p className="mt-3 text-xs text-gray-600">
-                Em breve: foto real da fachada para identificação rápida da unidade.
-              </p>
-            </article>
-
-            <article className="lg:col-span-2 rounded-xl border border-white/10 bg-[#111827] p-4 text-white">
-              <p className="text-xs uppercase tracking-[0.14em] text-blue-200">Copiloto local</p>
-              <h2 className="mt-1 text-lg font-semibold">Recomendação da loja</h2>
-              <p className="mt-2 text-sm text-slate-200">
-                Priorize o período de maior fluxo e acompanhe fila média para reduzir risco de perda de venda.
-              </p>
-              <div className="mt-3 flex flex-wrap gap-2">
-                <button
-                  type="button"
-                  onClick={() => openCopilot(`Onde devo agir agora na loja ${data.store.name}?`)}
-                  className="rounded-full border border-white/20 px-3 py-1 text-xs text-slate-100 hover:bg-white/10"
-                >
-                  Onde agir agora?
-                </button>
-                <button
-                  type="button"
-                  onClick={() => openCopilot(`Resumo operacional da loja ${data.store.name} hoje`)}
-                  className="rounded-full border border-white/20 px-3 py-1 text-xs text-slate-100 hover:bg-white/10"
-                >
-                  Resumo da loja
-                </button>
-                <Link
-                  to={`/app/copilot?store_id=${data.store.id}`}
-                  className="rounded-full bg-blue-600 px-3 py-1 text-xs font-semibold text-white hover:bg-blue-700"
-                >
-                  Copiloto em tela cheia
-                </Link>
-              </div>
-            </article>
-          </div>
-
           <div className="grid grid-cols-1 md:grid-cols-4 gap-4">
             <div className="bg-white rounded-xl border border-gray-100 p-4">
               <div className="text-xs text-gray-500">Visitantes (7d)</div>
