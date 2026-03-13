@@ -12,7 +12,7 @@ export default function BottomNav({ onOpenAgent }: BottomNavProps) {
   const items = useMemo(
     () => [
       { label: "Dashboard", to: "/app/dashboard", icon: "🏠" },
-      { label: "Operação", to: "/app/operations", icon: "🏬" },
+      { label: "Operação", to: "/app/operations/stores", icon: "🏬" },
       { label: "Alertas", to: "/app/alerts", icon: "🔔" },
     ],
     []

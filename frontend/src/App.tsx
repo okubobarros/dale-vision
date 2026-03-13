@@ -14,7 +14,6 @@ const Privacy = lazy(() => import("./pages/Privacy/Privacy"))
 const Terms = lazy(() => import("./pages/Terms/Terms"))
 
 const Dashboard = lazy(() => import("./pages/Dashboard/Dashboard"))
-const Operations = lazy(() => import("./pages/Operations/Operations"))
 const Stores = lazy(() => import("./pages/Stores/Stores"))
 const StoreDetails = lazy(() => import("./pages/Stores/StoreDetails"))
 const Analytics = lazy(() => import("./pages/Analytics/Analytics"))
@@ -79,7 +78,7 @@ function App() {
       >
         <Route index element={<Navigate to="/app/dashboard" replace />} />
         <Route path="dashboard" element={<Dashboard />} />
-        <Route path="operations" element={<Operations />} />
+        <Route path="operations" element={<Navigate to="/app/operations/stores" replace />} />
         <Route path="operations/stores" element={<Stores />} />
         <Route path="operations/stores/:storeId" element={<StoreDetails />} />
         <Route path="stores" element={<Navigate to="/app/operations/stores" replace />} />

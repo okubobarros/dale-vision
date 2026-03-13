@@ -20,7 +20,7 @@ const Sidebar = () => {
 
   const navigation = [
     { name: "Dashboard", href: "/app/dashboard", icon: HomeIcon },
-    { name: "Operações", href: "/app/operations", icon: BuildingStorefrontIcon },
+    { name: "Operações", href: "/app/operations/stores", icon: BuildingStorefrontIcon },
     { name: "Relatórios", href: "/app/reports", icon: DocumentTextIcon },
 
     // Grupo ALERTAS (abre no HOVER)
