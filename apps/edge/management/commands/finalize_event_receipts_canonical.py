@@ -38,6 +38,11 @@ class Command(BaseCommand):
             action="store_true",
             help="Renomeia tabela legada e cria view de compatibilidade somente leitura.",
         )
+        parser.add_argument(
+            "--drop-compat-view",
+            action="store_true",
+            help="Remove a view de compatibilidade edge_edgeeventreceipt e apaga tabelas legadas renomeadas.",
+        )
 
     def _relation_kind(self, relname: str):
         with connection.cursor() as cursor:
@@ -56,6 +61,7 @@ class Command(BaseCommand):
 
     def handle(self, *args, **options):
         deactivate = bool(options.get("deactivate_legacy_table"))
+        drop_compat_view = bool(options.get("drop_compat_view"))
         legacy_rel = "edge_edgeeventreceipt"
         legacy_kind = self._relation_kind(legacy_rel)
 
@@ -123,49 +129,85 @@ class Command(BaseCommand):
                 )
             )
 
-        if not deactivate:
+        if not deactivate and not drop_compat_view:
             self.stdout.write("Desativação da tabela legada não solicitada (use --deactivate-legacy-table).")
             return
 
-        legacy_kind = self._relation_kind(legacy_rel)
-        if legacy_kind == "v":
-            self.stdout.write(self.style.SUCCESS("Tabela legada já está desativada (view de compatibilidade ativa)."))
-            return
-        if legacy_kind != "r":
-            self.stdout.write(
-                self.style.WARNING(
-                    f"Não foi possível desativar '{legacy_rel}': tipo de relação inesperado ({legacy_kind})."
+        if deactivate:
+            legacy_kind = self._relation_kind(legacy_rel)
+            if legacy_kind == "v":
+                self.stdout.write(
+                    self.style.SUCCESS("Tabela legada já está desativada (view de compatibilidade ativa).")
                 )
-            )
+            elif legacy_kind != "r":
+                self.stdout.write(
+                    self.style.WARNING(
+                        f"Não foi possível desativar '{legacy_rel}': tipo de relação inesperado ({legacy_kind})."
+                    )
+                )
+            else:
+                backup_name = f"edge_edgeeventreceipt_legacy_{timezone.now():%Y%m%d_%H%M%S}"
+                with transaction.atomic():
+                    with connection.cursor() as cursor:
+                        cursor.execute(f"ALTER TABLE public.{legacy_rel} RENAME TO {backup_name}")
+                        cursor.execute(
+                            f"""
+                            CREATE VIEW public.{legacy_rel} AS
+                            SELECT
+                                er.event_id::varchar(128) AS receipt_id,
+                                er.event_name::varchar(64) AS event_name,
+                                er.source::varchar(32) AS source,
+                                COALESCE(
+                                    er.meta->>'store_id',
+                                    er.raw->'data'->>'store_id',
+                                    er.raw->>'store_id'
+                                )::varchar(64) AS store_id,
+                                er.raw AS payload,
+                                COALESCE(er.ts, er.received_at, er.created_at) AS created_at
+                            FROM public.event_receipts er
+                            WHERE er.source = 'edge'
+                              AND er.event_name = ANY(%s)
+                            """,
+                            [list(HEARTBEAT_EVENT_NAMES)],
+                        )
+
+                self.stdout.write(
+                    self.style.SUCCESS(
+                        f"Desativação concluída: tabela renomeada para '{backup_name}' e view '{legacy_rel}' criada."
+                    )
+                )
+
+        if not drop_compat_view:
             return
 
-        backup_name = f"edge_edgeeventreceipt_legacy_{timezone.now():%Y%m%d_%H%M%S}"
         with transaction.atomic():
             with connection.cursor() as cursor:
-                cursor.execute(f"ALTER TABLE public.{legacy_rel} RENAME TO {backup_name}")
-                cursor.execute(
-                    f"""
-                    CREATE VIEW public.{legacy_rel} AS
-                    SELECT
-                        er.event_id::varchar(128) AS receipt_id,
-                        er.event_name::varchar(64) AS event_name,
-                        er.source::varchar(32) AS source,
-                        COALESCE(
-                            er.meta->>'store_id',
-                            er.raw->'data'->>'store_id',
-                            er.raw->>'store_id'
-                        )::varchar(64) AS store_id,
-                        er.raw AS payload,
-                        COALESCE(er.ts, er.received_at, er.created_at) AS created_at
-                    FROM public.event_receipts er
-                    WHERE er.source = 'edge'
-                      AND er.event_name = ANY(%s)
-                    """,
-                    [list(HEARTBEAT_EVENT_NAMES)],
-                )
+                kind_now = self._relation_kind(legacy_rel)
+                if kind_now == "v":
+                    cursor.execute(f"DROP VIEW IF EXISTS public.{legacy_rel}")
+                    self.stdout.write(self.style.SUCCESS(f"View de compatibilidade removida: {legacy_rel}"))
+                else:
+                    self.stdout.write(
+                        self.style.WARNING(
+                            f"View de compatibilidade não removida: '{legacy_rel}' não é view (relkind={kind_now})."
+                        )
+                    )
 
-        self.stdout.write(
-            self.style.SUCCESS(
-                f"Desativação concluída: tabela renomeada para '{backup_name}' e view '{legacy_rel}' criada."
-            )
-        )
+                cursor.execute(
+                    """
+                    SELECT c.relname
+                    FROM pg_class c
+                    JOIN pg_namespace n ON n.oid = c.relnamespace
+                    WHERE n.nspname = 'public'
+                      AND c.relkind = 'r'
+                      AND c.relname LIKE 'edge_edgeeventreceipt_legacy_%'
+                    ORDER BY c.relname
+                    """
+                )
+                legacy_tables = [row[0] for row in cursor.fetchall()]
+                for table_name in legacy_tables:
+                    cursor.execute(f"DROP TABLE IF EXISTS public.{table_name}")
+                    self.stdout.write(self.style.SUCCESS(f"Tabela legada removida: {table_name}"))
+
+                if not legacy_tables:
+                    self.stdout.write("Nenhuma tabela legada edge_edgeeventreceipt_legacy_* encontrada.")

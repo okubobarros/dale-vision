@@ -118,6 +118,7 @@
 - Entram só como infraestrutura técnica (não UX de produto): `auth_*`, `django_*`.
 - Consolidação definida: `event_receipts` é o recibo canônico; `edge_edgeeventreceipt` virou legado de compatibilidade.
 - Script de finalização criado: `python manage.py finalize_event_receipts_canonical [--deactivate-legacy-table]`.
+- Encerramento definitivo disponível: `python manage.py finalize_event_receipts_canonical --drop-compat-view`.
 
 ## Ação recomendada
 1. Classificar as tabelas em:
@@ -138,6 +139,11 @@
 - `python manage.py finalize_event_receipts_canonical`
 2. Rodar desativação segura da tabela legada:
 - `python manage.py finalize_event_receipts_canonical --deactivate-legacy-table`
-3. Resultado esperado:
+3. Rodar remoção definitiva (quando aprovada):
+- `python manage.py finalize_event_receipts_canonical --drop-compat-view`
+4. Resultado esperado:
 - tabela física renomeada para `edge_edgeeventreceipt_legacy_YYYYMMDD_HHMMSS`
 - view `edge_edgeeventreceipt` criada em cima de `event_receipts` (compatibilidade de leitura)
+5. Resultado do encerramento definitivo:
+- view `edge_edgeeventreceipt` removida
+- tabelas `edge_edgeeventreceipt_legacy_*` removidas
