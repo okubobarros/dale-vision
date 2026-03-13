@@ -2,8 +2,6 @@ import { NavLink, useLocation } from "react-router-dom"
 import {
   HomeIcon,
   BuildingStorefrontIcon,
-  ChartBarIcon,
-  CameraIcon,
   BellAlertIcon,
   Cog6ToothIcon,
   DocumentTextIcon,
@@ -17,14 +15,13 @@ const Sidebar = () => {
   const isInternalAdmin = Boolean(user?.is_staff || user?.is_superuser)
 
   // Considera aberto se estiver em qualquer rota de alertas
-  const isAlertsOpen = location.pathname.startsWith("/app/alert")
+  const isAlertsOpen = location.pathname.startsWith("/app/alerts")
+  const isOperationsOpen = location.pathname.startsWith("/app/operations")
 
   const navigation = [
     { name: "Dashboard", href: "/app/dashboard", icon: HomeIcon },
-    { name: "Lojas", href: "/app/stores", icon: BuildingStorefrontIcon },
-    { name: "Analytics", href: "/app/analytics", icon: ChartBarIcon },
+    { name: "Operações", href: "/app/operations", icon: BuildingStorefrontIcon },
     { name: "Relatórios", href: "/app/reports", icon: DocumentTextIcon },
-    { name: "Câmeras", href: "/app/cameras", icon: CameraIcon },
 
     // Grupo ALERTAS (abre no HOVER)
     {
@@ -32,9 +29,9 @@ const Sidebar = () => {
       href: "/app/alerts",
       icon: BellAlertIcon,
       children: [
-        { name: "Feed", href: "/app/alerts" },
-        { name: "Regras", href: "/app/alert-rules" },
-        { name: "Logs", href: "/app/notification-logs" },
+        { name: "Painel", href: "/app/alerts" },
+        { name: "Regras", href: "/app/alerts/rules" },
+        { name: "Histórico", href: "/app/alerts/history" },
       ],
     },
 
@@ -67,7 +64,9 @@ const Sidebar = () => {
                 to={item.href}
                 className={({ isActive }) =>
                   `flex items-center px-4 py-3 rounded-lg transition-colors ${
-                    isActive || (item.name === "Alertas" && isAlertsOpen)
+                    isActive ||
+                    (item.name === "Alertas" && isAlertsOpen) ||
+                    (item.name === "Operações" && isOperationsOpen)
                       ? "bg-blue-50 text-blue-700 border-l-4 border-blue-500"
                       : "text-gray-700 hover:bg-gray-50"
                   }`
