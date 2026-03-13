@@ -5,12 +5,11 @@ import { storesService, type StoreOverviewCamera, type StoreOverview } from "../
 
 const ONLINE_MAX_AGE_SEC = 120
 
-type StoreTab = "overview" | "cameras" | "insights" | "infrastructure"
+type StoreTab = "overview" | "cameras" | "infrastructure"
 
 const STORE_TABS: Array<{ key: StoreTab; label: string }> = [
   { key: "overview", label: "Overview" },
   { key: "cameras", label: "Câmeras" },
-  { key: "insights", label: "Insights" },
   { key: "infrastructure", label: "Infraestrutura" },
 ]
 
@@ -85,6 +84,11 @@ const cameraStatusClass = (status?: string | null) => {
   return "bg-gray-100 text-gray-700"
 }
 
+const storeImagePlaceholder = (name: string) => {
+  const letter = (name.trim().charAt(0) || "L").toUpperCase()
+  return { letter, label: "Imagem da loja em configuração" }
+}
+
 const StoreDetails = () => {
   const params = useParams()
   const storeId = params.storeId || params.id
@@ -122,11 +126,17 @@ const StoreDetails = () => {
   const edgeOnline = isRecent(lastSeenAt)
   const edgeStatusLabel = edgeOnline ? "Operação conectada" : "Conexão indisponível"
   const edgeStatusClass = edgeOnline ? "bg-green-100 text-green-800" : "bg-red-100 text-red-800"
+  const placeholder = storeImagePlaceholder(data?.store?.name || "Loja")
 
   const setTab = (tab: StoreTab) => {
     const next = new URLSearchParams(searchParams)
     next.set("tab", tab)
     setSearchParams(next)
+  }
+  const openCopilot = (prompt?: string) => {
+    window.dispatchEvent(
+      new CustomEvent("dv-open-copilot", prompt ? { detail: { prompt } } : undefined)
+    )
   }
 
   if (isLoading) {
@@ -203,6 +213,53 @@ const StoreDetails = () => {
 
       {activeTab === "overview" && (
         <>
+          <div className="grid grid-cols-1 lg:grid-cols-3 gap-4">
+            <article className="rounded-xl border border-gray-200 bg-white p-4">
+              <div className="flex items-center gap-3">
+                <div className="h-14 w-14 rounded-xl border border-gray-200 bg-gradient-to-br from-slate-100 to-white flex items-center justify-center text-lg font-semibold text-gray-700">
+                  {placeholder.letter}
+                </div>
+                <div>
+                  <p className="text-sm font-semibold text-gray-900">{data.store.name}</p>
+                  <p className="text-xs text-gray-500">{placeholder.label}</p>
+                </div>
+              </div>
+              <p className="mt-3 text-xs text-gray-600">
+                Em breve: foto real da fachada para identificação rápida da unidade.
+              </p>
+            </article>
+
+            <article className="lg:col-span-2 rounded-xl border border-white/10 bg-[#111827] p-4 text-white">
+              <p className="text-xs uppercase tracking-[0.14em] text-blue-200">Copiloto local</p>
+              <h2 className="mt-1 text-lg font-semibold">Recomendação da loja</h2>
+              <p className="mt-2 text-sm text-slate-200">
+                Priorize o período de maior fluxo e acompanhe fila média para reduzir risco de perda de venda.
+              </p>
+              <div className="mt-3 flex flex-wrap gap-2">
+                <button
+                  type="button"
+                  onClick={() => openCopilot(`Onde devo agir agora na loja ${data.store.name}?`)}
+                  className="rounded-full border border-white/20 px-3 py-1 text-xs text-slate-100 hover:bg-white/10"
+                >
+                  Onde agir agora?
+                </button>
+                <button
+                  type="button"
+                  onClick={() => openCopilot(`Resumo operacional da loja ${data.store.name} hoje`)}
+                  className="rounded-full border border-white/20 px-3 py-1 text-xs text-slate-100 hover:bg-white/10"
+                >
+                  Resumo da loja
+                </button>
+                <Link
+                  to={`/app/copilot?store_id=${data.store.id}`}
+                  className="rounded-full bg-blue-600 px-3 py-1 text-xs font-semibold text-white hover:bg-blue-700"
+                >
+                  Copiloto em tela cheia
+                </Link>
+              </div>
+            </article>
+          </div>
+
           <div className="grid grid-cols-1 md:grid-cols-4 gap-4">
             <div className="bg-white rounded-xl border border-gray-100 p-4">
               <div className="text-xs text-gray-500">Visitantes (7d)</div>
@@ -259,6 +316,57 @@ const StoreDetails = () => {
                   </div>
                 )}
               </div>
+            </div>
+          </div>
+
+          <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
+            <div className="bg-white rounded-xl border border-gray-100 p-4 sm:p-6">
+              <h2 className="text-lg font-bold text-gray-800">Insights da operação</h2>
+              <div className="mt-4 space-y-3 text-sm text-gray-700">
+                <p>Fluxo acumulado no período: <span className="font-semibold">{metrics?.total_visitors ?? 0}</span> visitantes.</p>
+                <p>Conversão estimada atual: <span className="font-semibold">{formatPercent(metrics?.avg_conversion_rate)}</span>.</p>
+                <p>Fila média observada: <span className="font-semibold">{formatSeconds(metrics?.avg_queue_seconds)}</span>.</p>
+                <p className="text-gray-500">
+                  Esses indicadores evoluem conforme a base operacional da loja aumenta.
+                </p>
+              </div>
+            </div>
+
+            <div className="bg-white rounded-xl border border-gray-100 p-4 sm:p-6">
+              <div className="flex items-center justify-between gap-3">
+                <h2 className="text-lg font-bold text-gray-800">Alertas recentes</h2>
+                <Link
+                  to={`/app/alerts?store_id=${data.store.id}`}
+                  className="text-xs font-semibold text-blue-600 hover:text-blue-700"
+                >
+                  Ver todos
+                </Link>
+              </div>
+              {alerts.length === 0 ? (
+                <p className="text-sm text-gray-500 mt-3">Sem alertas recentes.</p>
+              ) : (
+                <ul className="mt-4 space-y-3">
+                  {alerts.map((alert) => (
+                    <li key={alert.id} className="rounded-lg border border-gray-100 p-3">
+                      <div className="flex items-center justify-between gap-2 flex-wrap">
+                        <span className="text-sm font-medium text-gray-800">
+                          {alert.title || "Alerta operacional"}
+                        </span>
+                        <span
+                          className={`px-2 py-1 rounded-full text-[10px] font-semibold ${severityColor(
+                            alert.severity
+                          )}`}
+                        >
+                          {(alert.severity || "info").toUpperCase()}
+                        </span>
+                      </div>
+                      <div className="text-xs text-gray-500 mt-2">
+                        {alert.occurred_at ? new Date(alert.occurred_at).toLocaleString("pt-BR") : "—"}
+                      </div>
+                    </li>
+                  ))}
+                </ul>
+              )}
             </div>
           </div>
         </>
@@ -339,59 +447,6 @@ const StoreDetails = () => {
               ))}
             </div>
           )}
-        </div>
-      )}
-
-      {activeTab === "insights" && (
-        <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
-          <div className="bg-white rounded-xl border border-gray-100 p-4 sm:p-6">
-            <h2 className="text-lg font-bold text-gray-800">Insights da operação</h2>
-            <div className="mt-4 space-y-3 text-sm text-gray-700">
-              <p>Fluxo acumulado no período: <span className="font-semibold">{metrics?.total_visitors ?? 0}</span> visitantes.</p>
-              <p>Conversão estimada atual: <span className="font-semibold">{formatPercent(metrics?.avg_conversion_rate)}</span>.</p>
-              <p>Fila média observada: <span className="font-semibold">{formatSeconds(metrics?.avg_queue_seconds)}</span>.</p>
-              <p className="text-gray-500">
-                Esses indicadores evoluem conforme a base operacional da loja aumenta.
-              </p>
-            </div>
-          </div>
-
-          <div className="bg-white rounded-xl border border-gray-100 p-4 sm:p-6">
-            <div className="flex items-center justify-between gap-3">
-              <h2 className="text-lg font-bold text-gray-800">Alertas recentes</h2>
-              <Link
-                to={`/app/alerts?store_id=${data.store.id}`}
-                className="text-xs font-semibold text-blue-600 hover:text-blue-700"
-              >
-                Ver todos
-              </Link>
-            </div>
-            {alerts.length === 0 ? (
-              <p className="text-sm text-gray-500 mt-3">Sem alertas recentes.</p>
-            ) : (
-              <ul className="mt-4 space-y-3">
-                {alerts.map((alert) => (
-                  <li key={alert.id} className="rounded-lg border border-gray-100 p-3">
-                    <div className="flex items-center justify-between gap-2 flex-wrap">
-                      <span className="text-sm font-medium text-gray-800">
-                        {alert.title || "Alerta operacional"}
-                      </span>
-                      <span
-                        className={`px-2 py-1 rounded-full text-[10px] font-semibold ${severityColor(
-                          alert.severity
-                        )}`}
-                      >
-                        {(alert.severity || "info").toUpperCase()}
-                      </span>
-                    </div>
-                    <div className="text-xs text-gray-500 mt-2">
-                      {alert.occurred_at ? new Date(alert.occurred_at).toLocaleString("pt-BR") : "—"}
-                    </div>
-                  </li>
-                ))}
-              </ul>
-            )}
-          </div>
         </div>
       )}
 

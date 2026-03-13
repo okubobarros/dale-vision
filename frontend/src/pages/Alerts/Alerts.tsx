@@ -12,6 +12,7 @@ import {
 } from "../../queries/alerts.queries"
 import { alertsService, type AlertIngestPayload } from "../../services/alerts"
 import toast from "react-hot-toast"
+import { AlertsModuleTabs } from "../../components/Alerts/AlertsModuleTabs"
 
 type FilterSeverity = "all" | "critical" | "warning" | "info"
 type FilterStatus = "all" | "open" | "resolved" | "ignored"
@@ -233,6 +234,9 @@ export default function Alerts() {
           <p className="text-gray-600 mt-1">
             Painel operacional de eventos por loja, equipe e atendimento
           </p>
+          <div className="mt-3">
+            <AlertsModuleTabs />
+          </div>
 
           {/* ✅ DEV-ONLY */}
           {isDev && (

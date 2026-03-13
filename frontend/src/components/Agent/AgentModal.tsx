@@ -29,7 +29,7 @@ export function AgentModal({
               DALE Copiloto
             </div>
             <div className="text-xs text-white/50 truncate">
-              Insights e recomendações (em breve: dados reais)
+              Contexto operacional da rede e das lojas
             </div>
           </div>
         </div>

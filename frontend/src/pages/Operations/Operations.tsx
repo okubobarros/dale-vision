@@ -239,7 +239,7 @@ const Operations = () => {
 
   return (
     <div className="space-y-6 p-4 sm:p-6">
-      <section className="rounded-2xl border border-gray-200 bg-white p-5 sm:p-6 shadow-sm">
+      <section className="rounded-2xl border border-gray-200 bg-gradient-to-r from-white via-slate-50 to-blue-50 p-5 sm:p-6 shadow-sm">
         <div className="flex flex-col gap-4 lg:flex-row lg:items-center lg:justify-between">
           <div className="space-y-2">
             <h1 className="text-2xl sm:text-3xl font-bold text-gray-900">Operação da Rede · {orgName}</h1>
@@ -258,7 +258,7 @@ const Operations = () => {
               </span>
             </div>
           </div>
-          <div className="rounded-xl border border-blue-100 bg-blue-50 p-4 min-w-[260px]">
+          <div className="rounded-xl border border-blue-100 bg-gradient-to-r from-blue-50 to-indigo-50 p-4 min-w-[260px]">
             <p className="text-xs font-semibold text-blue-700 uppercase tracking-wide">Status geral</p>
             <p className="mt-1 text-sm font-semibold text-blue-900">{heroStatus}</p>
             <p className="mt-2 text-xs text-blue-800">
@@ -427,8 +427,14 @@ const Operations = () => {
               onClick={() => openCopilot("Resumo executivo da rede hoje")}
               className="mt-3 w-full rounded-lg bg-blue-600 px-3 py-2 text-xs font-semibold text-white hover:bg-blue-700"
             >
-              Abrir Copiloto em tela cheia
+              Conversar agora
             </button>
+            <Link
+              to="/app/copilot"
+              className="mt-2 inline-flex w-full items-center justify-center rounded-lg border border-white/20 px-3 py-2 text-xs font-semibold text-white hover:bg-white/10"
+            >
+              Abrir Copiloto em tela cheia
+            </Link>
           </div>
 
           <div className="mt-4 space-y-2">
@@ -554,4 +560,3 @@ const Operations = () => {
 }
 
 export default Operations
-

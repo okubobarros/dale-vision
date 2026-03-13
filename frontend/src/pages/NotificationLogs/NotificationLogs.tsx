@@ -3,6 +3,7 @@ import { useQuery } from "@tanstack/react-query"
 
 import { storesService, type StoreMinimal } from "../../services/stores"
 import { alertsService, type NotificationLog } from "../../services/alerts"
+import { AlertsModuleTabs } from "../../components/Alerts/AlertsModuleTabs"
 
 function formatDateBR(value?: string) {
   if (!value) return "—"
@@ -69,6 +70,9 @@ export default function NotificationLogs() {
           <p className="text-sm text-gray-600">
             Acompanhe o histórico de entrega dos alertas para a operação.
           </p>
+          <div className="mt-3">
+            <AlertsModuleTabs />
+          </div>
         </div>
 
         <button

@@ -4,6 +4,7 @@ import { useMemo, useState } from "react"
 import toast from "react-hot-toast"
 import { useQuery, useQueryClient, useMutation } from "@tanstack/react-query"
 import { alertsService, type AlertRule } from "../../services/alerts"
+import { AlertsModuleTabs } from "../../components/Alerts/AlertsModuleTabs"
 
 type Severity = "critical" | "warning" | "info"
 
@@ -100,6 +101,9 @@ export default function AlertRulesPage() {
           <p className="text-gray-600">
             Defina quando a operação deve disparar alertas e por quais canais.
           </p>
+          <div className="mt-3">
+            <AlertsModuleTabs />
+          </div>
         </div>
 
         <div className="flex gap-2">

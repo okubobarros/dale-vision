@@ -59,7 +59,7 @@ export function TrialDashboardView({
             </p>
             <div className="mt-3">
               <Link
-                to="/app/report"
+                to="/app/reports"
                 className="inline-flex rounded-lg bg-slate-900 px-4 py-2 text-sm font-semibold text-white hover:bg-slate-800"
               >
                 Ver relatório

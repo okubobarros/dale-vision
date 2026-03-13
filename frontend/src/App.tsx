@@ -20,11 +20,11 @@ const StoreDetails = lazy(() => import("./pages/Stores/StoreDetails"))
 const Analytics = lazy(() => import("./pages/Analytics/Analytics"))
 const Cameras = lazy(() => import("./pages/Cameras/Cameras"))
 const Alerts = lazy(() => import("./pages/Alerts/Alerts"))
+const CopilotPage = lazy(() => import("./pages/Copilot/Copilot"))
 const Settings = lazy(() => import("./pages/Settings/Settings"))
 const ProfilePage = lazy(() => import("./pages/Profile/Profile"))
 const Upgrade = lazy(() => import("./pages/Billing/Upgrade"))
 const EdgeHelp = lazy(() => import("./pages/EdgeHelp/EdgeHelp"))
-const Report = lazy(() => import("./pages/Report/Report"))
 const Reports = lazy(() => import("./pages/Reports/Reports"))
 const AdminControlTower = lazy(() => import("./pages/Admin/AdminControlTower"))
 
@@ -87,6 +87,7 @@ function App() {
         <Route path="analytics" element={<Analytics />} />
         <Route path="cameras" element={<Cameras />} />
         <Route path="alerts" element={<Alerts />} />
+        <Route path="copilot" element={<CopilotPage />} />
 
         {/* ✅ Alerts stack */}
         <Route path="alerts/rules" element={<AlertRules />} />
@@ -99,7 +100,7 @@ function App() {
 
         <Route path="settings" element={<Settings />} />
         <Route path="profile" element={<ProfilePage />} />
-        <Route path="report" element={<Report />} />
+        <Route path="report" element={<Navigate to="/app/reports" replace />} />
         <Route path="reports" element={<Reports />} />
         <Route path="admin" element={<AdminControlTower />} />
         <Route path="upgrade" element={<Upgrade />} />
@@ -114,6 +115,7 @@ function App() {
       <Route path="/alerts" element={<Navigate to="/app/alerts" replace />} />
       <Route path="/settings" element={<Navigate to="/app/settings" replace />} />
       <Route path="/admin" element={<Navigate to="/app/admin" replace />} />
+      <Route path="/copilot" element={<Navigate to="/app/copilot" replace />} />
 
       {/* ✅ Redirects Alerts */}
       <Route path="/alert-rules" element={<Navigate to="/app/alerts/rules" replace />} />
