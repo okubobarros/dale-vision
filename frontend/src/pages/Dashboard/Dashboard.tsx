@@ -152,6 +152,30 @@ const GovernanceBadge = ({ item }: { item?: DashboardMetricGovernance | null }) 
   )
 }
 
+const trustStyles: Record<"official" | "proxy" | "estimated", string> = {
+  official: "bg-emerald-50 text-emerald-700 border-emerald-200",
+  proxy: "bg-amber-50 text-amber-700 border-amber-200",
+  estimated: "bg-slate-50 text-slate-700 border-slate-200",
+}
+
+const normalizeTrustStatus = (value?: string | null): "official" | "proxy" | "estimated" => {
+  const normalized = String(value || "").toLowerCase()
+  if (normalized === "official") return "official"
+  if (normalized === "proxy" || normalized === "manual") return "proxy"
+  return "estimated"
+}
+
+const TrustBadge = ({ status }: { status?: string | null }) => {
+  const normalized = normalizeTrustStatus(status)
+  return (
+    <span
+      className={`inline-flex items-center rounded-full border px-2 py-0.5 text-[11px] font-semibold ${trustStyles[normalized]}`}
+    >
+      {normalized}
+    </span>
+  )
+}
+
 
 const Dashboard = () => {
   const { user, authReady, isAuthenticated } = useAuth()
@@ -248,6 +272,20 @@ const Dashboard = () => {
     queryKey: ["network-dashboard-home"],
     queryFn: () => storesService.getNetworkDashboard(),
     enabled: canFetchAuth,
+    staleTime: 30000,
+    retry: false,
+  })
+  const { data: networkReportSummary } = useQuery({
+    queryKey: ["network-report-summary-dashboard"],
+    queryFn: () => meService.getReportSummary(undefined, { period: "7d" }),
+    enabled: canFetchAuth && isNetworkMode,
+    staleTime: 30000,
+    retry: false,
+  })
+  const { data: networkCoverageSummary } = useQuery({
+    queryKey: ["network-coverage-dashboard"],
+    queryFn: () => meService.getProductivityCoverage(undefined, { period: "7d" }),
+    enabled: canFetchAuth && isNetworkMode,
     staleTime: 30000,
     retry: false,
   })
@@ -980,16 +1018,6 @@ const Dashboard = () => {
       ),
     [stores]
   )
-  const defaultTicketBrl = 85
-  const conversionRateFraction = Math.max(0, (computedConversionRate ?? 0) / 100)
-  const potentialRevenueDay = Math.max(
-    0,
-    Math.round((computedVisitorFlow ?? 0) * Math.max(conversionRateFraction, 0.12) * defaultTicketBrl)
-  )
-  const realizedRevenueDay = Math.max(
-    0,
-    Math.round((computedVisitorFlow ?? 0) * conversionRateFraction * defaultTicketBrl)
-  )
   const revenueAtRiskDay = Math.max(0, Math.round(estimatedRevenueGap))
   const moneyLeakItems = useMemo(() => {
     const lossByType = new Map<
@@ -1053,6 +1081,44 @@ const Dashboard = () => {
       queueMin: Math.max(3, Math.round((computedQueueSeconds ?? 240) / 60) + criticalCount + idx),
     }))
   }, [activeEvents, computedQueueSeconds, computedVisitorFlow])
+  const networkReportKpis = networkReportSummary?.kpis
+  const networkCoverageWindows = networkCoverageSummary?.windows ?? []
+  const networkStaffDetectedAvg =
+    networkCoverageWindows.length > 0
+      ? Math.round(
+          networkCoverageWindows.reduce((acc, window) => acc + (window.staff_detected_est || 0), 0) /
+            Math.max(networkCoverageWindows.length, 1)
+        )
+      : null
+  const realOperationMetrics = [
+    {
+      title: "Footfall consolidado",
+      value: `${networkReportKpis?.total_visitors ?? computedVisitorFlow ?? 0}`,
+      subtitle: "Visitantes no período operacional",
+      status: networkReportSummary?.confidence_governance?.source_flags?.total_visitors || "official",
+    },
+    {
+      title: "Fila média",
+      value:
+        typeof networkReportKpis?.avg_queue_seconds === "number"
+          ? `${Math.max(1, Math.round(networkReportKpis.avg_queue_seconds / 60))} min`
+          : "—",
+      subtitle: "Tempo médio de espera da rede",
+      status: networkReportSummary?.confidence_governance?.source_flags?.avg_queue_seconds || "estimated",
+    },
+    {
+      title: "Staff detectado",
+      value: networkStaffDetectedAvg !== null ? `${networkStaffDetectedAvg}` : "—",
+      subtitle: "Presença média detectada por hora",
+      status: networkCoverageSummary?.confidence_governance?.source_flags?.staff_detected_est || "estimated",
+    },
+    {
+      title: "Alertas operacionais",
+      value: `${alertsActiveCount}`,
+      subtitle: "Eventos ativos na rede",
+      status: "official",
+    },
+  ] as const
   const kpiItems = [
     {
       title: "Fluxo de Visitantes",
@@ -1353,85 +1419,128 @@ const Dashboard = () => {
       <section className="space-y-4 sm:space-y-6">
         {isNetworkMode ? (
           <>
-            <section className="grid grid-cols-1 lg:grid-cols-3 gap-4">
-              <article className="rounded-2xl border border-rose-200 bg-rose-50 p-5 shadow-sm">
-                <p className="text-xs font-semibold uppercase tracking-wide text-rose-700">Receita em risco hoje</p>
-                <p className="mt-2 text-3xl font-bold text-rose-700">{formatCurrencyBRL(revenueAtRiskDay)}</p>
-                <p className="mt-1 text-xs text-rose-700">Estimativa por fila, cobertura e conversão.</p>
-              </article>
-              <article className="rounded-2xl border border-emerald-200 bg-emerald-50 p-5 shadow-sm">
-                <p className="text-xs font-semibold uppercase tracking-wide text-emerald-700">Receita realizada (estimada)</p>
-                <p className="mt-2 text-3xl font-bold text-emerald-700">{formatCurrencyBRL(realizedRevenueDay)}</p>
-                <p className="mt-1 text-xs text-emerald-700">Baseada no fluxo e conversão atual da rede.</p>
-              </article>
-              <article className="rounded-2xl border border-blue-200 bg-blue-50 p-5 shadow-sm">
-                <p className="text-xs font-semibold uppercase tracking-wide text-blue-700">Receita potencial do dia</p>
-                <p className="mt-2 text-3xl font-bold text-blue-700">{formatCurrencyBRL(potentialRevenueDay)}</p>
-                <p className="mt-1 text-xs text-blue-700">Potencial com execução operacional estável.</p>
-              </article>
-            </section>
-
-            <section className="grid grid-cols-1 xl:grid-cols-3 gap-4">
-              <div className="xl:col-span-2 grid grid-cols-1 sm:grid-cols-2 gap-4">
-                {executiveKpis.map((item) => (
-                  <article
-                    key={item.title}
-                    className={`rounded-2xl border border-gray-200 ${item.bg} p-5 shadow-sm`}
-                  >
-                    <p className="text-xs font-semibold uppercase tracking-wide text-gray-500">{item.title}</p>
-                    <p className={`mt-2 text-3xl font-bold ${item.tone}`}>{item.value}</p>
-                    <p className="mt-1 text-xs text-gray-600">{item.subtitle}</p>
-                  </article>
-                ))}
-              </div>
-              <article className="rounded-2xl border border-indigo-200 bg-gradient-to-b from-slate-900 to-indigo-900 p-5 text-white shadow-sm">
-                <p className="text-xs font-semibold uppercase tracking-wide text-indigo-200">
-                  IA Decision Center
-                </p>
-                <h2 className="mt-2 text-lg font-semibold leading-tight">{copilotRecommendationNow.title}</h2>
-                <p className="mt-2 text-sm text-slate-200">
-                  <span className="font-semibold text-white">Ação:</span> {copilotRecommendationNow.action}
-                </p>
-                <p className="mt-1 text-sm text-slate-200">
-                  <span className="font-semibold text-white">Impacto esperado:</span>{" "}
-                  {revenueAtRiskDay > 0
-                    ? `recuperar até ${formatCurrencyBRL(Math.round(revenueAtRiskDay * 0.35))} no dia`
-                    : copilotRecommendationNow.impact}
-                </p>
-                <div className="mt-4 flex flex-wrap gap-2">
-                  <button
-                    type="button"
-                    onClick={() =>
-                      openCopilot(
-                        `Gerar plano de execução imediato para: ${copilotRecommendationNow.title}`
-                      )
-                    }
-                    className="rounded-lg bg-white px-3 py-2 text-xs font-semibold text-slate-900 hover:bg-slate-100"
-                  >
-                    Aprovar ação
-                  </button>
-                  <Link
-                    to="/app/reports"
-                    className="rounded-lg border border-white/30 bg-white/10 px-3 py-2 text-xs font-semibold text-white hover:bg-white/20"
-                  >
-                    Ver simulação
-                  </Link>
+            <section className="rounded-2xl border border-indigo-200 bg-gradient-to-b from-slate-900 to-indigo-900 p-5 text-white shadow-sm">
+              <div className="flex items-start justify-between gap-4">
+                <div>
+                  <p className="text-xs font-semibold uppercase tracking-wide text-indigo-200">1. Decision Center</p>
+                  <h2 className="mt-2 text-xl font-semibold leading-tight">{copilotRecommendationNow.title}</h2>
+                  <p className="mt-2 text-sm text-slate-200">
+                    <span className="font-semibold text-white">Onde agir:</span> {copilotRecommendationNow.action}
+                  </p>
+                  <p className="mt-1 text-sm text-slate-200">
+                    <span className="font-semibold text-white">Impacto esperado:</span>{" "}
+                    {revenueAtRiskDay > 0
+                      ? `recuperar até ${formatCurrencyBRL(Math.round(revenueAtRiskDay * 0.35))} hoje`
+                      : copilotRecommendationNow.impact}
+                  </p>
                 </div>
-              </article>
+                <div className="shrink-0 rounded-xl bg-white/10 px-3 py-2 text-right">
+                  <p className="text-[11px] text-indigo-100">Receita em risco</p>
+                  <p className="text-lg font-semibold text-white">{formatCurrencyBRL(revenueAtRiskDay)}</p>
+                  <TrustBadge status="estimated" />
+                </div>
+              </div>
+              <div className="mt-4 flex flex-wrap gap-2">
+                <button
+                  type="button"
+                  onClick={() =>
+                    openCopilot(`Gerar plano de execução imediato para: ${copilotRecommendationNow.title}`)
+                  }
+                  className="rounded-lg bg-white px-3 py-2 text-xs font-semibold text-slate-900 hover:bg-slate-100"
+                >
+                  Aprovar ação
+                </button>
+                <Link
+                  to="/app/reports"
+                  className="rounded-lg border border-white/30 bg-white/10 px-3 py-2 text-xs font-semibold text-white hover:bg-white/20"
+                >
+                  Ver simulação
+                </Link>
+              </div>
             </section>
 
             <section className="rounded-xl border border-gray-200 bg-white p-4 sm:p-6 shadow-sm">
               <div className="flex items-center justify-between gap-3">
                 <div>
-                  <h3 className="text-base sm:text-lg font-semibold text-gray-900">Money Leak Detector</h3>
+                  <h3 className="text-base sm:text-lg font-semibold text-gray-900">2. Métricas reais da operação</h3>
+                  <p className="text-sm text-gray-600 mt-1">Base operacional disponível hoje no backend.</p>
+                </div>
+                <Link
+                  to="/app/reports"
+                  className="rounded-lg border border-gray-200 px-3 py-2 text-xs font-semibold text-gray-700 hover:bg-gray-50"
+                >
+                  Ver análise histórica
+                </Link>
+              </div>
+              <div className="mt-4 grid grid-cols-1 sm:grid-cols-2 xl:grid-cols-4 gap-3">
+                {realOperationMetrics.map((metric) => (
+                  <article key={metric.title} className="rounded-lg border border-gray-200 bg-gray-50 p-3">
+                    <div className="flex items-center justify-between gap-2">
+                      <p className="text-xs font-semibold uppercase tracking-wide text-gray-600">{metric.title}</p>
+                      <TrustBadge status={metric.status} />
+                    </div>
+                    <p className="mt-2 text-2xl font-bold text-gray-900">{metric.value}</p>
+                    <p className="mt-1 text-xs text-gray-600">{metric.subtitle}</p>
+                  </article>
+                ))}
+              </div>
+            </section>
+
+            <section className="rounded-xl border border-gray-200 bg-white p-4 sm:p-6 shadow-sm">
+              <div className="flex items-center justify-between gap-3">
+                <div>
+                  <h3 className="text-base sm:text-lg font-semibold text-gray-900">3. Saúde operacional</h3>
+                  <p className="text-sm text-gray-600 mt-1">Leitura executiva combinando sinais oficiais e proxies.</p>
+                </div>
+                <TrustBadge status="proxy" />
+              </div>
+              <div className="mt-4 grid grid-cols-1 md:grid-cols-3 gap-3">
+                <article className="rounded-lg border border-emerald-200 bg-emerald-50 p-3">
+                  <p className="text-xs font-semibold uppercase tracking-wide text-emerald-700">Score de saúde</p>
+                  <p className="mt-2 text-3xl font-bold text-emerald-700">{networkHealthScore}/100</p>
+                  <p className="mt-1 text-xs text-emerald-700">Risco {networkHealthScore >= 75 ? "baixo" : networkHealthScore >= 55 ? "moderado" : "alto"} na operação.</p>
+                </article>
+                <article className="rounded-lg border border-amber-200 bg-amber-50 p-3">
+                  <div className="flex items-center justify-between gap-2">
+                    <p className="text-xs font-semibold uppercase tracking-wide text-amber-700">Conversão consolidada</p>
+                    <TrustBadge status="proxy" />
+                  </div>
+                  <p className="mt-2 text-2xl font-bold text-amber-700">
+                    {typeof computedConversionRate === "number" ? `${computedConversionRate.toFixed(1)}%` : "—"}
+                  </p>
+                  <p className="mt-1 text-xs text-amber-700">Proxy de checkout sobre fluxo de entrada.</p>
+                </article>
+                <article className="rounded-lg border border-slate-200 bg-slate-50 p-3">
+                  <div className="flex items-center justify-between gap-2">
+                    <p className="text-xs font-semibold uppercase tracking-wide text-slate-700">Cobertura operacional</p>
+                    <TrustBadge status={networkCoverageSummary?.confidence_governance?.source_flags?.coverage_gap || "estimated"} />
+                  </div>
+                  <p className="mt-2 text-2xl font-bold text-slate-900">
+                    {networkCoverageSummary?.summary?.critical_windows ?? 0} janela(s) crítica(s)
+                  </p>
+                  <p className="mt-1 text-xs text-slate-600">
+                    Gap total: {networkCoverageSummary?.summary?.gaps_total ?? 0} | Modo: {networkCoverageSummary?.summary?.planned_source_mode || "proxy"}
+                  </p>
+                </article>
+              </div>
+            </section>
+
+            <section className="rounded-xl border border-gray-200 bg-white p-4 sm:p-6 shadow-sm">
+              <div className="flex items-center justify-between gap-3">
+                <div>
+                  <h3 className="text-base sm:text-lg font-semibold text-gray-900">4. Money Leak Detector</h3>
                   <p className="text-sm text-gray-600 mt-1">Onde a rede está perdendo valor agora.</p>
                 </div>
                 <Link
                   to="/app/operations"
                   className="rounded-lg border border-gray-200 px-3 py-2 text-xs font-semibold text-gray-700 hover:bg-gray-50"
                 >
-                  Ver execução da rede
+                  Ver operação detalhada
                 </Link>
+              </div>
+              <div className="mt-3 flex items-center gap-2">
+                <TrustBadge status="estimated" />
+                <TrustBadge status="proxy" />
               </div>
               {moneyLeakItems.length === 0 ? (
                 <p className="mt-4 text-sm text-gray-600">
@@ -1454,56 +1563,66 @@ const Dashboard = () => {
               )}
             </section>
 
-            <section className="grid grid-cols-1 lg:grid-cols-2 gap-4">
-              <article className="rounded-xl border border-gray-200 bg-white p-4 sm:p-6 shadow-sm">
-                <h3 className="text-base sm:text-lg font-semibold text-gray-900">Ranking de Performance</h3>
-                <p className="text-sm text-gray-600 mt-1">Comparativo objetivo para priorizar alocação da liderança.</p>
-                <div className="mt-4 grid grid-cols-1 sm:grid-cols-2 gap-4">
-                  <div>
-                    <p className="text-xs font-semibold uppercase tracking-wide text-emerald-700">Top 3 lojas</p>
-                    <div className="mt-2 space-y-2">
-                      {topStores.map((row) => (
-                        <div key={`top-${row.id}`} className="rounded-lg border border-emerald-100 bg-emerald-50 px-3 py-2 text-sm">
-                          <p className="font-semibold text-gray-900">{row.name}</p>
-                          <p className="text-xs text-gray-700">Eficiência {row.efficiency ?? "—"} · Conversão {row.conversion !== null ? `${row.conversion.toFixed(1)}%` : "—"}</p>
-                        </div>
-                      ))}
-                    </div>
-                  </div>
-                  <div>
-                    <p className="text-xs font-semibold uppercase tracking-wide text-rose-700">Bottom 3 lojas</p>
-                    <div className="mt-2 space-y-2">
-                      {bottomStores.map((row) => (
-                        <div key={`bottom-${row.id}`} className="rounded-lg border border-rose-100 bg-rose-50 px-3 py-2 text-sm">
-                          <p className="font-semibold text-gray-900">{row.name}</p>
-                          <p className="text-xs text-gray-700">Eficiência {row.efficiency ?? "—"} · Conversão {row.conversion !== null ? `${row.conversion.toFixed(1)}%` : "—"}</p>
-                        </div>
-                      ))}
-                    </div>
-                  </div>
+            <section className="rounded-xl border border-gray-200 bg-white p-4 sm:p-6 shadow-sm">
+              <div className="flex items-center justify-between gap-3">
+                <div>
+                  <h3 className="text-base sm:text-lg font-semibold text-gray-900">5. Previsão operacional</h3>
+                  <p className="text-sm text-gray-600 mt-1">Projeção de fluxo e fila para antecipar decisão.</p>
                 </div>
-              </article>
-
-              <article className="rounded-xl border border-gray-200 bg-white p-4 sm:p-6 shadow-sm">
-                <h3 className="text-base sm:text-lg font-semibold text-gray-900">Previsão Operacional (próximas horas)</h3>
-                <p className="text-sm text-gray-600 mt-1">Estimativa para antecipar fila e risco de conversão.</p>
-                <div className="mt-4 space-y-2">
-                  {projectedFlowNextHours.map((entry) => (
-                    <div key={entry.hour} className="flex items-center justify-between rounded-lg border border-gray-100 bg-gray-50 px-3 py-2">
-                      <p className="text-sm text-gray-800">+{entry.hour}h</p>
-                      <p className="text-sm text-gray-700">Fluxo {entry.flow}</p>
-                      <p className="text-sm font-semibold text-amber-700">Fila proj. {entry.queueMin} min</p>
-                    </div>
-                  ))}
+                <div className="flex items-center gap-2">
+                  <TrustBadge status="proxy" />
+                  <TrustBadge status="estimated" />
                 </div>
-                <p className="mt-3 text-xs text-gray-500">Estimativa orientativa para decisão executiva, sujeita à calibração do modelo.</p>
-              </article>
+              </div>
+              <div className="mt-4 space-y-2">
+                {projectedFlowNextHours.map((entry) => (
+                  <div key={entry.hour} className="flex items-center justify-between rounded-lg border border-gray-100 bg-gray-50 px-3 py-2">
+                    <p className="text-sm text-gray-800">+{entry.hour}h</p>
+                    <p className="text-sm text-gray-700">Fluxo esperado {entry.flow}</p>
+                    <p className="text-sm font-semibold text-amber-700">Fila projetada {entry.queueMin} min</p>
+                  </div>
+                ))}
+              </div>
             </section>
 
             <section className="rounded-xl border border-gray-200 bg-white p-4 sm:p-6 shadow-sm">
               <div className="flex items-center justify-between gap-3">
                 <div>
-                  <h3 className="text-base sm:text-lg font-semibold text-gray-900">Timeline operacional do dia</h3>
+                  <h3 className="text-base sm:text-lg font-semibold text-gray-900">6. Ranking de lojas</h3>
+                  <p className="text-sm text-gray-600 mt-1">Top e bottom performance para direcionar atuação da liderança.</p>
+                </div>
+                <TrustBadge status="proxy" />
+              </div>
+              <div className="mt-4 grid grid-cols-1 sm:grid-cols-2 gap-4">
+                <div>
+                  <p className="text-xs font-semibold uppercase tracking-wide text-emerald-700">Top 3 lojas</p>
+                  <div className="mt-2 space-y-2">
+                    {topStores.map((row) => (
+                      <div key={`top-${row.id}`} className="rounded-lg border border-emerald-100 bg-emerald-50 px-3 py-2 text-sm">
+                        <p className="font-semibold text-gray-900">{row.name}</p>
+                        <p className="text-xs text-gray-700">Eficiência {row.efficiency ?? "—"} · Conversão {row.conversion !== null ? `${row.conversion.toFixed(1)}%` : "—"}</p>
+                      </div>
+                    ))}
+                  </div>
+                </div>
+                <div>
+                  <p className="text-xs font-semibold uppercase tracking-wide text-rose-700">Bottom 3 lojas</p>
+                  <div className="mt-2 space-y-2">
+                    {bottomStores.map((row) => (
+                      <div key={`bottom-${row.id}`} className="rounded-lg border border-rose-100 bg-rose-50 px-3 py-2 text-sm">
+                        <p className="font-semibold text-gray-900">{row.name}</p>
+                        <p className="text-xs text-gray-700">Eficiência {row.efficiency ?? "—"} · Conversão {row.conversion !== null ? `${row.conversion.toFixed(1)}%` : "—"}</p>
+                      </div>
+                    ))}
+                  </div>
+                </div>
+              </div>
+            </section>
+
+            <section className="rounded-xl border border-gray-200 bg-white p-4 sm:p-6 shadow-sm">
+              <div className="flex items-center justify-between gap-3">
+                <div>
+                  <h3 className="text-base sm:text-lg font-semibold text-gray-900">7. Timeline do dia</h3>
                   <p className="text-sm text-gray-600 mt-1">Eventos de maior impacto para acompanhamento executivo.</p>
                 </div>
                 <Link
@@ -1512,6 +1631,9 @@ const Dashboard = () => {
                 >
                   Ver alertas completos
                 </Link>
+              </div>
+              <div className="mt-3">
+                <TrustBadge status="official" />
               </div>
               {timelineItems.length === 0 ? (
                 <p className="mt-4 text-sm text-gray-600">Sem eventos críticos registrados hoje.</p>
