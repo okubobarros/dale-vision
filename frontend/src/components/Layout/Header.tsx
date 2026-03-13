@@ -86,7 +86,7 @@ const Header = ({ onOpenAgent }: HeaderProps) => {
             currency={revenueProgress?.currency ?? "BRL"}
             lastSyncAt={revenueProgress?.last_sync_at ?? null}
             onConnectSystem={() => navigate("/app/settings")}
-            className="hidden lg:block"
+            className="hidden lg:flex lg:w-[230px] lg:flex-col lg:justify-center"
           />
 
           {/* Dropdown */}
