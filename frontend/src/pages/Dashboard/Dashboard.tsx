@@ -973,6 +973,86 @@ const Dashboard = () => {
       }
     })
     .sort((a, b) => (b.efficiency ?? -1) - (a.efficiency ?? -1))
+  const storeNameById = useMemo(
+    () =>
+      new Map(
+        (stores ?? []).map((store) => [store.id, store.name] as const)
+      ),
+    [stores]
+  )
+  const defaultTicketBrl = 85
+  const conversionRateFraction = Math.max(0, (computedConversionRate ?? 0) / 100)
+  const potentialRevenueDay = Math.max(
+    0,
+    Math.round((computedVisitorFlow ?? 0) * Math.max(conversionRateFraction, 0.12) * defaultTicketBrl)
+  )
+  const realizedRevenueDay = Math.max(
+    0,
+    Math.round((computedVisitorFlow ?? 0) * conversionRateFraction * defaultTicketBrl)
+  )
+  const revenueAtRiskDay = Math.max(0, Math.round(estimatedRevenueGap))
+  const moneyLeakItems = useMemo(() => {
+    const lossByType = new Map<
+      string,
+      { label: string; cause: string; loss: number; count: number }
+    >()
+    const eventLossBase = (eventType?: string) => {
+      if (eventType === "queue_long") return 2100
+      if (eventType === "staff_missing") return 1800
+      if (eventType === "conversion_drop") return 2600
+      return 900
+    }
+    const eventCause = (eventType?: string) => {
+      if (eventType === "queue_long") return "Fila acima do ideal"
+      if (eventType === "staff_missing") return "Cobertura de equipe insuficiente"
+      if (eventType === "conversion_drop") return "Conversão abaixo da meta"
+      return "Desvio operacional"
+    }
+    activeEvents.forEach((event) => {
+      const type = String(event.type || "other")
+      const current = lossByType.get(type)
+      const severityFactor =
+        String(event.severity || "").toLowerCase() === "critical" ? 1.3 : 1
+      const loss = Math.round(eventLossBase(type) * severityFactor)
+      if (!current) {
+        lossByType.set(type, {
+          label: type,
+          cause: eventCause(type),
+          loss,
+          count: 1,
+        })
+      } else {
+        current.loss += loss
+        current.count += 1
+      }
+    })
+    const list = [...lossByType.values()].sort((a, b) => b.loss - a.loss)
+    return list.slice(0, 3)
+  }, [activeEvents])
+  const topStores = rankingRows.slice(0, 3)
+  const bottomStores = [...rankingRows].reverse().slice(0, 3)
+  const timelineItems = useMemo(
+    () =>
+      [...activeEvents]
+        .sort((a, b) => {
+          const at = new Date(a.occurred_at || a.created_at || 0).getTime()
+          const bt = new Date(b.occurred_at || b.created_at || 0).getTime()
+          return bt - at
+        })
+        .slice(0, 6),
+    [activeEvents]
+  )
+  const projectedFlowNextHours = useMemo(() => {
+    const baseFlow = Math.max(0, Math.round((computedVisitorFlow ?? 0) / 10))
+    const criticalCount = activeEvents.filter(
+      (event) => String(event.severity || "").toLowerCase() === "critical"
+    ).length
+    return [1, 2, 3].map((hour, idx) => ({
+      hour,
+      flow: Math.round(baseFlow * (1 + idx * 0.08)),
+      queueMin: Math.max(3, Math.round((computedQueueSeconds ?? 240) / 60) + criticalCount + idx),
+    }))
+  }, [activeEvents, computedQueueSeconds, computedVisitorFlow])
   const kpiItems = [
     {
       title: "Fluxo de Visitantes",
@@ -1222,35 +1302,235 @@ const Dashboard = () => {
           )}
         </div>
         <div className="rounded-xl border border-gray-200 bg-white p-4 shadow-sm">
-          <div className="flex items-center justify-between gap-3">
+          {isNetworkMode ? (
             <div>
-              <p className="text-sm font-semibold text-gray-800">Farol operacional da rede</p>
+              <p className="text-sm font-semibold text-gray-800">Resumo executivo do momento</p>
               <p className="mt-1 text-sm text-gray-600">
-                {coverageCamerasOnline === null || coverageCamerasOffline === null
-                  ? "— ativas · — indisponíveis"
-                  : `${coverageCamerasOnline} ativas · ${coverageCamerasOffline} indisponíveis`}
+                Saúde {networkHealthScore}/100 · {alertsActiveCount} alertas ativos na rede
               </p>
               <p className="text-xs text-gray-500">
-                Total: {coverageCamerasTotal} · Limite do plano: {coverageLimitLabel}
+                Prioridade atual: {moneyLeakItems[0]?.cause || "Operação estável sem gargalo crítico"}
               </p>
+              <div className="mt-3">
+                <Link
+                  to="/app/reports"
+                  className="rounded-lg border border-gray-200 bg-gray-50 px-3 py-2 text-xs font-semibold text-gray-700 hover:bg-gray-100"
+                >
+                  Abrir relatório executivo
+                </Link>
+              </div>
             </div>
-            <button
-              type="button"
-              onClick={() =>
-                canManageStore &&
-                selectedStore !== ALL_STORES_VALUE &&
-                setEdgeSetupOpen(true)
-              }
-              disabled={selectedStore === ALL_STORES_VALUE}
-              className="rounded-lg border border-blue-200 bg-blue-50 px-3 py-2 text-xs font-semibold text-blue-700 hover:bg-blue-100 disabled:cursor-not-allowed disabled:opacity-60"
-            >
-              Abrir assistente de conexão
-            </button>
-          </div>
+          ) : (
+            <div className="flex items-center justify-between gap-3">
+              <div>
+                <p className="text-sm font-semibold text-gray-800">Farol operacional da loja</p>
+                <p className="mt-1 text-sm text-gray-600">
+                  {coverageCamerasOnline === null || coverageCamerasOffline === null
+                    ? "— ativas · — indisponíveis"
+                    : `${coverageCamerasOnline} ativas · ${coverageCamerasOffline} indisponíveis`}
+                </p>
+                <p className="text-xs text-gray-500">
+                  Total: {coverageCamerasTotal} · Limite do plano: {coverageLimitLabel}
+                </p>
+              </div>
+              <button
+                type="button"
+                onClick={() =>
+                  canManageStore &&
+                  selectedStore !== ALL_STORES_VALUE &&
+                  setEdgeSetupOpen(true)
+                }
+                disabled={selectedStore === ALL_STORES_VALUE}
+                className="rounded-lg border border-blue-200 bg-blue-50 px-3 py-2 text-xs font-semibold text-blue-700 hover:bg-blue-100 disabled:cursor-not-allowed disabled:opacity-60"
+              >
+                Abrir assistente de conexão
+              </button>
+            </div>
+          )}
         </div>
       </div>
 
       <section className="space-y-4 sm:space-y-6">
+        {isNetworkMode ? (
+          <>
+            <section className="grid grid-cols-1 lg:grid-cols-3 gap-4">
+              <article className="rounded-2xl border border-rose-200 bg-rose-50 p-5 shadow-sm">
+                <p className="text-xs font-semibold uppercase tracking-wide text-rose-700">Receita em risco hoje</p>
+                <p className="mt-2 text-3xl font-bold text-rose-700">{formatCurrencyBRL(revenueAtRiskDay)}</p>
+                <p className="mt-1 text-xs text-rose-700">Estimativa por fila, cobertura e conversão.</p>
+              </article>
+              <article className="rounded-2xl border border-emerald-200 bg-emerald-50 p-5 shadow-sm">
+                <p className="text-xs font-semibold uppercase tracking-wide text-emerald-700">Receita realizada (estimada)</p>
+                <p className="mt-2 text-3xl font-bold text-emerald-700">{formatCurrencyBRL(realizedRevenueDay)}</p>
+                <p className="mt-1 text-xs text-emerald-700">Baseada no fluxo e conversão atual da rede.</p>
+              </article>
+              <article className="rounded-2xl border border-blue-200 bg-blue-50 p-5 shadow-sm">
+                <p className="text-xs font-semibold uppercase tracking-wide text-blue-700">Receita potencial do dia</p>
+                <p className="mt-2 text-3xl font-bold text-blue-700">{formatCurrencyBRL(potentialRevenueDay)}</p>
+                <p className="mt-1 text-xs text-blue-700">Potencial com execução operacional estável.</p>
+              </article>
+            </section>
+
+            <section className="grid grid-cols-1 xl:grid-cols-3 gap-4">
+              <div className="xl:col-span-2 grid grid-cols-1 sm:grid-cols-2 gap-4">
+                {executiveKpis.map((item) => (
+                  <article
+                    key={item.title}
+                    className={`rounded-2xl border border-gray-200 ${item.bg} p-5 shadow-sm`}
+                  >
+                    <p className="text-xs font-semibold uppercase tracking-wide text-gray-500">{item.title}</p>
+                    <p className={`mt-2 text-3xl font-bold ${item.tone}`}>{item.value}</p>
+                    <p className="mt-1 text-xs text-gray-600">{item.subtitle}</p>
+                  </article>
+                ))}
+              </div>
+              <article className="rounded-2xl border border-indigo-200 bg-gradient-to-b from-slate-900 to-indigo-900 p-5 text-white shadow-sm">
+                <p className="text-xs font-semibold uppercase tracking-wide text-indigo-200">
+                  IA Decision Center
+                </p>
+                <h2 className="mt-2 text-lg font-semibold leading-tight">{copilotRecommendationNow.title}</h2>
+                <p className="mt-2 text-sm text-slate-200">
+                  <span className="font-semibold text-white">Ação:</span> {copilotRecommendationNow.action}
+                </p>
+                <p className="mt-1 text-sm text-slate-200">
+                  <span className="font-semibold text-white">Impacto esperado:</span>{" "}
+                  {revenueAtRiskDay > 0
+                    ? `recuperar até ${formatCurrencyBRL(Math.round(revenueAtRiskDay * 0.35))} no dia`
+                    : copilotRecommendationNow.impact}
+                </p>
+                <div className="mt-4 flex flex-wrap gap-2">
+                  <button
+                    type="button"
+                    onClick={() =>
+                      openCopilot(
+                        `Gerar plano de execução imediato para: ${copilotRecommendationNow.title}`
+                      )
+                    }
+                    className="rounded-lg bg-white px-3 py-2 text-xs font-semibold text-slate-900 hover:bg-slate-100"
+                  >
+                    Aprovar ação
+                  </button>
+                  <Link
+                    to="/app/reports"
+                    className="rounded-lg border border-white/30 bg-white/10 px-3 py-2 text-xs font-semibold text-white hover:bg-white/20"
+                  >
+                    Ver simulação
+                  </Link>
+                </div>
+              </article>
+            </section>
+
+            <section className="rounded-xl border border-gray-200 bg-white p-4 sm:p-6 shadow-sm">
+              <div className="flex items-center justify-between gap-3">
+                <div>
+                  <h3 className="text-base sm:text-lg font-semibold text-gray-900">Money Leak Detector</h3>
+                  <p className="text-sm text-gray-600 mt-1">Onde a rede está perdendo valor agora.</p>
+                </div>
+                <Link
+                  to="/app/operations"
+                  className="rounded-lg border border-gray-200 px-3 py-2 text-xs font-semibold text-gray-700 hover:bg-gray-50"
+                >
+                  Ver execução da rede
+                </Link>
+              </div>
+              {moneyLeakItems.length === 0 ? (
+                <p className="mt-4 text-sm text-gray-600">
+                  Sem perdas críticas abertas no momento. Continue monitorando a janela de pico.
+                </p>
+              ) : (
+                <div className="mt-4 space-y-3">
+                  {moneyLeakItems.map((item, index) => (
+                    <article key={`${item.label}-${index}`} className="rounded-lg border border-gray-200 bg-gray-50 p-3">
+                      <div className="flex items-center justify-between gap-3">
+                        <p className="text-sm font-semibold text-gray-900">{index + 1}. {item.cause}</p>
+                        <p className="text-sm font-semibold text-rose-700">{formatCurrencyBRL(item.loss)}</p>
+                      </div>
+                      <p className="mt-1 text-xs text-gray-700">
+                        {item.count} ocorrência(s) com impacto financeiro estimado.
+                      </p>
+                    </article>
+                  ))}
+                </div>
+              )}
+            </section>
+
+            <section className="grid grid-cols-1 lg:grid-cols-2 gap-4">
+              <article className="rounded-xl border border-gray-200 bg-white p-4 sm:p-6 shadow-sm">
+                <h3 className="text-base sm:text-lg font-semibold text-gray-900">Ranking de Performance</h3>
+                <p className="text-sm text-gray-600 mt-1">Comparativo objetivo para priorizar alocação da liderança.</p>
+                <div className="mt-4 grid grid-cols-1 sm:grid-cols-2 gap-4">
+                  <div>
+                    <p className="text-xs font-semibold uppercase tracking-wide text-emerald-700">Top 3 lojas</p>
+                    <div className="mt-2 space-y-2">
+                      {topStores.map((row) => (
+                        <div key={`top-${row.id}`} className="rounded-lg border border-emerald-100 bg-emerald-50 px-3 py-2 text-sm">
+                          <p className="font-semibold text-gray-900">{row.name}</p>
+                          <p className="text-xs text-gray-700">Eficiência {row.efficiency ?? "—"} · Conversão {row.conversion !== null ? `${row.conversion.toFixed(1)}%` : "—"}</p>
+                        </div>
+                      ))}
+                    </div>
+                  </div>
+                  <div>
+                    <p className="text-xs font-semibold uppercase tracking-wide text-rose-700">Bottom 3 lojas</p>
+                    <div className="mt-2 space-y-2">
+                      {bottomStores.map((row) => (
+                        <div key={`bottom-${row.id}`} className="rounded-lg border border-rose-100 bg-rose-50 px-3 py-2 text-sm">
+                          <p className="font-semibold text-gray-900">{row.name}</p>
+                          <p className="text-xs text-gray-700">Eficiência {row.efficiency ?? "—"} · Conversão {row.conversion !== null ? `${row.conversion.toFixed(1)}%` : "—"}</p>
+                        </div>
+                      ))}
+                    </div>
+                  </div>
+                </div>
+              </article>
+
+              <article className="rounded-xl border border-gray-200 bg-white p-4 sm:p-6 shadow-sm">
+                <h3 className="text-base sm:text-lg font-semibold text-gray-900">Previsão Operacional (próximas horas)</h3>
+                <p className="text-sm text-gray-600 mt-1">Estimativa para antecipar fila e risco de conversão.</p>
+                <div className="mt-4 space-y-2">
+                  {projectedFlowNextHours.map((entry) => (
+                    <div key={entry.hour} className="flex items-center justify-between rounded-lg border border-gray-100 bg-gray-50 px-3 py-2">
+                      <p className="text-sm text-gray-800">+{entry.hour}h</p>
+                      <p className="text-sm text-gray-700">Fluxo {entry.flow}</p>
+                      <p className="text-sm font-semibold text-amber-700">Fila proj. {entry.queueMin} min</p>
+                    </div>
+                  ))}
+                </div>
+                <p className="mt-3 text-xs text-gray-500">Estimativa orientativa para decisão executiva, sujeita à calibração do modelo.</p>
+              </article>
+            </section>
+
+            <section className="rounded-xl border border-gray-200 bg-white p-4 sm:p-6 shadow-sm">
+              <div className="flex items-center justify-between gap-3">
+                <div>
+                  <h3 className="text-base sm:text-lg font-semibold text-gray-900">Timeline operacional do dia</h3>
+                  <p className="text-sm text-gray-600 mt-1">Eventos de maior impacto para acompanhamento executivo.</p>
+                </div>
+                <Link
+                  to="/app/alerts"
+                  className="rounded-lg border border-gray-200 px-3 py-2 text-xs font-semibold text-gray-700 hover:bg-gray-50"
+                >
+                  Ver alertas completos
+                </Link>
+              </div>
+              {timelineItems.length === 0 ? (
+                <p className="mt-4 text-sm text-gray-600">Sem eventos críticos registrados hoje.</p>
+              ) : (
+                <div className="mt-4 space-y-2">
+                  {timelineItems.map((event) => (
+                    <div key={event.id} className="rounded-lg border border-gray-100 bg-gray-50 px-3 py-2">
+                      <p className="text-sm font-semibold text-gray-900">{event.title || "Evento operacional"}</p>
+                      <p className="text-xs text-gray-700 mt-1">
+                        {storeNameById.get(String(event.store_id)) || "Loja da rede"} · {formatTimeSafe(event.occurred_at || event.created_at)}
+                      </p>
+                    </div>
+                  ))}
+                </div>
+              )}
+            </section>
+          </>
+        ) : (
+          <>
           <section className="grid grid-cols-1 xl:grid-cols-3 gap-4">
             <div className="xl:col-span-2 grid grid-cols-1 sm:grid-cols-2 gap-4">
               {executiveKpis.map((item) => (
@@ -1463,6 +1743,8 @@ const Dashboard = () => {
             </p>
           </div>
           <DashboardKpiStrip items={kpiItems} />
+          </>
+        )}
       </section>
 
       <div className="space-y-4 sm:space-y-6">
@@ -1606,28 +1888,30 @@ const Dashboard = () => {
 
           {!isTrialCeoMode && (
             <>
-              <AlertsSection
-                storeSelected={Boolean(selectedStore && selectedStore !== ALL_STORES_VALUE)}
-                storeName={selectedStoreItem?.name ?? null}
-                eventsLoading={eventsLoading}
-                eventsError={eventsError}
-                events={events}
-                resolvingEventId={resolvingEventId}
-                ignoringEventId={ignoringEventId}
-                formatTimeSafe={formatTimeSafe}
-                onResolveEvent={(eventId) => {
-                  setResolvingEventId(eventId)
-                  resolveEvent.mutate(eventId, {
-                    onSettled: () => setResolvingEventId(null),
-                  })
-                }}
-                onIgnoreEvent={(eventId) => {
-                  setIgnoringEventId(eventId)
-                  ignoreEvent.mutate(eventId, {
-                    onSettled: () => setIgnoringEventId(null),
-                  })
-                }}
-              />
+              {!isNetworkMode && (
+                <AlertsSection
+                  storeSelected={Boolean(selectedStore && selectedStore !== ALL_STORES_VALUE)}
+                  storeName={selectedStoreItem?.name ?? null}
+                  eventsLoading={eventsLoading}
+                  eventsError={eventsError}
+                  events={events}
+                  resolvingEventId={resolvingEventId}
+                  ignoringEventId={ignoringEventId}
+                  formatTimeSafe={formatTimeSafe}
+                  onResolveEvent={(eventId) => {
+                    setResolvingEventId(eventId)
+                    resolveEvent.mutate(eventId, {
+                      onSettled: () => setResolvingEventId(null),
+                    })
+                  }}
+                  onIgnoreEvent={(eventId) => {
+                    setIgnoringEventId(eventId)
+                    ignoreEvent.mutate(eventId, {
+                      onSettled: () => setIgnoringEventId(null),
+                    })
+                  }}
+                />
+              )}
               {!isNetworkMode && (
                 <InfrastructureSection
                   edgeStatusLoading={edgeStatusLoading}
