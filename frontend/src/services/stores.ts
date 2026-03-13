@@ -3,7 +3,7 @@ import api from './api';
 import type { StoreDashboard } from '../types/dashboard';
 
 export type StoreStatus = 'active' | 'inactive' | 'maintenance' | 'trial' | 'blocked';
-export type StorePlan = 'trial' | 'basic' | 'pro' | 'enterprise';
+export type StorePlan = 'trial' | 'start' | 'basic' | 'pro' | 'growth' | 'enterprise' | 'paid';
 
 export interface Store {
   id: string;

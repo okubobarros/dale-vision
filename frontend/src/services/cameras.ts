@@ -69,7 +69,8 @@ export interface CameraSnapshotResponse {
 
 export interface StoreLimits {
   store_id: string
-  plan: "trial" | "paid"
+  plan: "trial" | "start" | "pro" | "growth" | "enterprise" | "basic" | "paid"
+  plan_status?: "trialing" | "active" | "past_due" | "canceled" | "incomplete" | "blocked" | string
   limits: {
     cameras: number | null
     stores: number | null

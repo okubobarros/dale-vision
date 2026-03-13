@@ -255,7 +255,14 @@ const Operations = () => {
   const isTrialOrStart =
     !meStatus?.has_subscription ||
     storesTotal <= 1 ||
-    stores.every((store) => !store.plan || store.plan === "trial" || store.plan === "basic")
+    stores.every(
+      (store) =>
+        !store.plan ||
+        store.plan === "trial" ||
+        store.plan === "basic" ||
+        store.plan === "start" ||
+        store.plan === "paid"
+    )
   const shouldShowRanking = hasProPlan && storesTotal > 1 && !isTrialOrStart
   const rankingRows = useMemo(() => {
     const byStore = new Map<

@@ -13,6 +13,7 @@ type RevenueProgressBarProps = {
 
 const SUPPORT_URL =
   "https://wa.me/5511996918070?text=Olá,%20preciso%20de%20ajuda%20para%20conectar%20meu%20sistema%20de%20vendas%20no%20app."
+const MILESTONE_TARGETS = [100_000, 1_000_000, 5_000_000]
 
 const formatCurrency = (value: number, currency: string) =>
   new Intl.NumberFormat("pt-BR", {
@@ -24,21 +25,25 @@ const formatCurrency = (value: number, currency: string) =>
 const RevenueProgressBar = ({
   state,
   currentRevenue,
-  targetRevenue,
+  targetRevenue: _targetRevenue,
   currency = "BRL",
   lastSyncAt,
   onConnectSystem,
   className = "",
 }: RevenueProgressBarProps) => {
   const [open, setOpen] = useState(false)
-  const safeTarget = targetRevenue > 0 ? targetRevenue : 1
+  const safeCurrentRevenue = Math.max(0, currentRevenue)
+  const milestoneTarget =
+    MILESTONE_TARGETS.find((value) => safeCurrentRevenue < value) ??
+    MILESTONE_TARGETS[MILESTONE_TARGETS.length - 1]
+  const safeTarget = milestoneTarget > 0 ? milestoneTarget : 1
   const progressPct = useMemo(
-    () => Math.max(0, Math.min(100, (currentRevenue / safeTarget) * 100)),
-    [currentRevenue, safeTarget]
+    () => Math.max(0, Math.min(100, (safeCurrentRevenue / safeTarget) * 100)),
+    [safeCurrentRevenue, safeTarget]
   )
 
-  const connectedLabel = `${formatCurrency(currentRevenue, currency)} / ${formatCurrency(
-    targetRevenue,
+  const connectedLabel = `${formatCurrency(safeCurrentRevenue, currency)} / ${formatCurrency(
+    milestoneTarget,
     currency
   )}`
   const tooltipText =
@@ -50,7 +55,7 @@ const RevenueProgressBar = ({
 
   return (
     <div
-      className={`relative rounded-xl border border-slate-200 bg-slate-50/80 px-3 py-2 shadow-sm ${className}`}
+      className={`relative min-w-[220px] rounded-lg border border-indigo-200 bg-white px-3 py-2 shadow-sm ${className}`}
     >
       <button
         type="button"
@@ -60,11 +65,11 @@ const RevenueProgressBar = ({
       >
         <div className="flex items-center justify-between gap-2">
           <div className="flex items-center gap-2 min-w-0">
-            <span className="text-base leading-none">🏆</span>
-            <span className="text-xs font-semibold text-slate-700 whitespace-nowrap">Faturamento</span>
+            <span className="h-2 w-2 rounded-full bg-gradient-to-r from-blue-500 to-purple-600" />
+            <span className="text-xs font-semibold text-slate-800 whitespace-nowrap">Faturamento</span>
           </div>
           {state === "connected" && (
-            <span className="text-[11px] font-medium text-slate-600 truncate">{connectedLabel}</span>
+            <span className="text-[11px] font-semibold text-slate-700 truncate">{connectedLabel}</span>
           )}
           {state === "syncing" && (
             <span className="text-[11px] font-medium text-amber-700 whitespace-nowrap">
@@ -76,18 +81,18 @@ const RevenueProgressBar = ({
         <div className="mt-2">
           {state === "connected" ? (
             <>
-              <div className="h-2 w-full overflow-hidden rounded-full bg-slate-200">
+              <div className="h-1.5 w-full overflow-hidden rounded-full bg-slate-200">
                 <div
-                  className="h-full rounded-full bg-gradient-to-r from-emerald-500 to-green-600 transition-[width] duration-700 ease-out"
+                  className="h-full rounded-full bg-gradient-to-r from-[#0066FF] to-[#7C3AED] transition-[width] duration-700 ease-out"
                   style={{ width: `${progressPct}%` }}
                 />
               </div>
-              <div className="mt-1 text-[10px] text-slate-500">{Math.round(progressPct)}% da meta</div>
+              <div className="mt-1 text-[10px] text-slate-500">{Math.round(progressPct)}% da meta atual</div>
             </>
           ) : state === "syncing" ? (
             <>
-              <div className="h-2 w-full overflow-hidden rounded-full bg-amber-100">
-                <div className="h-full w-1/2 animate-pulse rounded-full bg-amber-500" />
+              <div className="h-1.5 w-full overflow-hidden rounded-full bg-slate-200">
+                <div className="h-full w-1/2 animate-pulse rounded-full bg-gradient-to-r from-[#0066FF] to-[#7C3AED]" />
               </div>
               <div className="mt-1 text-[10px] text-amber-700">Sincronizando dados de vendas...</div>
             </>
@@ -111,6 +116,9 @@ const RevenueProgressBar = ({
             <div className="space-y-2">
               <div className="text-sm font-semibold text-slate-800">Progresso de faturamento</div>
               <div className="text-xs text-slate-600">{connectedLabel}</div>
+              <div className="text-[11px] text-slate-500">
+                Metas progressivas: R$ 100 mil → R$ 1 mi → R$ 5 mi
+              </div>
               {lastSyncAt ? (
                 <div className="text-[11px] text-slate-500">
                   Última sincronização: {new Date(lastSyncAt).toLocaleString("pt-BR")}
@@ -153,4 +161,3 @@ const RevenueProgressBar = ({
 }
 
 export default RevenueProgressBar
-

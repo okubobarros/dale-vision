@@ -17,13 +17,15 @@ from django.db import connection, DatabaseError
 from django.utils import timezone
 from django.conf import settings
 from django.utils.dateparse import parse_datetime
-from apps.core.models import Store, OrgMember, Organization, Camera, Employee, DetectionEvent
+from apps.core.models import Store, OrgMember, Organization, Camera, Employee, DetectionEvent, Subscription
 from apps.edge.models import EdgeToken, StoreCalibrationRun
 from apps.edge.auth import validate_store_token, EdgeAwareJWTAuthentication
 from apps.cameras.limits import (
     enforce_trial_camera_limit,
     count_active_cameras,
     get_camera_limit_for_store,
+    get_org_plan_code,
+    PLAN_LIMITS,
 )
 from apps.core.services.onboarding_progress import OnboardingProgressService
 from apps.core.services.journey_events import log_journey_event
@@ -38,7 +40,6 @@ from apps.cameras.roi import get_latest_published_roi_config
 from apps.billing.utils import (
     PaywallError,
     enforce_trial_store_limit,
-    is_trial,
 )
 from backend.utils.entitlements import enforce_can_use_product, require_trial_active
 import hashlib
@@ -1771,16 +1772,25 @@ class StoreViewSet(viewsets.ModelViewSet):
         require_store_role(request.user, str(store.id), ALLOWED_READ_ROLES)
 
         org_id = getattr(store, "org_id", None)
-        is_trial_plan = is_trial(org_id)
+        plan_code = get_org_plan_code(str(org_id) if org_id else None)
+        if plan_code not in PLAN_LIMITS:
+            plan_code = "start"
         cameras_limit = get_camera_limit_for_store(str(store.id))
         cameras_used = count_active_cameras(str(store.id))
         stores_used = Store.objects.filter(org_id=org_id).count() if org_id else 0
-        stores_limit = 1 if is_trial_plan else None
+        stores_limit = PLAN_LIMITS.get(plan_code, {}).get("stores")
+        sub = (
+            Subscription.objects.filter(org_id=org_id).order_by("-created_at").only("status").first()
+            if org_id
+            else None
+        )
+        subscription_status = str(getattr(sub, "status", "") or "").lower()
 
         return Response(
             {
                 "store_id": str(store.id),
-                "plan": "trial" if is_trial_plan else "paid",
+                "plan": plan_code,
+                "plan_status": subscription_status or ("trialing" if plan_code == "trial" else "active"),
                 "limits": {
                     "cameras": cameras_limit,
                     "stores": stores_limit,

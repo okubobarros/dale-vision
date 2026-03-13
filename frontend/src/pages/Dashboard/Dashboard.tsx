@@ -97,6 +97,16 @@ const formatTimeSafe = (iso?: string | null) => {
   if (Number.isNaN(date.getTime())) return "—"
   return date.toLocaleTimeString("pt-BR", { hour: "2-digit", minute: "2-digit" })
 }
+const normalizePlanCode = (plan?: string | null) => {
+  if (!plan) return null
+  const value = plan.toLowerCase()
+  if (value === "trial" || value === "free") return "trial"
+  if (value === "basic" || value === "start" || value === "starter" || value === "paid") return "start"
+  if (value === "pro") return "pro"
+  if (value === "growth") return "growth"
+  if (value === "enterprise" || value === "entreprise") return "enterprise"
+  return value
+}
 
 const ALL_STORES_VALUE = "all"
 const CEO_PERIOD: "day" | "7d" = "day"
@@ -284,9 +294,9 @@ const Dashboard = () => {
     edgeConnectivityStatus === "degraded" ||
     isRecentTimestamp(lastSeenAt, ONLINE_MAX_AGE_SEC)
   const selectedStorePlan =
-    selectedStoreItem?.plan ??
+    normalizePlanCode(selectedStoreItem?.plan) ??
     (meStatus?.has_subscription
-      ? "paid"
+      ? "start"
       : selectedStoreStatus === "trial" || meStatus?.trial_active
       ? "trial"
       : null)
@@ -374,10 +384,11 @@ const Dashboard = () => {
   const camerasOnline = health?.cameras_online ?? edgeStatus?.cameras_online ?? 0
   const camerasOffline = Math.max(camerasTotal - camerasOnline, 0)
   const camerasLimit = storeLimits?.limits?.cameras ?? null
+  const normalizedStoreLimitPlan = normalizePlanCode(storeLimits?.plan ?? null)
   const camerasLimitLabel =
     typeof camerasLimit === "number"
       ? String(camerasLimit)
-      : storeLimits?.plan === "paid"
+      : normalizedStoreLimitPlan && normalizedStoreLimitPlan !== "trial"
       ? "Sem limite"
       : "—"
   const [evidenceOpen, setEvidenceOpen] = useState(false)

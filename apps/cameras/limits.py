@@ -4,11 +4,10 @@ from django.core.exceptions import FieldError
 from django.db import connection
 from django.db.utils import OperationalError, ProgrammingError
 
-from apps.core.models import Camera, Store
+from apps.core.models import Camera, Store, Subscription
 from apps.billing.utils import (
     PaywallError,
     PAYWALL_TRIAL_MESSAGE,
-    is_trial,
     log_paywall_block,
 )
 
@@ -17,6 +16,18 @@ TRIAL_CAMERA_LIMIT_MESSAGE = PAYWALL_TRIAL_MESSAGE
 
 PLAN_LIMITS = {
     "trial": {"cameras": TRIAL_CAMERA_LIMIT, "stores": 1},
+    "start": {"cameras": 3, "stores": 1},
+    "pro": {"cameras": 12, "stores": 3},
+    "growth": {"cameras": None, "stores": None},
+    "enterprise": {"cameras": None, "stores": None},
+}
+
+PLAN_ALIASES = {
+    "free": "trial",
+    "basic": "start",
+    "starter": "start",
+    "paid": "start",
+    "entreprise": "enterprise",
 }
 
 
@@ -35,11 +46,36 @@ def get_store_meta(store_id: str) -> dict:
 
 
 def get_plan_limits(org_id: Optional[str]) -> dict:
+    plan_code = get_org_plan_code(org_id)
+    return PLAN_LIMITS.get(plan_code, {})
+
+
+def normalize_plan_code(plan_code: Optional[str]) -> Optional[str]:
+    if not plan_code:
+        return None
+    raw = str(plan_code).strip().lower()
+    return PLAN_ALIASES.get(raw, raw)
+
+
+def get_org_plan_code(org_id: Optional[str]) -> str:
     if not org_id:
-        return {}
-    if is_trial(org_id):
-        return PLAN_LIMITS.get("trial", {})
-    return {}
+        return "trial"
+
+    sub = (
+        Subscription.objects.filter(org_id=org_id)
+        .order_by("-created_at")
+        .only("plan_code", "status")
+        .first()
+    )
+    if not sub:
+        return "trial"
+
+    status_value = str(sub.status or "").lower()
+    normalized_plan = normalize_plan_code(sub.plan_code)
+    if status_value == "trialing" or normalized_plan == "trial":
+        return "trial"
+
+    return normalized_plan or "start"
 
 
 def get_camera_limit_for_store(store_id: str) -> Optional[int]:
@@ -80,12 +116,14 @@ def enforce_trial_camera_limit(
         return
 
     meta = get_store_meta(store_id)
-    status = meta.get("status")
     org_id = meta.get("org_id")
-    if status != "trial" and not is_trial(org_id):
+    plan_code = get_org_plan_code(org_id)
+    limits = PLAN_LIMITS.get(plan_code, {})
+    limit = limits.get("cameras")
+    if not limit:
+        # planos sem limite (growth/enterprise) ou sem configuração explícita
         return
 
-    limit = get_camera_limit_for_store(store_id) or TRIAL_CAMERA_LIMIT
     active_count = count_active_cameras(store_id, exclude_camera_id=exclude_camera_id)
     if active_count >= limit:
         log_paywall_block(
@@ -95,4 +133,4 @@ def enforce_trial_camera_limit(
             entity="camera",
             limit=limit,
         )
-        raise PaywallError(meta={"limit": limit, "entity": "camera"})
+        raise PaywallError(meta={"limit": limit, "entity": "camera", "plan_code": plan_code})

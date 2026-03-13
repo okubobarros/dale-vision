@@ -56,18 +56,6 @@ const Header = ({ onOpenAgent }: HeaderProps) => {
 
         </div>
 
-        {/* Center: Revenue progress (desktop) */}
-        <div className="hidden lg:block flex-1 px-3 max-w-xl">
-          <RevenueProgressBar
-            state={revenueProgress?.state ?? "not_configured"}
-            currentRevenue={revenueProgress?.current_revenue ?? 0}
-            targetRevenue={revenueProgress?.target_revenue ?? 1000000}
-            currency={revenueProgress?.currency ?? "BRL"}
-            lastSyncAt={revenueProgress?.last_sync_at ?? null}
-            onConnectSystem={() => navigate("/app/settings")}
-          />
-        </div>
-
         {/* Right: Actions + User */}
         <div className="flex items-center gap-3 sm:gap-4 min-w-0">
           {/* ✅ Desktop Agent button */}
@@ -90,6 +78,16 @@ const Header = ({ onOpenAgent }: HeaderProps) => {
             </span>
             </button>
           )}
+
+          <RevenueProgressBar
+            state={revenueProgress?.state ?? "not_configured"}
+            currentRevenue={revenueProgress?.current_revenue ?? 0}
+            targetRevenue={revenueProgress?.target_revenue ?? 100000}
+            currency={revenueProgress?.currency ?? "BRL"}
+            lastSyncAt={revenueProgress?.last_sync_at ?? null}
+            onConnectSystem={() => navigate("/app/settings")}
+            className="hidden lg:block"
+          />
 
           {/* Dropdown */}
           <div className="relative group">
@@ -141,18 +139,6 @@ const Header = ({ onOpenAgent }: HeaderProps) => {
             </div>
           </div>
         </div>
-      </div>
-
-      {/* Mobile/tablet: Revenue progress below brand/actions */}
-      <div className="px-3 pb-3 lg:hidden sm:px-6">
-        <RevenueProgressBar
-          state={revenueProgress?.state ?? "not_configured"}
-          currentRevenue={revenueProgress?.current_revenue ?? 0}
-          targetRevenue={revenueProgress?.target_revenue ?? 1000000}
-          currency={revenueProgress?.currency ?? "BRL"}
-          lastSyncAt={revenueProgress?.last_sync_at ?? null}
-          onConnectSystem={() => navigate("/app/settings")}
-        />
       </div>
     </header>
   )
