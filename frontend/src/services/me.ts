@@ -31,6 +31,7 @@ const isTimeoutError = (error: unknown) => {
     String(error.message || "").toLowerCase().includes("timeout")
   )
 }
+let coverageEndpointUnavailable = false
 
 export type ReportSummary = {
   period: string
@@ -135,6 +136,50 @@ export type ProductivityCoverage = {
   windows: ProductivityCoverageWindow[]
 }
 
+const buildCoverageFallback = (
+  summary: ReportSummary | null,
+  storeId?: string | null,
+  period?: string | null
+): ProductivityCoverage => ({
+  period: period || summary?.period || "30d",
+  from: summary?.from ?? null,
+  to: summary?.to ?? null,
+  store_id: storeId || summary?.store_id || null,
+  stores_count: summary?.stores_count ?? 0,
+  method: {
+    id: "coverage_endpoint_fallback",
+    version: "coverage_fallback_v1_2026-03-13",
+    label: "Cobertura operacional (fallback)",
+    description: "Endpoint de cobertura ainda não publicado neste ambiente.",
+  },
+  confidence_governance: {
+    status: "insuficiente",
+    score: 0,
+    source_flags: {
+      footfall: "official",
+      staff_planned_ref: "proxy",
+      staff_detected_est: "estimated",
+      coverage_gap: "derived",
+    },
+    caveats: [
+      "Endpoint /v1/productivity/coverage indisponível neste ambiente.",
+      "Publicar backend atualizado para habilitar leitura de aderência operacional.",
+    ],
+  },
+  summary: {
+    gaps_total: 0,
+    critical_windows: 0,
+    warning_windows: 0,
+    adequate_windows: 0,
+    worst_window: null,
+    best_window: null,
+    peak_flow_window: null,
+    opportunity_window: null,
+    planned_source_mode: "proxy",
+  },
+  windows: [],
+})
+
 export const meService = {
   async getStatus(): Promise<MeStatus | null> {
     try {
@@ -206,8 +251,21 @@ export const meService = {
     if (range?.from) params.from = range.from
     if (range?.to) params.to = range.to
     if (range?.period) params.period = range.period
-    const response = await api.get("/v1/productivity/coverage/", { params })
-    return response.data as ProductivityCoverage
+    if (coverageEndpointUnavailable) {
+      const summary = await this.getReportSummary(storeId, range).catch(() => null)
+      return buildCoverageFallback(summary, storeId, range?.period ?? null)
+    }
+    try {
+      const response = await api.get("/v1/productivity/coverage/", { params })
+      return response.data as ProductivityCoverage
+    } catch (error) {
+      if (axios.isAxiosError(error) && error.response?.status === 404) {
+        coverageEndpointUnavailable = true
+        const summary = await this.getReportSummary(storeId, range).catch(() => null)
+        return buildCoverageFallback(summary, storeId, range?.period ?? null)
+      }
+      throw error
+    }
   },
   async exportReport(
     format: "csv" | "pdf",

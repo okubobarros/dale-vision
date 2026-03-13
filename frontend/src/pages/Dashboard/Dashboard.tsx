@@ -204,7 +204,7 @@ const Dashboard = () => {
       return selectedStoreOverride
     }
     return selectedStoreOverride || ALL_STORES_VALUE
-  }, [selectedStoreOverride, stores])
+  }, [selectedStoreOverride])
 
   const selectedStoreItem = useMemo(
     () => (stores ?? []).find((s) => s.id === selectedStore) ?? null,

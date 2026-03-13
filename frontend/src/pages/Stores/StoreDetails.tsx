@@ -9,9 +9,9 @@ const ONLINE_MAX_AGE_SEC = 120
 type StoreTab = "overview" | "cameras" | "infrastructure"
 
 const STORE_TABS: Array<{ key: StoreTab; label: string }> = [
-  { key: "overview", label: "Overview" },
-  { key: "cameras", label: "Câmeras" },
-  { key: "infrastructure", label: "Infraestrutura" },
+  { key: "overview", label: "Decisão" },
+  { key: "cameras", label: "Operação Visual" },
+  { key: "infrastructure", label: "Infra TI" },
 ]
 
 const isRecent = (iso?: string | null, maxAgeSec = ONLINE_MAX_AGE_SEC) => {
@@ -32,6 +32,15 @@ const formatSeconds = (value?: number | null) => {
 const formatPercent = (value?: number | null) => {
   if (value === null || value === undefined) return "—"
   return `${Math.round(value * 100)}%`
+}
+
+const formatCurrencyBRL = (value?: number | null) => {
+  if (value === null || value === undefined) return "—"
+  return new Intl.NumberFormat("pt-BR", {
+    style: "currency",
+    currency: "BRL",
+    maximumFractionDigits: 0,
+  }).format(Math.max(0, value))
 }
 
 const formatHourLabel = (value?: string | null) => {
@@ -147,7 +156,6 @@ const StoreDetails = () => {
       ).length,
     [cameras]
   )
-  const camerasOffline = Math.max(cameras.length - camerasOnline, 0)
 
   const lastSeenAt = data?.edge_health?.last_seen_at || null
   const edgeOnline = isRecent(lastSeenAt)
@@ -191,6 +199,69 @@ const StoreDetails = () => {
       peakGapLabel: `${peakGap.label} (${peakGap.gap})`,
     }
   }, [operationalSeries])
+  const shiftActionPlan = useMemo(() => {
+    const queueSeconds = metrics?.avg_queue_seconds ?? 0
+    const conversion = metrics?.avg_conversion_rate ?? 0
+    const actions: Array<{ title: string; detail: string; priority: "Alta" | "Média" | "Base" }> = []
+
+    if (operationalSummary.criticalWindows > 0) {
+      actions.push({
+        title: `Reforçar cobertura na janela ${operationalSummary.peakGapLabel}`,
+        detail: "Realocar equipe no pico de lacuna para reduzir risco imediato de abandono de fila.",
+        priority: "Alta",
+      })
+    }
+
+    if (queueSeconds >= 120) {
+      actions.push({
+        title: "Abrir intervenção de fila no próximo ciclo",
+        detail: `Fila média em ${formatSeconds(queueSeconds)} exige ajuste tático no atendimento.`,
+        priority: "Alta",
+      })
+    } else {
+      actions.push({
+        title: "Manter ritmo de atendimento",
+        detail: "Fila sob controle, monitorar desvio acima de 2 minutos.",
+        priority: "Média",
+      })
+    }
+
+    if (conversion <= 0.12) {
+      actions.push({
+        title: "Ativar abordagem comercial nas áreas quentes",
+        detail: "Conversão abaixo da meta; alinhar equipe para captar fluxo com maior intenção.",
+        priority: "Média",
+      })
+    } else {
+      actions.push({
+        title: "Preservar padrão de conversão atual",
+        detail: "Operação em nível aceitável; focar em consistência por turno.",
+        priority: "Base",
+      })
+    }
+
+    return actions.slice(0, 3)
+  }, [metrics?.avg_conversion_rate, metrics?.avg_queue_seconds, operationalSummary.criticalWindows, operationalSummary.peakGapLabel])
+  const visitorsPerDay = (metrics?.total_visitors ?? 0) / 7
+  const estimatedRevenueRiskToday = useMemo(() => {
+    const queueSeconds = metrics?.avg_queue_seconds ?? 0
+    const conversionRate = metrics?.avg_conversion_rate ?? 0
+    const potentialLostCustomers = visitorsPerDay * Math.min(0.22, queueSeconds / 600)
+    const estimatedTicket = 120
+    const value = potentialLostCustomers * estimatedTicket * Math.max(0.45, 1 - conversionRate)
+    return Math.round(Math.max(0, value))
+  }, [metrics?.avg_conversion_rate, metrics?.avg_queue_seconds, visitorsPerDay])
+  const chiefDirective = useMemo(() => {
+    if (!edgeOnline) {
+      return "Recupere a conexão da operação agora para voltar a priorizar equipe por janela crítica."
+    }
+    if (operationalSummary.criticalWindows > 0) {
+      return `Realocar equipe na janela ${operationalSummary.peakGapLabel} para reduzir perda por fila ainda neste turno.`
+    }
+    return "Manter cobertura atual e monitorar apenas desvios de fila acima de 2 minutos."
+  }, [edgeOnline, operationalSummary.criticalWindows, operationalSummary.peakGapLabel])
+  const conversionTarget = 0.15
+  const conversionGap = (metrics?.avg_conversion_rate ?? 0) - conversionTarget
 
   const setTab = (tab: StoreTab) => {
     const next = new URLSearchParams(searchParams)
@@ -280,15 +351,15 @@ const StoreDetails = () => {
   }
 
   return (
-    <div className="p-6 space-y-6">
-      <div className="rounded-2xl border border-gray-200 bg-white p-5 shadow-sm">
+    <div className="p-6 space-y-6 bg-slate-50 min-h-screen">
+      <div className="rounded-2xl border border-slate-200 bg-white p-6 shadow-sm">
         <div className="flex items-center justify-between gap-4 flex-wrap">
           <div>
-            <p className="text-xs uppercase tracking-[0.14em] text-gray-500">Visão tática da unidade</p>
-            <h1 className="text-2xl sm:text-3xl font-bold text-gray-900 mt-1">
+            <p className="text-xs uppercase tracking-[0.14em] text-gray-500">Cockpit executivo da unidade</p>
+            <h1 className="text-2xl sm:text-3xl font-semibold text-slate-900 mt-1 tracking-tight">
               {data.store.name}
             </h1>
-            <p className="text-sm text-gray-600 mt-1">
+            <p className="text-sm text-slate-600 mt-1">
               {data.store.city || "Cidade"}{data.store.state ? `, ${data.store.state}` : ""}
             </p>
           </div>
@@ -302,55 +373,75 @@ const StoreDetails = () => {
         </div>
 
         <div className="mt-4 grid grid-cols-1 lg:grid-cols-3 gap-4">
-          <article className="rounded-xl border border-gray-200 bg-gradient-to-br from-slate-100 to-white p-4">
+          <article className="rounded-xl border border-slate-200 bg-gradient-to-br from-slate-100 to-white p-4 shadow-sm">
             <div className="flex items-center gap-3">
               <div className="h-14 w-14 rounded-xl border border-gray-200 bg-white flex items-center justify-center text-lg font-semibold text-gray-700">
                 {placeholder.letter}
               </div>
               <div>
-                <p className="text-sm font-semibold text-gray-900">{data.store.name}</p>
-                <p className="text-xs text-gray-500">{placeholder.label}</p>
+                <p className="text-sm font-semibold text-slate-900">{data.store.name}</p>
+                <p className="text-xs text-slate-500">{placeholder.label}</p>
               </div>
             </div>
-            <p className="mt-3 text-xs text-gray-600">
+            <p className="mt-3 text-xs text-slate-600">
               A imagem da fachada melhora identificação rápida da unidade para gestão remota.
             </p>
           </article>
 
-          <article className="lg:col-span-2 rounded-xl border border-white/10 bg-[#111827] p-4 text-white">
-            <p className="text-xs uppercase tracking-[0.14em] text-blue-200">Copiloto da unidade</p>
-            <h2 className="mt-1 text-lg font-semibold">Prioridade local agora</h2>
-            <p className="mt-2 text-sm text-slate-200">
-              {edgeOnline
-                ? "Cruzar pico de fluxo com fila média para reduzir risco de perda de venda nesta unidade."
-                : "Restabeleça conexão da operação para retomar leitura confiável e priorização automática."}
-            </p>
-            <div className="mt-3 flex flex-wrap gap-2">
+          <article className="lg:col-span-2 rounded-xl border border-slate-800/60 bg-[#111827] p-5 text-white shadow-sm">
+            <p className="text-xs uppercase tracking-[0.14em] text-indigo-200">Copiloto Chief of Staff</p>
+            <h2 className="mt-1 text-lg font-semibold tracking-tight">Diretriz executiva da unidade</h2>
+            <p className="mt-2 text-sm text-slate-100 leading-relaxed">{chiefDirective}</p>
+            <div className="mt-4 grid grid-cols-1 sm:grid-cols-3 gap-2 text-xs">
+              <div className="rounded-lg border border-white/10 bg-white/5 p-2">
+                <p className="text-slate-300">Receita em risco hoje</p>
+                <p className="mt-1 text-base font-semibold text-rose-300">
+                  {formatCurrencyBRL(estimatedRevenueRiskToday)}
+                </p>
+              </div>
+              <div className="rounded-lg border border-white/10 bg-white/5 p-2">
+                <p className="text-slate-300">Janela crítica</p>
+                <p className="mt-1 text-base font-semibold text-amber-200">{operationalSummary.peakGapLabel}</p>
+              </div>
+              <div className="rounded-lg border border-white/10 bg-white/5 p-2">
+                <p className="text-slate-300">Fila média atual</p>
+                <p className="mt-1 text-base font-semibold text-slate-100">{formatSeconds(metrics?.avg_queue_seconds)}</p>
+              </div>
+            </div>
+            <div className="mt-4 flex flex-wrap gap-2">
               <button
                 type="button"
-                onClick={() => openCopilot(`Onde está o gargalo agora na loja ${data.store.name}?`)}
+                onClick={() =>
+                  openCopilot(
+                    `Aprove intervenção imediata na loja ${data.store.name}: realocar equipe na janela ${operationalSummary.peakGapLabel} para reduzir perda estimada de ${formatCurrencyBRL(estimatedRevenueRiskToday)} hoje.`
+                  )
+                }
                 className="rounded-full border border-white/20 px-3 py-1 text-xs text-slate-100 hover:bg-white/10"
               >
-                Onde está o gargalo?
+                Aprovar intervenção
               </button>
               <button
                 type="button"
-                onClick={() => openCopilot(`Qual ação com maior impacto imediato na loja ${data.store.name}?`)}
+                onClick={() =>
+                  openCopilot(
+                    `Monte uma mensagem de delegação para o gerente da loja ${data.store.name} com foco em fila, cobertura e conversão para esta janela crítica.`
+                  )
+                }
                 className="rounded-full border border-white/20 px-3 py-1 text-xs text-slate-100 hover:bg-white/10"
               >
-                Qual ação de maior impacto?
+                Delegar ao gerente
               </button>
               <Link
                 to={`/app/copilot?store_id=${data.store.id}`}
                 className="rounded-full bg-gradient-to-r from-blue-600 to-indigo-600 px-3 py-1 text-xs font-semibold text-white hover:brightness-95"
               >
-                Revisar com Copiloto
+                Abrir plano no Copiloto
               </Link>
             </div>
           </article>
         </div>
 
-        <div className="mt-4 inline-flex gap-2 rounded-xl border border-gray-200 bg-white p-1 w-fit">
+        <div className="mt-5 inline-flex gap-2 rounded-xl border border-slate-200 bg-white p-1 w-fit">
           {STORE_TABS.map((tab) => (
             <button
               key={tab.key}
@@ -370,66 +461,43 @@ const StoreDetails = () => {
 
       {activeTab === "overview" && (
         <>
-          <div className="grid grid-cols-1 md:grid-cols-4 gap-4">
-            <div className="bg-white rounded-xl border border-gray-100 p-4">
-              <div className="text-xs text-gray-500">Visitantes (7d)</div>
-              <div className="text-2xl font-bold text-gray-800 mt-2">
-                {metrics?.total_visitors ?? 0}
+          <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+            <div className="bg-white rounded-xl border border-slate-200 p-4 shadow-sm">
+              <div className="text-xs text-slate-500">Receita em risco hoje</div>
+              <div className="text-2xl font-semibold text-rose-600 mt-2 tracking-tight">
+                {formatCurrencyBRL(estimatedRevenueRiskToday)}
+              </div>
+              <div className="text-xs text-slate-500 mt-1">
+                Estimativa por fila, cobertura e conversão do período.
               </div>
             </div>
-            <div className="bg-white rounded-xl border border-gray-100 p-4">
-              <div className="text-xs text-gray-500">Tempo médio na loja</div>
-              <div className="text-2xl font-bold text-gray-800 mt-2">
-                {formatSeconds(metrics?.avg_dwell_seconds)}
-              </div>
-            </div>
-            <div className="bg-white rounded-xl border border-gray-100 p-4">
-              <div className="text-xs text-gray-500">Tempo médio de fila</div>
-              <div className="text-2xl font-bold text-gray-800 mt-2">
+            <div className="bg-white rounded-xl border border-slate-200 p-4 shadow-sm">
+              <div className="text-xs text-slate-500">Fila média do turno</div>
+              <div className="text-2xl font-semibold text-slate-800 mt-2 tracking-tight">
                 {formatSeconds(metrics?.avg_queue_seconds)}
               </div>
+              <div className="text-xs text-slate-500 mt-1">
+                Janela crítica: {operationalSummary.peakGapLabel}
+              </div>
             </div>
-            <div className="bg-white rounded-xl border border-gray-100 p-4">
-              <div className="text-xs text-gray-500">Conversão estimada</div>
-              <div className="text-2xl font-bold text-gray-800 mt-2">
+            <div className="bg-white rounded-xl border border-slate-200 p-4 shadow-sm">
+              <div className="text-xs text-slate-500">Conversão vs meta</div>
+              <div className="text-2xl font-semibold text-slate-800 mt-2 tracking-tight">
                 {formatPercent(metrics?.avg_conversion_rate)}
               </div>
-            </div>
-          </div>
-
-          <div className="bg-white rounded-xl border border-gray-100 p-4 sm:p-6">
-            <div className="flex items-center justify-between gap-3 flex-wrap">
-              <div>
-                <h2 className="text-lg font-bold text-gray-800">Base operacional da loja</h2>
-                <p className="text-sm text-gray-600">Conectividade e leitura mínima para gestão diária</p>
-              </div>
-              <span className={`px-3 py-1 rounded-full text-xs font-semibold ${edgeStatusClass}`}>
-                {edgeStatusLabel}
-              </span>
-            </div>
-            <div className="grid grid-cols-1 md:grid-cols-2 gap-4 mt-4">
-              <div className="rounded-lg border border-gray-100 bg-gray-50 p-4">
-                <div className="text-xs text-gray-500">Cobertura de câmeras</div>
-                <div className="text-lg font-semibold text-gray-800 mt-2">
-                  {camerasOnline} ativas · {camerasOffline} indisponíveis
-                </div>
-                <div className="text-xs text-gray-500 mt-1">Total: {cameras.length}</div>
-              </div>
-              <div className="rounded-lg border border-gray-100 bg-gray-50 p-4">
-                <div className="text-xs text-gray-500">Última atualização da loja</div>
-                <div className="text-lg font-semibold text-gray-800 mt-2">
-                  {lastSeenAt ? new Date(lastSeenAt).toLocaleString("pt-BR") : "—"}
-                </div>
-                {data.edge_health?.last_error && (
-                  <div className="text-xs text-red-600 mt-2">
-                    Ajuste recomendado: {data.edge_health.last_error}
-                  </div>
-                )}
+              <div className={`text-xs mt-1 ${conversionGap >= 0 ? "text-emerald-600" : "text-amber-700"}`}>
+                {conversionGap >= 0 ? "Acima da meta de 15%" : "Abaixo da meta de 15%"}
               </div>
             </div>
           </div>
 
-          <div className="rounded-xl border border-slate-200 bg-white p-4 sm:p-6">
+          <div className="rounded-xl border border-slate-200 bg-white p-3 text-xs text-slate-600 shadow-sm">
+            Contexto de base: {metrics?.total_visitors ?? 0} visitantes no período, permanência média{" "}
+            {formatSeconds(metrics?.avg_dwell_seconds)}.
+            Métricas detalhadas permanecem disponíveis na trilha de relatórios.
+          </div>
+
+          <div className="rounded-xl border border-slate-200 bg-white p-5 sm:p-6 shadow-sm">
             <div className="flex items-start justify-between gap-3 flex-wrap">
               <div>
                 <h2 className="text-lg font-bold text-gray-900">Aderência operacional</h2>
@@ -443,20 +511,20 @@ const StoreDetails = () => {
             </div>
 
             <div className="mt-4 grid grid-cols-1 md:grid-cols-3 gap-3">
-              <article className="rounded-lg border border-gray-100 bg-gray-50 p-3">
-                <p className="text-xs text-gray-500">Lacunas acumuladas</p>
-                <p className="mt-1 text-xl font-semibold text-gray-900">{operationalSummary.totalGaps}</p>
-                <p className="text-xs text-gray-500 mt-1">Diferença entre cobertura necessária e detectada</p>
+              <article className="rounded-lg border border-slate-200 bg-slate-50 p-3">
+                <p className="text-xs text-slate-500">Lacunas acumuladas</p>
+                <p className="mt-1 text-xl font-semibold text-slate-900 tracking-tight">{operationalSummary.totalGaps}</p>
+                <p className="text-xs text-slate-500 mt-1">Diferença entre cobertura necessária e detectada</p>
               </article>
-              <article className="rounded-lg border border-gray-100 bg-gray-50 p-3">
-                <p className="text-xs text-gray-500">Janelas críticas</p>
-                <p className="mt-1 text-xl font-semibold text-gray-900">{operationalSummary.criticalWindows}</p>
-                <p className="text-xs text-gray-500 mt-1">Faixas com equipe abaixo do mínimo de referência</p>
+              <article className="rounded-lg border border-slate-200 bg-slate-50 p-3">
+                <p className="text-xs text-slate-500">Janelas críticas</p>
+                <p className="mt-1 text-xl font-semibold text-slate-900 tracking-tight">{operationalSummary.criticalWindows}</p>
+                <p className="text-xs text-slate-500 mt-1">Faixas com equipe abaixo do mínimo de referência</p>
               </article>
-              <article className="rounded-lg border border-gray-100 bg-gray-50 p-3">
-                <p className="text-xs text-gray-500">Maior desvio</p>
-                <p className="mt-1 text-xl font-semibold text-gray-900">{operationalSummary.peakGapLabel}</p>
-                <p className="text-xs text-gray-500 mt-1">Janela prioritária para ajuste por exceção</p>
+              <article className="rounded-lg border border-slate-200 bg-slate-50 p-3">
+                <p className="text-xs text-slate-500">Maior desvio</p>
+                <p className="mt-1 text-xl font-semibold text-slate-900 tracking-tight">{operationalSummary.peakGapLabel}</p>
+                <p className="text-xs text-slate-500 mt-1">Janela prioritária para ajuste por exceção</p>
               </article>
             </div>
 
@@ -503,7 +571,7 @@ const StoreDetails = () => {
             </div>
           </div>
 
-          <div className="rounded-xl border border-gray-200 bg-white p-4 sm:p-6">
+          <div className="rounded-xl border border-slate-200 bg-white p-5 sm:p-6 shadow-sm">
             <div className="flex items-start justify-between gap-3 flex-wrap">
               <div>
                 <h2 className="text-lg font-bold text-gray-900">Staff semanal planejado (pre-ERP)</h2>
@@ -555,21 +623,47 @@ const StoreDetails = () => {
           </div>
 
           <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
-            <div className="bg-white rounded-xl border border-gray-100 p-4 sm:p-6">
-              <h2 className="text-lg font-bold text-gray-800">Insights da operação</h2>
-              <div className="mt-4 space-y-3 text-sm text-gray-700">
-                <p>Fluxo acumulado no período: <span className="font-semibold">{metrics?.total_visitors ?? 0}</span> visitantes.</p>
-                <p>Conversão estimada atual: <span className="font-semibold">{formatPercent(metrics?.avg_conversion_rate)}</span>.</p>
-                <p>Fila média observada: <span className="font-semibold">{formatSeconds(metrics?.avg_queue_seconds)}</span>.</p>
-                <p className="text-gray-500">
-                  Esses indicadores evoluem conforme a base operacional da loja aumenta.
-                </p>
+            <div className="bg-white rounded-xl border border-slate-200 p-5 sm:p-6 shadow-sm">
+              <div className="flex items-center justify-between gap-3">
+              <h2 className="text-lg font-bold text-gray-800">Plano executivo do turno</h2>
+                <button
+                  type="button"
+                  onClick={() =>
+                    openCopilot(
+                      `Gere plano tático do turno para a loja ${data.store.name} com foco em fila, cobertura e conversão nas próximas 2 horas.`
+                    )
+                  }
+                  className="rounded-lg border border-gray-200 bg-white px-3 py-1.5 text-xs font-semibold text-gray-700 hover:bg-gray-50"
+                >
+                  Executar com Copiloto
+                </button>
+              </div>
+              <div className="mt-4 space-y-3">
+                {shiftActionPlan.map((action, index) => (
+                  <article key={`${action.title}-${index}`} className="rounded-lg border border-slate-200 bg-slate-50 p-3">
+                    <div className="flex items-center justify-between gap-2">
+                      <p className="text-sm font-semibold text-gray-900">{index + 1}. {action.title}</p>
+                      <span
+                        className={`rounded-full px-2 py-0.5 text-[10px] font-semibold ${
+                          action.priority === "Alta"
+                            ? "bg-rose-100 text-rose-700"
+                            : action.priority === "Média"
+                            ? "bg-amber-100 text-amber-700"
+                            : "bg-slate-100 text-slate-700"
+                        }`}
+                      >
+                        {action.priority}
+                      </span>
+                    </div>
+                    <p className="mt-1 text-xs text-gray-600">{action.detail}</p>
+                  </article>
+                ))}
               </div>
             </div>
 
-            <div className="bg-white rounded-xl border border-gray-100 p-4 sm:p-6">
+            <div className="bg-white rounded-xl border border-slate-200 p-5 sm:p-6 shadow-sm">
               <div className="flex items-center justify-between gap-3">
-                <h2 className="text-lg font-bold text-gray-800">Alertas recentes</h2>
+                <h2 className="text-lg font-bold text-gray-800">Sinais críticos recentes</h2>
                 <Link
                   to={`/app/alerts?store_id=${data.store.id}`}
                   className="text-xs font-semibold text-blue-600 hover:text-blue-700"
@@ -611,8 +705,8 @@ const StoreDetails = () => {
         <div className="bg-white rounded-xl border border-gray-100 p-4 sm:p-6">
           <div className="flex items-center justify-between gap-3 flex-wrap">
             <div>
-              <h2 className="text-lg font-bold text-gray-800">Câmeras da operação</h2>
-              <p className="text-sm text-gray-600">Ajustes e diagnóstico por ponto de cobertura</p>
+              <h2 className="text-lg font-bold text-gray-800">Operação visual da unidade</h2>
+              <p className="text-sm text-gray-600">Diagnóstico por ponto de cobertura e execução</p>
             </div>
             <span className="text-xs text-gray-500">{cameras.length} câmeras</span>
           </div>
@@ -688,7 +782,7 @@ const StoreDetails = () => {
       {activeTab === "infrastructure" && (
         <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
           <div className="bg-white rounded-xl border border-gray-100 p-4 sm:p-6">
-            <h2 className="text-lg font-bold text-gray-800">Infraestrutura da loja</h2>
+            <h2 className="text-lg font-bold text-gray-800">Infraestrutura técnica da loja</h2>
             <div className="mt-4 space-y-3 text-sm text-gray-700">
               <div className="flex items-center justify-between">
                 <span>Status do Edge</span>

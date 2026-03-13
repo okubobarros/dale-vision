@@ -12,6 +12,7 @@ export interface RevenueProgressData {
 }
 
 const DEFAULT_TARGET = 1_000_000
+let salesProgressEndpointUnavailable = false
 
 const fallbackNotConfigured = (): RevenueProgressData => ({
   state: "not_configured",
@@ -23,6 +24,9 @@ const fallbackNotConfigured = (): RevenueProgressData => ({
 
 export const salesService = {
   async getRevenueProgress(): Promise<RevenueProgressData> {
+    if (salesProgressEndpointUnavailable) {
+      return fallbackNotConfigured()
+    }
     try {
       const response = await api.get("/v1/sales/progress/", {
         timeoutCategory: "best-effort",
@@ -40,6 +44,7 @@ export const salesService = {
       if (axios.isAxiosError(error)) {
         const status = error.response?.status
         if (status === 404 || status === 501 || status === 503) {
+          salesProgressEndpointUnavailable = true
           return fallbackNotConfigured()
         }
       }
@@ -50,4 +55,3 @@ export const salesService = {
     }
   },
 }
-

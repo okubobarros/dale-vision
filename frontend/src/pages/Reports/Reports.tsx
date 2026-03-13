@@ -2,14 +2,11 @@ import { useMemo, useState } from "react"
 import { useQuery } from "@tanstack/react-query"
 import {
   meService,
-  type ReportSummary,
-  type ReportImpact,
   type ProductivityCoverage,
+  type ReportImpact,
+  type ReportSummary,
 } from "../../services/me"
-import { storesService, type Store } from "../../services/stores"
-
-const BAR_COLORS = ["#1d4ed8", "#0ea5e9", "#22c55e", "#f59e0b", "#ef4444"]
-const PRO_PLANS = new Set(["pro", "growth", "enterprise", "paid"])
+import { storesService, type NetworkDashboard, type Store } from "../../services/stores"
 
 type OperationalWindow = {
   startHour: number
@@ -20,18 +17,21 @@ type OperationalWindow = {
 const formatSeconds = (value?: number | null) => {
   if (value === null || value === undefined) return "—"
   if (value < 60) return `${value}s`
-  const minutes = Math.round(value / 60)
-  return `${minutes}m`
+  return `${Math.round(value / 60)}m`
 }
 
 const formatPercent = (value?: number | null) => {
   if (value === null || value === undefined) return "—"
-  return `${Math.round(value * 100)}%`
+  return `${Math.round(value * 1000) / 10}%`
 }
 
 const formatCurrencyBRL = (value?: number | null) => {
   if (value === null || value === undefined) return "—"
-  return new Intl.NumberFormat("pt-BR", { style: "currency", currency: "BRL" }).format(value)
+  return new Intl.NumberFormat("pt-BR", {
+    style: "currency",
+    currency: "BRL",
+    maximumFractionDigits: 0,
+  }).format(value)
 }
 
 const downloadBlob = (blob: Blob, filename: string) => {
@@ -54,25 +54,20 @@ const parseOpeningHours = (value?: string | null): { startHour: number; endHour:
   return { startHour, endHour }
 }
 
-const mergeWindows = (
-  windows: Array<{ startHour: number; endHour: number }>
-): { startHour: number; endHour: number } | null => {
+const mergeWindows = (windows: Array<{ startHour: number; endHour: number }>) => {
   if (!windows.length) return null
-  const normalized = windows.map((window) => ({
-    startHour: window.startHour,
-    endHour: window.endHour === 0 ? 24 : window.endHour,
+  const normalized = windows.map((item) => ({
+    startHour: item.startHour,
+    endHour: item.endHour === 0 ? 24 : item.endHour,
   }))
-  const startHour = Math.min(...normalized.map((window) => window.startHour))
-  const endHour = Math.max(...normalized.map((window) => window.endHour))
-  if (!Number.isFinite(startHour) || !Number.isFinite(endHour)) return null
+  const startHour = Math.min(...normalized.map((item) => item.startHour))
+  const endHour = Math.max(...normalized.map((item) => item.endHour))
   return { startHour, endHour: endHour > 23 ? 0 : endHour }
 }
 
 const hourInWindow = (hour: number, window: { startHour: number; endHour: number }) => {
   if (window.startHour === window.endHour) return true
-  if (window.startHour < window.endHour) {
-    return hour >= window.startHour && hour < window.endHour
-  }
+  if (window.startHour < window.endHour) return hour >= window.startHour && hour < window.endHour
   return hour >= window.startHour || hour < window.endHour
 }
 
@@ -83,9 +78,7 @@ const fallbackOperationalWindow = (
     .filter((entry) => entry.footfall > 0)
     .map((entry) => entry.hour)
     .sort((a, b) => a - b)
-  if (activeHours.length === 0) {
-    return { startHour: 8, endHour: 22, source: "fallback_flow" }
-  }
+  if (!activeHours.length) return { startHour: 8, endHour: 22, source: "fallback_flow" }
   const first = Math.max(0, activeHours[0] - 1)
   const last = Math.min(23, activeHours[activeHours.length - 1] + 1)
   return { startHour: first, endHour: last === 23 ? 0 : last, source: "fallback_flow" }
@@ -94,14 +87,9 @@ const fallbackOperationalWindow = (
 const formatWindowLabel = (window: { startHour: number; endHour: number }) =>
   `${String(window.startHour).padStart(2, "0")}:00 às ${String(window.endHour).padStart(2, "0")}:00`
 
-const Reports = () => {
-  const { data: storesFull = [] } = useQuery<Store[]>({
-    queryKey: ["stores-full-report"],
-    queryFn: storesService.getStores,
-    staleTime: 60000,
-    retry: false,
-  })
+const clamp = (value: number, min: number, max: number) => Math.min(max, Math.max(min, value))
 
+const Reports = () => {
   const [selectedStore, setSelectedStore] = useState<string>("")
   const [period, setPeriod] = useState<string>("30d")
   const [from, setFrom] = useState<string>("")
@@ -115,31 +103,43 @@ const Reports = () => {
     return { store_id: selectedStore || null, period }
   }, [selectedStore, period, from, to])
 
+  const storesQ = useQuery<Store[]>({
+    queryKey: ["stores-full-report"],
+    queryFn: storesService.getStores,
+    staleTime: 60000,
+    retry: false,
+  })
   const summaryQ = useQuery<ReportSummary>({
     queryKey: ["reports-summary", rangeParams],
     queryFn: () => meService.getReportSummary(selectedStore || null, rangeParams),
     staleTime: 60000,
     retry: 1,
   })
-
   const impactQ = useQuery<ReportImpact>({
     queryKey: ["reports-impact", rangeParams],
     queryFn: () => meService.getReportImpact(selectedStore || null, rangeParams),
     staleTime: 60000,
     retry: 1,
   })
-
   const coverageQ = useQuery<ProductivityCoverage>({
     queryKey: ["reports-coverage", rangeParams],
     queryFn: () => meService.getProductivityCoverage(selectedStore || null, rangeParams),
     staleTime: 60000,
-    retry: 1,
+    retry: false,
+  })
+  const networkQ = useQuery<NetworkDashboard>({
+    queryKey: ["reports-network-dashboard"],
+    queryFn: storesService.getNetworkDashboard,
+    staleTime: 60000,
+    retry: false,
+    enabled: !selectedStore,
   })
 
-  const selectedStoreMeta = useMemo(
-    () => storesFull.find((store) => store.id === selectedStore) ?? null,
-    [storesFull, selectedStore]
-  )
+  const stores = storesQ.data ?? []
+  const summaryData = summaryQ.data
+  const impactData = impactQ.data
+  const coverageData = coverageQ.data
+  const selectedStoreMeta = stores.find((store) => store.id === selectedStore) ?? null
 
   const openingWindow = useMemo(() => {
     if (!selectedStoreMeta) return null
@@ -152,10 +152,6 @@ const Reports = () => {
     if (!merged) return null
     return { ...merged, source: "opening_hours" as const }
   }, [selectedStoreMeta])
-
-  const summaryData = summaryQ.data
-  const impactData = impactQ.data
-  const coverageData = coverageQ.data
 
   const hourBars = useMemo(() => {
     if (!summaryData) return []
@@ -172,53 +168,92 @@ const Reports = () => {
     return fallbackOperationalWindow(summaryData?.chart_footfall_by_hour ?? [])
   }, [summaryData?.chart_footfall_by_hour, openingWindow])
 
-  const maxFootfall = useMemo(() => {
-    if (!hourBars.length) return 1
-    return Math.max(...hourBars.map((entry) => entry.footfall), 1)
-  }, [hourBars])
+  const revenueAtRiskToday = useMemo(() => {
+    if (!impactData?.impact) return 0
+    const periodCost = (impactData.impact.cost_idle || 0) + (impactData.impact.cost_queue || 0)
+    const fromDate = impactData.from ? new Date(impactData.from) : null
+    const toDate = impactData.to ? new Date(impactData.to) : null
+    const days =
+      fromDate && toDate && !Number.isNaN(fromDate.getTime()) && !Number.isNaN(toDate.getTime())
+        ? Math.max(1, Math.round((toDate.getTime() - fromDate.getTime()) / (1000 * 60 * 60 * 24)))
+        : 30
+    return periodCost > 0 ? periodCost / days : (impactData.impact.potential_monthly_estimated || 0) / 30
+  }, [impactData])
 
-  const peakHour = useMemo(() => {
-    if (!hourBars.length) return { label: "—", footfall: 0 }
-    return hourBars.reduce((acc, cur) => (cur.footfall > acc.footfall ? cur : acc), hourBars[0])
-  }, [hourBars])
+  const consolidatedScore = useMemo(() => {
+    const queueSeconds = summaryData?.kpis?.avg_queue_seconds || 0
+    const conversionRate = (summaryData?.kpis?.avg_conversion_rate || 0) * 100
+    const confidence = coverageData?.confidence_governance?.score || 0
+    let score = 82
+    score -= Math.min(24, queueSeconds / 9)
+    score += Math.min(10, Math.max(-10, (conversionRate - 14) * 1.8))
+    score += (confidence - 60) / 6
+    return Math.round(clamp(score, 0, 100))
+  }, [coverageData?.confidence_governance?.score, summaryData?.kpis?.avg_conversion_rate, summaryData?.kpis?.avg_queue_seconds])
 
-  const mainGargalo = useMemo(() => {
-    const worst = coverageData?.summary?.worst_window
-    if (worst && worst.hour_label) {
-      return `Cobertura insuficiente às ${worst.hour_label} com lacuna de ${worst.coverage_gap} pessoa(s).`
-    }
-    if ((summaryData?.kpis?.avg_queue_seconds || 0) >= 120) {
-      return "Fila média elevada no período, com risco de perda de venda no atendimento."
-    }
-    return "Sem gargalo crítico isolado; manter monitoramento contínuo."
-  }, [coverageData?.summary?.worst_window, summaryData?.kpis?.avg_queue_seconds])
+  const scoreTrendPoints = useMemo(() => {
+    const series = summaryData?.chart_footfall_by_day ?? []
+    if (!series.length) return "0,22 30,18 60,17 90,16 120,15"
+    const maxValue = Math.max(...series.map((item) => item.footfall), 1)
+    return series
+      .slice(-7)
+      .map((item, idx, arr) => {
+        const x = arr.length === 1 ? 0 : Math.round((idx / (arr.length - 1)) * 120)
+        const y = Math.round(22 - (item.footfall / maxValue) * 16)
+        return `${x},${y}`
+      })
+      .join(" ")
+  }, [summaryData?.chart_footfall_by_day])
 
-  const mainOpportunity = useMemo(() => {
-    const best = coverageData?.summary?.best_window
-    if (best && best.hour_label) {
-      return `Melhor aderência às ${best.hour_label}; replicar padrão de cobertura em janelas de maior fluxo.`
+  const copilotSummary = useMemo(() => {
+    const risk = coverageData?.summary?.worst_window
+    if (risk?.hour_label) {
+      return `Rede estável, mas a janela ${risk.hour_label} concentra lacuna de cobertura. Recomendo realocar equipe para reduzir abandono de fila.`
     }
-    if ((summaryData?.kpis?.avg_dwell_seconds || 0) >= 300) {
-      return "Permanência elevada indica oportunidade de melhorar conversão com abordagem ativa."
-    }
-    return "Oportunidade principal: aumentar consistência entre fluxo e cobertura da equipe."
-  }, [coverageData?.summary?.best_window, summaryData?.kpis?.avg_dwell_seconds])
+    return "Rede sob controle. Recomendo validar apenas as lojas com pior conversão relativa nesta janela."
+  }, [coverageData?.summary?.worst_window])
 
-  const executiveRecommendation = useMemo(() => {
-    const worst = coverageData?.summary?.worst_window
-    const peak = coverageData?.summary?.peak_flow_window
-    if (worst?.hour_label && peak?.hour_label) {
-      return `Reforçar cobertura entre ${worst.hour_label} e ${peak.hour_label} para reduzir fila e capturar demanda do pico.`
-    }
-    if ((coverageData?.summary?.critical_windows || 0) > 0) {
-      return "Priorizar ajuste por exceção nas janelas críticas identificadas."
-    }
-    return "Manter escala atual e usar evidências para calibrar próximos turnos."
-  }, [coverageData?.summary?.critical_windows, coverageData?.summary?.peak_flow_window, coverageData?.summary?.worst_window])
+  const triggerCopilotAction = () => {
+    window.dispatchEvent(
+      new CustomEvent("dv-open-copilot", {
+        detail: {
+          prompt:
+            "Aprovar intervenção imediata nas lojas com maior risco de fila e gerar plano de ação por gerente.",
+        },
+      })
+    )
+  }
 
-  const currentPlan = (selectedStoreMeta?.plan || "trial").toLowerCase()
-  const isPro = PRO_PLANS.has(currentPlan)
-  const showProBlock = !isPro
+  const ranking = useMemo(() => {
+    const items = (networkQ.data?.stores ?? []).filter((store) => typeof store.conversion === "number")
+    const sorted = [...items].sort((a, b) => (b.conversion || 0) - (a.conversion || 0))
+    return { top: sorted.slice(0, 3), bottom: sorted.slice(-3).reverse() }
+  }, [networkQ.data?.stores])
+
+  const interventionCards = useMemo(() => {
+    const storesList = networkQ.data?.stores ?? []
+    if (!storesList.length) return []
+    const totalAlerts = storesList.reduce((acc, store) => acc + (store.alerts || 0), 0)
+    const baseline = Math.max(1, totalAlerts)
+    const sortedByAttention = [...storesList].sort((a, b) => {
+      const scoreA = (a.alerts || 0) * 2 + Math.max(0, 12 - (a.conversion || 0))
+      const scoreB = (b.alerts || 0) * 2 + Math.max(0, 12 - (b.conversion || 0))
+      return scoreB - scoreA
+    })
+    return sortedByAttention.slice(0, 4).map((store) => {
+      const share = (store.alerts || 0) / baseline
+      const riskValue = revenueAtRiskToday * (share > 0 ? share : 0.15)
+      return {
+        id: store.id,
+        name: store.name,
+        problem:
+          (store.alerts || 0) > 0
+            ? `Pico de fila e alertas operacionais (${store.alerts})`
+            : "Conversão abaixo da média da rede",
+        riskValue,
+      }
+    })
+  }, [networkQ.data?.stores, revenueAtRiskToday])
 
   const handleExport = async (format: "csv" | "pdf") => {
     if (exporting) return
@@ -235,315 +270,310 @@ const Reports = () => {
   if (summaryQ.isLoading || impactQ.isLoading || coverageQ.isLoading) {
     return (
       <div className="p-6">
-        <div className="h-8 w-64 bg-gray-200 rounded animate-pulse mb-6" />
+        <div className="h-8 w-64 rounded bg-slate-200 animate-pulse mb-6" />
         <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
           {[1, 2, 3].map((i) => (
-            <div key={i} className="h-28 bg-gray-200 rounded-xl animate-pulse" />
+            <div key={i} className="h-28 rounded-xl bg-slate-200 animate-pulse" />
           ))}
         </div>
       </div>
     )
   }
 
-  if (summaryQ.error || impactQ.error || coverageQ.error) {
+  if (summaryQ.error || impactQ.error) {
     return (
       <div className="p-6">
-        <div className="bg-red-50 border border-red-200 text-red-700 px-4 py-3 rounded-lg">
-          Erro ao carregar relatório executivo.
+        <div className="bg-rose-50 border border-rose-200 text-rose-700 px-4 py-3 rounded-lg">
+          Erro ao carregar cockpit executivo.
         </div>
       </div>
     )
   }
 
   return (
-    <div className="p-6 space-y-6">
-      <div>
-        <h1 className="text-2xl sm:text-3xl font-bold text-gray-800">Relatórios Executivos</h1>
-        <p className="text-sm text-gray-600 mt-1">
-          Leitura de gargalos, oportunidades e impacto operacional com prova de valor da DaleVision.
-        </p>
-      </div>
-
-      <div className="bg-white rounded-xl border border-gray-100 p-4 grid grid-cols-1 lg:grid-cols-3 gap-4">
+    <div className="p-6 space-y-6 bg-slate-50 min-h-screen">
+      <header className="space-y-3">
         <div>
-          <label className="text-xs font-semibold text-gray-600">Loja</label>
-          <select
-            value={selectedStore}
-            onChange={(e) => setSelectedStore(e.target.value)}
-            className="mt-2 w-full border border-gray-200 rounded-lg px-3 py-2 text-sm"
-          >
-            <option value="">Todas as lojas</option>
-            {storesFull.map((store) => (
-              <option key={store.id} value={store.id}>
-                {store.name}
-              </option>
-            ))}
-          </select>
-        </div>
-        <div>
-          <label className="text-xs font-semibold text-gray-600">Período</label>
-          <select
-            value={period}
-            onChange={(e) => setPeriod(e.target.value)}
-            className="mt-2 w-full border border-gray-200 rounded-lg px-3 py-2 text-sm"
-          >
-            <option value="7d">Últimos 7 dias</option>
-            <option value="30d">Últimos 30 dias</option>
-            <option value="90d">Últimos 90 dias</option>
-            <option value="custom">Customizado</option>
-          </select>
-        </div>
-        <div className="rounded-lg border border-slate-200 bg-slate-50 p-3">
-          <p className="text-xs text-slate-500">Janela operacional aplicada</p>
-          <p className="mt-1 text-sm font-semibold text-slate-800">{formatWindowLabel(operationalWindow)}</p>
-          <p className="text-[11px] text-slate-500 mt-1">
-            {operationalWindow.source === "opening_hours"
-              ? "Baseada no horário de operação cadastrado."
-              : "Fallback inteligente por padrão real de fluxo."}
+          <h1 className="text-2xl sm:text-3xl font-semibold text-slate-900">CEO Decision Cockpit</h1>
+          <p className="text-sm text-slate-600 mt-1">
+            Gestão por exceção, dollarization da dor e recomendação prescritiva.
           </p>
         </div>
-      </div>
 
-      {period === "custom" && (
-        <div className="bg-white rounded-xl border border-gray-100 p-4 grid grid-cols-1 md:grid-cols-2 gap-4">
-          <div>
-            <label className="text-xs font-semibold text-gray-600">Data inicial</label>
-            <input
-              type="date"
-              value={from}
-              onChange={(e) => setFrom(e.target.value)}
-              className="mt-2 w-full border border-gray-200 rounded-lg px-3 py-2 text-sm"
-            />
-          </div>
-          <div>
-            <label className="text-xs font-semibold text-gray-600">Data final</label>
-            <input
-              type="date"
-              value={to}
-              onChange={(e) => setTo(e.target.value)}
-              className="mt-2 w-full border border-gray-200 rounded-lg px-3 py-2 text-sm"
-            />
-          </div>
+        <div className="inline-flex rounded-xl border border-slate-200 bg-white p-1">
+          <button className="px-3 py-1.5 rounded-lg text-sm font-semibold bg-slate-900 text-white">
+            Visão Executiva
+          </button>
+          <button className="px-3 py-1.5 rounded-lg text-sm text-slate-600 hover:bg-slate-100">
+            Relatórios Detalhados
+          </button>
+          <button className="px-3 py-1.5 rounded-lg text-sm text-slate-600 hover:bg-slate-100">
+            Saúde da Infraestrutura
+          </button>
         </div>
-      )}
+      </header>
 
-      <section className="bg-white rounded-xl border border-gray-100 p-4 sm:p-6">
-        <h2 className="text-lg font-bold text-gray-800">Resumo executivo do período</h2>
-        <div className="mt-4 grid grid-cols-1 md:grid-cols-4 gap-4">
-          <article className="rounded-lg border border-gray-100 bg-gray-50 p-3">
-            <p className="text-xs text-gray-500">Visitantes</p>
-            <p className="mt-1 text-2xl font-bold text-gray-900">{summaryData?.kpis?.total_visitors ?? 0}</p>
+      <section className="grid grid-cols-1 xl:grid-cols-5 gap-4">
+        <div className="xl:col-span-3 grid grid-cols-1 md:grid-cols-3 gap-4">
+          <article className="rounded-xl border border-slate-200 bg-white p-4 shadow-sm">
+            <p className="text-xs uppercase tracking-[0.08em] text-slate-500">Score Consolidado</p>
+            <p className="text-3xl font-semibold text-slate-900 mt-2">{consolidatedScore}/100</p>
+            <svg viewBox="0 0 120 24" className="mt-3 h-6 w-full">
+              <polyline
+                fill="none"
+                stroke="#334155"
+                strokeWidth="2"
+                points={scoreTrendPoints}
+              />
+            </svg>
+            <p className="text-[11px] text-slate-500 mt-2">Tendência dos últimos dias</p>
           </article>
-          <article className="rounded-lg border border-gray-100 bg-gray-50 p-3">
-            <p className="text-xs text-gray-500">Fila média</p>
-            <p className="mt-1 text-2xl font-bold text-gray-900">{formatSeconds(summaryData?.kpis?.avg_queue_seconds)}</p>
+
+          <article className="rounded-xl border border-rose-200 bg-white p-4 shadow-sm">
+            <p className="text-xs uppercase tracking-[0.08em] text-slate-500">Receita em Risco Hoje</p>
+            <p className="text-3xl font-semibold text-rose-600 mt-2">{formatCurrencyBRL(revenueAtRiskToday)}</p>
+            <p className="text-[11px] text-slate-500 mt-2">Perda potencial por fila e ociosidade (estimada)</p>
           </article>
-          <article className="rounded-lg border border-gray-100 bg-gray-50 p-3">
-            <p className="text-xs text-gray-500">Conversão média</p>
-            <p className="mt-1 text-2xl font-bold text-gray-900">{formatPercent(summaryData?.kpis?.avg_conversion_rate)}</p>
-          </article>
-          <article className="rounded-lg border border-emerald-100 bg-emerald-50 p-3">
-            <p className="text-xs text-emerald-700">Valor recuperável estimado</p>
-            <p className="mt-1 text-2xl font-bold text-emerald-900">
-              {formatCurrencyBRL(impactData?.impact?.potential_monthly_estimated)}
+
+          <article className="rounded-xl border border-slate-200 bg-white p-4 shadow-sm">
+            <p className="text-xs uppercase tracking-[0.08em] text-slate-500">Conversão Média</p>
+            <p className="text-3xl font-semibold text-slate-900 mt-2">
+              {formatPercent(summaryData?.kpis?.avg_conversion_rate)}
             </p>
-            <p className="text-[11px] text-emerald-700 mt-1">Prova de valor potencial em 30 dias</p>
+            <p className="text-[11px] text-slate-500 mt-2">vs meta de 15%</p>
           </article>
         </div>
-      </section>
 
-      <section className="grid grid-cols-1 lg:grid-cols-2 gap-4">
-        <article className="bg-white rounded-xl border border-red-100 p-4">
-          <p className="text-xs uppercase tracking-[0.08em] text-red-600 font-semibold">Principal gargalo observado</p>
-          <p className="mt-2 text-sm text-slate-800">{mainGargalo}</p>
-        </article>
-        <article className="bg-white rounded-xl border border-emerald-100 p-4">
-          <p className="text-xs uppercase tracking-[0.08em] text-emerald-700 font-semibold">Principal oportunidade observada</p>
-          <p className="mt-2 text-sm text-slate-800">{mainOpportunity}</p>
-        </article>
-        <article className="bg-white rounded-xl border border-amber-100 p-4">
-          <p className="text-xs uppercase tracking-[0.08em] text-amber-700 font-semibold">Janela de maior risco</p>
-          <p className="mt-2 text-sm text-slate-800">
-            {coverageData?.summary?.worst_window?.hour_label
-              ? `${coverageData.summary.worst_window.hour_label} (lacuna ${coverageData.summary.worst_window.coverage_gap})`
-              : "Sem janela crítica identificada."}
-          </p>
-        </article>
-        <article className="bg-white rounded-xl border border-blue-100 p-4">
-          <p className="text-xs uppercase tracking-[0.08em] text-blue-700 font-semibold">Janela de melhor desempenho</p>
-          <p className="mt-2 text-sm text-slate-800">
-            {coverageData?.summary?.best_window?.hour_label
-              ? `${coverageData.summary.best_window.hour_label} (cobertura adequada)`
-              : "Sem referência suficiente no período."}
-          </p>
-        </article>
-      </section>
-
-      <section className="grid grid-cols-1 lg:grid-cols-2 gap-6">
-        <div className="bg-white rounded-xl border border-gray-100 p-4 sm:p-6">
-          <h2 className="text-lg font-bold text-gray-800">Alertas e gargalos relevantes</h2>
-          {summaryData?.alert_counts_by_type?.length ? (
-            <ul className="mt-4 space-y-3">
-              {summaryData.alert_counts_by_type.slice(0, 5).map((alert, idx) => (
-                <li key={alert.type} className="space-y-2">
-                  <div className="flex items-center justify-between text-sm">
-                    <span className="font-medium text-gray-700">{idx + 1}. {alert.type}</span>
-                    <span className="text-gray-500">{alert.count}</span>
-                  </div>
-                  <div className="h-2 rounded-full bg-gray-100">
-                    <div
-                      className="h-2 rounded-full"
-                      style={{
-                        width: `${Math.min(100, Math.round((alert.count / Math.max(1, summaryData.alert_counts_by_type[0].count)) * 100))}%`,
-                        backgroundColor: BAR_COLORS[idx % BAR_COLORS.length],
-                      }}
-                    />
-                  </div>
-                </li>
-              ))}
-            </ul>
-          ) : (
-            <p className="text-sm text-gray-500 mt-3">Sem alertas relevantes no período.</p>
-          )}
-        </div>
-
-        <div className="bg-white rounded-xl border border-gray-100 p-4 sm:p-6">
-          <h2 className="text-lg font-bold text-gray-800">Insight automático do Copiloto</h2>
-          <div className="mt-4 rounded-lg border border-blue-100 bg-blue-50 p-3">
-            <p className="text-sm text-blue-900">{executiveRecommendation}</p>
+        <div className="xl:col-span-2 rounded-xl bg-gradient-to-br from-slate-900 to-indigo-900 p-5 text-white shadow-sm">
+          <p className="text-xs uppercase tracking-[0.1em] text-indigo-200">Copiloto Chief of Staff</p>
+          <p className="text-sm leading-relaxed text-slate-100 mt-2">{copilotSummary}</p>
+          <div className="mt-4 flex items-center justify-between">
+            <span className="text-xs text-indigo-200">
+              Janela operacional: {formatWindowLabel(operationalWindow)}
+            </span>
+            <button
+              type="button"
+              onClick={triggerCopilotAction}
+              className="rounded-lg bg-indigo-500 px-3 py-2 text-xs font-semibold text-white hover:bg-indigo-400"
+            >
+              Aprovar Intervenção
+            </button>
           </div>
-          {summaryData?.insights?.length ? (
-            <ul className="mt-3 space-y-2">
-              {summaryData.insights.slice(0, 4).map((insight, idx) => (
-                <li key={`${insight}-${idx}`} className="text-sm text-slate-700">
-                  • {insight}
-                </li>
+        </div>
+      </section>
+
+      <section className="rounded-xl border border-slate-200 bg-white p-4 shadow-sm">
+        <div className="grid grid-cols-1 lg:grid-cols-4 gap-3">
+          <div>
+            <label className="text-xs font-semibold text-slate-600">Loja</label>
+            <select
+              value={selectedStore}
+              onChange={(event) => setSelectedStore(event.target.value)}
+              className="mt-2 w-full rounded-lg border border-slate-200 px-3 py-2 text-sm"
+            >
+              <option value="">Toda a rede</option>
+              {stores.map((store) => (
+                <option key={store.id} value={store.id}>
+                  {store.name}
+                </option>
               ))}
-            </ul>
+            </select>
+          </div>
+          <div>
+            <label className="text-xs font-semibold text-slate-600">Período</label>
+            <select
+              value={period}
+              onChange={(event) => setPeriod(event.target.value)}
+              className="mt-2 w-full rounded-lg border border-slate-200 px-3 py-2 text-sm"
+            >
+              <option value="7d">Últimos 7 dias</option>
+              <option value="30d">Últimos 30 dias</option>
+              <option value="90d">Últimos 90 dias</option>
+              <option value="custom">Customizado</option>
+            </select>
+          </div>
+          <div className="rounded-lg border border-slate-200 bg-slate-50 p-3 lg:col-span-2">
+            <p className="text-xs text-slate-500">Janela operacional aplicada</p>
+            <p className="text-sm font-semibold text-slate-800 mt-1">{formatWindowLabel(operationalWindow)}</p>
+            <p className="text-[11px] text-slate-500 mt-1">
+              {operationalWindow.source === "opening_hours"
+                ? "Baseada em horário cadastrado da loja."
+                : "Fallback inteligente por comportamento real de fluxo."}
+            </p>
+          </div>
+        </div>
+
+        {period === "custom" && (
+          <div className="grid grid-cols-1 md:grid-cols-2 gap-3 mt-3">
+            <div>
+              <label className="text-xs font-semibold text-slate-600">Data inicial</label>
+              <input
+                type="date"
+                value={from}
+                onChange={(event) => setFrom(event.target.value)}
+                className="mt-2 w-full rounded-lg border border-slate-200 px-3 py-2 text-sm"
+              />
+            </div>
+            <div>
+              <label className="text-xs font-semibold text-slate-600">Data final</label>
+              <input
+                type="date"
+                value={to}
+                onChange={(event) => setTo(event.target.value)}
+                className="mt-2 w-full rounded-lg border border-slate-200 px-3 py-2 text-sm"
+              />
+            </div>
+          </div>
+        )}
+      </section>
+
+      <section className="grid grid-cols-1 xl:grid-cols-2 gap-4">
+        <div className="rounded-xl border border-slate-200 bg-white p-4 shadow-sm">
+          <div className="flex items-center justify-between">
+            <h2 className="text-base font-semibold text-slate-900">Onde agir agora</h2>
+            <span className="text-xs text-slate-500">Gestão por exceção</span>
+          </div>
+          {!interventionCards.length ? (
+            <p className="text-sm text-slate-500 mt-3">Sem lojas críticas para intervenção imediata.</p>
           ) : (
-            <p className="text-sm text-gray-500 mt-3">Sem insights automáticos adicionais.</p>
+            <div className="mt-3 space-y-3">
+              {interventionCards.map((item) => (
+                <article key={item.id} className="rounded-lg border border-slate-200 bg-slate-50 p-3">
+                  <p className="text-sm font-semibold text-slate-800">{item.name}</p>
+                  <p className="text-xs text-slate-600 mt-1">{item.problem}</p>
+                  <p className="text-sm font-semibold text-rose-600 mt-2">
+                    {formatCurrencyBRL(item.riskValue)} em risco hoje
+                  </p>
+                  <button
+                    type="button"
+                    className="mt-2 rounded-lg border border-slate-300 bg-white px-3 py-1.5 text-xs font-semibold text-slate-700 hover:bg-slate-100"
+                  >
+                    Delegar ao Gerente
+                  </button>
+                </article>
+              ))}
+            </div>
+          )}
+        </div>
+
+        <div className="rounded-xl border border-slate-200 bg-white p-4 shadow-sm">
+          <h2 className="text-base font-semibold text-slate-900">Ranking de Eficiência</h2>
+          {selectedStore ? (
+            <p className="text-sm text-slate-500 mt-3">
+              Limpe o filtro de loja para comparar top 3 e bottom 3 da rede.
+            </p>
+          ) : (
+            <div className="grid grid-cols-1 md:grid-cols-2 gap-3 mt-3">
+              <div className="rounded-lg border border-emerald-200 bg-emerald-50 p-3">
+                <p className="text-xs font-semibold uppercase tracking-[0.08em] text-emerald-700">Top 3</p>
+                <ul className="mt-2 space-y-2">
+                  {ranking.top.map((store) => (
+                    <li key={store.id} className="text-sm text-slate-800">
+                      {store.name} · {formatPercent((store.conversion || 0) / 100)}
+                    </li>
+                  ))}
+                </ul>
+              </div>
+              <div className="rounded-lg border border-amber-200 bg-amber-50 p-3">
+                <p className="text-xs font-semibold uppercase tracking-[0.08em] text-amber-700">Bottom 3</p>
+                <ul className="mt-2 space-y-2">
+                  {ranking.bottom.map((store) => (
+                    <li key={store.id} className="text-sm text-slate-800">
+                      {store.name} · {formatPercent((store.conversion || 0) / 100)}
+                    </li>
+                  ))}
+                </ul>
+              </div>
+            </div>
           )}
         </div>
       </section>
 
-      <section className="bg-white rounded-xl border border-gray-100 p-4 sm:p-6">
-        <h2 className="text-lg font-bold text-gray-800">Evolução do fluxo na janela operacional</h2>
-        <div className="mt-4 relative rounded-xl border border-slate-100 bg-gradient-to-b from-slate-50 to-white p-4">
+      <section className="grid grid-cols-1 xl:grid-cols-2 gap-4">
+        <div className="rounded-xl border border-slate-200 bg-white p-4 shadow-sm">
+          <h2 className="text-base font-semibold text-slate-900">Insights automáticos</h2>
+          <ul className="mt-3 space-y-2">
+            {(summaryData?.insights ?? []).slice(0, 4).map((insight, idx) => (
+              <li key={`${insight}-${idx}`} className="text-sm text-slate-700">
+                • {insight}
+              </li>
+            ))}
+          </ul>
+          {!summaryData?.insights?.length && (
+            <p className="text-sm text-slate-500 mt-3">Sem novos insights no período.</p>
+          )}
+        </div>
+
+        <div className="rounded-xl border border-slate-200 bg-white p-4 shadow-sm">
+          <h2 className="text-base font-semibold text-slate-900">Evidências e aderência operacional</h2>
+          <p className="text-xs text-slate-600 mt-2">
+            {coverageData?.method?.label} · v{coverageData?.method?.version} · confiança{" "}
+            {coverageData?.confidence_governance?.score ?? 0}/100
+          </p>
+          <div className="mt-3 space-y-2">
+            <div className="flex items-center justify-between text-sm">
+              <span className="text-slate-600">Fila média</span>
+              <span className="font-semibold text-slate-900">
+                {formatSeconds(summaryData?.kpis?.avg_queue_seconds)}
+              </span>
+            </div>
+            <div className="flex items-center justify-between text-sm">
+              <span className="text-slate-600">Lacunas críticas</span>
+              <span className="font-semibold text-rose-600">
+                {coverageData?.summary?.critical_windows ?? 0}
+              </span>
+            </div>
+            <div className="flex items-center justify-between text-sm">
+              <span className="text-slate-600">Melhor janela</span>
+              <span className="font-semibold text-emerald-600">
+                {coverageData?.summary?.best_window?.hour_label || "—"}
+              </span>
+            </div>
+          </div>
+          <p className="text-[11px] text-slate-500 mt-3">
+            Planejamento: {coverageData?.summary?.planned_source_mode || "proxy"}.
+          </p>
+        </div>
+      </section>
+
+      <section className="rounded-xl border border-slate-200 bg-white p-4 shadow-sm">
+        <h2 className="text-base font-semibold text-slate-900">Evolução do fluxo na janela operacional</h2>
+        <div className="mt-3 relative rounded-xl border border-slate-100 bg-gradient-to-b from-slate-50 to-white p-4">
           <div className="absolute inset-4 pointer-events-none flex flex-col justify-between">
             {[0, 1, 2, 3].map((line) => (
               <div key={line} className="border-t border-dashed border-slate-200/70" />
             ))}
           </div>
-          <div className="relative flex items-end gap-2 h-44 overflow-x-auto">
-            {hourBars.length === 0 && <div className="text-sm text-gray-500">Sem dados de fluxo por hora.</div>}
-            {hourBars.map((entry, idx) => (
-              <div key={entry.hour} className="flex flex-col items-center gap-2 min-w-[28px]">
-                <div className="flex flex-col items-center gap-1">
-                  {entry.footfall > 0 && <span className="text-[10px] font-semibold text-slate-500">{entry.footfall}</span>}
+          <div className="relative flex items-end gap-2 h-40 overflow-x-auto">
+            {hourBars.length === 0 && <div className="text-sm text-slate-500">Sem dados de fluxo por hora.</div>}
+            {hourBars.map((entry) => {
+              const maxFootfall = Math.max(...hourBars.map((item) => item.footfall), 1)
+              return (
+                <div key={entry.hour} className="flex flex-col items-center gap-2 min-w-[28px]">
                   <div
-                    className={`w-full rounded-md shadow-sm ${
-                      entry.footfall === peakHour.footfall && peakHour.footfall > 0
-                        ? "ring-2 ring-blue-500 ring-offset-2 ring-offset-white"
-                        : ""
-                    }`}
-                    style={{
-                      height: `${Math.max(10, Math.round((entry.footfall / maxFootfall) * 140))}px`,
-                      backgroundColor: BAR_COLORS[idx % BAR_COLORS.length],
-                    }}
+                    className="w-full rounded bg-slate-700/80"
+                    style={{ height: `${Math.max(10, Math.round((entry.footfall / maxFootfall) * 120))}px` }}
                     title={`${entry.label} · ${entry.footfall}`}
                   />
+                  <span className="text-[10px] text-slate-500">{entry.label}</span>
                 </div>
-                <span className="text-[10px] text-gray-500">{entry.label}</span>
-              </div>
-            ))}
-          </div>
-          <div className="mt-3 text-xs text-gray-500">
-            Pico de fluxo: {peakHour.label} • {peakHour.footfall} visitantes · Janela {formatWindowLabel(operationalWindow)}
+              )
+            })}
           </div>
         </div>
       </section>
 
-      <section className="bg-white rounded-xl border border-gray-100 p-4 sm:p-6">
-        <h2 className="text-lg font-bold text-gray-800">Evidências de aderência operacional</h2>
-        <div className="mt-3 rounded-lg border border-slate-200 bg-slate-50 p-3 text-xs text-slate-700">
-          Método: {coverageData?.method?.label} · versão {coverageData?.method?.version} · confiança {coverageData?.confidence_governance?.score}/100
-          {coverageData?.summary?.planned_source_mode && (
-            <span> · planejamento: {coverageData.summary.planned_source_mode}</span>
-          )}
-        </div>
-        <div className="mt-3 rounded-lg border border-slate-100">
-          <div className="grid grid-cols-[72px_repeat(4,minmax(0,1fr))] bg-slate-50 px-3 py-2 text-[11px] font-semibold uppercase tracking-[0.08em] text-slate-600">
-            <span>Hora</span>
-            <span>Fluxo</span>
-            <span>Planejado*</span>
-            <span>Detectado*</span>
-            <span>Lacuna</span>
-          </div>
-          {coverageData?.windows?.length ? (
-            <div className="divide-y divide-slate-100">
-              {coverageData.windows.slice(-8).map((entry) => (
-                <div key={`${entry.ts_bucket}-${entry.hour_label}`} className={`grid grid-cols-[72px_repeat(4,minmax(0,1fr))] items-center px-3 py-2 text-sm ${entry.coverage_gap > 0 ? "bg-red-50/40" : "bg-white"}`}>
-                  <span className="font-medium text-slate-700">{entry.hour_label || "—"}</span>
-                  <span className="text-slate-700">{entry.footfall}</span>
-                  <span className="text-slate-700">{entry.staff_planned_ref}</span>
-                  <span className="text-slate-700">{entry.staff_detected_est}</span>
-                  <span className={`font-semibold ${entry.coverage_gap >= 2 ? "text-red-700" : entry.coverage_gap === 1 ? "text-amber-700" : "text-emerald-700"}`}>
-                    {entry.coverage_gap === 0 ? "OK" : `-${entry.coverage_gap}`}
-                  </span>
-                </div>
-              ))}
-            </div>
-          ) : (
-            <div className="px-3 py-4 text-sm text-gray-500">Sem dados de cobertura para o período selecionado.</div>
-          )}
-        </div>
-        <p className="mt-2 text-xs text-slate-500">
-          *Escala planejada em modo de referência (proxy) e presença detectada em modo estimado nesta fase.
-        </p>
-      </section>
-
-      {showProBlock && (
-        <section className="bg-white rounded-xl border border-indigo-100 p-4 sm:p-6">
-          <div className="flex items-start justify-between gap-3 flex-wrap">
-            <div>
-              <h2 className="text-lg font-bold text-indigo-900">Recursos Pro para múltiplas lojas</h2>
-              <p className="text-sm text-indigo-800 mt-1">
-                Compare unidades, ranqueie recuperação potencial e faça benchmark interno da rede.
-              </p>
-            </div>
-            <a
-              href="/app/upgrade"
-              className="rounded-lg bg-indigo-600 px-4 py-2 text-sm font-semibold text-white hover:bg-indigo-700"
-            >
-              Desbloquear plano Pro
-            </a>
-          </div>
-          <div className="mt-4 grid grid-cols-1 md:grid-cols-3 gap-3">
-            {[
-              "Comparação entre lojas",
-              "Ranking de recuperação de receita",
-              "Benchmark interno da rede",
-            ].map((feature) => (
-              <article key={feature} className="rounded-lg border border-indigo-100 bg-indigo-50 p-3">
-                <p className="text-sm font-semibold text-indigo-900">{feature}</p>
-                <p className="text-xs text-indigo-700 mt-1">Disponível no plano Pro para gestão multiunidade.</p>
-              </article>
-            ))}
-          </div>
-        </section>
-      )}
-
-      <section className="bg-white rounded-xl border border-gray-100 p-4">
-        <div className="flex items-center justify-between gap-3 flex-wrap">
+      <section className="rounded-xl border border-slate-200 bg-white p-4 shadow-sm">
+        <div className="flex items-center justify-between flex-wrap gap-3">
           <div>
-            <h2 className="text-base font-bold text-gray-800">Exportação</h2>
-            <p className="text-xs text-gray-500">Disponível para compartilhamento executivo.</p>
+            <h2 className="text-base font-semibold text-slate-900">Exportação</h2>
+            <p className="text-xs text-slate-500">Compartilhamento executivo.</p>
           </div>
-          <div className="flex items-center gap-3">
+          <div className="flex gap-2">
             <button
               type="button"
               onClick={() => void handleExport("csv")}
-              className="rounded-lg border border-gray-200 px-4 py-2 text-sm font-semibold text-gray-700 hover:bg-gray-50"
+              className="rounded-lg border border-slate-200 px-4 py-2 text-sm font-semibold text-slate-700 hover:bg-slate-50"
               disabled={exporting !== null}
             >
               {exporting === "csv" ? "Exportando..." : "Exportar CSV"}
@@ -551,7 +581,7 @@ const Reports = () => {
             <button
               type="button"
               onClick={() => void handleExport("pdf")}
-              className="rounded-lg bg-blue-600 px-4 py-2 text-sm font-semibold text-white hover:bg-blue-700"
+              className="rounded-lg bg-slate-900 px-4 py-2 text-sm font-semibold text-white hover:bg-slate-800"
               disabled={exporting !== null}
             >
               {exporting === "pdf" ? "Exportando..." : "Exportar PDF"}
