@@ -5,6 +5,7 @@ import { useAuth } from "../../contexts/useAuth"
 import {
   storesService,
   type MetricGovernanceItem,
+  type StoreAnalyticsSummary,
   type StoreSummary,
   type StoreEdgeStatus,
   type StoreCeoDashboard,
@@ -218,6 +219,17 @@ const Dashboard = () => {
     queryKey: ["store-dashboard", selectedStore],
     queryFn: () => storesService.getStoreDashboard(selectedStore),
     enabled: canFetchAuth && selectedStore !== ALL_STORES_VALUE && !isTrialCeoMode,
+    staleTime: 30000,
+    retry: false,
+  })
+  const { data: metricsSummary } = useQuery<StoreAnalyticsSummary>({
+    queryKey: ["store-metrics-summary-dashboard", selectedStore],
+    queryFn: () =>
+      storesService.getStoreAnalyticsSummary(selectedStore, {
+        period: "7d",
+        bucket: "hour",
+      }),
+    enabled: canFetchAuth && selectedStore !== ALL_STORES_VALUE,
     staleTime: 30000,
     retry: false,
   })
@@ -546,6 +558,10 @@ const Dashboard = () => {
       dashboard?.metrics?.conversion_rate ||
       dashboard?.metrics?.productivity ||
       dashboard?.insights?.peak_hour ||
+      metricsSummary?.totals?.total_visitors ||
+      metricsSummary?.totals?.avg_conversion_rate ||
+      metricsSummary?.totals?.avg_queue_seconds ||
+      metricsSummary?.totals?.avg_staff_active ||
       ceoDashboard?.series?.flow_by_hour?.length ||
       ceoDashboard?.series?.idle_index_by_hour?.length
   )
@@ -643,6 +659,48 @@ const Dashboard = () => {
       : trialUiState === "activation"
       ? "Disponível após validação da operação"
       : "Será liberado após iniciar o trial"
+  const metricSubtitleForValue = (value?: number | null) =>
+    typeof value === "number" && value > 0
+      ? "Leitura operacional baseada nos dados atuais"
+      : metricSubtitleByState
+
+  const summaryTotals = metricsSummary?.totals
+  const avgIdleIndex =
+    ceoIdle.length > 0
+      ? ceoIdle.reduce((acc, item) => acc + (item.idle_index || 0), 0) / ceoIdle.length
+      : null
+  const computedVisitorFlow =
+    summaryTotals?.total_visitors ?? dashboard?.metrics?.visitor_flow ?? null
+  const computedConversionRate =
+    summaryTotals?.avg_conversion_rate ?? dashboard?.metrics?.conversion_rate ?? null
+  const computedQueueSeconds =
+    (isTrialCeoMode ? ceoDashboard?.kpis?.avg_queue_seconds : null) ??
+    summaryTotals?.avg_queue_seconds ??
+    ceoDashboard?.kpis?.avg_queue_seconds ??
+    null
+  const computedProductivity =
+    summaryTotals?.avg_staff_active ?? dashboard?.metrics?.productivity ?? null
+  const computedIdleMinutes =
+    dashboard?.metrics?.idle_time ??
+    (typeof avgIdleIndex === "number" ? Math.round(avgIdleIndex * 60) : null)
+  const computedHealthScore = (() => {
+    if (dashboard?.metrics?.health_score && dashboard.metrics.health_score > 0) {
+      return dashboard.metrics.health_score
+    }
+    if (
+      typeof computedQueueSeconds !== "number" &&
+      typeof computedVisitorFlow !== "number" &&
+      typeof computedProductivity !== "number"
+    ) {
+      return null
+    }
+    const critical = (events ?? []).filter((e) => String(e.severity).toLowerCase() === "critical").length
+    const warning = (events ?? []).filter((e) => String(e.severity).toLowerCase() === "warning").length
+    const queuePenalty = typeof computedQueueSeconds === "number" ? Math.min(45, computedQueueSeconds / 15) : 0
+    const incidentPenalty = critical * 12 + warning * 6
+    const connectivityPenalty = isEdgeConnected ? 0 : 20
+    return Math.max(0, Math.min(100, Math.round(100 - queuePenalty - incidentPenalty - connectivityPenalty)))
+  })()
 
   const trialChecklist = [
     { label: "Loja conectada", done: selectedStore !== ALL_STORES_VALUE },
@@ -754,57 +812,45 @@ const Dashboard = () => {
   const kpiItems = [
     {
       title: "Fluxo de Visitantes",
-      value: metricValueOrState(dashboard?.metrics?.visitor_flow, (value) => `${value}`),
+      value: metricValueOrState(computedVisitorFlow, (value) => `${value}`),
       icon: icons.visitors,
       color: "bg-violet-50",
-      subtitle: metricSubtitleByState,
+      subtitle: metricSubtitleForValue(computedVisitorFlow),
     },
     {
       title: "Taxa de Conversão",
-      value: metricValueOrState(
-        dashboard?.metrics?.conversion_rate,
-        (value) => `${value.toFixed(1)}%`
-      ),
+      value: metricValueOrState(computedConversionRate, (value) => `${value.toFixed(1)}%`),
       icon: icons.conversion,
       color: "bg-amber-50",
-      subtitle: metricSubtitleByState,
+      subtitle: metricSubtitleForValue(computedConversionRate),
     },
     {
       title: "Tempo Médio de Fila",
-      value: metricValueOrState(
-        isTrialCeoMode ? ceoDashboard?.kpis?.avg_queue_seconds : null,
-        (value) => `${Math.max(1, Math.round(value / 60))} min`
-      ),
+      value: metricValueOrState(computedQueueSeconds, (value) => `${Math.max(1, Math.round(value / 60))} min`),
       icon: icons.health,
       color: "bg-emerald-50",
-      subtitle: metricSubtitleByState,
+      subtitle: metricSubtitleForValue(computedQueueSeconds),
     },
     {
       title: "Tempo Ocioso Estimado",
-      value: metricValueOrState(dashboard?.metrics?.idle_time, (value) => `${value} min`),
+      value: metricValueOrState(computedIdleMinutes, (value) => `${value} min`),
       icon: icons.idle,
       color: "bg-rose-50",
-      subtitle: metricSubtitleByState,
+      subtitle: metricSubtitleForValue(computedIdleMinutes),
     },
     {
       title: "Score de Saúde Operacional",
-      value: metricValueOrState(
-        dashboard?.metrics?.health_score,
-        (value) => `${Math.round(value)}`
-      ),
+      value: metricValueOrState(computedHealthScore, (value) => `${Math.round(value)}`),
       icon: icons.health,
       color: "bg-green-50",
-      subtitle: metricSubtitleByState,
+      subtitle: metricSubtitleForValue(computedHealthScore),
     },
     {
       title: "Produtividade",
-      value: metricValueOrState(
-        dashboard?.metrics?.productivity,
-        (value) => `${Math.round(value)}`
-      ),
+      value: metricValueOrState(computedProductivity, (value) => `${Math.round(value)}`),
       icon: icons.productivity,
       color: "bg-sky-50",
-      subtitle: metricSubtitleByState,
+      subtitle: metricSubtitleForValue(computedProductivity),
     },
   ]
   const diagnosisInsightsRaw: string[] = []

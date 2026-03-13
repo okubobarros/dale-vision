@@ -143,33 +143,52 @@ class Command(BaseCommand):
 
             current += timedelta(hours=1)
 
-        with connection.cursor() as cursor:
-            cursor.executemany(
-                """
-                INSERT INTO public.traffic_metrics
-                (id, store_id, zone_id, ts_bucket, footfall, engaged, dwell_seconds_avg, created_at)
-                VALUES (%s, %s, %s, %s, %s, %s, %s, %s)
-                ON CONFLICT (store_id, zone_id, ts_bucket)
+        traffic_conflict_constraint = self._find_unique_constraint(
+            "public.traffic_metrics",
+            preferred_names=[
+                "traffic_metrics_projection_identity_uq",
+            ],
+            fallback_columns=["store_id", "zone_id", "ts_bucket"],
+        )
+        conversion_conflict_constraint = self._find_unique_constraint(
+            "public.conversion_metrics",
+            preferred_names=[
+                "conversion_metrics_projection_identity_uq",
+            ],
+            fallback_columns=["store_id", "ts_bucket"],
+        )
+
+        traffic_insert_sql = """
+            INSERT INTO public.traffic_metrics
+            (id, store_id, zone_id, ts_bucket, footfall, engaged, dwell_seconds_avg, created_at)
+            VALUES (%s, %s, %s, %s, %s, %s, %s, %s)
+        """
+        if traffic_conflict_constraint:
+            traffic_insert_sql += """
+                ON CONFLICT ON CONSTRAINT {constraint_name}
                 DO UPDATE SET
                   footfall = EXCLUDED.footfall,
                   engaged = EXCLUDED.engaged,
                   dwell_seconds_avg = EXCLUDED.dwell_seconds_avg
-                """,
-                traffic_rows,
-            )
-            cursor.executemany(
-                """
-                INSERT INTO public.conversion_metrics
-                (id, store_id, ts_bucket, conversion_rate, queue_avg_seconds, staff_active_est, created_at)
-                VALUES (%s, %s, %s, %s, %s, %s, %s)
-                ON CONFLICT (store_id, ts_bucket)
+            """.format(constraint_name=traffic_conflict_constraint)
+
+        conversion_insert_sql = """
+            INSERT INTO public.conversion_metrics
+            (id, store_id, ts_bucket, conversion_rate, queue_avg_seconds, staff_active_est, created_at)
+            VALUES (%s, %s, %s, %s, %s, %s, %s)
+        """
+        if conversion_conflict_constraint:
+            conversion_insert_sql += """
+                ON CONFLICT ON CONSTRAINT {constraint_name}
                 DO UPDATE SET
                   conversion_rate = EXCLUDED.conversion_rate,
                   queue_avg_seconds = EXCLUDED.queue_avg_seconds,
                   staff_active_est = EXCLUDED.staff_active_est
-                """,
-                conversion_rows,
-            )
+            """.format(constraint_name=conversion_conflict_constraint)
+
+        with connection.cursor() as cursor:
+            cursor.executemany(traffic_insert_sql, traffic_rows)
+            cursor.executemany(conversion_insert_sql, conversion_rows)
 
         now = timezone.now()
         valid_event_types = []
@@ -277,3 +296,40 @@ class Command(BaseCommand):
         )
 
         self.stdout.write(self.style.SUCCESS("Demo mock criado com sucesso."))
+
+    @staticmethod
+    def _find_unique_constraint(
+        table_name: str,
+        preferred_names: list[str],
+        fallback_columns: list[str],
+    ) -> str | None:
+        table_schema, table = table_name.split(".", 1) if "." in table_name else ("public", table_name)
+        preferred = set(preferred_names or [])
+        wanted = sorted(fallback_columns)
+        with connection.cursor() as cursor:
+            cursor.execute(
+                """
+                SELECT
+                  c.conname,
+                  array_agg(att.attname ORDER BY arr.ord) AS cols
+                FROM pg_constraint c
+                JOIN pg_class rel ON rel.oid = c.conrelid
+                JOIN pg_namespace nsp ON nsp.oid = rel.relnamespace
+                JOIN LATERAL unnest(c.conkey) WITH ORDINALITY AS arr(attnum, ord) ON TRUE
+                JOIN pg_attribute att ON att.attrelid = rel.oid AND att.attnum = arr.attnum
+                WHERE c.contype IN ('u', 'p')
+                  AND nsp.nspname = %s
+                  AND rel.relname = %s
+                GROUP BY c.oid
+                """,
+                [table_schema, table],
+            )
+            rows = cursor.fetchall()
+        for row in rows:
+            conname = row[0]
+            cols = sorted(list(row[1] or []))
+            if conname in preferred:
+                return conname
+            if cols == wanted:
+                return conname
+        return None
