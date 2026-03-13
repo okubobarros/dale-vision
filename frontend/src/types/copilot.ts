@@ -95,3 +95,16 @@ export interface CopilotConversationMessage {
   metadata?: Record<string, unknown>
   created_at: string
 }
+
+export interface CopilotStaffPlanUpdateResult {
+  ok: boolean
+  store_id: string
+  previous_staff_planned_week: number
+  staff_planned_week: number
+  reason?: string | null
+  source: string
+  method: {
+    id: string
+    version: string
+  }
+}

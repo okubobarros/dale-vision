@@ -2549,6 +2549,7 @@ class StoreViewSet(viewsets.ModelViewSet):
                 "city": store.city,
                 "state": store.state,
                 "status": store.status,
+                "employees_count": store.employees_count,
                 "trial_ends_at": store.trial_ends_at.isoformat() if store.trial_ends_at else None,
             },
             "metrics_summary": metrics_summary,

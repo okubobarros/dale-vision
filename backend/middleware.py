@@ -71,6 +71,7 @@ class TrialEnforcementMiddleware:
             "/api/v1/report/summary",
             "/api/v1/report/impact",
             "/api/v1/report/export",
+            "/api/v1/productivity/coverage",
             "/api/v1/billing/plans",
             "/api/v1/me/status",
             "/api/accounts/",

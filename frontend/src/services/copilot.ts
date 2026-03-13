@@ -4,6 +4,7 @@ import type {
   CopilotDashboardContext,
   CopilotOperationalInsight,
   CopilotReport72h,
+  CopilotStaffPlanUpdateResult,
 } from "../types/copilot"
 
 // Contratos para evolução do Copiloto como camada central da operação.
@@ -35,5 +36,16 @@ export const copilotService = {
       noRetry: true,
     })
     return response.data?.items ?? []
+  },
+
+  async updateStaffPlan(
+    storeId: string,
+    payload: { staff_planned_week: number; reason?: string; source?: string }
+  ): Promise<CopilotStaffPlanUpdateResult> {
+    const response = await api.post(
+      `/v1/copilot/stores/${storeId}/actions/staff-plan/`,
+      payload
+    )
+    return response.data as CopilotStaffPlanUpdateResult
   },
 }

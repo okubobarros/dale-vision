@@ -60,3 +60,8 @@ class CopilotChatCreateSerializer(serializers.Serializer):
     session_id = serializers.CharField(max_length=128, required=False, allow_blank=True)
     context = serializers.JSONField(required=False)
 
+
+class CopilotStaffPlanActionSerializer(serializers.Serializer):
+    staff_planned_week = serializers.IntegerField(min_value=0, max_value=500)
+    reason = serializers.CharField(max_length=500, required=False, allow_blank=True)
+    source = serializers.CharField(max_length=64, required=False, allow_blank=True)

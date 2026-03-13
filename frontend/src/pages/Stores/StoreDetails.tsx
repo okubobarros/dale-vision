@@ -1,7 +1,8 @@
-import { useMemo } from "react"
+import { useMemo, useState } from "react"
 import { Link, useParams, useSearchParams } from "react-router-dom"
-import { useQuery } from "@tanstack/react-query"
+import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query"
 import { storesService, type StoreOverviewCamera, type StoreOverview } from "../../services/stores"
+import { copilotService } from "../../services/copilot"
 
 const ONLINE_MAX_AGE_SEC = 120
 
@@ -31,6 +32,20 @@ const formatSeconds = (value?: number | null) => {
 const formatPercent = (value?: number | null) => {
   if (value === null || value === undefined) return "—"
   return `${Math.round(value * 100)}%`
+}
+
+const formatHourLabel = (value?: string | null) => {
+  if (!value) return "—"
+  const date = new Date(value)
+  if (Number.isNaN(date.getTime())) return value
+  return date.toLocaleTimeString("pt-BR", { hour: "2-digit", minute: "2-digit" })
+}
+
+const estimatePlannedCoverage = (footfall: number) => {
+  if (footfall >= 55) return 4
+  if (footfall >= 35) return 3
+  if (footfall >= 18) return 2
+  return 1
 }
 
 const severityColor = (severity?: string | null) => {
@@ -90,6 +105,7 @@ const storeImagePlaceholder = (name: string) => {
 }
 
 const StoreDetails = () => {
+  const queryClient = useQueryClient()
   const params = useParams()
   const storeId = params.storeId || params.id
   const [searchParams, setSearchParams] = useSearchParams()
@@ -109,9 +125,20 @@ const StoreDetails = () => {
   })
 
   const metrics = data?.metrics_summary?.totals
+  const trafficSeries = useMemo(
+    () => data?.metrics_summary?.series?.traffic ?? [],
+    [data?.metrics_summary?.series?.traffic]
+  )
+  const conversionSeries = useMemo(
+    () => data?.metrics_summary?.series?.conversion ?? [],
+    [data?.metrics_summary?.series?.conversion]
+  )
   const cameras = useMemo(() => data?.cameras ?? [], [data?.cameras])
   const employees = data?.employees ?? []
   const alerts = data?.last_alerts ?? []
+  const [staffWeeklyInput, setStaffWeeklyInput] = useState<number | null>(null)
+  const [staffSaveMessage, setStaffSaveMessage] = useState<string>("")
+  const staffWeeklyValue = staffWeeklyInput ?? Math.max(0, Number(data?.store?.employees_count || 0))
 
   const camerasOnline = useMemo(
     () =>
@@ -127,6 +154,43 @@ const StoreDetails = () => {
   const edgeStatusLabel = edgeOnline ? "Operação conectada" : "Conexão indisponível"
   const edgeStatusClass = edgeOnline ? "bg-green-100 text-green-800" : "bg-red-100 text-red-800"
   const placeholder = storeImagePlaceholder(data?.store?.name || "Loja")
+  const operationalSeries = useMemo(() => {
+    const conversionByBucket = new Map(
+      conversionSeries.map((item) => [item.ts_bucket || "", item.staff_active_est])
+    )
+    return trafficSeries
+      .map((item) => {
+        const bucket = item.ts_bucket || ""
+        const detected = Math.max(0, Math.round(conversionByBucket.get(bucket) || 0))
+        const planned = estimatePlannedCoverage(item.footfall)
+        return {
+          bucket,
+          label: formatHourLabel(bucket),
+          footfall: Math.max(0, Math.round(item.footfall || 0)),
+          planned,
+          detected,
+          gap: Math.max(0, planned - detected),
+        }
+      })
+      .slice(-10)
+  }, [conversionSeries, trafficSeries])
+  const operationalSummary = useMemo(() => {
+    if (!operationalSeries.length) {
+      return {
+        totalGaps: 0,
+        criticalWindows: 0,
+        peakGapLabel: "—",
+      }
+    }
+    const totalGaps = operationalSeries.reduce((acc, item) => acc + item.gap, 0)
+    const criticalWindows = operationalSeries.filter((item) => item.gap >= 2).length
+    const peakGap = operationalSeries.reduce((acc, item) => (item.gap > acc.gap ? item : acc), operationalSeries[0])
+    return {
+      totalGaps,
+      criticalWindows,
+      peakGapLabel: `${peakGap.label} (${peakGap.gap})`,
+    }
+  }, [operationalSeries])
 
   const setTab = (tab: StoreTab) => {
     const next = new URLSearchParams(searchParams)
@@ -138,6 +202,49 @@ const StoreDetails = () => {
       new CustomEvent("dv-open-copilot", prompt ? { detail: { prompt } } : undefined)
     )
   }
+
+  const staffMutation = useMutation({
+    mutationFn: async () => {
+      if (!storeId) throw new Error("Loja inválida para atualização.")
+      return storesService.updateStore(String(storeId), { employees_count: staffWeeklyValue })
+    },
+    onSuccess: async () => {
+      setStaffSaveMessage("Staff semanal atualizado com sucesso.")
+      setStaffWeeklyInput(staffWeeklyValue)
+      await queryClient.invalidateQueries({ queryKey: ["store-overview", storeId] })
+      await queryClient.invalidateQueries({ queryKey: ["reports-coverage"] })
+    },
+    onError: (mutationError) => {
+      setStaffSaveMessage(`Falha ao atualizar staff semanal: ${(mutationError as Error).message}`)
+    },
+  })
+
+  const saveWeeklyStaff = () => {
+    setStaffSaveMessage("")
+    staffMutation.mutate()
+  }
+
+  const copilotStaffMutation = useMutation({
+    mutationFn: async () => {
+      if (!storeId) throw new Error("Loja inválida para atualização.")
+      return copilotService.updateStaffPlan(String(storeId), {
+        staff_planned_week: staffWeeklyValue,
+        reason: "Ajuste operacional semanal informado pela loja",
+        source: "store_view_staff_pre_erp",
+      })
+    },
+    onSuccess: async () => {
+      setStaffSaveMessage("Copiloto atualizou o staff semanal no banco com sucesso.")
+      await queryClient.invalidateQueries({ queryKey: ["store-overview", storeId] })
+      await queryClient.invalidateQueries({ queryKey: ["reports-coverage"] })
+      openCopilot(
+        `Confirme o impacto do novo staff semanal (${staffWeeklyValue}) na aderencia operacional da loja ${data?.store?.name}.`
+      )
+    },
+    onError: (mutationError) => {
+      setStaffSaveMessage(`Falha na atualização via Copiloto: ${(mutationError as Error).message}`)
+    },
+  })
 
   if (isLoading) {
     return (
@@ -293,8 +400,8 @@ const StoreDetails = () => {
           <div className="bg-white rounded-xl border border-gray-100 p-4 sm:p-6">
             <div className="flex items-center justify-between gap-3 flex-wrap">
               <div>
-                <h2 className="text-lg font-bold text-gray-800">Saúde operacional da loja</h2>
-                <p className="text-sm text-gray-600">Visão resumida de operação e infraestrutura</p>
+                <h2 className="text-lg font-bold text-gray-800">Base operacional da loja</h2>
+                <p className="text-sm text-gray-600">Conectividade e leitura mínima para gestão diária</p>
               </div>
               <span className={`px-3 py-1 rounded-full text-xs font-semibold ${edgeStatusClass}`}>
                 {edgeStatusLabel}
@@ -319,6 +426,131 @@ const StoreDetails = () => {
                   </div>
                 )}
               </div>
+            </div>
+          </div>
+
+          <div className="rounded-xl border border-slate-200 bg-white p-4 sm:p-6">
+            <div className="flex items-start justify-between gap-3 flex-wrap">
+              <div>
+                <h2 className="text-lg font-bold text-gray-900">Aderência operacional</h2>
+                <p className="text-sm text-gray-600">
+                  Fluxo de clientes vs cobertura da equipe por janela operacional.
+                </p>
+              </div>
+              <span className="rounded-full border border-amber-200 bg-amber-50 px-3 py-1 text-xs font-semibold text-amber-700">
+                Fase v1 preparatória
+              </span>
+            </div>
+
+            <div className="mt-4 grid grid-cols-1 md:grid-cols-3 gap-3">
+              <article className="rounded-lg border border-gray-100 bg-gray-50 p-3">
+                <p className="text-xs text-gray-500">Lacunas acumuladas</p>
+                <p className="mt-1 text-xl font-semibold text-gray-900">{operationalSummary.totalGaps}</p>
+                <p className="text-xs text-gray-500 mt-1">Diferença entre cobertura necessária e detectada</p>
+              </article>
+              <article className="rounded-lg border border-gray-100 bg-gray-50 p-3">
+                <p className="text-xs text-gray-500">Janelas críticas</p>
+                <p className="mt-1 text-xl font-semibold text-gray-900">{operationalSummary.criticalWindows}</p>
+                <p className="text-xs text-gray-500 mt-1">Faixas com equipe abaixo do mínimo de referência</p>
+              </article>
+              <article className="rounded-lg border border-gray-100 bg-gray-50 p-3">
+                <p className="text-xs text-gray-500">Maior desvio</p>
+                <p className="mt-1 text-xl font-semibold text-gray-900">{operationalSummary.peakGapLabel}</p>
+                <p className="text-xs text-gray-500 mt-1">Janela prioritária para ajuste por exceção</p>
+              </article>
+            </div>
+
+            <div className="mt-4 rounded-lg border border-slate-100">
+              <div className="grid grid-cols-[72px_repeat(4,minmax(0,1fr))] bg-slate-50 px-3 py-2 text-[11px] font-semibold uppercase tracking-[0.08em] text-slate-600">
+                <span>Hora</span>
+                <span>Fluxo</span>
+                <span>Planejado*</span>
+                <span>Detectado*</span>
+                <span>Lacuna</span>
+              </div>
+              {operationalSeries.length === 0 ? (
+                <div className="px-3 py-4 text-sm text-gray-500">
+                  Sem base horária suficiente para leitura de aderência nesta loja.
+                </div>
+              ) : (
+                <div className="divide-y divide-slate-100">
+                  {operationalSeries.map((entry) => (
+                    <div
+                      key={entry.bucket}
+                      className={`grid grid-cols-[72px_repeat(4,minmax(0,1fr))] items-center px-3 py-2 text-sm ${
+                        entry.gap > 0 ? "bg-red-50/40" : "bg-white"
+                      }`}
+                    >
+                      <span className="font-medium text-slate-700">{entry.label}</span>
+                      <span className="text-slate-700">{entry.footfall}</span>
+                      <span className="text-slate-700">{entry.planned}</span>
+                      <span className="text-slate-700">{entry.detected}</span>
+                      <span
+                        className={`font-semibold ${
+                          entry.gap >= 2 ? "text-red-700" : entry.gap === 1 ? "text-amber-700" : "text-emerald-700"
+                        }`}
+                      >
+                        {entry.gap === 0 ? "OK" : `-${entry.gap}`}
+                      </span>
+                    </div>
+                  ))}
+                </div>
+              )}
+            </div>
+
+            <div className="mt-3 rounded-lg border border-blue-100 bg-blue-50 px-3 py-2 text-xs text-blue-800">
+              Planejado e Detectado estao em modo de referencia operacional nesta fase. Integracao com escala oficial e ajuste por excecao serao habilitados na proxima etapa.
+            </div>
+          </div>
+
+          <div className="rounded-xl border border-gray-200 bg-white p-4 sm:p-6">
+            <div className="flex items-start justify-between gap-3 flex-wrap">
+              <div>
+                <h2 className="text-lg font-bold text-gray-900">Staff semanal planejado (pre-ERP)</h2>
+                <p className="text-sm text-gray-600">
+                  Atualize a referencia semanal da equipe para melhorar a leitura de cobertura.
+                </p>
+              </div>
+              <span className="rounded-full border border-indigo-200 bg-indigo-50 px-3 py-1 text-xs font-semibold text-indigo-700">
+                Entrada manual v1
+              </span>
+            </div>
+
+            <div className="mt-4 grid grid-cols-1 md:grid-cols-3 gap-3 items-end">
+              <div>
+                <label className="text-xs font-semibold text-gray-600">Staff planejado da semana</label>
+                <input
+                  type="number"
+                  min={0}
+                  value={staffWeeklyValue}
+                  onChange={(event) => setStaffWeeklyInput(Math.max(0, Number(event.target.value || 0)))}
+                  className="mt-2 w-full rounded-lg border border-gray-200 px-3 py-2 text-sm"
+                />
+              </div>
+              <button
+                type="button"
+                onClick={saveWeeklyStaff}
+                disabled={staffMutation.isPending}
+                className="rounded-lg bg-blue-600 px-4 py-2 text-sm font-semibold text-white hover:bg-blue-700 disabled:opacity-60"
+              >
+                {staffMutation.isPending ? "Salvando..." : "Salvar staff semanal"}
+              </button>
+              <button
+                type="button"
+                onClick={() => copilotStaffMutation.mutate()}
+                disabled={copilotStaffMutation.isPending}
+                className="rounded-lg border border-gray-200 bg-white px-4 py-2 text-sm font-semibold text-gray-700 hover:bg-gray-50"
+              >
+                {copilotStaffMutation.isPending ? "Copiloto atualizando..." : "Copiloto atualizar no banco"}
+              </button>
+            </div>
+
+            {staffSaveMessage && (
+              <div className="mt-3 text-xs text-gray-600">{staffSaveMessage}</div>
+            )}
+
+            <div className="mt-3 rounded-lg border border-slate-100 bg-slate-50 px-3 py-2 text-xs text-slate-600">
+              Esta referencia manual alimenta o contrato de cobertura em <span className="font-mono">/productivity/coverage</span> ate a integracao ERP/WFM.
             </div>
           </div>
 

@@ -301,6 +301,27 @@ def _build_report_payload(*, org_id: str, store_id: str | None, start, end):
         "to": end.isoformat(),
         "store_id": store_id,
         "stores_count": len(store_ids),
+        "method": {
+            "id": "report_summary",
+            "version": "report_summary_v1_2026-03-13",
+            "label": "Resumo operacional por agregacao",
+            "description": "Consolida fluxo, fila, conversao e alertas no periodo selecionado.",
+        },
+        "confidence_governance": {
+            "status": "parcial",
+            "score": 72 if totals["total_visitors"] > 0 else 55,
+            "source_flags": {
+                "total_visitors": "official",
+                "avg_dwell_seconds": "official",
+                "avg_queue_seconds": "estimated",
+                "avg_conversion_rate": "estimated",
+                "alerts": "official",
+            },
+            "caveats": [
+                "Conversao e fila sao metricas derivadas por proxy operacional.",
+                "Leitura orientada a decisao de operacao, nao a auditoria contabil.",
+            ],
+        },
         "kpis": {
             "total_visitors": totals["total_visitors"],
             "avg_dwell_seconds": totals["avg_dwell_seconds"],
@@ -433,6 +454,28 @@ def _build_report_impact_payload(*, org_id: str, store_id: str | None, start, en
         "currency": "BRL",
         "estimated": True,
         "method": "idle_proxy_from_staff_active_est_and_footfall",
+        "method_version": "report_impact_v1_2026-03-13",
+    }
+    payload["method"] = {
+        "id": "report_impact",
+        "version": "report_impact_v1_2026-03-13",
+        "label": "Impacto operacional estimado",
+        "description": "Estima custo potencial de ociosidade e espera com base em proxies operacionais.",
+    }
+    payload["confidence_governance"] = {
+        "status": "parcial",
+        "score": 68 if payload["kpis"]["total_visitors"] > 0 else 50,
+        "source_flags": {
+            "idle_seconds_total": "derived",
+            "queue_wait_seconds_total": "estimated",
+            "cost_idle": "derived",
+            "cost_queue": "derived",
+            "potential_monthly_estimated": "derived",
+        },
+        "caveats": [
+            "Impacto financeiro baseado em aproximacao de custo por hora e taxa de abandono.",
+            "Nao substitui apuracao financeira oficial.",
+        ],
     }
     payload["segment"] = segment or "default"
     payload["features_blocked"] = [
@@ -441,6 +484,159 @@ def _build_report_impact_payload(*, org_id: str, store_id: str | None, start, en
         "Heatmap e benchmarking",
         "Integração PDV",
     ]
+    return payload
+
+
+def _estimate_staff_planned_ref(footfall: int) -> int:
+    if footfall >= 55:
+        return 4
+    if footfall >= 35:
+        return 3
+    if footfall >= 18:
+        return 2
+    return 1
+
+
+def _build_productivity_coverage_payload(*, org_id: str, store_id: str | None, start, end):
+    store_ids = list(Store.objects.filter(org_id=org_id).values_list("id", flat=True))
+    if store_id:
+        store_ids = [sid for sid in store_ids if str(sid) == str(store_id)]
+    manual_staff_ref = None
+    if store_id:
+        staff_row = Store.objects.filter(id=store_id).values("employees_count").first()
+        if staff_row and staff_row.get("employees_count") is not None:
+            manual_staff_ref = int(staff_row["employees_count"] or 0)
+
+    windows = []
+    if store_ids:
+        with connection.cursor() as cursor:
+            cursor.execute(
+                """
+                WITH traffic AS (
+                    SELECT date_trunc('hour', ts_bucket) AS hour_bucket,
+                           COALESCE(SUM(footfall), 0) AS footfall
+                    FROM public.traffic_metrics
+                    WHERE store_id = ANY(%s)
+                      AND ts_bucket >= %s
+                      AND ts_bucket < %s
+                      AND (camera_role = 'entrada' OR camera_role IS NULL)
+                      AND (ownership = 'primary' OR ownership IS NULL)
+                    GROUP BY 1
+                ),
+                conversion AS (
+                    SELECT date_trunc('hour', ts_bucket) AS hour_bucket,
+                           COALESCE(AVG(staff_active_est), 0) AS staff_active_est
+                    FROM public.conversion_metrics
+                    WHERE store_id = ANY(%s)
+                      AND ts_bucket >= %s
+                      AND ts_bucket < %s
+                      AND (camera_role = 'balcao' OR camera_role IS NULL)
+                      AND (ownership = 'primary' OR ownership IS NULL)
+                    GROUP BY 1
+                )
+                SELECT COALESCE(traffic.hour_bucket, conversion.hour_bucket) AS hour_bucket,
+                       COALESCE(traffic.footfall, 0) AS footfall,
+                       COALESCE(conversion.staff_active_est, 0) AS staff_active_est
+                FROM traffic
+                FULL OUTER JOIN conversion
+                  ON conversion.hour_bucket = traffic.hour_bucket
+                ORDER BY 1 ASC
+                """,
+                [store_ids, start, end, store_ids, start, end],
+            )
+            for hour_bucket, footfall, staff_active_est in cursor.fetchall():
+                footfall_value = int(round(footfall or 0))
+                staff_detected_est = int(round(staff_active_est or 0))
+                staff_planned_ref = (
+                    max(1, manual_staff_ref)
+                    if manual_staff_ref and manual_staff_ref > 0
+                    else _estimate_staff_planned_ref(footfall_value)
+                )
+                gap = max(0, staff_planned_ref - staff_detected_est)
+                windows.append(
+                    {
+                        "ts_bucket": hour_bucket.isoformat() if hour_bucket else None,
+                        "hour_label": timezone.localtime(hour_bucket).strftime("%H:00")
+                        if hour_bucket
+                        else None,
+                        "footfall": footfall_value,
+                        "staff_planned_ref": staff_planned_ref,
+                        "staff_detected_est": staff_detected_est,
+                        "coverage_gap": gap,
+                        "gap_status": "critica" if gap >= 2 else "atencao" if gap == 1 else "adequada",
+                        "source_flags": {
+                            "footfall": "official",
+                            "staff_planned_ref": "manual" if manual_staff_ref and manual_staff_ref > 0 else "proxy",
+                            "staff_detected_est": "estimated",
+                        },
+                    }
+                )
+
+    critical_windows = [window for window in windows if int(window["coverage_gap"]) >= 2]
+    warning_windows = [window for window in windows if int(window["coverage_gap"]) == 1]
+    best_windows = [window for window in windows if int(window["coverage_gap"]) == 0]
+
+    worst_window = None
+    best_window = None
+    peak_flow_window = None
+    opportunity_window = None
+    if windows:
+        worst_window = max(windows, key=lambda item: int(item["coverage_gap"]))
+        best_window = max(best_windows, key=lambda item: int(item["footfall"])) if best_windows else None
+        peak_flow_window = max(windows, key=lambda item: int(item["footfall"]))
+        opportunity_window = min(windows, key=lambda item: int(item["coverage_gap"]))
+
+    confidence_score = 0
+    if windows:
+        confidence_score = 45
+        if any(int(window["staff_detected_est"]) > 0 for window in windows):
+            confidence_score += 20
+        if any(int(window["footfall"]) > 0 for window in windows):
+            confidence_score += 20
+        if best_windows:
+            confidence_score += 5
+    confidence_score = min(confidence_score, 90)
+
+    payload = {
+        "period": None,
+        "from": start.isoformat(),
+        "to": end.isoformat(),
+        "store_id": store_id,
+        "stores_count": len(store_ids),
+        "method": {
+            "id": "coverage_proxy",
+            "version": "coverage_proxy_v1_2026-03-13",
+            "label": "Cobertura operacional por referência",
+            "description": "Compara presença detectada por visão computacional com referência de escala baseada em fluxo.",
+        },
+        "confidence_governance": {
+            "status": "parcial" if windows else "insuficiente",
+            "score": confidence_score,
+            "source_flags": {
+                "footfall": "official",
+                "staff_planned_ref": "manual" if manual_staff_ref and manual_staff_ref > 0 else "proxy",
+                "staff_detected_est": "estimated",
+                "coverage_gap": "derived",
+            },
+            "caveats": [
+                "Escala planejada sem integração ERP/WFM; pode usar referência manual da loja.",
+                "Presença real agregada sem identificação nominal.",
+                "Leitura adequada para priorização operacional, não para auditoria trabalhista.",
+            ],
+        },
+        "summary": {
+            "gaps_total": int(sum(int(window["coverage_gap"]) for window in windows)),
+            "critical_windows": len(critical_windows),
+            "warning_windows": len(warning_windows),
+            "adequate_windows": len(best_windows),
+            "worst_window": worst_window,
+            "best_window": best_window,
+            "peak_flow_window": peak_flow_window,
+            "opportunity_window": opportunity_window,
+            "planned_source_mode": "manual" if manual_staff_ref and manual_staff_ref > 0 else "proxy",
+        },
+        "windows": windows,
+    }
     return payload
 
 
@@ -457,6 +653,18 @@ class ReportSummaryView(APIView):
                     "to": None,
                     "store_id": None,
                     "stores_count": 0,
+                    "method": {
+                        "id": "report_summary",
+                        "version": "report_summary_v1_2026-03-13",
+                        "label": "Resumo operacional por agregacao",
+                        "description": "Sem organizacao ativa para calculo.",
+                    },
+                    "confidence_governance": {
+                        "status": "insuficiente",
+                        "score": 0,
+                        "source_flags": {},
+                        "caveats": ["Sem organizacao ativa para calculo do relatorio."],
+                    },
                     "kpis": {
                         "total_visitors": 0,
                         "avg_dwell_seconds": 0,
@@ -477,6 +685,64 @@ class ReportSummaryView(APIView):
         start, end, period = _parse_date_range(request, tz)
 
         payload = _build_report_payload(
+            org_id=org_id,
+            store_id=store_id,
+            start=start,
+            end=end,
+        )
+        payload["period"] = period
+        return Response(payload)
+
+
+class ProductivityCoverageView(APIView):
+    permission_classes = [IsAuthenticated]
+
+    def get(self, request):
+        org_ids = get_user_org_ids(request.user)
+        if not org_ids:
+            return Response(
+                {
+                    "period": "7d",
+                    "from": None,
+                    "to": None,
+                    "store_id": None,
+                    "stores_count": 0,
+                    "method": {
+                        "id": "coverage_proxy",
+                        "version": "coverage_proxy_v1_2026-03-13",
+                        "label": "Cobertura operacional por referência",
+                        "description": "Sem organização ativa para cálculo.",
+                    },
+                    "confidence_governance": {
+                        "status": "insuficiente",
+                        "score": 0,
+                        "source_flags": {
+                            "footfall": "official",
+                            "staff_planned_ref": "proxy",
+                            "staff_detected_est": "estimated",
+                            "coverage_gap": "derived",
+                        },
+                        "caveats": ["Sem organização ativa para cálculo de cobertura."],
+                    },
+                    "summary": {
+                        "gaps_total": 0,
+                        "critical_windows": 0,
+                        "warning_windows": 0,
+                        "adequate_windows": 0,
+                        "worst_window": None,
+                        "best_window": None,
+                        "peak_flow_window": None,
+                        "opportunity_window": None,
+                    },
+                    "windows": [],
+                }
+            )
+
+        org_id = str(org_ids[0])
+        store_id = request.query_params.get("store_id")
+        tz = _get_org_timezone(org_id)
+        start, end, period = _parse_date_range(request, tz)
+        payload = _build_productivity_coverage_payload(
             org_id=org_id,
             store_id=store_id,
             start=start,
@@ -611,6 +877,18 @@ class ReportImpactView(APIView):
                     "to": None,
                     "store_id": None,
                     "stores_count": 0,
+                    "method": {
+                        "id": "report_impact",
+                        "version": "report_impact_v1_2026-03-13",
+                        "label": "Impacto operacional estimado",
+                        "description": "Sem organizacao ativa para calculo.",
+                    },
+                    "confidence_governance": {
+                        "status": "insuficiente",
+                        "score": 0,
+                        "source_flags": {},
+                        "caveats": ["Sem organizacao ativa para calculo do impacto."],
+                    },
                     "kpis": {
                         "total_visitors": 0,
                         "avg_dwell_seconds": 0,
@@ -633,6 +911,7 @@ class ReportImpactView(APIView):
                         "currency": "BRL",
                         "estimated": True,
                         "method": "idle_proxy_from_staff_active_est_and_footfall",
+                        "method_version": "report_impact_v1_2026-03-13",
                     },
                     "segment": "default",
                     "features_blocked": [],

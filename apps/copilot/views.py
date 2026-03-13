@@ -1,4 +1,5 @@
 import uuid
+import logging
 
 from django.db import models, transaction
 from django.utils import timezone
@@ -7,7 +8,7 @@ from rest_framework.permissions import IsAuthenticated
 from rest_framework.response import Response
 from rest_framework.views import APIView
 
-from apps.cameras.permissions import ALLOWED_READ_ROLES, require_store_role
+from apps.cameras.permissions import ALLOWED_MANAGE_ROLES, ALLOWED_READ_ROLES, require_store_role
 from apps.core.models import Store
 from apps.stores.services.user_uuid import ensure_user_uuid
 
@@ -22,6 +23,7 @@ from .serializers import (
     CopilotMessageSerializer,
     CopilotOperationalInsightSerializer,
     CopilotReport72hSerializer,
+    CopilotStaffPlanActionSerializer,
 )
 from .services import (
     evaluate_report_readiness,
@@ -30,6 +32,8 @@ from .services import (
     materialize_operational_insights,
     materialize_report_72h,
 )
+
+logger = logging.getLogger(__name__)
 
 
 def _get_store_or_404(store_id):
@@ -204,4 +208,112 @@ class CopilotConversationView(APIView):
                 "message": CopilotMessageSerializer(message).data,
             },
             status=status.HTTP_201_CREATED,
+        )
+
+
+class CopilotStaffPlanActionView(APIView):
+    permission_classes = [IsAuthenticated]
+
+    def post(self, request, store_id):
+        store, err = _get_store_or_404(store_id)
+        if err:
+            return err
+        require_store_role(request.user, str(store_id), ALLOWED_MANAGE_ROLES)
+
+        serializer = CopilotStaffPlanActionSerializer(data=request.data)
+        serializer.is_valid(raise_exception=True)
+
+        staff_planned_week = serializer.validated_data["staff_planned_week"]
+        reason = serializer.validated_data.get("reason") or ""
+        source = serializer.validated_data.get("source") or "store_view_manual_action"
+        now = timezone.now()
+        previous_value = int(store.employees_count or 0)
+
+        user_uuid = ensure_user_uuid(request.user)
+        session_id = f"staff-plan-{store_id}"
+
+        try:
+            with transaction.atomic():
+                store.employees_count = int(staff_planned_week)
+                store.updated_at = now
+                store.save(update_fields=["employees_count", "updated_at"])
+
+                conversation, _ = CopilotConversation.objects.get_or_create(
+                    store_id=store_id,
+                    user_uuid=user_uuid,
+                    session_id=session_id,
+                    defaults={
+                        "org_id": store.org_id,
+                        "created_at": now,
+                        "updated_at": now,
+                    },
+                )
+                conversation.updated_at = now
+                conversation.save(update_fields=["updated_at"])
+
+                user_message = (
+                    f"Atualizar staff semanal planejado para {staff_planned_week} na loja {store.name}. "
+                    f"Motivo: {reason or 'não informado'}."
+                )
+                CopilotMessage.objects.create(
+                    conversation=conversation,
+                    role="user",
+                    content=user_message,
+                    context_json={
+                        "action": "staff_plan_update",
+                        "previous_value": previous_value,
+                        "new_value": int(staff_planned_week),
+                        "source": source,
+                    },
+                    metadata_json={
+                        "source": source,
+                        "action": "staff_plan_update",
+                    },
+                    created_at=now,
+                )
+                CopilotMessage.objects.create(
+                    conversation=conversation,
+                    role="assistant",
+                    content=(
+                        f"Staff semanal planejado atualizado para {staff_planned_week} "
+                        f"(antes: {previous_value})."
+                    ),
+                    context_json={
+                        "action": "staff_plan_update_confirmation",
+                        "previous_value": previous_value,
+                        "new_value": int(staff_planned_week),
+                    },
+                    metadata_json={
+                        "action": "staff_plan_update_confirmation",
+                        "source": "copilot_action",
+                    },
+                    created_at=now,
+                )
+        except Exception:
+            logger.exception(
+                "Falha ao aplicar atualização de staff semanal via Copiloto",
+                extra={"store_id": str(store_id), "user_id": getattr(request.user, "id", None)},
+            )
+            return Response(
+                {
+                    "code": "STAFF_PLAN_UPDATE_FAILED",
+                    "message": "Falha ao atualizar staff semanal via Copiloto.",
+                },
+                status=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            )
+
+        return Response(
+            {
+                "ok": True,
+                "store_id": str(store_id),
+                "previous_staff_planned_week": previous_value,
+                "staff_planned_week": int(staff_planned_week),
+                "reason": reason or None,
+                "source": source,
+                "method": {
+                    "id": "copilot_staff_plan_update",
+                    "version": "copilot_staff_plan_update_v1_2026-03-13",
+                },
+            },
+            status=status.HTTP_200_OK,
         )

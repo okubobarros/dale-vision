@@ -49,6 +49,18 @@ export type ReportSummary = {
   chart_footfall_by_hour: Array<{ hour: number; footfall: number }>
   alert_counts_by_type: Array<{ type: string; count: number }>
   insights: string[]
+  method?: {
+    id: string
+    version: string
+    label: string
+    description: string
+  }
+  confidence_governance?: {
+    status: "insuficiente" | "parcial" | "confiavel"
+    score: number
+    source_flags: Record<string, string>
+    caveats: string[]
+  }
 }
 
 export type ReportImpact = ReportSummary & {
@@ -63,6 +75,7 @@ export type ReportImpact = ReportSummary & {
     currency: string
     estimated: boolean
     method: string
+    method_version?: string
   }
   segment?: string | null
   features_blocked?: string[]
@@ -73,6 +86,53 @@ export type ReportRangeParams = {
   from?: string | null
   to?: string | null
   period?: string | null
+}
+
+export type ProductivityCoverageWindow = {
+  ts_bucket: string | null
+  hour_label: string | null
+  footfall: number
+  staff_planned_ref: number
+  staff_detected_est: number
+  coverage_gap: number
+  gap_status: "critica" | "atencao" | "adequada"
+  source_flags: {
+    footfall: "official" | "estimated" | "proxy" | "manual"
+    staff_planned_ref: "official" | "estimated" | "proxy" | "manual"
+    staff_detected_est: "official" | "estimated" | "proxy" | "manual"
+  }
+}
+
+export type ProductivityCoverage = {
+  period: string
+  from?: string | null
+  to?: string | null
+  store_id?: string | null
+  stores_count: number
+  method: {
+    id: string
+    version: string
+    label: string
+    description: string
+  }
+  confidence_governance: {
+    status: "insuficiente" | "parcial" | "confiavel"
+    score: number
+    source_flags: Record<string, string>
+    caveats: string[]
+  }
+  summary: {
+    gaps_total: number
+    critical_windows: number
+    warning_windows: number
+    adequate_windows: number
+    worst_window: ProductivityCoverageWindow | null
+    best_window: ProductivityCoverageWindow | null
+    peak_flow_window: ProductivityCoverageWindow | null
+    opportunity_window: ProductivityCoverageWindow | null
+    planned_source_mode?: "manual" | "proxy"
+  }
+  windows: ProductivityCoverageWindow[]
 }
 
 export const meService = {
@@ -135,6 +195,19 @@ export const meService = {
     if (range?.period) params.period = range.period
     const response = await api.get("/v1/report/impact/", { params })
     return response.data as ReportImpact
+  },
+  async getProductivityCoverage(
+    storeId?: string | null,
+    range?: ReportRangeParams
+  ): Promise<ProductivityCoverage> {
+    const params: Record<string, string> = {}
+    if (storeId) params.store_id = storeId
+    if (range?.store_id) params.store_id = range.store_id
+    if (range?.from) params.from = range.from
+    if (range?.to) params.to = range.to
+    if (range?.period) params.period = range.period
+    const response = await api.get("/v1/productivity/coverage/", { params })
+    return response.data as ProductivityCoverage
   },
   async exportReport(
     format: "csv" | "pdf",

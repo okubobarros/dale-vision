@@ -178,6 +178,7 @@ export type StoreOverview = {
     city?: string | null
     state?: string | null
     status?: StoreStatus | null
+    employees_count?: number | null
     trial_ends_at?: string | null
   }
   metrics_summary: StoreAnalyticsSummary
