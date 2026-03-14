@@ -131,6 +131,7 @@ const PLAN_CAMERA_LIMITS: Record<string, number | null> = {
 const ALL_STORES_VALUE = "all"
 const CEO_PERIOD: "day" | "7d" = "day"
 type DashboardMetricGovernance = MetricGovernanceItem
+type NetworkPeriod = "day" | "7d" | "30d"
 
 const governanceStyles: Record<string, string> = {
   official: "bg-emerald-50 text-emerald-700 border-emerald-200",
@@ -176,6 +177,19 @@ const TrustBadge = ({ status }: { status?: string | null }) => {
   )
 }
 
+const getGreetingByHour = () => {
+  const hour = new Date().getHours()
+  if (hour < 12) return "Bom dia"
+  if (hour < 18) return "Boa tarde"
+  return "Boa noite"
+}
+
+const networkPeriodOptions: Array<{ value: NetworkPeriod; label: string }> = [
+  { value: "day", label: "Hoje" },
+  { value: "7d", label: "7 dias" },
+  { value: "30d", label: "30 dias" },
+]
+
 
 const Dashboard = () => {
   const { user, authReady, isAuthenticated } = useAuth()
@@ -193,6 +207,7 @@ const Dashboard = () => {
   const [ignoringEventId, setIgnoringEventId] = useState<string | null>(null)
   const [delegatingEventId, setDelegatingEventId] = useState<string | null>(null)
   const [edgeSetupOpen, setEdgeSetupOpen] = useState(initialOpenEdgeSetup)
+  const [networkPeriod, setNetworkPeriod] = useState<NetworkPeriod>("7d")
 
   const canFetchAuth = authReady && isAuthenticated
 
@@ -276,15 +291,15 @@ const Dashboard = () => {
     retry: false,
   })
   const { data: networkReportSummary } = useQuery({
-    queryKey: ["network-report-summary-dashboard"],
-    queryFn: () => meService.getReportSummary(undefined, { period: "7d" }),
+    queryKey: ["network-report-summary-dashboard", networkPeriod],
+    queryFn: () => meService.getReportSummary(undefined, { period: networkPeriod }),
     enabled: canFetchAuth && isNetworkMode,
     staleTime: 30000,
     retry: false,
   })
   const { data: networkCoverageSummary } = useQuery({
-    queryKey: ["network-coverage-dashboard"],
-    queryFn: () => meService.getProductivityCoverage(undefined, { period: "7d" }),
+    queryKey: ["network-coverage-dashboard", networkPeriod],
+    queryFn: () => meService.getProductivityCoverage(undefined, { period: networkPeriod }),
     enabled: canFetchAuth && isNetworkMode,
     staleTime: 30000,
     retry: false,
@@ -1019,6 +1034,49 @@ const Dashboard = () => {
     [stores]
   )
   const revenueAtRiskDay = Math.max(0, Math.round(estimatedRevenueGap))
+  const conversionPreservedBRL = Math.max(0, Math.round(revenueAtRiskDay * 0.35))
+  const staffEfficiencyBRL = Math.max(
+    0,
+    Math.round((networkCoverageSummary?.summary?.warning_windows ?? 0) * 140)
+  )
+  const coverageConfidenceScore = networkCoverageSummary?.confidence_governance?.score ?? 0
+  const showConfidenceCalibrationFallback = isNetworkMode && coverageConfidenceScore > 0 && coverageConfidenceScore < 60
+  const greeting = getGreetingByHour()
+  const efficiencySubtitle =
+    networkHealthScore > 0
+      ? `Sua rede operou com ${networkHealthScore}% de eficiência na janela monitorada.`
+      : "Estamos consolidando a eficiência operacional da rede."
+
+  const wealthCards = [
+    {
+      title: "Conversão Preservada",
+      value: formatCurrencyBRL(conversionPreservedBRL),
+      subtitle: "Valor recuperável por intervenções de atendimento.",
+      tone: "text-emerald-700",
+      border: "border-emerald-200",
+      bg: "bg-emerald-50",
+      status: "estimated",
+    },
+    {
+      title: "Eficiência de Staff",
+      value: formatCurrencyBRL(staffEfficiencyBRL),
+      subtitle: "Economia potencial por ajuste de cobertura.",
+      tone: "text-indigo-700",
+      border: "border-indigo-200",
+      bg: "bg-indigo-50",
+      status: "proxy",
+    },
+    {
+      title: "Receita Sob Risco",
+      value: formatCurrencyBRL(revenueAtRiskDay),
+      subtitle: "Perda potencial atual por fila e baixa cobertura.",
+      tone: revenueAtRiskDay > 0 ? "text-rose-700" : "text-slate-700",
+      border: revenueAtRiskDay > 0 ? "border-rose-200" : "border-slate-200",
+      bg: revenueAtRiskDay > 0 ? "bg-rose-50" : "bg-slate-50",
+      status: "estimated",
+    },
+  ] as const
+
   const moneyLeakItems = useMemo(() => {
     const lossByType = new Map<
       string,
@@ -1300,7 +1358,7 @@ const Dashboard = () => {
               Dashboard da rede
             </h1>
             <p className="text-gray-600 mt-1 text-sm sm:text-base">
-              Olá, {user?.first_name || user?.username}. Leitura executiva da operação para decisão imediata.
+              {greeting}, {user?.first_name || user?.username}! {efficiencySubtitle}
             </p>
             <div className="mt-3 flex flex-wrap gap-2">
               <button
@@ -1338,17 +1396,17 @@ const Dashboard = () => {
           </div>
 
           {stores && stores.length > 0 && (
-            <div className="flex flex-col sm:flex-row sm:items-center gap-2">
+            <div className="flex flex-col sm:flex-row sm:items-center gap-2 sm:gap-3">
               <label htmlFor="store-select" className="text-gray-700 font-semibold text-sm">
-                Loja
+                Filtros
               </label>
 
-              <div className="flex items-center gap-2">
+              <div className="flex flex-col sm:flex-row sm:items-center gap-2">
                 <select
                   id="store-select"
                   value={selectedStore}
                   onChange={(e) => setSelectedStoreOverride(e.target.value)}
-                  className="w-full sm:w-[320px] border border-gray-300 rounded-lg px-4 py-2 focus:ring-2 focus:ring-blue-500 focus:border-transparent"
+                  className="w-full sm:w-[260px] border border-gray-300 rounded-lg px-4 py-2 focus:ring-2 focus:ring-blue-500 focus:border-transparent"
                   disabled={isNetworkMode ? networkDashboardLoading : isLoadingDashboard}
                   aria-label="Selecionar loja para visualizar dashboard"
                 >
@@ -1359,6 +1417,20 @@ const Dashboard = () => {
                     </option>
                   ))}
                 </select>
+                {isNetworkMode && (
+                  <select
+                    value={networkPeriod}
+                    onChange={(e) => setNetworkPeriod(e.target.value as NetworkPeriod)}
+                    className="w-full sm:w-[160px] border border-gray-300 rounded-lg px-4 py-2 focus:ring-2 focus:ring-blue-500 focus:border-transparent"
+                    aria-label="Selecionar período da visão de rede"
+                  >
+                    {networkPeriodOptions.map((option) => (
+                      <option key={option.value} value={option.value}>
+                        {option.label}
+                      </option>
+                    ))}
+                  </select>
+                )}
 
                 {(isNetworkMode ? networkDashboardLoading : isLoadingDashboard) && (
                   <div className="animate-spin rounded-full h-5 w-5 border-t-2 border-b-2 border-blue-500" />
@@ -1370,7 +1442,7 @@ const Dashboard = () => {
         <div className="rounded-xl border border-gray-200 bg-white p-4 shadow-sm">
           {isNetworkMode ? (
             <div>
-              <p className="text-sm font-semibold text-gray-800">Resumo executivo do momento</p>
+              <p className="text-sm font-semibold text-gray-800">Resumo executivo do período</p>
               <p className="mt-1 text-sm text-gray-600">
                 Saúde {networkHealthScore}/100 · {alertsActiveCount} alertas ativos na rede
               </p>
@@ -1419,9 +1491,25 @@ const Dashboard = () => {
       <section className="space-y-4 sm:space-y-6">
         {isNetworkMode ? (
           <>
+            <section className="grid grid-cols-1 lg:grid-cols-3 gap-3">
+              {wealthCards.map((card) => (
+                <article
+                  key={card.title}
+                  className={`rounded-2xl border ${card.border} ${card.bg} p-4 shadow-sm`}
+                >
+                  <div className="flex items-center justify-between gap-2">
+                    <p className="text-xs font-semibold uppercase tracking-wide text-gray-600">{card.title}</p>
+                    <TrustBadge status={card.status} />
+                  </div>
+                  <p className={`mt-2 text-3xl font-bold ${card.tone}`}>{card.value}</p>
+                  <p className="mt-1 text-xs text-gray-700">{card.subtitle}</p>
+                </article>
+              ))}
+            </section>
+
             <section className="rounded-2xl border border-indigo-200 bg-gradient-to-b from-slate-900 to-indigo-900 p-5 text-white shadow-sm">
-              <div className="flex items-start justify-between gap-4">
-                <div>
+              <div className="grid grid-cols-1 xl:grid-cols-10 gap-4">
+                <div className="xl:col-span-7">
                   <p className="text-xs font-semibold uppercase tracking-wide text-indigo-200">1. Decision Center</p>
                   <h2 className="mt-2 text-xl font-semibold leading-tight">{copilotRecommendationNow.title}</h2>
                   <p className="mt-2 text-sm text-slate-200">
@@ -1430,34 +1518,74 @@ const Dashboard = () => {
                   <p className="mt-1 text-sm text-slate-200">
                     <span className="font-semibold text-white">Impacto esperado:</span>{" "}
                     {revenueAtRiskDay > 0
-                      ? `recuperar até ${formatCurrencyBRL(Math.round(revenueAtRiskDay * 0.35))} hoje`
+                      ? `recuperar até ${formatCurrencyBRL(conversionPreservedBRL)} hoje`
                       : copilotRecommendationNow.impact}
                   </p>
+                  <div className="mt-3">
+                    <TrustBadge status="estimated" />
+                  </div>
                 </div>
-                <div className="shrink-0 rounded-xl bg-white/10 px-3 py-2 text-right">
-                  <p className="text-[11px] text-indigo-100">Receita em risco</p>
-                  <p className="text-lg font-semibold text-white">{formatCurrencyBRL(revenueAtRiskDay)}</p>
-                  <TrustBadge status="estimated" />
+                <div className="xl:col-span-3 rounded-xl border border-white/20 bg-white/10 p-3">
+                  <p className="text-[11px] font-semibold uppercase tracking-wide text-indigo-100">
+                    Ações rápidas
+                  </p>
+                  <div className="mt-3 space-y-2">
+                    {priorityActions[0] ? (
+                      <button
+                        type="button"
+                        onClick={() => handleDelegateWhatsapp(priorityActions[0])}
+                        disabled={delegatingEventId === priorityActions[0].id}
+                        className="w-full rounded-lg bg-emerald-500 px-3 py-2 text-xs font-semibold text-white hover:bg-emerald-400 disabled:opacity-70"
+                      >
+                        {delegatingEventId === priorityActions[0].id
+                          ? "Delegando..."
+                          : "Delegar solução via WhatsApp"}
+                      </button>
+                    ) : (
+                      <button
+                        type="button"
+                        disabled
+                        className="w-full rounded-lg bg-white/20 px-3 py-2 text-xs font-semibold text-white/80"
+                      >
+                        Sem ação crítica para delegar
+                      </button>
+                    )}
+                    <Link
+                      to="/app/cameras"
+                      className="block w-full rounded-lg border border-white/30 bg-white/10 px-3 py-2 text-center text-xs font-semibold text-white hover:bg-white/20"
+                    >
+                      Ver câmeras em tempo real
+                    </Link>
+                    <button
+                      type="button"
+                      onClick={() =>
+                        openCopilot(`Gerar plano de execução imediato para: ${copilotRecommendationNow.title}`)
+                      }
+                      className="w-full rounded-lg border border-white/30 bg-white/10 px-3 py-2 text-xs font-semibold text-white hover:bg-white/20"
+                    >
+                      Aprovar intervenção
+                    </button>
+                  </div>
+                  <p className="mt-3 text-[11px] text-indigo-100">
+                    Receita em risco agora: {formatCurrencyBRL(revenueAtRiskDay)}
+                  </p>
                 </div>
-              </div>
-              <div className="mt-4 flex flex-wrap gap-2">
-                <button
-                  type="button"
-                  onClick={() =>
-                    openCopilot(`Gerar plano de execução imediato para: ${copilotRecommendationNow.title}`)
-                  }
-                  className="rounded-lg bg-white px-3 py-2 text-xs font-semibold text-slate-900 hover:bg-slate-100"
-                >
-                  Aprovar ação
-                </button>
-                <Link
-                  to="/app/reports"
-                  className="rounded-lg border border-white/30 bg-white/10 px-3 py-2 text-xs font-semibold text-white hover:bg-white/20"
-                >
-                  Ver simulação
-                </Link>
               </div>
             </section>
+
+            {showConfidenceCalibrationFallback && (
+              <section className="rounded-xl border border-amber-200 bg-amber-50 p-4 sm:p-5 shadow-sm">
+                <div className="flex items-start justify-between gap-3">
+                  <div>
+                    <p className="text-sm font-semibold text-amber-800">IA em fase de calibração</p>
+                    <p className="mt-1 text-sm text-amber-800">
+                      Algumas métricas estão com confiança abaixo de 60%. O Copiloto segue monitorando até estabilizar os sinais da rede.
+                    </p>
+                  </div>
+                  <TrustBadge status="estimated" />
+                </div>
+              </section>
+            )}
 
             <section className="rounded-xl border border-gray-200 bg-white p-4 sm:p-6 shadow-sm">
               <div className="flex items-center justify-between gap-3">
