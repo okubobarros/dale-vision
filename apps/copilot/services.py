@@ -2,6 +2,7 @@ from dataclasses import dataclass
 from datetime import timedelta
 from typing import Optional
 
+from django.conf import settings
 from django.db import connection, transaction
 from django.utils import timezone
 
@@ -11,12 +12,31 @@ from .models import (
     CopilotDashboardContextSnapshot,
     CopilotOperationalInsight,
     CopilotReport72h,
+    OperationalWindowHourly,
+    StoreProfile,
 )
 
 
 TRIAL_TARGET_HOURS = 72
 EDGE_ONLINE_THRESHOLD_SECONDS = 120
 CONTEXT_SNAPSHOT_MAX_AGE_SECONDS = 300
+DEFAULT_OPERATIONAL_WINDOW_MINUTES = 5
+
+DEFAULT_SEGMENT_DEFAULTS = {
+    "default": {"ticket_medio_brl": 80, "sla_fila_segundos": 300},
+    "cafe": {"ticket_medio_brl": 30, "sla_fila_segundos": 240},
+    "gelateria": {"ticket_medio_brl": 28, "sla_fila_segundos": 240},
+    "moda": {"ticket_medio_brl": 120, "sla_fila_segundos": 420},
+    "lavanderia_self_service": {"ticket_medio_brl": 45, "sla_fila_segundos": 180},
+}
+
+SEGMENT_ABANDON_RATE = {
+    "default": 0.08,
+    "cafe": 0.08,
+    "gelateria": 0.12,
+    "moda": 0.05,
+    "lavanderia_self_service": 0.15,
+}
 
 
 @dataclass
@@ -235,6 +255,241 @@ def get_metrics_window(store_id, window_hours: int = 24) -> dict:
     }
 
 
+def _resolve_operational_window_minutes(window_minutes: Optional[int] = None) -> int:
+    if window_minutes is not None:
+        try:
+            value = int(window_minutes)
+        except Exception:
+            value = DEFAULT_OPERATIONAL_WINDOW_MINUTES
+    else:
+        env_value = getattr(settings, "COPILOT_OPERATIONAL_WINDOW_MINUTES", DEFAULT_OPERATIONAL_WINDOW_MINUTES)
+        try:
+            value = int(env_value)
+        except Exception:
+            value = DEFAULT_OPERATIONAL_WINDOW_MINUTES
+    return 5 if value <= 5 else 10
+
+
+def _floor_to_window(dt: timezone.datetime, minutes: int) -> timezone.datetime:
+    minute = (dt.minute // minutes) * minutes
+    return dt.replace(minute=minute, second=0, microsecond=0)
+
+
+def _classify_window_confidence(
+    *,
+    cameras_total: int,
+    cameras_online: int,
+    edge_online: bool,
+    vision_events_count: int,
+) -> tuple[int, dict]:
+    camera_ratio = 0.0
+    if cameras_total > 0:
+        camera_ratio = min(max(cameras_online / cameras_total, 0.0), 1.0)
+    freshness_score = 1.0 if edge_online else 0.3
+    density_score = min(max(vision_events_count / 20.0, 0.0), 1.0)
+
+    weighted = (camera_ratio * 0.5) + (freshness_score * 0.25) + (density_score * 0.25)
+    confidence_score = max(0, min(100, int(round(weighted * 100))))
+    breakdown = {
+        "camera_ratio": round(camera_ratio, 3),
+        "freshness": round(freshness_score, 3),
+        "event_density": round(density_score, 3),
+        "formula": "0.5*camera_ratio + 0.25*freshness + 0.25*event_density",
+    }
+    return confidence_score, breakdown
+
+
+def build_operational_window_payload(
+    store: Store,
+    *,
+    window_minutes: Optional[int] = None,
+    now: Optional[timezone.datetime] = None,
+) -> dict:
+    effective_minutes = _resolve_operational_window_minutes(window_minutes)
+    now_value = now or timezone.now()
+    ts_bucket = _floor_to_window(now_value, effective_minutes)
+    window_start = ts_bucket - timedelta(minutes=effective_minutes)
+
+    store_profile = StoreProfile.objects.filter(store_id=store.id).first()
+    business_model = (store_profile.business_model if store_profile else "default") or "default"
+    defaults_json = store_profile.defaults_json if store_profile else {}
+    defaults_json = defaults_json if isinstance(defaults_json, dict) else {}
+
+    ticket_medio_brl = float(defaults_json.get("ticket_medio_brl") or DEFAULT_SEGMENT_DEFAULTS.get(business_model, DEFAULT_SEGMENT_DEFAULTS["default"])["ticket_medio_brl"])
+    fila_sla_segundos = int(defaults_json.get("sla_fila_segundos") or DEFAULT_SEGMENT_DEFAULTS.get(business_model, DEFAULT_SEGMENT_DEFAULTS["default"])["sla_fila_segundos"])
+    staff_planned = int(
+        defaults_json.get("staff_planned_shift")
+        or defaults_json.get("staff_planned_default")
+        or getattr(store, "employees_count", 0)
+        or 0
+    )
+
+    footfall = int(
+        _safe_scalar(
+            """
+            SELECT COALESCE(SUM(footfall), 0)
+            FROM public.traffic_metrics
+            WHERE store_id = %s
+              AND ts_bucket >= %s
+              AND ts_bucket < %s
+            """,
+            [str(store.id), window_start, ts_bucket],
+        )
+        or 0
+    )
+    queue_avg_seconds = float(
+        _safe_scalar(
+            """
+            SELECT AVG(NULLIF(queue_avg_seconds, 0))
+            FROM public.conversion_metrics
+            WHERE store_id = %s
+              AND ts_bucket >= %s
+              AND ts_bucket < %s
+            """,
+            [str(store.id), window_start, ts_bucket],
+        )
+        or 0
+    )
+    staff_detected_avg = float(
+        _safe_scalar(
+            """
+            SELECT AVG(NULLIF(staff_active_est, 0))
+            FROM public.conversion_metrics
+            WHERE store_id = %s
+              AND ts_bucket >= %s
+              AND ts_bucket < %s
+            """,
+            [str(store.id), window_start, ts_bucket],
+        )
+        or 0
+    )
+    checkout_proxy_events = int(
+        _safe_scalar(
+            """
+            SELECT COALESCE(SUM(checkout_events), 0)
+            FROM public.conversion_metrics
+            WHERE store_id = %s
+              AND ts_bucket >= %s
+              AND ts_bucket < %s
+            """,
+            [str(store.id), window_start, ts_bucket],
+        )
+        or 0
+    )
+    critical_alerts = int(
+        _safe_scalar(
+            """
+            SELECT COUNT(*)
+            FROM public.detection_events
+            WHERE store_id = %s
+              AND severity = 'critical'
+              AND status = 'open'
+              AND occurred_at >= %s
+              AND occurred_at < %s
+            """,
+            [str(store.id), window_start, ts_bucket],
+        )
+        or 0
+    )
+    vision_events_count = int(
+        _safe_scalar(
+            """
+            SELECT COUNT(*)
+            FROM public.vision_atomic_events
+            WHERE store_id = %s
+              AND ts >= %s
+              AND ts < %s
+            """,
+            [str(store.id), window_start, ts_bucket],
+        )
+        or 0
+    )
+
+    coverage = resolve_coverage_state(store.id)
+    confidence_score, confidence_breakdown = _classify_window_confidence(
+        cameras_total=coverage.cameras_total,
+        cameras_online=coverage.cameras_online,
+        edge_online=coverage.edge_online,
+        vision_events_count=vision_events_count,
+    )
+
+    coverage_gap = max(int(round(staff_planned - staff_detected_avg)), 0)
+    conversion_proxy = float(checkout_proxy_events / footfall) if footfall > 0 else 0.0
+    ociosidade_proxy = max(float(staff_detected_avg - staff_planned), 0.0)
+
+    queue_excess_ratio = max(queue_avg_seconds - float(fila_sla_segundos), 0.0) / max(float(fila_sla_segundos), 1.0)
+    abandon_rate = SEGMENT_ABANDON_RATE.get(business_model, SEGMENT_ABANDON_RATE["default"])
+    gross_risk = footfall * ticket_medio_brl * abandon_rate * queue_excess_ratio
+    revenue_risk_estimated = float(round(gross_risk * (confidence_score / 100.0), 2))
+
+    metric_status = {
+        "footfall": "official" if vision_events_count > 0 else "estimated",
+        "queue_avg_seconds": "official" if queue_avg_seconds > 0 else "estimated",
+        "staff_detected_avg": "official" if staff_detected_avg > 0 else "estimated",
+        "critical_alerts": "official",
+        "coverage_gap": "proxy",
+        "conversion_proxy": "proxy",
+        "ociosidade_proxy": "proxy",
+        "revenue_risk_estimated": "estimated",
+    }
+
+    payload = {
+        "org_id": str(store.org_id),
+        "store_id": str(store.id),
+        "ts_bucket": ts_bucket,
+        "window_minutes": effective_minutes,
+        "metrics_json": {
+            "footfall": footfall,
+            "queue_avg_seconds": int(round(queue_avg_seconds)),
+            "staff_detected_avg": round(staff_detected_avg, 2),
+            "staff_planned": staff_planned,
+            "critical_alerts": critical_alerts,
+            "coverage_gap": coverage_gap,
+            "conversion_proxy": round(conversion_proxy, 4),
+            "ociosidade_proxy": round(ociosidade_proxy, 2),
+            "revenue_risk_estimated": revenue_risk_estimated,
+            "ticket_medio_brl": round(ticket_medio_brl, 2),
+        },
+        "metric_status_json": metric_status,
+        "source_flags_json": {
+            "business_model": business_model,
+            "has_pos_integration": bool(store_profile.has_pos_integration) if store_profile else False,
+            "has_salao": bool(store_profile.has_salao) if store_profile else False,
+            "vision_events_count": vision_events_count,
+            "cameras_online": coverage.cameras_online,
+            "cameras_total": coverage.cameras_total,
+            "edge_online": coverage.edge_online,
+            "method_version": "operational_window_v1_2026-03-14",
+        },
+        "confidence_score": confidence_score,
+        "confidence_breakdown_json": confidence_breakdown,
+    }
+    return payload
+
+
+def materialize_operational_window(store_id, *, window_minutes: Optional[int] = None):
+    store = Store.objects.filter(id=store_id).first()
+    if not store:
+        return None
+    payload = build_operational_window_payload(store, window_minutes=window_minutes)
+    now = timezone.now()
+    row, _created = OperationalWindowHourly.objects.update_or_create(
+        store_id=store.id,
+        ts_bucket=payload["ts_bucket"],
+        window_minutes=payload["window_minutes"],
+        defaults={
+            "org_id": store.org_id,
+            "metrics_json": payload["metrics_json"],
+            "metric_status_json": payload["metric_status_json"],
+            "source_flags_json": payload["source_flags_json"],
+            "confidence_score": payload["confidence_score"],
+            "confidence_breakdown_json": payload["confidence_breakdown_json"],
+            "updated_at": now,
+        },
+    )
+    return row
+
+
 def build_dashboard_context_payload(store: Store) -> dict:
     report = (
         CopilotReport72h.objects.filter(store_id=store.id)
@@ -244,6 +499,17 @@ def build_dashboard_context_payload(store: Store) -> dict:
     report_ready = bool(report and report.status == "ready")
     account_state = resolve_account_state(store)
     coverage = resolve_coverage_state(store.id)
+    store_profile = StoreProfile.objects.filter(store_id=store.id).first()
+    business_model = (store_profile.business_model if store_profile else "default") or "default"
+    segment_defaults = DEFAULT_SEGMENT_DEFAULTS.get(
+        business_model,
+        DEFAULT_SEGMENT_DEFAULTS["default"],
+    )
+    profile_defaults = store_profile.defaults_json if store_profile else {}
+    merged_defaults = {
+        **segment_defaults,
+        **(profile_defaults if isinstance(profile_defaults, dict) else {}),
+    }
     collected_hours = resolve_trial_collected_hours(store, account_state)
     eta_hours = max(TRIAL_TARGET_HOURS - collected_hours, 0)
     operational_state = resolve_operational_state(
@@ -273,6 +539,18 @@ def build_dashboard_context_payload(store: Store) -> dict:
             "last_heartbeat_at": coverage.last_heartbeat_at.isoformat()
             if coverage.last_heartbeat_at
             else None,
+        },
+        "store_profile": {
+            "business_model": business_model,
+            "has_salao": bool(store_profile.has_salao) if store_profile else False,
+            "has_pos_integration": bool(store_profile.has_pos_integration) if store_profile else False,
+            "timezone": (
+                store_profile.timezone_name
+                if store_profile and store_profile.timezone_name
+                else "America/Sao_Paulo"
+            ),
+            "opening_hours": store_profile.opening_hours_json if store_profile else {},
+            "defaults": merged_defaults,
         },
         "metrics_window": metrics,
         "generated_at": timezone.now().isoformat(),

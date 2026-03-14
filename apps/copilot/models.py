@@ -27,6 +27,15 @@ MESSAGE_ROLE = (
     ("user", "user"),
 )
 
+BUSINESS_MODEL = (
+    ("default", "default"),
+    ("cafe", "cafe"),
+    ("gelateria", "gelateria"),
+    ("moda", "moda"),
+    ("lavanderia_self_service", "lavanderia_self_service"),
+    ("outro", "outro"),
+)
+
 
 class CopilotDashboardContextSnapshot(models.Model):
     id = models.UUIDField(primary_key=True, default=uuid.uuid4, editable=False)
@@ -131,3 +140,45 @@ class CopilotMessage(models.Model):
             models.Index(fields=["conversation", "-created_at"], name="copilot_msg_conv_ct_idx"),
         ]
 
+
+class StoreProfile(models.Model):
+    id = models.UUIDField(primary_key=True, default=uuid.uuid4, editable=False)
+    org_id = models.UUIDField(db_index=True)
+    store_id = models.UUIDField(db_index=True, unique=True)
+    business_model = models.CharField(max_length=64, choices=BUSINESS_MODEL, default="default")
+    has_salao = models.BooleanField(default=False)
+    has_pos_integration = models.BooleanField(default=False)
+    opening_hours_json = models.JSONField(default=dict)
+    timezone_name = models.CharField(db_column="timezone", max_length=64, default="America/Sao_Paulo")
+    defaults_json = models.JSONField(default=dict)
+    created_at = models.DateTimeField(default=timezone.now)
+    updated_at = models.DateTimeField(default=timezone.now, db_index=True)
+
+    class Meta:
+        db_table = "store_profile"
+        indexes = [
+            models.Index(fields=["org_id", "business_model"], name="store_profile_org_model_idx"),
+        ]
+
+
+class OperationalWindowHourly(models.Model):
+    id = models.UUIDField(primary_key=True, default=uuid.uuid4, editable=False)
+    org_id = models.UUIDField(db_index=True)
+    store_id = models.UUIDField(db_index=True)
+    ts_bucket = models.DateTimeField(db_index=True)
+    window_minutes = models.PositiveSmallIntegerField(default=60)
+    metrics_json = models.JSONField(default=dict)
+    metric_status_json = models.JSONField(default=dict)
+    source_flags_json = models.JSONField(default=dict)
+    confidence_score = models.PositiveSmallIntegerField(default=0)
+    confidence_breakdown_json = models.JSONField(default=dict)
+    created_at = models.DateTimeField(default=timezone.now)
+    updated_at = models.DateTimeField(default=timezone.now, db_index=True)
+
+    class Meta:
+        db_table = "operational_window_hourly"
+        unique_together = (("store_id", "ts_bucket", "window_minutes"),)
+        indexes = [
+            models.Index(fields=["store_id", "-ts_bucket"], name="op_window_store_bucket_idx"),
+            models.Index(fields=["org_id", "-ts_bucket"], name="op_window_org_bucket_idx"),
+        ]
