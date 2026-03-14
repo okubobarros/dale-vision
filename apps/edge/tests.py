@@ -23,6 +23,7 @@ from apps.edge.vision_metrics import (
     insert_vision_atomic_event_if_new,
 )
 from apps.edge import vision_metrics
+from apps.edge.views import _compute_receipt_id
 
 
 class EdgeAuthHeaderPrecedenceTests(SimpleTestCase):
@@ -43,6 +44,48 @@ class EdgeAuthHeaderPrecedenceTests(SimpleTestCase):
             HTTP_AUTHORIZATION="Bearer edge-token-from-bearer",
         )
         self.assertEqual(_extract_store_token(req), "edge-token-from-bearer")
+
+
+class EdgeIdempotencyKeyTests(SimpleTestCase):
+    def test_compute_receipt_id_for_vision_events_uses_minute_bucket(self):
+        base = {
+            "event_name": "vision.queue_state.v1",
+            "data": {
+                "store_id": "store-1",
+                "camera_id": "cam-1",
+                "roi_entity_id": "queue-zone-1",
+                "metric_type": "queue",
+            },
+        }
+        payload_a = {
+            **base,
+            "data": {**base["data"], "ts": "2026-03-14T10:20:10Z"},
+        }
+        payload_b = {
+            **base,
+            "data": {**base["data"], "ts": "2026-03-14T10:20:55Z"},
+        }
+        self.assertEqual(_compute_receipt_id(payload_a), _compute_receipt_id(payload_b))
+
+    def test_compute_receipt_id_for_vision_events_changes_across_minutes(self):
+        base = {
+            "event_name": "vision.queue_state.v1",
+            "data": {
+                "store_id": "store-1",
+                "camera_id": "cam-1",
+                "roi_entity_id": "queue-zone-1",
+                "metric_type": "queue",
+            },
+        }
+        payload_a = {
+            **base,
+            "data": {**base["data"], "ts": "2026-03-14T10:20:59Z"},
+        }
+        payload_b = {
+            **base,
+            "data": {**base["data"], "ts": "2026-03-14T10:21:00Z"},
+        }
+        self.assertNotEqual(_compute_receipt_id(payload_a), _compute_receipt_id(payload_b))
 
 
 class EdgeEventsAuthTests(TestCase):

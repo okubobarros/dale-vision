@@ -1,7 +1,12 @@
 import { useMemo, useState } from "react"
 import { Link, useParams, useSearchParams } from "react-router-dom"
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query"
-import { storesService, type StoreOverviewCamera, type StoreOverview } from "../../services/stores"
+import {
+  storesService,
+  type StoreOverviewCamera,
+  type StoreOverview,
+  type StoreProductivityCoverageResponse,
+} from "../../services/stores"
 import { copilotService } from "../../services/copilot"
 
 const ONLINE_MAX_AGE_SEC = 120
@@ -48,6 +53,24 @@ const formatHourLabel = (value?: string | null) => {
   const date = new Date(value)
   if (Number.isNaN(date.getTime())) return value
   return date.toLocaleTimeString("pt-BR", { hour: "2-digit", minute: "2-digit" })
+}
+
+const trustBadgeClass = (status?: string | null) => {
+  const normalized = String(status || "estimated").toLowerCase()
+  if (normalized === "official") return "border-emerald-200 bg-emerald-50 text-emerald-700"
+  if (normalized === "proxy") return "border-amber-200 bg-amber-50 text-amber-700"
+  if (normalized === "manual") return "border-sky-200 bg-sky-50 text-sky-700"
+  if (normalized === "derived") return "border-violet-200 bg-violet-50 text-violet-700"
+  return "border-slate-200 bg-slate-100 text-slate-600"
+}
+
+const trustBadgeLabel = (status?: string | null) => {
+  const normalized = String(status || "estimated").toLowerCase()
+  if (normalized === "official") return "Oficial"
+  if (normalized === "proxy") return "Proxy"
+  if (normalized === "manual") return "Manual"
+  if (normalized === "derived") return "Derivado"
+  return "Estimado"
 }
 
 const estimatePlannedCoverage = (footfall: number) => {
@@ -132,6 +155,13 @@ const StoreDetails = () => {
     queryFn: () => storesService.getStoreOverview(String(storeId)),
     enabled: Boolean(storeId),
   })
+  const productivityCoverageQ = useQuery<StoreProductivityCoverageResponse>({
+    queryKey: ["store-productivity-coverage", storeId],
+    queryFn: () => storesService.getStoreProductivityCoverage(String(storeId), { period: "7d" }),
+    enabled: Boolean(storeId),
+    retry: false,
+    staleTime: 60000,
+  })
 
   const metrics = data?.metrics_summary?.totals
   const trafficSeries = useMemo(
@@ -163,6 +193,18 @@ const StoreDetails = () => {
   const edgeStatusClass = edgeOnline ? "bg-green-100 text-green-800" : "bg-red-100 text-red-800"
   const placeholder = storeImagePlaceholder(data?.store?.name || "Loja")
   const operationalSeries = useMemo(() => {
+    const coverageWindows = productivityCoverageQ.data?.windows ?? []
+    if (coverageWindows.length > 0) {
+      return coverageWindows.slice(-12).map((item) => ({
+        bucket: item.ts_bucket || "",
+        label: item.hour_label || formatHourLabel(item.ts_bucket),
+        footfall: Math.max(0, Math.round(item.footfall || 0)),
+        planned: Math.max(0, Math.round(item.staff_planned_ref || 0)),
+        detected: Math.max(0, Math.round(item.staff_detected_est || 0)),
+        gap: Math.max(0, Math.round(item.coverage_gap || 0)),
+        status: item.gap_status,
+      }))
+    }
     const conversionByBucket = new Map(
       conversionSeries.map((item) => [item.ts_bucket || "", item.staff_active_est])
     )
@@ -178,10 +220,11 @@ const StoreDetails = () => {
           planned,
           detected,
           gap: Math.max(0, planned - detected),
+          status: Math.max(0, planned - detected) >= 2 ? "critica" : Math.max(0, planned - detected) === 1 ? "atencao" : "adequada",
         }
       })
       .slice(-10)
-  }, [conversionSeries, trafficSeries])
+  }, [conversionSeries, trafficSeries, productivityCoverageQ.data?.windows])
   const operationalSummary = useMemo(() => {
     if (!operationalSeries.length) {
       return {
@@ -283,6 +326,7 @@ const StoreDetails = () => {
       setStaffSaveMessage("Staff semanal atualizado com sucesso.")
       setStaffWeeklyInput(staffWeeklyValue)
       await queryClient.invalidateQueries({ queryKey: ["store-overview", storeId] })
+      await queryClient.invalidateQueries({ queryKey: ["store-productivity-coverage", storeId] })
       await queryClient.invalidateQueries({ queryKey: ["reports-coverage"] })
     },
     onError: (mutationError) => {
@@ -307,6 +351,7 @@ const StoreDetails = () => {
     onSuccess: async () => {
       setStaffSaveMessage("Copiloto atualizou o staff semanal no banco com sucesso.")
       await queryClient.invalidateQueries({ queryKey: ["store-overview", storeId] })
+      await queryClient.invalidateQueries({ queryKey: ["store-productivity-coverage", storeId] })
       await queryClient.invalidateQueries({ queryKey: ["reports-coverage"] })
       openCopilot(
         `Confirme o impacto do novo staff semanal (${staffWeeklyValue}) na aderencia operacional da loja ${data?.store?.name}.`
@@ -566,8 +611,26 @@ const StoreDetails = () => {
               )}
             </div>
 
-            <div className="mt-3 rounded-lg border border-blue-100 bg-blue-50 px-3 py-2 text-xs text-blue-800">
-              Planejado e Detectado estao em modo de referencia operacional nesta fase. Integracao com escala oficial e ajuste por excecao serao habilitados na proxima etapa.
+            <div className="mt-3 rounded-lg border border-blue-100 bg-blue-50 px-3 py-2 text-xs text-blue-800 space-y-1">
+              <div>
+                Planejado e Detectado estao em modo de referencia operacional nesta fase. Integracao com escala oficial e ajuste por excecao serao habilitados na proxima etapa.
+              </div>
+              <div className="flex items-center gap-2 flex-wrap">
+                <span>Confiança:</span>
+                <span className="font-semibold">
+                  {productivityCoverageQ.data?.confidence_governance?.score ?? 0}/100
+                </span>
+                <span
+                  className={`inline-flex items-center rounded-full border px-2 py-0.5 text-[11px] font-semibold ${trustBadgeClass(
+                    productivityCoverageQ.data?.confidence_governance?.source_flags?.coverage_gap
+                  )}`}
+                >
+                  {trustBadgeLabel(productivityCoverageQ.data?.confidence_governance?.source_flags?.coverage_gap)}
+                </span>
+                <span className="text-blue-900/80">
+                  Método: {productivityCoverageQ.data?.method?.version || "coverage_proxy_v1_2026-03-13"}
+                </span>
+              </div>
             </div>
           </div>
 

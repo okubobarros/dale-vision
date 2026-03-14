@@ -319,6 +319,55 @@ export type StoreEvidenceResponse = {
   events: StoreEvidenceItem[]
 }
 
+export type StoreProductivityCoverageWindow = {
+  ts_bucket: string | null
+  hour_label: string | null
+  window_minutes?: number
+  footfall: number
+  staff_planned_ref: number
+  staff_detected_est: number
+  coverage_gap: number
+  gap_status: "critica" | "atencao" | "adequada"
+  source_flags: Record<string, string>
+  confidence_score?: number
+  method?: {
+    id: string
+    version: string
+  }
+}
+
+export type StoreProductivityCoverageResponse = {
+  period: string
+  from?: string | null
+  to?: string | null
+  store_id: string
+  stores_count: number
+  method: {
+    id: string
+    version: string
+    label: string
+    description: string
+  }
+  confidence_governance: {
+    status: "insuficiente" | "parcial" | "confiavel" | "alto"
+    score: number
+    source_flags: Record<string, string>
+    caveats: string[]
+  }
+  summary: {
+    gaps_total: number
+    critical_windows: number
+    warning_windows: number
+    adequate_windows: number
+    worst_window: StoreProductivityCoverageWindow | null
+    best_window: StoreProductivityCoverageWindow | null
+    peak_flow_window: StoreProductivityCoverageWindow | null
+    opportunity_window: StoreProductivityCoverageWindow | null
+    planned_source_mode?: "manual" | "proxy"
+  }
+  windows: StoreProductivityCoverageWindow[]
+}
+
 export type StoreVisionAuditItem = {
   receipt_id: string
   event_type: string
@@ -806,6 +855,14 @@ export const storesService = {
       params: { hour_bucket: hourBucket },
     })
     return response.data as StoreEvidenceResponse
+  },
+
+  async getStoreProductivityCoverage(
+    storeId: string,
+    params?: { period?: string; from?: string; to?: string }
+  ): Promise<StoreProductivityCoverageResponse> {
+    const response = await api.get(`/v1/stores/${storeId}/productivity/coverage/`, { params })
+    return response.data as StoreProductivityCoverageResponse
   },
 
   // Obter métricas no formato antigo (para compatibilidade se necessário)

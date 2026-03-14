@@ -61,13 +61,31 @@ def _extract_store_id(payload: dict):
     )
 
 def _compute_receipt_id(payload: dict) -> str:
-    base = {
-        "event_name": payload.get("event_name"),
-        "store_id": (payload.get("data") or {}).get("store_id") or payload.get("store_id"),
-        "camera_id": (payload.get("data") or {}).get("camera_id") or payload.get("camera_id"),
-        "ts": payload.get("ts") or (payload.get("data") or {}).get("ts"),
-        "event_version": payload.get("event_version", 1),
-    }
+    event_name = str(payload.get("event_name") or "")
+    data = payload.get("data") or {}
+    ts = payload.get("ts") or data.get("ts")
+    parsed_ts = _parse_edge_ts(ts) or timezone.now()
+
+    # Vision events use minute-bucket idempotency to absorb retries from edge.
+    if event_name.startswith("vision."):
+        ts_bucket = parsed_ts.replace(second=0, microsecond=0).isoformat()
+        base = {
+            "event_name": event_name,
+            "store_id": data.get("store_id") or payload.get("store_id"),
+            "camera_id": data.get("camera_id") or payload.get("camera_id"),
+            "roi_entity_id": data.get("roi_entity_id"),
+            "metric_type": data.get("metric_type"),
+            "ts_bucket": ts_bucket,
+            "event_version": payload.get("event_version", 1),
+        }
+    else:
+        base = {
+            "event_name": event_name,
+            "store_id": data.get("store_id") or payload.get("store_id"),
+            "camera_id": data.get("camera_id") or payload.get("camera_id"),
+            "ts": ts,
+            "event_version": payload.get("event_version", 1),
+        }
     raw = json.dumps(base, sort_keys=True, ensure_ascii=False).encode("utf-8")
     return hashlib.sha256(raw).hexdigest()
 
@@ -256,7 +274,11 @@ class EdgeEventsIngestView(APIView):
 
         event_name = validated.get("event_name")
         source = validated.get("source") or "edge"
-        receipt_id = validated.get("receipt_id") or ""
+        receipt_id = (
+            validated.get("idempotency_key")
+            or validated.get("receipt_id")
+            or ""
+        )
         data = validated.get("data") or {}
         store_id = (
             data.get("store_id")

@@ -8,6 +8,7 @@ class EdgeEventSerializer(serializers.Serializer):
     data = serializers.DictField(required=False)
     meta = serializers.DictField(required=False)
     receipt_id = serializers.CharField(required=False, allow_blank=True)
+    idempotency_key = serializers.CharField(required=False, allow_blank=True)
 
     event_version = serializers.IntegerField(required=False)
     event_id = serializers.CharField(required=False, allow_null=True)

@@ -497,7 +497,7 @@ def _estimate_staff_planned_ref(footfall: int) -> int:
     return 1
 
 
-def _build_productivity_coverage_payload(*, org_id: str, store_id: str | None, start, end):
+def _build_productivity_coverage_payload_legacy(*, org_id: str, store_id: str | None, start, end):
     store_ids = list(Store.objects.filter(org_id=org_id).values_list("id", flat=True))
     if store_id:
         store_ids = [sid for sid in store_ids if str(sid) == str(store_id)]
@@ -638,6 +638,145 @@ def _build_productivity_coverage_payload(*, org_id: str, store_id: str | None, s
         "windows": windows,
     }
     return payload
+
+
+def _build_productivity_coverage_payload_from_operational_windows(
+    *,
+    org_id: str,
+    store_id: str | None,
+    start,
+    end,
+):
+    store_ids = list(Store.objects.filter(org_id=org_id).values_list("id", flat=True))
+    if store_id:
+        store_ids = [sid for sid in store_ids if str(sid) == str(store_id)]
+
+    windows = []
+    if store_ids:
+        with connection.cursor() as cursor:
+            cursor.execute(
+                """
+                SELECT
+                    ts_bucket,
+                    window_minutes,
+                    COALESCE((metrics_json->>'footfall')::int, 0) AS footfall,
+                    COALESCE((metrics_json->>'staff_planned')::int, 0) AS staff_planned_ref,
+                    COALESCE((metrics_json->>'staff_detected_avg')::numeric, 0) AS staff_detected_est,
+                    COALESCE((metrics_json->>'coverage_gap')::int, 0) AS coverage_gap,
+                    metric_status_json,
+                    confidence_score,
+                    source_flags_json
+                FROM public.operational_window_hourly
+                WHERE store_id = ANY(%s)
+                  AND ts_bucket >= %s
+                  AND ts_bucket < %s
+                ORDER BY ts_bucket ASC
+                """,
+                [store_ids, start, end],
+            )
+            for row in cursor.fetchall():
+                ts_bucket, window_minutes, footfall, staff_planned_ref, staff_detected_est, coverage_gap, metric_status_json, confidence_score, source_flags_json = row
+                window_minutes = int(window_minutes or 5)
+                windows.append(
+                    {
+                        "ts_bucket": ts_bucket.isoformat() if ts_bucket else None,
+                        "hour_label": timezone.localtime(ts_bucket).strftime("%H:%M") if ts_bucket else None,
+                        "window_minutes": window_minutes,
+                        "footfall": int(footfall or 0),
+                        "staff_planned_ref": int(staff_planned_ref or 0),
+                        "staff_detected_est": float(staff_detected_est or 0),
+                        "coverage_gap": int(coverage_gap or 0),
+                        "gap_status": "critica" if int(coverage_gap or 0) >= 2 else "atencao" if int(coverage_gap or 0) == 1 else "adequada",
+                        "source_flags": metric_status_json if isinstance(metric_status_json, dict) else {},
+                        "confidence_score": int(confidence_score or 0),
+                        "method": {
+                            "id": "operational_window",
+                            "version": (source_flags_json or {}).get("method_version", "operational_window_v1_2026-03-14")
+                            if isinstance(source_flags_json, dict)
+                            else "operational_window_v1_2026-03-14",
+                        },
+                    }
+                )
+
+    critical_windows = [window for window in windows if int(window["coverage_gap"]) >= 2]
+    warning_windows = [window for window in windows if int(window["coverage_gap"]) == 1]
+    best_windows = [window for window in windows if int(window["coverage_gap"]) == 0]
+
+    worst_window = max(windows, key=lambda item: int(item["coverage_gap"])) if windows else None
+    best_window = max(best_windows, key=lambda item: int(item["footfall"])) if best_windows else None
+    peak_flow_window = max(windows, key=lambda item: int(item["footfall"])) if windows else None
+    opportunity_window = min(windows, key=lambda item: int(item["coverage_gap"])) if windows else None
+
+    avg_confidence = 0
+    if windows:
+        avg_confidence = int(round(sum(int(item.get("confidence_score") or 0) for item in windows) / len(windows)))
+    confidence_status = "parcial" if windows else "insuficiente"
+    if avg_confidence >= 85:
+        confidence_status = "alto"
+    elif avg_confidence < 60 and windows:
+        confidence_status = "parcial"
+
+    payload = {
+        "period": None,
+        "from": start.isoformat(),
+        "to": end.isoformat(),
+        "store_id": store_id,
+        "stores_count": len(store_ids),
+        "method": {
+            "id": "productivity_coverage",
+            "version": "coverage_operational_window_v1_2026-03-14",
+            "label": "Cobertura operacional por janela de 5 minutos",
+            "description": "Compara fluxo e presença detectada contra referência de staff planejado por janela operacional.",
+        },
+        "confidence_governance": {
+            "status": confidence_status,
+            "score": avg_confidence,
+            "source_flags": {
+                "footfall": "official",
+                "staff_planned_ref": "proxy",
+                "staff_detected_est": "official",
+                "coverage_gap": "proxy",
+            },
+            "caveats": [
+                "Escala planejada ainda sem integração ERP/WFM; referência pode ser proxy da loja.",
+                "Presença real é agregada por visão computacional sem identificação nominal.",
+                "Indicador orientado à decisão operacional executiva.",
+            ],
+        },
+        "summary": {
+            "gaps_total": int(sum(int(window["coverage_gap"]) for window in windows)),
+            "critical_windows": len(critical_windows),
+            "warning_windows": len(warning_windows),
+            "adequate_windows": len(best_windows),
+            "worst_window": worst_window,
+            "best_window": best_window,
+            "peak_flow_window": peak_flow_window,
+            "opportunity_window": opportunity_window,
+            "planned_source_mode": "proxy",
+        },
+        "windows": windows,
+    }
+    return payload
+
+
+def _build_productivity_coverage_payload(*, org_id: str, store_id: str | None, start, end):
+    try:
+        payload = _build_productivity_coverage_payload_from_operational_windows(
+            org_id=org_id,
+            store_id=store_id,
+            start=start,
+            end=end,
+        )
+        if payload.get("windows"):
+            return payload
+    except Exception:
+        pass
+    return _build_productivity_coverage_payload_legacy(
+        org_id=org_id,
+        store_id=store_id,
+        start=start,
+        end=end,
+    )
 
 
 class ReportSummaryView(APIView):

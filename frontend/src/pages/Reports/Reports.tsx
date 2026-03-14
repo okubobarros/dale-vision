@@ -89,6 +89,23 @@ const formatWindowLabel = (window: { startHour: number; endHour: number }) =>
 
 const clamp = (value: number, min: number, max: number) => Math.min(max, Math.max(min, value))
 
+const TrustBadge = ({ status }: { status?: string | null }) => {
+  const normalized = String(status || "estimated").toLowerCase()
+  const map: Record<string, { label: string; className: string }> = {
+    official: { label: "Oficial", className: "border-emerald-200 bg-emerald-50 text-emerald-700" },
+    proxy: { label: "Proxy", className: "border-amber-200 bg-amber-50 text-amber-700" },
+    estimated: { label: "Estimado", className: "border-slate-200 bg-slate-100 text-slate-600" },
+    manual: { label: "Manual", className: "border-sky-200 bg-sky-50 text-sky-700" },
+    derived: { label: "Derivado", className: "border-violet-200 bg-violet-50 text-violet-700" },
+  }
+  const item = map[normalized] || map.estimated
+  return (
+    <span className={`inline-flex items-center rounded-full border px-2 py-0.5 text-[11px] font-semibold ${item.className}`}>
+      {item.label}
+    </span>
+  )
+}
+
 const Reports = () => {
   const [selectedStore, setSelectedStore] = useState<string>("")
   const [period, setPeriod] = useState<string>("30d")
@@ -510,21 +527,31 @@ const Reports = () => {
             {coverageData?.method?.label} · v{coverageData?.method?.version} · confiança{" "}
             {coverageData?.confidence_governance?.score ?? 0}/100
           </p>
+          <p className="text-[11px] text-slate-500 mt-1">
+            Status da governança: {coverageData?.confidence_governance?.status || "insuficiente"}
+          </p>
           <div className="mt-3 space-y-2">
             <div className="flex items-center justify-between text-sm">
-              <span className="text-slate-600">Fila média</span>
-              <span className="font-semibold text-slate-900">
-                {formatSeconds(summaryData?.kpis?.avg_queue_seconds)}
-              </span>
+              <div className="flex items-center gap-2">
+                <span className="text-slate-600">Fila média</span>
+                <TrustBadge status={summaryData?.confidence_governance?.source_flags?.avg_queue_seconds} />
+              </div>
+              <span className="font-semibold text-slate-900">{formatSeconds(summaryData?.kpis?.avg_queue_seconds)}</span>
             </div>
             <div className="flex items-center justify-between text-sm">
-              <span className="text-slate-600">Lacunas críticas</span>
+              <div className="flex items-center gap-2">
+                <span className="text-slate-600">Lacunas críticas</span>
+                <TrustBadge status={coverageData?.confidence_governance?.source_flags?.coverage_gap} />
+              </div>
               <span className="font-semibold text-rose-600">
                 {coverageData?.summary?.critical_windows ?? 0}
               </span>
             </div>
             <div className="flex items-center justify-between text-sm">
-              <span className="text-slate-600">Melhor janela</span>
+              <div className="flex items-center gap-2">
+                <span className="text-slate-600">Melhor janela</span>
+                <TrustBadge status={coverageData?.confidence_governance?.source_flags?.staff_detected_est} />
+              </div>
               <span className="font-semibold text-emerald-600">
                 {coverageData?.summary?.best_window?.hour_label || "—"}
               </span>

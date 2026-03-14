@@ -3,6 +3,7 @@ from django.core.management.base import BaseCommand
 from apps.core.models import Store
 from apps.copilot.services import (
     materialize_dashboard_context,
+    materialize_operational_window,
     materialize_operational_insights,
     materialize_report_72h,
 )
@@ -15,6 +16,8 @@ class Command(BaseCommand):
         parser.add_argument("--store-id", type=str, default=None, help="UUID da loja para processamento único.")
         parser.add_argument("--max-stores", type=int, default=100, help="Limite de lojas quando processamento em lote.")
         parser.add_argument("--window-hours", type=int, default=24, help="Janela em horas para geração de insights.")
+        parser.add_argument("--window-minutes", type=int, default=5, help="Janela operacional (5 ou 10 min).")
+        parser.add_argument("--skip-operational-window", action="store_true", help="Não materializar operational_window.")
         parser.add_argument("--skip-context", action="store_true", help="Não gerar snapshot de contexto.")
         parser.add_argument("--skip-insights", action="store_true", help="Não gerar insights.")
         parser.add_argument("--skip-report", action="store_true", help="Não gerar/materializar relatório 72h.")
@@ -23,6 +26,8 @@ class Command(BaseCommand):
         store_id = options["store_id"]
         max_stores = max(int(options["max_stores"] or 1), 1)
         window_hours = max(int(options["window_hours"] or 24), 1)
+        window_minutes = int(options["window_minutes"] or 5)
+        skip_operational_window = bool(options["skip_operational_window"])
         skip_context = bool(options["skip_context"])
         skip_insights = bool(options["skip_insights"])
         skip_report = bool(options["skip_report"])
@@ -37,8 +42,20 @@ class Command(BaseCommand):
         reports_ready = 0
         reports_pending = 0
         reports_failed = 0
+        op_windows = 0
         for store in stores:
             processed += 1
+            if not skip_operational_window:
+                op_window = materialize_operational_window(store.id, window_minutes=window_minutes)
+                if op_window:
+                    op_windows += 1
+                    self.stdout.write(
+                        self.style.SUCCESS(
+                            f"[op_window] {store.id} bucket={op_window.ts_bucket.isoformat()} window={op_window.window_minutes}m confidence={op_window.confidence_score}"
+                        )
+                    )
+                else:
+                    self.stdout.write(self.style.WARNING(f"[op_window] {store.id} skip"))
             if not skip_context:
                 snapshot = materialize_dashboard_context(store.id)
                 if snapshot:
@@ -64,6 +81,7 @@ class Command(BaseCommand):
             self.style.SUCCESS(
                 "copilot_tick concluído: "
                 f"stores={processed} "
+                f"op_windows={op_windows} "
                 f"insights_criados={insights_count} "
                 f"reports_ready={reports_ready} "
                 f"reports_pending={reports_pending} "

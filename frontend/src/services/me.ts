@@ -31,7 +31,6 @@ const isTimeoutError = (error: unknown) => {
     String(error.message || "").toLowerCase().includes("timeout")
   )
 }
-let coverageEndpointUnavailable = false
 
 export type ReportSummary = {
   period: string
@@ -92,15 +91,17 @@ export type ReportRangeParams = {
 export type ProductivityCoverageWindow = {
   ts_bucket: string | null
   hour_label: string | null
+  window_minutes?: number
   footfall: number
   staff_planned_ref: number
   staff_detected_est: number
   coverage_gap: number
   gap_status: "critica" | "atencao" | "adequada"
-  source_flags: {
-    footfall: "official" | "estimated" | "proxy" | "manual"
-    staff_planned_ref: "official" | "estimated" | "proxy" | "manual"
-    staff_detected_est: "official" | "estimated" | "proxy" | "manual"
+  source_flags: Record<string, string>
+  confidence_score?: number
+  method?: {
+    id: string
+    version: string
   }
 }
 
@@ -117,7 +118,7 @@ export type ProductivityCoverage = {
     description: string
   }
   confidence_governance: {
-    status: "insuficiente" | "parcial" | "confiavel"
+    status: "insuficiente" | "parcial" | "confiavel" | "alto"
     score: number
     source_flags: Record<string, string>
     caveats: string[]
@@ -251,16 +252,11 @@ export const meService = {
     if (range?.from) params.from = range.from
     if (range?.to) params.to = range.to
     if (range?.period) params.period = range.period
-    if (coverageEndpointUnavailable) {
-      const summary = await this.getReportSummary(storeId, range).catch(() => null)
-      return buildCoverageFallback(summary, storeId, range?.period ?? null)
-    }
     try {
       const response = await api.get("/v1/productivity/coverage/", { params })
       return response.data as ProductivityCoverage
     } catch (error) {
       if (axios.isAxiosError(error) && error.response?.status === 404) {
-        coverageEndpointUnavailable = true
         const summary = await this.getReportSummary(storeId, range).catch(() => null)
         return buildCoverageFallback(summary, storeId, range?.period ?? null)
       }

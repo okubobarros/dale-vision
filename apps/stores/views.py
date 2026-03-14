@@ -2611,6 +2611,127 @@ class StoreViewSet(viewsets.ModelViewSet):
             }
         )
 
+    @action(detail=True, methods=["get"], url_path="productivity/coverage")
+    def productivity_coverage(self, request, pk=None):
+        store = self.get_object()
+        require_store_role(request.user, str(store.id), ALLOWED_READ_ROLES)
+        self._require_subscription_for_store(store, "productivity_coverage")
+
+        tz = _get_org_timezone(store)
+        period = (request.query_params.get("period") or "7d").lower()
+        start = _parse_dt(request.query_params.get("from"), tz)
+        end = _parse_dt(request.query_params.get("to"), tz)
+        if not end:
+            end = timezone.now()
+        if not start:
+            days = 7
+            if period == "30d":
+                days = 30
+            elif period == "90d":
+                days = 90
+            start = end - timedelta(days=days)
+
+        windows = []
+        with connection.cursor() as cursor:
+            cursor.execute(
+                """
+                SELECT
+                    ts_bucket,
+                    window_minutes,
+                    metrics_json,
+                    metric_status_json,
+                    confidence_score,
+                    source_flags_json
+                FROM public.operational_window_hourly
+                WHERE store_id = %s
+                  AND ts_bucket >= %s
+                  AND ts_bucket < %s
+                ORDER BY ts_bucket ASC
+                """,
+                [str(store.id), start, end],
+            )
+            for ts_bucket, window_minutes, metrics_json, metric_status_json, confidence_score, source_flags_json in cursor.fetchall():
+                metrics_json = metrics_json if isinstance(metrics_json, dict) else {}
+                metric_status_json = metric_status_json if isinstance(metric_status_json, dict) else {}
+                source_flags_json = source_flags_json if isinstance(source_flags_json, dict) else {}
+                gap = int(metrics_json.get("coverage_gap") or 0)
+                windows.append(
+                    {
+                        "ts_bucket": ts_bucket.isoformat() if ts_bucket else None,
+                        "hour_label": timezone.localtime(ts_bucket, tz).strftime("%H:%M") if ts_bucket else None,
+                        "window_minutes": int(window_minutes or 5),
+                        "footfall": int(metrics_json.get("footfall") or 0),
+                        "staff_planned_ref": int(metrics_json.get("staff_planned") or 0),
+                        "staff_detected_est": float(metrics_json.get("staff_detected_avg") or 0),
+                        "coverage_gap": gap,
+                        "gap_status": "critica" if gap >= 2 else "atencao" if gap == 1 else "adequada",
+                        "source_flags": metric_status_json,
+                        "confidence_score": int(confidence_score or 0),
+                        "method": {
+                            "id": "operational_window",
+                            "version": source_flags_json.get("method_version") or "operational_window_v1_2026-03-14",
+                        },
+                    }
+                )
+
+        critical_windows = [window for window in windows if int(window["coverage_gap"]) >= 2]
+        warning_windows = [window for window in windows if int(window["coverage_gap"]) == 1]
+        best_windows = [window for window in windows if int(window["coverage_gap"]) == 0]
+        worst_window = max(windows, key=lambda item: int(item["coverage_gap"])) if windows else None
+        best_window = max(best_windows, key=lambda item: int(item["footfall"])) if best_windows else None
+        peak_flow_window = max(windows, key=lambda item: int(item["footfall"])) if windows else None
+        opportunity_window = min(windows, key=lambda item: int(item["coverage_gap"])) if windows else None
+        confidence_score = (
+            int(round(sum(int(window.get("confidence_score") or 0) for window in windows) / len(windows)))
+            if windows
+            else 0
+        )
+        confidence_status = "insuficiente"
+        if windows:
+            confidence_status = "alto" if confidence_score >= 85 else "parcial"
+
+        payload = {
+            "period": period,
+            "from": start.isoformat() if start else None,
+            "to": end.isoformat() if end else None,
+            "store_id": str(store.id),
+            "stores_count": 1,
+            "method": {
+                "id": "productivity_coverage",
+                "version": "coverage_operational_window_v1_2026-03-14",
+                "label": "Cobertura operacional por janela de 5 minutos",
+                "description": "Compara fluxo e presença detectada contra referência de staff planejado por janela operacional.",
+            },
+            "confidence_governance": {
+                "status": confidence_status,
+                "score": confidence_score,
+                "source_flags": {
+                    "footfall": "official",
+                    "staff_planned_ref": "proxy",
+                    "staff_detected_est": "official",
+                    "coverage_gap": "proxy",
+                },
+                "caveats": [
+                    "Escala planejada ainda sem integração ERP/WFM; referência pode ser proxy da loja.",
+                    "Presença real é agregada por visão computacional sem identificação nominal.",
+                    "Indicador orientado à decisão operacional executiva.",
+                ],
+            },
+            "summary": {
+                "gaps_total": int(sum(int(window["coverage_gap"]) for window in windows)),
+                "critical_windows": len(critical_windows),
+                "warning_windows": len(warning_windows),
+                "adequate_windows": len(best_windows),
+                "worst_window": worst_window,
+                "best_window": best_window,
+                "peak_flow_window": peak_flow_window,
+                "opportunity_window": opportunity_window,
+                "planned_source_mode": "proxy",
+            },
+            "windows": windows,
+        }
+        return Response(payload)
+
     @action(detail=True, methods=["get"], url_path="vision/audit")
     def vision_audit(self, request, pk=None):
         store = self.get_object()

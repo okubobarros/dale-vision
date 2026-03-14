@@ -13,6 +13,7 @@ urlpatterns = [
     path("report/summary/", ReportSummaryView.as_view(), name="report-summary"),
     path("report/impact/", ReportImpactView.as_view(), name="report-impact"),
     path("report/export/", ReportExportView.as_view(), name="report-export"),
+    path("productivity/coverage", ProductivityCoverageView.as_view(), name="productivity-coverage-noslash"),
     path("productivity/coverage/", ProductivityCoverageView.as_view(), name="productivity-coverage"),
     path("system/storage-status/", StorageStatusView.as_view({"get": "list"}), name="storage-status"),
 ]

@@ -14,6 +14,7 @@ from apps.stores.services.user_uuid import ensure_user_uuid
 
 from .models import (
     CopilotConversation,
+    StoreProfile,
     CopilotMessage,
     CopilotOperationalInsight,
     CopilotReport72h,
@@ -23,6 +24,7 @@ from .serializers import (
     CopilotMessageSerializer,
     CopilotOperationalInsightSerializer,
     CopilotReport72hSerializer,
+    StoreProfileSerializer,
     CopilotStaffPlanActionSerializer,
 )
 from .services import (
@@ -317,3 +319,64 @@ class CopilotStaffPlanActionView(APIView):
             },
             status=status.HTTP_200_OK,
         )
+
+
+class CopilotStoreProfileView(APIView):
+    permission_classes = [IsAuthenticated]
+
+    def get(self, request, store_id):
+        store, err = _get_store_or_404(store_id)
+        if err:
+            return err
+        require_store_role(request.user, str(store_id), ALLOWED_READ_ROLES)
+        row = StoreProfile.objects.filter(store_id=store_id).first()
+        if not row:
+            payload = {
+                "id": None,
+                "org_id": str(store.org_id),
+                "store_id": str(store_id),
+                "business_model": "default",
+                "has_salao": False,
+                "has_pos_integration": False,
+                "opening_hours": {},
+                "timezone": "America/Sao_Paulo",
+                "defaults": {},
+                "created_at": None,
+                "updated_at": None,
+            }
+            return Response(payload, status=status.HTTP_200_OK)
+        return Response(StoreProfileSerializer(row).data, status=status.HTTP_200_OK)
+
+    def put(self, request, store_id):
+        return self._upsert(request, store_id)
+
+    def patch(self, request, store_id):
+        return self._upsert(request, store_id, partial=True)
+
+    def _upsert(self, request, store_id, partial=False):
+        store, err = _get_store_or_404(store_id)
+        if err:
+            return err
+        require_store_role(request.user, str(store_id), ALLOWED_MANAGE_ROLES)
+        now = timezone.now()
+        row = StoreProfile.objects.filter(store_id=store_id).first()
+        if not row:
+            row = StoreProfile(
+                org_id=store.org_id,
+                store_id=store.id,
+                created_at=now,
+                updated_at=now,
+            )
+
+        serializer = StoreProfileSerializer(row, data=request.data, partial=partial)
+        serializer.is_valid(raise_exception=True)
+        data = serializer.validated_data
+        row.business_model = data.get("business_model", row.business_model)
+        row.has_salao = data.get("has_salao", row.has_salao)
+        row.has_pos_integration = data.get("has_pos_integration", row.has_pos_integration)
+        row.opening_hours_json = data.get("opening_hours_json", row.opening_hours_json)
+        row.timezone_name = data.get("timezone_name", row.timezone_name)
+        row.defaults_json = data.get("defaults_json", row.defaults_json)
+        row.updated_at = now
+        row.save()
+        return Response(StoreProfileSerializer(row).data, status=status.HTTP_200_OK)
