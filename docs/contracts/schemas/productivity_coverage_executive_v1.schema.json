@@ -1,0 +1,103 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://dalevision.com/contracts/productivity_coverage_executive_v1.schema.json",
+  "title": "ProductivityCoverageExecutiveV1",
+  "type": "object",
+  "required": [
+    "period",
+    "stores_count",
+    "method",
+    "confidence_governance",
+    "summary",
+    "windows"
+  ],
+  "properties": {
+    "period": { "type": "string" },
+    "from": { "type": ["string", "null"] },
+    "to": { "type": ["string", "null"] },
+    "store_id": { "type": ["string", "null"] },
+    "stores_count": { "type": "integer", "minimum": 0 },
+    "method": {
+      "type": "object",
+      "required": ["id", "version", "label", "description"],
+      "properties": {
+        "id": { "type": "string" },
+        "version": { "type": "string" },
+        "label": { "type": "string" },
+        "description": { "type": "string" }
+      }
+    },
+    "confidence_governance": {
+      "type": "object",
+      "required": ["status", "score", "source_flags", "caveats"],
+      "properties": {
+        "status": {
+          "type": "string",
+          "enum": ["insuficiente", "parcial", "confiavel", "alto"]
+        },
+        "score": { "type": "integer", "minimum": 0, "maximum": 100 },
+        "source_flags": { "type": "object", "additionalProperties": { "type": "string" } },
+        "caveats": { "type": "array", "items": { "type": "string" } }
+      }
+    },
+    "summary": {
+      "type": "object",
+      "required": [
+        "gaps_total",
+        "critical_windows",
+        "warning_windows",
+        "adequate_windows",
+        "worst_window",
+        "best_window",
+        "peak_flow_window",
+        "opportunity_window"
+      ],
+      "properties": {
+        "gaps_total": { "type": "integer", "minimum": 0 },
+        "critical_windows": { "type": "integer", "minimum": 0 },
+        "warning_windows": { "type": "integer", "minimum": 0 },
+        "adequate_windows": { "type": "integer", "minimum": 0 },
+        "worst_window": { "type": ["object", "null"] },
+        "best_window": { "type": ["object", "null"] },
+        "peak_flow_window": { "type": ["object", "null"] },
+        "opportunity_window": { "type": ["object", "null"] },
+        "planned_source_mode": { "type": ["string", "null"] }
+      }
+    },
+    "windows": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "required": [
+          "ts_bucket",
+          "hour_label",
+          "footfall",
+          "staff_planned_ref",
+          "staff_detected_est",
+          "coverage_gap",
+          "gap_status",
+          "source_flags"
+        ],
+        "properties": {
+          "ts_bucket": { "type": ["string", "null"] },
+          "hour_label": { "type": ["string", "null"] },
+          "window_minutes": { "type": ["integer", "null"] },
+          "footfall": { "type": "integer", "minimum": 0 },
+          "staff_planned_ref": { "type": "integer", "minimum": 0 },
+          "staff_detected_est": { "type": "number", "minimum": 0 },
+          "coverage_gap": { "type": "integer", "minimum": 0 },
+          "gap_status": { "type": "string", "enum": ["critica", "atencao", "adequada"] },
+          "source_flags": { "type": "object", "additionalProperties": { "type": "string" } },
+          "confidence_score": { "type": ["integer", "null"], "minimum": 0, "maximum": 100 },
+          "method": {
+            "type": ["object", "null"],
+            "properties": {
+              "id": { "type": "string" },
+              "version": { "type": "string" }
+            }
+          }
+        }
+      }
+    }
+  }
+}
