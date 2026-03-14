@@ -4,6 +4,7 @@ from typing import Optional
 
 from django.conf import settings
 from django.db import connection, transaction
+from django.db.utils import DataError
 from django.utils import timezone
 
 from apps.core.models import Camera, Store, Subscription
@@ -112,7 +113,12 @@ def resolve_last_heartbeat(store_id) -> Optional[timezone.datetime]:
 def resolve_coverage_state(store_id) -> CoverageState:
     cameras_qs = Camera.objects.filter(store_id=store_id, active=True)
     cameras_total = cameras_qs.count()
-    cameras_online = cameras_qs.filter(status__in=["online", "degraded"]).count()
+    try:
+        cameras_online = cameras_qs.filter(status__in=["online", "degraded"]).count()
+    except DataError:
+        # Backward compatibility for deployments where camera_status enum
+        # does not include "degraded".
+        cameras_online = cameras_qs.filter(status="online").count()
     cameras_offline = max(cameras_total - cameras_online, 0)
     last_heartbeat_at = resolve_last_heartbeat(store_id)
 
