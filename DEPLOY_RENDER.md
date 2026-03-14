@@ -26,3 +26,21 @@ Variaveis recomendadas:
 - CSRF_TRUSTED_ORIGINS=https://app.dalevision.com,https://api.dalevision.com,https://dalevision.com,https://www.dalevision.com
 - DATABASE_URL=...
 - N8N_EVENTS_WEBHOOK
+
+## Cron Job (Sprint 1 - aderência operacional)
+Para materializar `operational_window_hourly` continuamente:
+
+1. Criar um Render Cron Job apontando para o mesmo repo/branch do backend.
+2. Command:
+`bash bin/render_job_operational_window.sh`
+3. Schedule:
+`*/5 * * * *`
+4. Variáveis opcionais:
+- `COPILOT_OPERATIONAL_WINDOW_MINUTES=5`
+- `COPILOT_OPERATIONAL_WINDOW_MAX_STORES=500`
+
+Smoke manual:
+`python manage.py copilot_operational_window_tick --max-stores 5 --window-minutes 5`
+
+Sem Render Jobs (plano Free):
+- usar GitHub Actions agendado (`.github/workflows/copilot_operational_window_tick.yml`)
