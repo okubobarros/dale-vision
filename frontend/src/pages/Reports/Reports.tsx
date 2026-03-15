@@ -1,5 +1,6 @@
 import { useMemo, useState } from "react"
 import { useQuery } from "@tanstack/react-query"
+import toast from "react-hot-toast"
 import {
   meService,
   type ProductivityCoverage,
@@ -307,6 +308,24 @@ const Reports = () => {
     })
   }, [networkQ.data?.stores, revenueAtRiskToday])
 
+  const handleDelegateStoreIntervention = (item: {
+    id: string
+    name: string
+    problem: string
+    riskValue: number
+  }) => {
+    window.dispatchEvent(
+      new CustomEvent("dv-open-copilot", {
+        detail: {
+          prompt: `Delegar intervenção operacional para a loja ${item.name}. Problema: ${item.problem}. Impacto estimado: ${formatCurrencyBRL(
+            item.riskValue
+          )} em risco hoje. Gere mensagem objetiva para gerente com ação imediata e checklist de execução.`,
+        },
+      })
+    )
+    toast.success(`Delegação preparada no Copiloto para ${item.name}.`)
+  }
+
   const handleExport = async (format: "csv" | "pdf") => {
     if (exporting) return
     setExporting(format)
@@ -498,6 +517,7 @@ const Reports = () => {
                   </p>
                   <button
                     type="button"
+                    onClick={() => handleDelegateStoreIntervention(item)}
                     className="mt-2 rounded-lg border border-slate-300 bg-white px-3 py-1.5 text-xs font-semibold text-slate-700 hover:bg-slate-100"
                   >
                     Delegar ao Gerente
