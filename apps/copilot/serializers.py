@@ -145,6 +145,17 @@ class CopilotActionOutcomeCreateSerializer(serializers.Serializer):
     completed_at = serializers.DateTimeField(required=False, allow_null=True)
 
 
+class CopilotActionOutcomeUpdateSerializer(serializers.Serializer):
+    status = serializers.ChoiceField(
+        choices=["dispatched", "completed", "failed", "canceled"],
+        required=False,
+    )
+    outcome = serializers.JSONField(required=False)
+    impact_realized_brl = serializers.FloatField(required=False, min_value=0)
+    confidence_score = serializers.IntegerField(required=False, min_value=0, max_value=100)
+    completed_at = serializers.DateTimeField(required=False, allow_null=True)
+
+
 class ValueLedgerDailySerializer(serializers.ModelSerializer):
     class Meta:
         model = ValueLedgerDaily

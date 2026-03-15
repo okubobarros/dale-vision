@@ -1,5 +1,6 @@
 import api from "./api"
 import type {
+  CopilotActionOutcome,
   CopilotActionOutcomeListResponse,
   CopilotConversationMessage,
   CopilotDashboardContext,
@@ -86,6 +87,21 @@ export const copilotService = {
   ) {
     const response = await api.post(`/v1/copilot/stores/${storeId}/actions/outcomes/`, payload)
     return response.data
+  },
+
+  async updateActionOutcome(
+    storeId: string,
+    outcomeId: string,
+    payload: {
+      status?: "dispatched" | "completed" | "failed" | "canceled"
+      outcome?: Record<string, unknown>
+      impact_realized_brl?: number
+      confidence_score?: number
+      completed_at?: string | null
+    }
+  ): Promise<CopilotActionOutcome> {
+    const response = await api.patch(`/v1/copilot/stores/${storeId}/actions/outcomes/${outcomeId}/`, payload)
+    return response.data as CopilotActionOutcome
   },
 
   async getValueLedgerDaily(

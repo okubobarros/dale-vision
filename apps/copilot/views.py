@@ -25,6 +25,7 @@ from .models import (
 )
 from .serializers import (
     CopilotActionOutcomeCreateSerializer,
+    CopilotActionOutcomeUpdateSerializer,
     CopilotActionOutcomeSerializer,
     CopilotChatCreateSerializer,
     CopilotMessageSerializer,
@@ -461,6 +462,57 @@ class CopilotActionOutcomeView(APIView):
         )
         _sync_value_ledger_from_outcome(outcome)
         return Response(CopilotActionOutcomeSerializer(outcome).data, status=status.HTTP_201_CREATED)
+
+
+class CopilotActionOutcomeDetailView(APIView):
+    permission_classes = [IsAuthenticated]
+
+    def patch(self, request, store_id, outcome_id):
+        store, err = _get_store_or_404(store_id)
+        if err:
+            return err
+        require_store_role(request.user, str(store_id), ALLOWED_MANAGE_ROLES)
+
+        outcome = ActionOutcome.objects.filter(id=outcome_id, store_id=store_id).first()
+        if not outcome:
+            return Response(
+                {"code": "ACTION_OUTCOME_NOT_FOUND", "message": "Action outcome não encontrado."},
+                status=status.HTTP_404_NOT_FOUND,
+            )
+
+        serializer = CopilotActionOutcomeUpdateSerializer(data=request.data or {}, partial=True)
+        serializer.is_valid(raise_exception=True)
+        data = serializer.validated_data
+        now = timezone.now()
+
+        if "status" in data:
+            outcome.status = data["status"]
+        if "outcome" in data:
+            outcome.outcome_json = data["outcome"] or {}
+        if "impact_realized_brl" in data:
+            outcome.impact_realized_brl = float(data["impact_realized_brl"] or 0)
+        if "confidence_score" in data:
+            outcome.confidence_score = int(data["confidence_score"] or 0)
+
+        explicit_completed_at = data.get("completed_at")
+        if explicit_completed_at is not None:
+            outcome.completed_at = explicit_completed_at
+        elif outcome.status == "completed" and not outcome.completed_at:
+            outcome.completed_at = now
+
+        outcome.updated_at = now
+        outcome.save(
+            update_fields=[
+                "status",
+                "outcome_json",
+                "impact_realized_brl",
+                "confidence_score",
+                "completed_at",
+                "updated_at",
+            ]
+        )
+        _sync_value_ledger_from_outcome(outcome)
+        return Response(CopilotActionOutcomeSerializer(outcome).data, status=status.HTTP_200_OK)
 
 
 class CopilotValueLedgerDailyView(APIView):

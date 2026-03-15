@@ -123,6 +123,7 @@ const Reports = () => {
   const [exporting, setExporting] = useState<"csv" | "pdf" | null>(null)
   const [delegatingStoreId, setDelegatingStoreId] = useState<string | null>(null)
   const [approvingIntervention, setApprovingIntervention] = useState(false)
+  const [completingOutcomeId, setCompletingOutcomeId] = useState<string | null>(null)
 
   const rangeParams = useMemo(() => {
     if (period === "custom") {
@@ -184,6 +185,13 @@ const Reports = () => {
     staleTime: 60000,
     retry: false,
   })
+  const outcomesQ = useQuery({
+    queryKey: ["reports-action-outcomes", selectedStore, period],
+    queryFn: () => copilotService.listActionOutcomes(selectedStore, { limit: 12 }),
+    enabled: Boolean(selectedStore),
+    staleTime: 60000,
+    retry: false,
+  })
 
   const stores = storesQ.data ?? []
   const summaryData = summaryQ.data
@@ -205,6 +213,7 @@ const Reports = () => {
       ? "border-amber-200 bg-amber-50 text-amber-700"
       : "border-slate-200 bg-slate-50 text-slate-700"
   const ledgerTotals = ledgerQ.data?.totals
+  const actionOutcomes = outcomesQ.data?.items ?? []
 
   const openingWindow = useMemo(() => {
     if (!selectedStoreMeta) return null
@@ -447,6 +456,29 @@ const Reports = () => {
     setDelegatingStoreId(null)
   }
 
+  const handleCompleteOutcome = async (outcomeId: string, expectedValue: number) => {
+    if (!selectedStore) return
+    setCompletingOutcomeId(outcomeId)
+    try {
+      await copilotService.updateActionOutcome(selectedStore, outcomeId, {
+        status: "completed",
+        impact_realized_brl: Math.max(0, expectedValue),
+        outcome: { completed_by: "reports_ui", completed_from: "executive_outcomes" },
+      })
+      await Promise.all([ledgerQ.refetch(), outcomesQ.refetch()])
+      toast.success("Ação marcada como concluída.")
+    } catch (error) {
+      const payload = (error as { response?: { data?: Record<string, unknown> } })?.response?.data
+      const message =
+        (typeof payload?.message === "string" && payload.message) ||
+        (typeof payload?.detail === "string" && payload.detail) ||
+        "Não foi possível concluir a ação."
+      toast.error(message)
+    } finally {
+      setCompletingOutcomeId(null)
+    }
+  }
+
   const handleExport = async (format: "csv" | "pdf") => {
     if (exporting) return
     setExporting(format)
@@ -580,6 +612,58 @@ const Reports = () => {
               Confiança média {Math.round(ledgerTotals?.confidence_score_avg ?? 0)}/100
             </p>
           </article>
+        </section>
+      )}
+
+      {selectedStore && (
+        <section className="rounded-xl border border-slate-200 bg-white p-4 shadow-sm">
+          <div className="flex items-center justify-between">
+            <h2 className="text-base font-semibold text-slate-900">Ações e Outcome</h2>
+            <span className="text-xs text-slate-500">Fechamento do loop de valor</span>
+          </div>
+          {!actionOutcomes.length ? (
+            <p className="mt-3 text-sm text-slate-500">Sem ações registradas para esta loja no período.</p>
+          ) : (
+            <div className="mt-3 space-y-2">
+              {actionOutcomes.slice(0, 6).map((item) => (
+                <article
+                  key={item.id}
+                  className="flex flex-col gap-3 rounded-lg border border-slate-200 bg-slate-50 p-3 md:flex-row md:items-center md:justify-between"
+                >
+                  <div>
+                    <p className="text-sm font-semibold text-slate-800">{item.action_type}</p>
+                    <p className="text-xs text-slate-500">
+                      Esperado {formatCurrencyBRL(item.impact_expected_brl)} · Realizado{" "}
+                      {formatCurrencyBRL(item.impact_realized_brl)}
+                    </p>
+                  </div>
+                  <div className="flex items-center gap-2">
+                    <span
+                      className={`rounded-full border px-2 py-1 text-[11px] font-semibold ${
+                        item.status === "completed"
+                          ? "border-emerald-200 bg-emerald-50 text-emerald-700"
+                          : item.status === "failed"
+                          ? "border-rose-200 bg-rose-50 text-rose-700"
+                          : "border-slate-200 bg-white text-slate-700"
+                      }`}
+                    >
+                      {item.status}
+                    </span>
+                    {item.status !== "completed" && (
+                      <button
+                        type="button"
+                        onClick={() => void handleCompleteOutcome(item.id, item.impact_expected_brl || 0)}
+                        disabled={completingOutcomeId === item.id}
+                        className="rounded-lg border border-slate-300 bg-white px-3 py-1.5 text-xs font-semibold text-slate-700 hover:bg-slate-100"
+                      >
+                        {completingOutcomeId === item.id ? "Concluindo..." : "Marcar concluída"}
+                      </button>
+                    )}
+                  </div>
+                </article>
+              ))}
+            </div>
+          )}
         </section>
       )}
 
