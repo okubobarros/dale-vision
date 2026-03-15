@@ -41,8 +41,8 @@
 - `GET /api/v1/stores/{store_id}/productivity/evidence/` (query: `hour_bucket`)
 - `GET /api/v1/stores/network_dashboard/`
 - `GET /api/v1/stores/{store_id}/vision/audit/` (query: `event_source=vision|retail|all`, `event_type`, `camera_id`, `zone_id`, `roi_entity_id`, `from`, `to`, `limit`)
-- `GET /api/v1/stores/{store_id}/vision/ingestion-summary/` (query: `event_source=vision|retail|all`, `window_hours`, `camera_id`, `zone_id`, `roi_entity_id`)
-- `GET /api/v1/stores/network/vision/ingestion-summary/` (query: `event_source=vision|retail|all`, `window_hours`, `camera_id`, `zone_id`, `roi_entity_id`)
+- `GET /api/v1/stores/{store_id}/vision/ingestion-summary/` (query: `event_source=vision|retail|all`, `event_type`, `window_hours`, `camera_id`, `zone_id`, `roi_entity_id`)
+- `GET /api/v1/stores/network/vision/ingestion-summary/` (query: `event_source=vision|retail|all`, `event_type`, `window_hours`, `camera_id`, `zone_id`, `roi_entity_id`)
 - `GET|POST /api/v1/stores/{store_id}/cameras/`
 - `PATCH /api/v1/stores/{store_id}/cameras/{camera_id}/` (ativa/desativa câmera)
 - `GET /api/v1/stores/{store_id}/metrics/summary/`

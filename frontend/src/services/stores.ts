@@ -977,6 +977,7 @@ export const storesService = {
     storeId: string,
     params?: {
       event_source?: "vision" | "retail" | "all"
+      event_type?: string
       window_hours?: number
       camera_id?: string
       zone_id?: string
@@ -1038,6 +1039,7 @@ export const storesService = {
 
   async getNetworkVisionIngestionSummary(params?: {
     event_source?: "vision" | "retail" | "all"
+    event_type?: string
     window_hours?: number
     camera_id?: string
     zone_id?: string

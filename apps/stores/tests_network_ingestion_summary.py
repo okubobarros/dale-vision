@@ -48,12 +48,13 @@ class StoreNetworkIngestionSummaryTests(SimpleTestCase):
         view = StoreViewSet.as_view({"get": "network_vision_ingestion_summary"})
         request = self.factory.get(
             "/api/v1/stores/network/vision/ingestion-summary/",
-            {"event_source": "all", "window_hours": "24"},
+            {"event_source": "all", "event_type": "queue_length", "window_hours": "24"},
         )
         force_authenticate(request, user=self.user)
         response = view(request)
 
         self.assertEqual(response.status_code, 200)
+        self.assertEqual(response.data["filters"]["event_type"], "queue_length")
         self.assertEqual(response.data["network"]["total_stores"], 2)
         self.assertEqual(response.data["network"]["active_stores"], 2)
         self.assertEqual(response.data["vision_summary"]["total"], 10)

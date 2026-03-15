@@ -180,13 +180,14 @@ class StoreVisionAuditTests(SimpleTestCase):
         view = StoreViewSet.as_view({"get": "vision_ingestion_summary"})
         request = self.factory.get(
             f"/api/v1/stores/{self.store.id}/vision/ingestion-summary/",
-            {"event_source": "all", "window_hours": "24"},
+            {"event_source": "all", "event_type": "queue_length", "window_hours": "24"},
         )
         force_authenticate(request, user=self.user)
         response = view(request, pk=self.store.id)
 
         self.assertEqual(response.status_code, 200)
         self.assertEqual(response.data["filters"]["event_source"], "all")
+        self.assertEqual(response.data["filters"]["event_type"], "queue_length")
         self.assertEqual(response.data["vision_summary"]["total"], 5)
         self.assertEqual(response.data["retail_summary"]["total"], 3)
         self.assertEqual(response.data["operational_summary"]["events_total"], 8)

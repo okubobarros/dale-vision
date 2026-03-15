@@ -2978,6 +2978,7 @@ class StoreViewSet(viewsets.ModelViewSet):
         event_source = (request.query_params.get("event_source") or "all").strip().lower()
         if event_source not in {"vision", "retail", "all"}:
             event_source = "all"
+        event_type = (request.query_params.get("event_type") or "").strip() or None
         camera_id = (request.query_params.get("camera_id") or "").strip() or None
         zone_id = (request.query_params.get("zone_id") or "").strip() or None
         roi_entity_id = (request.query_params.get("roi_entity_id") or "").strip() or None
@@ -3006,6 +3007,9 @@ class StoreViewSet(viewsets.ModelViewSet):
                 if roi_entity_id:
                     vision_filters.append("roi_entity_id = %s")
                     vision_params.append(roi_entity_id)
+                if event_type:
+                    vision_filters.append("event_type = %s")
+                    vision_params.append(event_type)
                 vision_where = " AND ".join(vision_filters)
 
                 cursor.execute(
@@ -3049,6 +3053,10 @@ class StoreViewSet(viewsets.ModelViewSet):
                 if roi_entity_id:
                     retail_filters.append("(raw->'data'->>'roi_entity_id') = %s")
                     retail_params.append(roi_entity_id)
+                if event_type:
+                    normalized_retail = event_type if event_type.startswith("retail_") else f"retail_{event_type}"
+                    retail_filters.append("event_name = %s")
+                    retail_params.append(normalized_retail)
                 retail_where = " AND ".join(retail_filters)
 
                 cursor.execute(
@@ -3107,6 +3115,7 @@ class StoreViewSet(viewsets.ModelViewSet):
                 "to": end.astimezone(tz).isoformat(),
                 "filters": {
                     "event_source": event_source,
+                    "event_type": event_type,
                     "camera_id": camera_id,
                     "zone_id": zone_id,
                     "roi_entity_id": roi_entity_id,
@@ -3333,6 +3342,7 @@ class StoreViewSet(viewsets.ModelViewSet):
         event_source = (request.query_params.get("event_source") or "all").strip().lower()
         if event_source not in {"vision", "retail", "all"}:
             event_source = "all"
+        event_type = (request.query_params.get("event_type") or "").strip() or None
         camera_id = (request.query_params.get("camera_id") or "").strip() or None
         zone_id = (request.query_params.get("zone_id") or "").strip() or None
         roi_entity_id = (request.query_params.get("roi_entity_id") or "").strip() or None
@@ -3361,6 +3371,9 @@ class StoreViewSet(viewsets.ModelViewSet):
                     if roi_entity_id:
                         vision_filters.append("roi_entity_id = %s")
                         vision_params.append(roi_entity_id)
+                    if event_type:
+                        vision_filters.append("event_type = %s")
+                        vision_params.append(event_type)
                     vision_where = " AND ".join(vision_filters)
 
                     cursor.execute(
@@ -3403,6 +3416,10 @@ class StoreViewSet(viewsets.ModelViewSet):
                     if roi_entity_id:
                         retail_filters.append("(raw->'data'->>'roi_entity_id') = %s")
                         retail_params.append(roi_entity_id)
+                    if event_type:
+                        normalized_retail = event_type if event_type.startswith("retail_") else f"retail_{event_type}"
+                        retail_filters.append("event_name = %s")
+                        retail_params.append(normalized_retail)
                     retail_where = " AND ".join(retail_filters)
 
                     cursor.execute(
@@ -3459,6 +3476,7 @@ class StoreViewSet(viewsets.ModelViewSet):
                 "to": end.isoformat(),
                 "filters": {
                     "event_source": event_source,
+                    "event_type": event_type,
                     "camera_id": camera_id,
                     "zone_id": zone_id,
                     "roi_entity_id": roi_entity_id,
