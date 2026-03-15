@@ -241,6 +241,36 @@ export interface NetworkVisionIngestionSummary {
   }
 }
 
+export interface StoreVisionIngestionSummary {
+  store_id: string
+  from: string
+  to: string
+  filters: {
+    event_source: "vision" | "retail" | "all"
+    camera_id?: string | null
+    zone_id?: string | null
+    roi_entity_id?: string | null
+    window_hours: number
+  }
+  vision_summary: {
+    by_event_type: Record<string, number>
+    total: number
+    latest_event_at?: string | null
+  }
+  retail_summary: {
+    by_event_name: Record<string, number>
+    total: number
+    latest_event_at?: string | null
+  }
+  operational_summary: {
+    events_total: number
+    latest_event_at?: string | null
+    pipeline_status: "healthy" | "stale" | "no_signal"
+    recommended_action: string
+    dedupe_model: string
+  }
+}
+
 export interface StoreEdgeStatus {
   store_id: string;
   ok?: boolean;
@@ -941,6 +971,20 @@ export const storesService = {
   ): Promise<StoreVisionConfidenceResponse> {
     const response = await api.get(`/v1/stores/${storeId}/vision/confidence/`, { params })
     return response.data as StoreVisionConfidenceResponse
+  },
+
+  async getStoreVisionIngestionSummary(
+    storeId: string,
+    params?: {
+      event_source?: "vision" | "retail" | "all"
+      window_hours?: number
+      camera_id?: string
+      zone_id?: string
+      roi_entity_id?: string
+    }
+  ): Promise<StoreVisionIngestionSummary> {
+    const response = await api.get(`/v1/stores/${storeId}/vision/ingestion-summary/`, { params })
+    return response.data as StoreVisionIngestionSummary
   },
 
   async getStoreVisionCalibrationPlan(

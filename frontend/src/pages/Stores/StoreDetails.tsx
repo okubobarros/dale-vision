@@ -6,6 +6,7 @@ import {
   type StoreOverviewCamera,
   type StoreOverview,
   type StoreProductivityCoverageResponse,
+  type StoreVisionIngestionSummary,
 } from "../../services/stores"
 import { copilotService } from "../../services/copilot"
 
@@ -162,6 +163,17 @@ const StoreDetails = () => {
     retry: false,
     staleTime: 60000,
   })
+  const ingestionSummaryQ = useQuery<StoreVisionIngestionSummary>({
+    queryKey: ["store-vision-ingestion-summary", storeId],
+    queryFn: () =>
+      storesService.getStoreVisionIngestionSummary(String(storeId), {
+        event_source: "all",
+        window_hours: 24,
+      }),
+    enabled: Boolean(storeId),
+    retry: false,
+    staleTime: 60000,
+  })
 
   const metrics = data?.metrics_summary?.totals
   const trafficSeries = useMemo(
@@ -305,6 +317,20 @@ const StoreDetails = () => {
   }, [edgeOnline, operationalSummary.criticalWindows, operationalSummary.peakGapLabel])
   const conversionTarget = 0.15
   const conversionGap = (metrics?.avg_conversion_rate ?? 0) - conversionTarget
+  const storePipelineStatus =
+    ingestionSummaryQ.data?.operational_summary?.pipeline_status || "no_signal"
+  const storePipelineStatusLabel =
+    storePipelineStatus === "healthy"
+      ? "Pipeline saudável"
+      : storePipelineStatus === "stale"
+        ? "Pipeline desatualizado"
+        : "Sem sinal operacional"
+  const storePipelineStatusClass =
+    storePipelineStatus === "healthy"
+      ? "border-emerald-200 bg-emerald-50 text-emerald-700"
+      : storePipelineStatus === "stale"
+        ? "border-amber-200 bg-amber-50 text-amber-700"
+        : "border-slate-200 bg-slate-50 text-slate-700"
 
   const setTab = (tab: StoreTab) => {
     const next = new URLSearchParams(searchParams)
@@ -540,6 +566,44 @@ const StoreDetails = () => {
             Contexto de base: {metrics?.total_visitors ?? 0} visitantes no período, permanência média{" "}
             {formatSeconds(metrics?.avg_dwell_seconds)}.
             Métricas detalhadas permanecem disponíveis na trilha de relatórios.
+          </div>
+
+          <div className="rounded-xl border border-slate-200 bg-white p-4 shadow-sm">
+            <div className="flex items-start justify-between gap-3 flex-wrap">
+              <div>
+                <h2 className="text-sm font-semibold text-gray-900">Saúde da ingestão operacional</h2>
+                <p className="text-xs text-gray-600 mt-1">
+                  Sinal de ingestão usado para alimentar dashboard e recomendações.
+                </p>
+              </div>
+              <span className={`rounded-full border px-2.5 py-1 text-[11px] font-semibold ${storePipelineStatusClass}`}>
+                {storePipelineStatusLabel}
+              </span>
+            </div>
+            <div className="mt-3 grid grid-cols-1 sm:grid-cols-3 gap-2 text-xs">
+              <div className="rounded-lg border border-slate-100 bg-slate-50 px-3 py-2">
+                <p className="text-slate-500">Eventos visão</p>
+                <p className="mt-1 font-semibold text-slate-900">
+                  {ingestionSummaryQ.data?.vision_summary?.total ?? 0}
+                </p>
+              </div>
+              <div className="rounded-lg border border-slate-100 bg-slate-50 px-3 py-2">
+                <p className="text-slate-500">Eventos retail</p>
+                <p className="mt-1 font-semibold text-slate-900">
+                  {ingestionSummaryQ.data?.retail_summary?.total ?? 0}
+                </p>
+              </div>
+              <div className="rounded-lg border border-slate-100 bg-slate-50 px-3 py-2">
+                <p className="text-slate-500">Último evento</p>
+                <p className="mt-1 font-semibold text-slate-900">
+                  {formatHourLabel(ingestionSummaryQ.data?.operational_summary?.latest_event_at)}
+                </p>
+              </div>
+            </div>
+            <p className="mt-3 text-xs text-slate-600">
+              {ingestionSummaryQ.data?.operational_summary?.recommended_action ||
+                "Monitorando ingestão da loja para manter a leitura operacional estável."}
+            </p>
           </div>
 
           <div className="rounded-xl border border-slate-200 bg-white p-5 sm:p-6 shadow-sm">
