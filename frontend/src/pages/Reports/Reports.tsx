@@ -6,7 +6,13 @@ import {
   type ReportImpact,
   type ReportSummary,
 } from "../../services/me"
-import { storesService, type NetworkDashboard, type Store } from "../../services/stores"
+import {
+  storesService,
+  type NetworkDashboard,
+  type NetworkVisionIngestionSummary,
+  type Store,
+  type StoreVisionIngestionSummary,
+} from "../../services/stores"
 
 type OperationalWindow = {
   startHour: number
@@ -151,12 +157,41 @@ const Reports = () => {
     retry: false,
     enabled: !selectedStore,
   })
+  const ingestionQ = useQuery<NetworkVisionIngestionSummary | StoreVisionIngestionSummary>({
+    queryKey: ["reports-ingestion-summary", selectedStore || "all"],
+    queryFn: () =>
+      selectedStore
+        ? storesService.getStoreVisionIngestionSummary(selectedStore, {
+            event_source: "all",
+            window_hours: 24,
+          })
+        : storesService.getNetworkVisionIngestionSummary({
+            event_source: "all",
+            window_hours: 24,
+          }),
+    staleTime: 60000,
+    retry: false,
+  })
 
   const stores = storesQ.data ?? []
   const summaryData = summaryQ.data
   const impactData = impactQ.data
   const coverageData = coverageQ.data
   const selectedStoreMeta = stores.find((store) => store.id === selectedStore) ?? null
+  const ingestionOperational = ingestionQ.data?.operational_summary
+  const ingestionPipelineStatus = ingestionOperational?.pipeline_status || "no_signal"
+  const ingestionPipelineLabel =
+    ingestionPipelineStatus === "healthy"
+      ? "Pipeline saudável"
+      : ingestionPipelineStatus === "stale"
+      ? "Pipeline desatualizado"
+      : "Sem sinal operacional"
+  const ingestionPipelineClass =
+    ingestionPipelineStatus === "healthy"
+      ? "border-emerald-200 bg-emerald-50 text-emerald-700"
+      : ingestionPipelineStatus === "stale"
+      ? "border-amber-200 bg-amber-50 text-amber-700"
+      : "border-slate-200 bg-slate-50 text-slate-700"
 
   const openingWindow = useMemo(() => {
     if (!selectedStoreMeta) return null
@@ -523,6 +558,18 @@ const Reports = () => {
 
         <div className="rounded-xl border border-slate-200 bg-white p-4 shadow-sm">
           <h2 className="text-base font-semibold text-slate-900">Evidências e aderência operacional</h2>
+          <div className="mt-2 flex flex-wrap items-center gap-2">
+            <span className={`rounded-full border px-2.5 py-1 text-[11px] font-semibold ${ingestionPipelineClass}`}>
+              {ingestionPipelineLabel}
+            </span>
+            <span className="text-[11px] text-slate-500">
+              {ingestionOperational?.events_total ?? 0} eventos/24h
+            </span>
+            <span className="text-[11px] text-slate-500">
+              Materialização: {ingestionOperational?.operational_window?.status || "no_data"} · cobertura{" "}
+              {ingestionOperational?.operational_window?.coverage_rate ?? 0}%
+            </span>
+          </div>
           <p className="text-xs text-slate-600 mt-2">
             {coverageData?.method?.label} · v{coverageData?.method?.version} · confiança{" "}
             {coverageData?.confidence_governance?.score ?? 0}/100
