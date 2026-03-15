@@ -162,6 +162,7 @@ const StoreDetails = () => {
   const activeTab: StoreTab = STORE_TABS.some((tab) => tab.key === tabParam)
     ? (tabParam as StoreTab)
     : "overview"
+  const [ingestionEventType, setIngestionEventType] = useState<IngestionEventTypeFilter>("")
 
   const {
     data,
@@ -206,7 +207,6 @@ const StoreDetails = () => {
   const alerts = data?.last_alerts ?? []
   const [staffWeeklyInput, setStaffWeeklyInput] = useState<number | null>(null)
   const [staffSaveMessage, setStaffSaveMessage] = useState<string>("")
-  const [ingestionEventType, setIngestionEventType] = useState<IngestionEventTypeFilter>("")
   const staffWeeklyValue = staffWeeklyInput ?? Math.max(0, Number(data?.store?.employees_count || 0))
 
   const camerasOnline = useMemo(
