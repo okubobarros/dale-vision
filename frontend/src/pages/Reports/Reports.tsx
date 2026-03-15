@@ -7,6 +7,7 @@ import {
   type ReportImpact,
   type ReportSummary,
 } from "../../services/me"
+import { alertsService } from "../../services/alerts"
 import {
   storesService,
   type NetworkDashboard,
@@ -119,6 +120,7 @@ const Reports = () => {
   const [from, setFrom] = useState<string>("")
   const [to, setTo] = useState<string>("")
   const [exporting, setExporting] = useState<"csv" | "pdf" | null>(null)
+  const [delegatingStoreId, setDelegatingStoreId] = useState<string | null>(null)
 
   const rangeParams = useMemo(() => {
     if (period === "custom") {
@@ -308,12 +310,36 @@ const Reports = () => {
     })
   }, [networkQ.data?.stores, revenueAtRiskToday])
 
-  const handleDelegateStoreIntervention = (item: {
+  const handleDelegateStoreIntervention = async (item: {
     id: string
     name: string
     problem: string
     riskValue: number
   }) => {
+    setDelegatingStoreId(item.id)
+    try {
+      await alertsService.dispatchAction({
+        store_id: item.id,
+        insight_id: `reports-${item.id}-${Date.now()}`,
+        action_type: "whatsapp_delegation",
+        channel: "whatsapp",
+        source: "reports_executive",
+        expected_impact_brl: Math.max(0, Math.round(item.riskValue)),
+        context: {
+          problem: item.problem,
+          origin: "reports_where_to_act_now",
+        },
+      })
+    } catch (error) {
+      const payload = (error as { response?: { data?: Record<string, unknown> } })?.response?.data
+      const message =
+        (typeof payload?.message === "string" && payload.message) ||
+        (typeof payload?.detail === "string" && payload.detail) ||
+        "Não foi possível registrar a delegação agora."
+      toast.error(message)
+      setDelegatingStoreId(null)
+      return
+    }
     window.dispatchEvent(
       new CustomEvent("dv-open-copilot", {
         detail: {
@@ -324,6 +350,7 @@ const Reports = () => {
       })
     )
     toast.success(`Delegação preparada no Copiloto para ${item.name}.`)
+    setDelegatingStoreId(null)
   }
 
   const handleExport = async (format: "csv" | "pdf") => {
@@ -517,10 +544,11 @@ const Reports = () => {
                   </p>
                   <button
                     type="button"
-                    onClick={() => handleDelegateStoreIntervention(item)}
+                    onClick={() => void handleDelegateStoreIntervention(item)}
+                    disabled={delegatingStoreId === item.id}
                     className="mt-2 rounded-lg border border-slate-300 bg-white px-3 py-1.5 text-xs font-semibold text-slate-700 hover:bg-slate-100"
                   >
-                    Delegar ao Gerente
+                    {delegatingStoreId === item.id ? "Delegando..." : "Delegar ao Gerente"}
                   </button>
                 </article>
               ))}

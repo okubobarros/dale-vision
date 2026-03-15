@@ -3,6 +3,7 @@ from django.urls import path, include
 from rest_framework.routers import DefaultRouter
 from .views import (
     DemoLeadCreateView,
+    ActionDispatchView,
     AlertRuleViewSet,
     DetectionEventViewSet,
     NotificationLogViewSet,
@@ -19,5 +20,6 @@ router.register(r"journey-events", JourneyEventViewSet, basename="journey-events
 urlpatterns = [
     path("stores/", CoreStoreListView.as_view(), name="alerts-core-stores"),
     path("demo-leads/", DemoLeadCreateView.as_view(), name="demo-leads"),
+    path("actions/dispatch/", ActionDispatchView.as_view(), name="alerts-action-dispatch"),
     path("", include(router.urls)),
 ]

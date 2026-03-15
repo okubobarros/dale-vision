@@ -123,3 +123,14 @@ class JourneyEventSerializer(serializers.ModelSerializer):
         model = JourneyEvent
         fields = "__all__"
         read_only_fields = ("id", "created_at")
+
+
+class ActionDispatchSerializer(serializers.Serializer):
+    store_id = serializers.UUIDField()
+    insight_id = serializers.CharField(max_length=128)
+    action_type = serializers.CharField(max_length=64, default="whatsapp_delegation")
+    channel = serializers.CharField(max_length=32, default="whatsapp")
+    source = serializers.CharField(max_length=64, default="copilot_decision_center")
+    expected_impact_brl = serializers.FloatField(required=False, allow_null=True, min_value=0)
+    confidence_score = serializers.IntegerField(required=False, allow_null=True, min_value=0, max_value=100)
+    context = serializers.JSONField(required=False)

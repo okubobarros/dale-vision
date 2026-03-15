@@ -38,6 +38,7 @@ from .serializers import (
     EventMediaSerializer,
     NotificationLogSerializer,
     JourneyEventSerializer,
+    ActionDispatchSerializer,
 )
 
 from .services import send_event_to_n8n
@@ -185,6 +186,15 @@ def _require_subscription_for_user_orgs(*, request, action: str):
             action=action,
             endpoint=request.path,
         )
+
+
+def _resolve_accessible_store(user, store_id):
+    if getattr(user, "is_superuser", False) or getattr(user, "is_staff", False):
+        return Store.objects.filter(id=store_id).only("id", "org_id").first()
+    org_ids = get_user_org_ids(user)
+    if not org_ids:
+        return None
+    return Store.objects.filter(id=store_id, org_id__in=org_ids).only("id", "org_id").first()
 
 
 def require_uuid_param(name: str, value: str):
@@ -508,6 +518,82 @@ class DemoLeadCreateView(APIView):
                 status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
                 message="Erro interno ao processar o lead.",
             )
+
+
+class ActionDispatchView(APIView):
+    permission_classes = [permissions.IsAuthenticated]
+
+    def post(self, request):
+        serializer = ActionDispatchSerializer(data=request.data or {})
+        serializer.is_valid(raise_exception=True)
+        validated = serializer.validated_data
+
+        store_id = str(validated.get("store_id"))
+        store = _resolve_accessible_store(request.user, store_id)
+        if not store:
+            raise ValidationError({"store_id": "Você não tem acesso a esta loja."})
+
+        _require_subscription_for_store_id(
+            store_id=store_id,
+            request=request,
+            action="action_dispatch",
+        )
+
+        now = timezone.now()
+        payload = {
+            "event_name": "action_dispatched",
+            "event_version": "v1",
+            "store_id": store_id,
+            "insight_id": str(validated.get("insight_id")),
+            "channel": str(validated.get("channel") or "whatsapp"),
+            "expected_impact_brl": validated.get("expected_impact_brl"),
+            "confidence_score": validated.get("confidence_score"),
+            "requested_by_user_id": str(getattr(request.user, "id", "") or ""),
+            "requested_at": now.isoformat(),
+            "source": str(validated.get("source") or "copilot_decision_center"),
+            "action_type": str(validated.get("action_type") or "whatsapp_delegation"),
+            "context": validated.get("context") or {},
+        }
+
+        journey_event = log_journey_event(
+            org_id=str(store.org_id) if getattr(store, "org_id", None) else None,
+            lead_id=None,
+            event_name="action_dispatched",
+            payload=payload,
+            source="app",
+            meta={"path": request.path},
+        )
+        if not journey_event:
+            journey_event = JourneyEvent.objects.create(
+                lead_id=None,
+                org_id=getattr(store, "org_id", None),
+                event_name="action_dispatched",
+                payload=payload,
+                created_at=now,
+            )
+
+        n8n_result = send_event_to_n8n(
+            event_name="action_dispatched",
+            event_id=str(journey_event.id),
+            lead_id=None,
+            org_id=getattr(store, "org_id", None),
+            data=payload,
+            meta={
+                "source": payload["source"],
+                "request_user": getattr(request.user, "email", None),
+            },
+        )
+
+        status_code = status.HTTP_202_ACCEPTED if n8n_result.get("ok") else status.HTTP_502_BAD_GATEWAY
+        return Response(
+            {
+                "ok": bool(n8n_result.get("ok")),
+                "message": "Ação despachada para execução e acompanhamento.",
+                "event_id": str(journey_event.id),
+                "n8n": n8n_result,
+            },
+            status=status_code,
+        )
 
 
 # =========================

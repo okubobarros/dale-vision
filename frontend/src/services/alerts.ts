@@ -116,6 +116,24 @@ export interface DelegateWhatsappResponse {
   n8n?: unknown
 }
 
+export interface ActionDispatchPayload {
+  store_id: string
+  insight_id: string
+  action_type?: string
+  channel?: string
+  source?: string
+  expected_impact_brl?: number
+  confidence_score?: number
+  context?: Record<string, unknown>
+}
+
+export interface ActionDispatchResponse {
+  ok: boolean
+  message: string
+  event_id?: string
+  n8n?: unknown
+}
+
 type CoreStore = { id: string; name: string }
 type UnknownRecord = Record<string, unknown>
 type RuleStoreLike = { store_id?: string; store?: string }
@@ -269,6 +287,11 @@ export const alertsService = {
   ): Promise<DelegateWhatsappResponse> {
     const res = await api.post(`/alerts/events/${eventId}/delegate-whatsapp/`, payload ?? {})
     return res.data as DelegateWhatsappResponse
+  },
+
+  async dispatchAction(payload: ActionDispatchPayload): Promise<ActionDispatchResponse> {
+    const res = await api.post("/alerts/actions/dispatch/", payload)
+    return res.data as ActionDispatchResponse
   },
 
   async addEventMedia(eventId: string, media: Partial<EventMedia>) {
