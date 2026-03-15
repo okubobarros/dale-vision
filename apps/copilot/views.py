@@ -13,6 +13,7 @@ from rest_framework.views import APIView
 from apps.cameras.permissions import ALLOWED_MANAGE_ROLES, ALLOWED_READ_ROLES, require_store_role
 from apps.core.models import Store
 from apps.stores.services.user_uuid import ensure_user_uuid
+from apps.stores.services.user_orgs import get_user_org_ids
 
 from .models import (
     ActionOutcome,
@@ -549,6 +550,115 @@ class CopilotValueLedgerDailyView(APIView):
                     "confidence_score_avg": float(totals.get("confidence_avg") or 0),
                 },
                 "items": ValueLedgerDailySerializer(rows, many=True).data,
+            },
+            status=status.HTTP_200_OK,
+        )
+
+
+class CopilotNetworkActionOutcomeView(APIView):
+    permission_classes = [IsAuthenticated]
+
+    def get(self, request):
+        limit = min(max(int(request.query_params.get("limit", 30)), 1), 200)
+        status_filter = str(request.query_params.get("status") or "").strip().lower()
+        org_ids = list(get_user_org_ids(request.user))
+        if not org_ids and not (getattr(request.user, "is_staff", False) or getattr(request.user, "is_superuser", False)):
+            return Response(
+                {
+                    "store_id": "all",
+                    "summary": {
+                        "actions_dispatched": 0,
+                        "actions_completed": 0,
+                        "impact_expected_brl": 0.0,
+                        "impact_realized_brl": 0.0,
+                        "confidence_score_avg": 0.0,
+                    },
+                    "items": [],
+                },
+                status=status.HTTP_200_OK,
+            )
+
+        qs = ActionOutcome.objects.all().order_by("-dispatched_at", "-created_at")
+        if org_ids:
+            qs = qs.filter(org_id__in=org_ids)
+        if status_filter in {"dispatched", "completed", "failed", "canceled"}:
+            qs = qs.filter(status=status_filter)
+        items = qs[:limit]
+        summary = qs.aggregate(
+            dispatched=Count("id"),
+            completed=Sum(
+                models.Case(
+                    models.When(status="completed", then=1),
+                    default=0,
+                    output_field=models.IntegerField(),
+                )
+            ),
+            expected=Sum("impact_expected_brl"),
+            realized=Sum("impact_realized_brl"),
+            confidence_avg=Avg("confidence_score"),
+        )
+        return Response(
+            {
+                "store_id": "all",
+                "summary": {
+                    "actions_dispatched": int(summary.get("dispatched") or 0),
+                    "actions_completed": int(summary.get("completed") or 0),
+                    "impact_expected_brl": float(summary.get("expected") or 0),
+                    "impact_realized_brl": float(summary.get("realized") or 0),
+                    "confidence_score_avg": float(summary.get("confidence_avg") or 0),
+                },
+                "items": CopilotActionOutcomeSerializer(items, many=True).data,
+            },
+            status=status.HTTP_200_OK,
+        )
+
+
+class CopilotNetworkValueLedgerDailyView(APIView):
+    permission_classes = [IsAuthenticated]
+
+    def get(self, request):
+        days = min(max(int(request.query_params.get("days", 30)), 1), 180)
+        from_date = timezone.localdate() - timedelta(days=days - 1)
+        org_ids = list(get_user_org_ids(request.user))
+        if not org_ids and not (getattr(request.user, "is_staff", False) or getattr(request.user, "is_superuser", False)):
+            return Response(
+                {
+                    "store_id": "all",
+                    "days": days,
+                    "totals": {
+                        "value_recovered_brl": 0.0,
+                        "value_at_risk_brl": 0.0,
+                        "actions_dispatched": 0,
+                        "actions_completed": 0,
+                        "confidence_score_avg": 0.0,
+                    },
+                    "items": [],
+                },
+                status=status.HTTP_200_OK,
+            )
+
+        rows = ValueLedgerDaily.objects.filter(ledger_date__gte=from_date).order_by("-ledger_date")
+        if org_ids:
+            rows = rows.filter(org_id__in=org_ids)
+        totals = rows.aggregate(
+            value_recovered=Sum("value_recovered_brl"),
+            value_at_risk=Sum("value_at_risk_brl"),
+            actions_dispatched=Sum("actions_dispatched"),
+            actions_completed=Sum("actions_completed"),
+            confidence_avg=Avg("confidence_score_avg"),
+        )
+        return Response(
+            {
+                "store_id": "all",
+                "days": days,
+                "totals": {
+                    "value_recovered_brl": float(totals.get("value_recovered") or 0),
+                    "value_at_risk_brl": float(totals.get("value_at_risk") or 0),
+                    "actions_dispatched": int(totals.get("actions_dispatched") or 0),
+                    "actions_completed": int(totals.get("actions_completed") or 0),
+                    "confidence_score_avg": float(totals.get("confidence_avg") or 0),
+                },
+                "items": ValueLedgerDailySerializer(rows[:200], many=True).data,
             },
             status=status.HTTP_200_OK,
         )

@@ -3,6 +3,8 @@ from django.urls import path
 from .views import (
     CopilotActionOutcomeView,
     CopilotActionOutcomeDetailView,
+    CopilotNetworkActionOutcomeView,
+    CopilotNetworkValueLedgerDailyView,
     CopilotStaffPlanActionView,
     CopilotConversationView,
     CopilotDashboardContextView,
@@ -13,6 +15,8 @@ from .views import (
 )
 
 urlpatterns = [
+    path("copilot/network/actions/outcomes/", CopilotNetworkActionOutcomeView.as_view(), name="copilot-network-action-outcomes"),
+    path("copilot/network/value-ledger/daily/", CopilotNetworkValueLedgerDailyView.as_view(), name="copilot-network-value-ledger-daily"),
     path("copilot/stores/<uuid:store_id>/context/", CopilotDashboardContextView.as_view(), name="copilot-context"),
     path("copilot/stores/<uuid:store_id>/insights/", CopilotInsightsView.as_view(), name="copilot-insights"),
     path("copilot/stores/<uuid:store_id>/report-72h/", CopilotReport72hView.as_view(), name="copilot-report-72h"),

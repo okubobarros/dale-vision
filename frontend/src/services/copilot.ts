@@ -67,6 +67,20 @@ export const copilotService = {
     return response.data as CopilotActionOutcomeListResponse
   },
 
+  async listNetworkActionOutcomes(
+    options?: { limit?: number; status?: "dispatched" | "completed" | "failed" | "canceled" }
+  ): Promise<CopilotActionOutcomeListResponse> {
+    const response = await api.get(`/v1/copilot/network/actions/outcomes/`, {
+      params: {
+        limit: options?.limit ?? 30,
+        status: options?.status,
+      },
+      timeoutCategory: "best-effort",
+      noRetry: true,
+    })
+    return response.data as CopilotActionOutcomeListResponse
+  },
+
   async createActionOutcome(
     storeId: string,
     payload: {
@@ -109,6 +123,15 @@ export const copilotService = {
     options?: { days?: number }
   ): Promise<CopilotValueLedgerDailyResponse> {
     const response = await api.get(`/v1/copilot/stores/${storeId}/value-ledger/daily/`, {
+      params: { days: options?.days ?? 30 },
+      timeoutCategory: "best-effort",
+      noRetry: true,
+    })
+    return response.data as CopilotValueLedgerDailyResponse
+  },
+
+  async getNetworkValueLedgerDaily(options?: { days?: number }): Promise<CopilotValueLedgerDailyResponse> {
+    const response = await api.get(`/v1/copilot/network/value-ledger/daily/`, {
       params: { days: options?.days ?? 30 },
       timeoutCategory: "best-effort",
       noRetry: true,
