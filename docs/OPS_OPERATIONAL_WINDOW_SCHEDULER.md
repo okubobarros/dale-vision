@@ -15,6 +15,18 @@ O script usa:
 - `COPILOT_OPERATIONAL_WINDOW_MINUTES` (default `5`, aceita `10`)
 - `COPILOT_OPERATIONAL_WINDOW_MAX_STORES` (default `500`)
 
+## Política de retenção (`operational_window_hourly`)
+Comando:
+```bash
+python manage.py copilot_operational_window_cleanup --retention-days 30
+```
+
+Parâmetros:
+- `--retention-days` (default `30`)
+- `--store-id` (opcional para limpeza pontual)
+- `--window-minutes` (opcional, ex.: `5`)
+- `--dry-run` (simula sem deletar)
+
 ## Setup no Render (Cron Job)
 Criar um **Cron Job** com:
 - **Command**: `bash bin/render_job_operational_window.sh`
@@ -48,6 +60,11 @@ Ele executa:
 - agendado a cada 5 min (`*/5 * * * *`)
 - manualmente via `workflow_dispatch`
 
+Cleanup diário:
+- `.github/workflows/copilot_operational_window_cleanup.yml`
+- agenda: `03:17 UTC` (diário)
+- comando: `copilot_operational_window_cleanup --retention-days 30`
+
 ### Secrets obrigatórios (GitHub Repository Secrets)
 - `DJANGO_SECRET_KEY`
 - `ALLOWED_HOSTS`
@@ -62,6 +79,7 @@ Ele executa:
 ### Variáveis opcionais (GitHub Repository Variables)
 - `COPILOT_OPERATIONAL_WINDOW_MINUTES` (default `5`)
 - `COPILOT_OPERATIONAL_WINDOW_MAX_STORES` (default `500`)
+- `COPILOT_OPERATIONAL_WINDOW_RETENTION_DAYS` (default `30`)
 
 ### Observações
 - O cron do GitHub usa UTC e pode ter atraso de poucos minutos.

@@ -13,6 +13,7 @@ Esta PR transforma a base de leitura de produtividade de uma visão analítica g
 ## Escopo Entregue
 - Materialização de `operational_window_hourly`.
 - Job recorrente (`copilot_operational_window_tick`) para 5/10 minutos.
+- Retenção diária de `operational_window_hourly` com comando de cleanup e workflow dedicado.
 - Contrato `/api/v1/productivity/coverage` com método versionado.
 - Endpoint por loja `/api/v1/stores/{store_id}/productivity/coverage/`.
 - Ajustes de UI em `/app/reports` e Store View para badges de confiança.
@@ -30,6 +31,7 @@ Esta PR transforma a base de leitura de produtividade de uma visão analítica g
 
 ## Critérios de Aceite
 - [ ] Workflow `Copilot Operational Window Tick` rodando com sucesso.
+- [ ] Workflow `Copilot Operational Window Cleanup` rodando diariamente.
 - [ ] Reports com `method.version = coverage_operational_window_v1_2026-03-14`.
 - [ ] Store View com tabela de aderência por janela de 5min.
 - [ ] Badges de confiança exibidos em métricas críticas.
@@ -53,5 +55,5 @@ python manage.py copilot_operational_window_tick --max-stores 5 --window-minutes
 
 ## Riscos / Pontos de Atenção
 - Enum legado de `camera_status` sem `degraded` (há fallback aplicado).
-- Crescimento de `operational_window_hourly` exige política de retenção.
+- Verificar periodicamente se `retention_days=30` atende histórico necessário antes de ajustar.
 - Cron do GitHub pode ter atraso de alguns minutos em horários de pico.
