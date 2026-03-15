@@ -23,7 +23,7 @@ from apps.edge.vision_metrics import (
     insert_vision_atomic_event_if_new,
 )
 from apps.edge import vision_metrics
-from apps.edge.views import _compute_receipt_id
+from apps.edge.views import _compute_receipt_id, _validate_retail_event_contract
 
 
 class EdgeAuthHeaderPrecedenceTests(SimpleTestCase):
@@ -86,6 +86,59 @@ class EdgeIdempotencyKeyTests(SimpleTestCase):
             "data": {**base["data"], "ts": "2026-03-14T10:21:00Z"},
         }
         self.assertNotEqual(_compute_receipt_id(payload_a), _compute_receipt_id(payload_b))
+
+    def test_compute_receipt_id_for_retail_event_uses_5m_bucket(self):
+        base = {
+            "event_name": "retail.event.v1",
+            "data": {
+                "store_id": "store-1",
+                "event_type": "queue_length",
+                "value": 6,
+                "source": "edge",
+                "confidence": 0.9,
+            },
+        }
+        payload_a = {
+            **base,
+            "data": {**base["data"], "ts": "2026-03-14T10:22:10Z"},
+        }
+        payload_b = {
+            **base,
+            "data": {**base["data"], "ts": "2026-03-14T10:24:59Z"},
+        }
+        self.assertEqual(_compute_receipt_id(payload_a), _compute_receipt_id(payload_b))
+
+
+class RetailEventContractTests(SimpleTestCase):
+    def test_retail_event_contract_accepts_valid_payload(self):
+        payload = {
+            "event_name": "retail.event.v1",
+            "data": {
+                "store_id": str(uuid.uuid4()),
+                "ts": "2026-03-14T10:32:00Z",
+                "event_type": "queue_length",
+                "value": 6,
+                "source": "edge",
+                "confidence": 87,
+            },
+        }
+        ok, errors = _validate_retail_event_contract("retail.event.v1", payload, payload["data"])
+        self.assertTrue(ok)
+        self.assertEqual(errors, {})
+
+    def test_retail_event_contract_rejects_missing_fields(self):
+        payload = {
+            "event_name": "retail.event.v1",
+            "data": {
+                "store_id": str(uuid.uuid4()),
+                "event_type": "queue_length",
+            },
+        }
+        ok, errors = _validate_retail_event_contract("retail.event.v1", payload, payload["data"])
+        self.assertFalse(ok)
+        self.assertIn("missing_fields", errors)
+        self.assertIn("ts", errors["missing_fields"])
+        self.assertIn("confidence", errors["missing_fields"])
 
 
 class EdgeEventsAuthTests(TestCase):

@@ -1,0 +1,75 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://dalevision.com/contracts/retail_event_v1.schema.json",
+  "title": "Retail Event v1",
+  "type": "object",
+  "required": ["event_name", "data"],
+  "properties": {
+    "event_name": {
+      "type": "string",
+      "const": "retail.event.v1"
+    },
+    "event_version": {
+      "type": "integer",
+      "minimum": 1,
+      "default": 1
+    },
+    "source": {
+      "type": "string",
+      "enum": ["edge", "backend", "system"],
+      "default": "edge"
+    },
+    "idempotency_key": {
+      "type": "string",
+      "minLength": 10,
+      "maxLength": 300
+    },
+    "receipt_id": {
+      "type": "string",
+      "minLength": 10,
+      "maxLength": 300
+    },
+    "data": {
+      "type": "object",
+      "required": ["store_id", "ts", "event_type", "value", "source", "confidence"],
+      "properties": {
+        "store_id": {
+          "type": "string",
+          "format": "uuid"
+        },
+        "camera_id": {
+          "type": "string"
+        },
+        "ts": {
+          "type": "string",
+          "format": "date-time"
+        },
+        "event_type": {
+          "type": "string",
+          "enum": [
+            "person_enter",
+            "person_exit",
+            "queue_detected",
+            "queue_length",
+            "sale_completed",
+            "staff_detected",
+            "zone_dwell"
+          ]
+        },
+        "value": {
+          "type": ["number", "integer", "string", "object"]
+        },
+        "source": {
+          "type": "string"
+        },
+        "confidence": {
+          "type": "number",
+          "minimum": 0,
+          "maximum": 100
+        }
+      },
+      "additionalProperties": true
+    }
+  },
+  "additionalProperties": true
+}

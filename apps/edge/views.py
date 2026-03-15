@@ -78,6 +78,18 @@ def _compute_receipt_id(payload: dict) -> str:
             "ts_bucket": ts_bucket,
             "event_version": payload.get("event_version", 1),
         }
+    elif event_name == "retail.event.v1":
+        minute = parsed_ts.minute - (parsed_ts.minute % 5)
+        ts_bucket = parsed_ts.replace(minute=minute, second=0, microsecond=0).isoformat()
+        base = {
+            "event_name": event_name,
+            "store_id": data.get("store_id") or payload.get("store_id"),
+            "event_type": data.get("event_type"),
+            "value": data.get("value"),
+            "source": data.get("source") or payload.get("source") or "edge",
+            "ts_bucket_5m": ts_bucket,
+            "event_version": payload.get("event_version", 1),
+        }
     else:
         base = {
             "event_name": event_name,
@@ -165,6 +177,47 @@ def _validate_vision_contract(event_name: str, payload: dict, data: dict):
         missing.append("roi_entity_id")
 
     return len(missing) == 0, missing
+
+
+def _validate_retail_event_contract(event_name: str, payload: dict, data: dict):
+    if str(event_name or "") != "retail.event.v1":
+        return True, {}
+
+    required_fields = ("store_id", "ts", "event_type", "value", "source", "confidence")
+    missing = [field for field in required_fields if data.get(field) in (None, "", [])]
+    errors = {}
+    if missing:
+        errors["missing_fields"] = missing
+
+    allowed_types = {
+        "person_enter",
+        "person_exit",
+        "queue_detected",
+        "queue_length",
+        "sale_completed",
+        "staff_detected",
+        "zone_dwell",
+    }
+    event_type = str(data.get("event_type") or "").strip()
+    if event_type and event_type not in allowed_types:
+        errors["event_type"] = f"unsupported_event_type:{event_type}"
+
+    confidence = data.get("confidence")
+    try:
+        confidence_value = float(confidence)
+        if confidence_value > 1:
+            confidence_value = confidence_value / 100.0
+        if confidence_value < 0 or confidence_value > 1:
+            errors["confidence"] = "confidence_must_be_between_0_and_1_or_0_to_100"
+    except (TypeError, ValueError):
+        if confidence not in (None, ""):
+            errors["confidence"] = "confidence_must_be_numeric"
+
+    ts_raw = data.get("ts") or payload.get("ts")
+    if ts_raw and _parse_edge_ts(ts_raw) is None:
+        errors["ts"] = "invalid_iso_ts"
+
+    return len(errors) == 0, errors
 
 
 def _update_store_last_seen(store_id: str, ts_dt):
@@ -328,6 +381,27 @@ class EdgeEventsIngestView(APIView):
                 event_name,
                 store_id,
                 ",".join(contract_missing),
+            )
+
+        retail_contract_ok, retail_contract_errors = _validate_retail_event_contract(
+            event_name=event_name, payload=payload, data=data
+        )
+        if not retail_contract_ok:
+            logger.warning(
+                "[EDGE] retail event contract invalid event=%s store=%s errors=%s",
+                event_name,
+                store_id,
+                retail_contract_errors,
+            )
+            return Response(
+                {
+                    "ok": False,
+                    "stored": False,
+                    "reason": "retail_event_contract_invalid",
+                    "contract_version": "retail_event_v1",
+                    "errors": retail_contract_errors,
+                },
+                status=status.HTTP_400_BAD_REQUEST,
             )
             return Response(
                 {
