@@ -106,6 +106,16 @@ const formatCurrencyBRL = (value: number) =>
     maximumFractionDigits: 0,
   })
 
+const parseMaybeNumber = (value: unknown): number | null => {
+  if (typeof value === "number" && Number.isFinite(value)) return value
+  if (typeof value === "string") {
+    const normalized = value.replace(",", ".").trim()
+    const parsed = Number(normalized)
+    return Number.isFinite(parsed) ? parsed : null
+  }
+  return null
+}
+
 const normalizePlanCode = (plan?: string | null) => {
   if (!plan) return null
   const value = plan.toLowerCase()
@@ -907,6 +917,15 @@ const Dashboard = () => {
         severity === "critical" ? 3 : severity === "warning" ? 2 : 1
       return weight(b.severity) - weight(a.severity)
     })
+    const executiveEstimatedGap =
+      parseMaybeNumber(
+        (dashboard?.executive as { estimated_revenue_gap_brl?: unknown } | undefined)
+          ?.estimated_revenue_gap_brl
+      ) ?? null
+    const fallbackImpactByAction =
+      executiveEstimatedGap !== null && ordered.length > 0
+        ? Math.round(executiveEstimatedGap / Math.max(ordered.length, 1))
+        : null
     return ordered.slice(0, 3).map((event) => ({
       id: String(event.id),
       title: event.title || "Ação operacional",
@@ -914,6 +933,12 @@ const Dashboard = () => {
       occurredAt: event.occurred_at,
       evidenceUrl: event.media?.[0]?.url || null,
       severity: String(event.severity || "info").toLowerCase(),
+      expectedImpactBrl:
+        parseMaybeNumber((event.metadata as { expected_impact_brl?: unknown } | undefined)?.expected_impact_brl) ??
+        parseMaybeNumber((event.metadata as { revenue_risk_brl?: unknown } | undefined)?.revenue_risk_brl) ??
+        fallbackImpactByAction,
+      confidenceScore:
+        parseMaybeNumber((event.metadata as { confidence_score?: unknown } | undefined)?.confidence_score) ?? null,
       impact:
         event.type === "queue_long"
           ? "Risco de perda de conversão em horário de pico."
@@ -927,7 +952,7 @@ const Dashboard = () => {
           ? "Reforçar cobertura da equipe."
           : "Atuar com liderança local.",
     }))
-  }, [activeEvents])
+  }, [activeEvents, dashboard?.executive])
 
   const buildDelegationMessage = (action: {
     title: string
@@ -949,6 +974,8 @@ const Dashboard = () => {
     action: string
     occurredAt?: string | null
     evidenceUrl?: string | null
+    expectedImpactBrl?: number | null
+    confidenceScore?: number | null
   }) => {
     setDelegatingEventId(action.id)
     try {
@@ -957,6 +984,12 @@ const Dashboard = () => {
         note,
         insight_id: `event-${action.id}`,
         source: "copilot_decision_center",
+        expected_impact_brl:
+          typeof action.expectedImpactBrl === "number" ? Math.max(0, action.expectedImpactBrl) : undefined,
+        confidence_score:
+          typeof action.confidenceScore === "number"
+            ? Math.max(0, Math.min(100, Math.round(action.confidenceScore)))
+            : undefined,
       })
       if (response?.ok) {
         toast.success(
