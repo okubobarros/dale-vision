@@ -33,6 +33,7 @@ Toda decisão de produto, contrato de API e regra crítica deve estar aqui antes
 ## Ops Runbooks
 - `70_ops/Drive_Backup_Metrics.md`
 - `70_ops/Edge_Lessons_Learned.md`
+- `70_ops/Master_Plan_Retail_AI_OS_2026-03.md` (referencia principal atual para roadmap tecnico-produto)
 
 ## Data Flow
 - `30_system/Data_Flow_Mock_Demo.md`
