@@ -108,3 +108,66 @@ export interface CopilotStaffPlanUpdateResult {
     version: string
   }
 }
+
+export interface CopilotActionOutcome {
+  id: string
+  org_id: string
+  store_id: string
+  action_event_id?: string | null
+  insight_id: string
+  action_type: string
+  channel: string
+  source: string
+  status: "dispatched" | "completed" | "failed" | "canceled"
+  baseline?: Record<string, unknown>
+  outcome?: Record<string, unknown>
+  impact_expected_brl: number
+  impact_realized_brl: number
+  confidence_score: number
+  dispatched_at?: string | null
+  completed_at?: string | null
+  created_at: string
+  updated_at: string
+}
+
+export interface CopilotActionOutcomeSummary {
+  actions_dispatched: number
+  actions_completed: number
+  impact_expected_brl: number
+  impact_realized_brl: number
+  confidence_score_avg: number
+}
+
+export interface CopilotActionOutcomeListResponse {
+  store_id: string
+  summary: CopilotActionOutcomeSummary
+  items: CopilotActionOutcome[]
+}
+
+export interface CopilotValueLedgerDailyItem {
+  id: string
+  org_id: string
+  store_id: string
+  ledger_date: string
+  value_recovered_brl: number
+  value_at_risk_brl: number
+  actions_dispatched: number
+  actions_completed: number
+  confidence_score_avg: number
+  method_version: string
+  created_at: string
+  updated_at: string
+}
+
+export interface CopilotValueLedgerDailyResponse {
+  store_id: string
+  days: number
+  totals: {
+    value_recovered_brl: number
+    value_at_risk_brl: number
+    actions_dispatched: number
+    actions_completed: number
+    confidence_score_avg: number
+  }
+  items: CopilotValueLedgerDailyItem[]
+}

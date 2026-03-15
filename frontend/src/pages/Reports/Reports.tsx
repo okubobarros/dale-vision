@@ -8,6 +8,7 @@ import {
   type ReportSummary,
 } from "../../services/me"
 import { alertsService } from "../../services/alerts"
+import { copilotService } from "../../services/copilot"
 import {
   storesService,
   type NetworkDashboard,
@@ -176,6 +177,13 @@ const Reports = () => {
     staleTime: 60000,
     retry: false,
   })
+  const ledgerQ = useQuery({
+    queryKey: ["reports-value-ledger", selectedStore, period],
+    queryFn: () => copilotService.getValueLedgerDaily(selectedStore, { days: period === "7d" ? 7 : period === "90d" ? 90 : 30 }),
+    enabled: Boolean(selectedStore),
+    staleTime: 60000,
+    retry: false,
+  })
 
   const stores = storesQ.data ?? []
   const summaryData = summaryQ.data
@@ -196,6 +204,7 @@ const Reports = () => {
       : ingestionPipelineStatus === "stale"
       ? "border-amber-200 bg-amber-50 text-amber-700"
       : "border-slate-200 bg-slate-50 text-slate-700"
+  const ledgerTotals = ledgerQ.data?.totals
 
   const openingWindow = useMemo(() => {
     if (!selectedStoreMeta) return null
@@ -279,8 +288,9 @@ const Reports = () => {
 
     if (targetStoreId) {
       setApprovingIntervention(true)
+      let dispatchedEventId: string | undefined
       try {
-        await alertsService.dispatchAction({
+        const dispatchResponse = await alertsService.dispatchAction({
           store_id: targetStoreId,
           insight_id: insightId,
           action_type: "priority_intervention_approval",
@@ -295,6 +305,26 @@ const Reports = () => {
             window_label: formatWindowLabel(operationalWindow),
           },
         })
+        dispatchedEventId = dispatchResponse.event_id
+        try {
+          await copilotService.createActionOutcome(targetStoreId, {
+            action_event_id: dispatchedEventId ?? null,
+            insight_id: insightId,
+            action_type: "priority_intervention_approval",
+            channel: "copilot",
+            source: "reports_decision_center",
+            status: "dispatched",
+            impact_expected_brl: Math.max(0, Math.round(revenueAtRiskToday)),
+            confidence_score: coverageData?.confidence_governance?.score ?? undefined,
+            baseline: {
+              period,
+              selected_store: selectedStore || null,
+              window_label: formatWindowLabel(operationalWindow),
+            },
+          })
+        } catch {
+          // Non-blocking: dispatch is already registered.
+        }
       } catch (error) {
         const payload = (error as { response?: { data?: Record<string, unknown> } })?.response?.data
         const message =
@@ -361,10 +391,11 @@ const Reports = () => {
     riskValue: number
   }) => {
     setDelegatingStoreId(item.id)
+    const insightId = `reports-${item.id}-${Date.now()}`
     try {
-      await alertsService.dispatchAction({
+      const dispatchResponse = await alertsService.dispatchAction({
         store_id: item.id,
-        insight_id: `reports-${item.id}-${Date.now()}`,
+        insight_id: insightId,
         action_type: "whatsapp_delegation",
         channel: "whatsapp",
         source: "reports_executive",
@@ -374,6 +405,25 @@ const Reports = () => {
           origin: "reports_where_to_act_now",
         },
       })
+      try {
+        await copilotService.createActionOutcome(item.id, {
+          action_event_id: dispatchResponse.event_id ?? null,
+          insight_id: insightId,
+          action_type: "whatsapp_delegation",
+          channel: "whatsapp",
+          source: "reports_executive",
+          status: "dispatched",
+          impact_expected_brl: Math.max(0, Math.round(item.riskValue)),
+          confidence_score: coverageData?.confidence_governance?.score ?? undefined,
+          baseline: {
+            problem: item.problem,
+            origin: "reports_where_to_act_now",
+            period,
+          },
+        })
+      } catch {
+        // Non-blocking: dispatch is already registered.
+      }
     } catch (error) {
       const payload = (error as { response?: { data?: Record<string, unknown> } })?.response?.data
       const message =
@@ -504,6 +554,34 @@ const Reports = () => {
           </div>
         </div>
       </section>
+
+      {selectedStore && (
+        <section className="grid grid-cols-1 md:grid-cols-3 gap-4">
+          <article className="rounded-xl border border-emerald-200 bg-white p-4 shadow-sm">
+            <p className="text-xs uppercase tracking-[0.08em] text-slate-500">Valor Recuperado (Ledger)</p>
+            <p className="text-2xl font-semibold text-emerald-700 mt-2">
+              {formatCurrencyBRL(ledgerTotals?.value_recovered_brl ?? 0)}
+            </p>
+            <p className="text-[11px] text-slate-500 mt-2">Período selecionado da loja</p>
+          </article>
+          <article className="rounded-xl border border-slate-200 bg-white p-4 shadow-sm">
+            <p className="text-xs uppercase tracking-[0.08em] text-slate-500">Ações Despachadas</p>
+            <p className="text-2xl font-semibold text-slate-900 mt-2">
+              {ledgerTotals?.actions_dispatched ?? 0}
+            </p>
+            <p className="text-[11px] text-slate-500 mt-2">Intervenções registradas no ledger</p>
+          </article>
+          <article className="rounded-xl border border-slate-200 bg-white p-4 shadow-sm">
+            <p className="text-xs uppercase tracking-[0.08em] text-slate-500">Ações Concluídas</p>
+            <p className="text-2xl font-semibold text-slate-900 mt-2">
+              {ledgerTotals?.actions_completed ?? 0}
+            </p>
+            <p className="text-[11px] text-slate-500 mt-2">
+              Confiança média {Math.round(ledgerTotals?.confidence_score_avg ?? 0)}/100
+            </p>
+          </article>
+        </section>
+      )}
 
       <section className="rounded-xl border border-slate-200 bg-white p-4 shadow-sm">
         <div className="grid grid-cols-1 lg:grid-cols-4 gap-3">

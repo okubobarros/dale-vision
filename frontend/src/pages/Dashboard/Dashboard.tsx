@@ -27,6 +27,8 @@ import {
   onboardingService,
   type OnboardingNextStepResponse,
 } from "../../services/onboarding"
+import { copilotService } from "../../services/copilot"
+import type { CopilotValueLedgerDailyResponse } from "../../types/copilot"
 import { meService } from "../../services/me"
 import { getDashboardExperience } from "./dashboardExperience"
 import { TrialDashboardView } from "./views/TrialDashboardView"
@@ -335,6 +337,13 @@ const Dashboard = () => {
     queryKey: ["network-coverage-dashboard", networkPeriod],
     queryFn: () => meService.getProductivityCoverage(undefined, { period: networkPeriod }),
     enabled: canFetchAuth && isNetworkMode,
+    staleTime: 30000,
+    retry: false,
+  })
+  const { data: storeValueLedger } = useQuery<CopilotValueLedgerDailyResponse>({
+    queryKey: ["dashboard-value-ledger", selectedStore],
+    queryFn: () => copilotService.getValueLedgerDaily(selectedStore, { days: 7 }),
+    enabled: canFetchAuth && !isNetworkMode && Boolean(selectedStore),
     staleTime: 30000,
     retry: false,
   })
@@ -1251,7 +1260,7 @@ const Dashboard = () => {
       status: "official",
     },
   ] as const
-  const kpiItems = [
+  const baseKpiItems = [
     {
       title: "Fluxo de Visitantes",
       value: metricValueOrState(computedVisitorFlow, (value) => `${value}`),
@@ -1295,6 +1304,26 @@ const Dashboard = () => {
       subtitle: metricSubtitleForValue(computedProductivity),
     },
   ]
+  const ledgerKpiItems =
+    !isNetworkMode && storeValueLedger
+      ? [
+          {
+            title: "Valor Recuperado (7d)",
+            value: formatCurrencyBRL(storeValueLedger.totals?.value_recovered_brl || 0),
+            icon: icons.conversion,
+            color: "bg-emerald-50",
+            subtitle: "Value ledger da unidade",
+          },
+          {
+            title: "Ações Concluídas (7d)",
+            value: `${storeValueLedger.totals?.actions_completed || 0}`,
+            icon: icons.health,
+            color: "bg-indigo-50",
+            subtitle: `Confiança média ${Math.round(storeValueLedger.totals?.confidence_score_avg || 0)}/100`,
+          },
+        ]
+      : []
+  const kpiItems = [...baseKpiItems, ...ledgerKpiItems]
   if (storesLoading) {
     return (
       <div className="flex items-center justify-center h-64">
