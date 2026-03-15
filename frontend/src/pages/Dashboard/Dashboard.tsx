@@ -7,6 +7,7 @@ import {
   storesService,
   type MetricGovernanceItem,
   type NetworkDashboard,
+  type NetworkVisionIngestionSummary,
   type StoreAnalyticsSummary,
   type StoreSummary,
   type StoreEdgeStatus,
@@ -287,6 +288,13 @@ const Dashboard = () => {
     queryKey: ["network-dashboard-home"],
     queryFn: () => storesService.getNetworkDashboard(),
     enabled: canFetchAuth,
+    staleTime: 30000,
+    retry: false,
+  })
+  const { data: networkIngestionSummary } = useQuery<NetworkVisionIngestionSummary>({
+    queryKey: ["network-vision-ingestion-summary-dashboard"],
+    queryFn: () => storesService.getNetworkVisionIngestionSummary({ event_source: "all", window_hours: 24 }),
+    enabled: canFetchAuth && isNetworkMode,
     staleTime: 30000,
     retry: false,
   })
@@ -1046,6 +1054,19 @@ const Dashboard = () => {
     networkHealthScore > 0
       ? `Sua rede operou com ${networkHealthScore}% de eficiência na janela monitorada.`
       : "Estamos consolidando a eficiência operacional da rede."
+  const pipelineStatus = networkIngestionSummary?.operational_summary?.pipeline_status || "no_signal"
+  const pipelineStatusLabel =
+    pipelineStatus === "healthy"
+      ? "Pipeline saudável"
+      : pipelineStatus === "stale"
+      ? "Pipeline desatualizado"
+      : "Sem sinal operacional"
+  const pipelineStatusClass =
+    pipelineStatus === "healthy"
+      ? "bg-emerald-50 text-emerald-700 border-emerald-200"
+      : pipelineStatus === "stale"
+      ? "bg-amber-50 text-amber-700 border-amber-200"
+      : "bg-slate-50 text-slate-700 border-slate-200"
 
   const wealthCards = [
     {
@@ -1448,6 +1469,18 @@ const Dashboard = () => {
               </p>
               <p className="text-xs text-gray-500">
                 Prioridade atual: {moneyLeakItems[0]?.cause || "Operação estável sem gargalo crítico"}
+              </p>
+              <div className="mt-2 flex items-center gap-2">
+                <span className={`rounded-full border px-2.5 py-1 text-[11px] font-semibold ${pipelineStatusClass}`}>
+                  {pipelineStatusLabel}
+                </span>
+                <span className="text-[11px] text-gray-600">
+                  {networkIngestionSummary?.operational_summary?.events_total ?? 0} eventos na janela de 24h
+                </span>
+              </div>
+              <p className="mt-1 text-[11px] text-gray-500">
+                {networkIngestionSummary?.operational_summary?.recommended_action ||
+                  "Monitorando ingestão da rede para recomendações mais confiáveis."}
               </p>
               <div className="mt-3">
                 <Link
