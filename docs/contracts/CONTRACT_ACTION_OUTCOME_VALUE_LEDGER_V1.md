@@ -61,6 +61,29 @@ Resposta:
 - `totals` da janela solicitada
 - `items` por dia (`ledger_date`)
 
+### 2.3 Action Outcomes (network scoped)
+`GET /api/v1/copilot/network/actions/outcomes/`
+
+Query params:
+- `limit` (default `30`, max `200`)
+- `status` (`dispatched|completed|failed|canceled`, opcional)
+
+Resposta:
+- `store_id: "all"`
+- `summary` consolidado da rede (tenant atual)
+- `items` com outcomes recentes da rede
+
+### 2.4 Value Ledger Daily (network scoped)
+`GET /api/v1/copilot/network/value-ledger/daily/`
+
+Query params:
+- `days` (default `30`, max `180`)
+
+Resposta:
+- `store_id: "all"`
+- `totals` consolidados da rede (tenant atual)
+- `items` com série diária consolidada
+
 ## 3) Regras v1
 - `ActionOutcome` sempre pertence a uma loja (`store_id`) e org (`org_id`).
 - `POST outcome` sincroniza `value_ledger_daily` do dia de `dispatched_at`.
@@ -71,6 +94,6 @@ Resposta:
 ## 4) Compatibilidade e evolução
 - v1 prioriza trilha de valor por loja.
 - v2 deve incluir:
-  - consolidação multi-loja por org em endpoint dedicado;
+  - breakdown nativo por loja dentro dos endpoints de rede;
   - regras de attribution por janela/turno;
   - reconciliação com POS quando disponível.
