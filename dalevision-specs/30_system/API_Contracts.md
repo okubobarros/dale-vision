@@ -99,6 +99,34 @@ Envelope obrigatório:
 
 Idempotência:
 - `receipt_id` é opcional no request; se ausente, o backend calcula.
+- `idempotency_key` pode ser enviado como alias de `receipt_id`.
+- para `retail.event.v1`, o backend também suporta receipt determinístico por bucket de 5 minutos.
+
+### Contrato complementar: `retail.event.v1`
+Uso:
+- evento padronizado para timeline operacional de varejo (edge-first, sem envio de vídeo).
+
+Campos obrigatórios em `data`:
+- `store_id` (uuid)
+- `ts` (ISO8601)
+- `event_type` (enum):
+  - `person_enter`
+  - `person_exit`
+  - `queue_detected`
+  - `queue_length`
+  - `sale_completed`
+  - `staff_detected`
+  - `zone_dwell`
+- `value` (numérico ou objeto)
+- `source` (string)
+- `confidence` (0..1 ou 0..100)
+
+Comportamento no backend:
+- valida contrato antes de persistir (`reason=retail_event_contract_invalid` em erro 400);
+- normaliza `event_name` persistido em `event_receipts` com prefixo `retail_` (ex.: `retail_queue_length`) para evitar colisão de nomes.
+
+Schema:
+- `docs/contracts/schemas/retail_event_v1.schema.json`
 
 Observação: detalhes completos em `SPEC-007-Event-Pipeline.md`.
 

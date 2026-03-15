@@ -23,7 +23,11 @@ from apps.edge.vision_metrics import (
     insert_vision_atomic_event_if_new,
 )
 from apps.edge import vision_metrics
-from apps.edge.views import _compute_receipt_id, _validate_retail_event_contract
+from apps.edge.views import (
+    _compute_receipt_id,
+    _normalize_ingest_event_name,
+    _validate_retail_event_contract,
+)
 
 
 class EdgeAuthHeaderPrecedenceTests(SimpleTestCase):
@@ -139,6 +143,24 @@ class RetailEventContractTests(SimpleTestCase):
         self.assertIn("missing_fields", errors)
         self.assertIn("ts", errors["missing_fields"])
         self.assertIn("confidence", errors["missing_fields"])
+
+
+class EdgeEventNormalizationTests(SimpleTestCase):
+    def test_retail_event_name_is_prefixed(self):
+        normalized = _normalize_ingest_event_name(
+            "retail.event.v1",
+            {},
+            {"event_type": "queue_length"},
+        )
+        self.assertEqual(normalized, "retail_queue_length")
+
+    def test_regular_event_keeps_default_normalization(self):
+        normalized = _normalize_ingest_event_name(
+            "vision.queue_state.v1",
+            {},
+            {},
+        )
+        self.assertEqual(normalized, "vision_queue_state_v1")
 
 
 class EdgeEventsAuthTests(TestCase):

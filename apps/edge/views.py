@@ -101,6 +101,14 @@ def _compute_receipt_id(payload: dict) -> str:
     raw = json.dumps(base, sort_keys=True, ensure_ascii=False).encode("utf-8")
     return hashlib.sha256(raw).hexdigest()
 
+def _normalize_ingest_event_name(event_name: str, payload: dict, data: dict) -> str:
+    event_type = payload.get("event_type") or data.get("event_type") or event_name
+    normalized = (event_type or "").replace(".", "_").lower()
+    if str(event_name or "") == "retail.event.v1" and normalized:
+        if not normalized.startswith("retail_"):
+            return f"retail_{normalized}"
+    return normalized
+
 
 def _parse_edge_ts(raw_ts):
     if not raw_ts:
@@ -338,8 +346,7 @@ class EdgeEventsIngestView(APIView):
             or payload.get("store_id")
             or (payload.get("agent") or {}).get("store_id")
         )
-        event_type = payload.get("event_type") or data.get("event_type") or event_name
-        normalized = (event_type or "").replace(".", "_").lower()
+        normalized = _normalize_ingest_event_name(event_name, payload, data)
 
         if not event_name:
             return Response({"detail": "event_name ausente."}, status=status.HTTP_400_BAD_REQUEST)
