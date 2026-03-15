@@ -2747,6 +2747,9 @@ class StoreViewSet(viewsets.ModelViewSet):
             start = end - timedelta(days=1)
 
         event_type = (request.query_params.get("event_type") or "").strip() or None
+        event_source = (request.query_params.get("event_source") or "vision").strip().lower()
+        if event_source not in {"vision", "retail", "all"}:
+            event_source = "vision"
         camera_id = (request.query_params.get("camera_id") or "").strip() or None
         zone_id = (request.query_params.get("zone_id") or "").strip() or None
         roi_entity_id = (request.query_params.get("roi_entity_id") or "").strip() or None
@@ -2756,91 +2759,154 @@ class StoreViewSet(viewsets.ModelViewSet):
         except Exception:
             limit = 100
 
-        filters = [
-            "store_id = %s",
-            "ts >= %s",
-            "ts < %s",
-        ]
-        params = [str(store.id), start, end]
-        if event_type:
-            filters.append("event_type = %s")
-            params.append(event_type)
-        if camera_id:
-            filters.append("camera_id = %s")
-            params.append(camera_id)
-        if zone_id:
-            filters.append("zone_id = %s")
-            params.append(zone_id)
-        if roi_entity_id:
-            filters.append("roi_entity_id = %s")
-            params.append(roi_entity_id)
-
-        where_sql = " AND ".join(filters)
         items = []
         summary = {}
+        retail_items = []
+        retail_summary = {}
         with connection.cursor() as cursor:
-            cursor.execute(
-                f"""
-                SELECT event_type, COUNT(*)
-                FROM public.vision_atomic_events
-                WHERE {where_sql}
-                GROUP BY 1
-                ORDER BY 1 ASC
-                """,
-                params,
-            )
-            for row in cursor.fetchall():
-                summary[str(row[0])] = int(row[1] or 0)
+            if event_source in {"vision", "all"}:
+                filters = [
+                    "store_id = %s",
+                    "ts >= %s",
+                    "ts < %s",
+                ]
+                params = [str(store.id), start, end]
+                if event_type:
+                    filters.append("event_type = %s")
+                    params.append(event_type)
+                if camera_id:
+                    filters.append("camera_id = %s")
+                    params.append(camera_id)
+                if zone_id:
+                    filters.append("zone_id = %s")
+                    params.append(zone_id)
+                if roi_entity_id:
+                    filters.append("roi_entity_id = %s")
+                    params.append(roi_entity_id)
 
-            cursor.execute(
-                f"""
-                SELECT
-                    receipt_id,
-                    event_type,
-                    camera_id,
-                    camera_role,
-                    zone_id,
-                    roi_entity_id,
-                    roi_version,
-                    metric_type,
-                    ownership,
-                    direction,
-                    count_value,
-                    staff_active_est,
-                    duration_seconds,
-                    confidence,
-                    track_id_hash,
-                    ts,
-                    raw_payload
-                FROM public.vision_atomic_events
-                WHERE {where_sql}
-                ORDER BY ts DESC
-                LIMIT %s
-                """,
-                [*params, limit],
-            )
-            for row in cursor.fetchall():
-                items.append(
-                    {
-                        "receipt_id": row[0],
-                        "event_type": row[1],
-                        "camera_id": row[2],
-                        "camera_role": row[3],
-                        "zone_id": row[4],
-                        "roi_entity_id": row[5],
-                        "roi_version": row[6],
-                        "metric_type": row[7],
-                        "ownership": row[8],
-                        "direction": row[9],
-                        "count_value": int(row[10] or 0),
-                        "staff_active_est": int(row[11] or 0) if row[11] is not None else None,
-                        "duration_seconds": int(row[12] or 0) if row[12] is not None else None,
-                        "confidence": float(row[13]) if row[13] is not None else None,
-                        "track_id_hash": row[14],
-                        "ts": row[15].isoformat() if row[15] else None,
-                        "raw_payload": row[16] or {},
-                    }
+                where_sql = " AND ".join(filters)
+
+                cursor.execute(
+                    f"""
+                    SELECT event_type, COUNT(*)
+                    FROM public.vision_atomic_events
+                    WHERE {where_sql}
+                    GROUP BY 1
+                    ORDER BY 1 ASC
+                    """,
+                    params,
                 )
+                for row in cursor.fetchall():
+                    summary[str(row[0])] = int(row[1] or 0)
+
+                cursor.execute(
+                    f"""
+                    SELECT
+                        receipt_id,
+                        event_type,
+                        camera_id,
+                        camera_role,
+                        zone_id,
+                        roi_entity_id,
+                        roi_version,
+                        metric_type,
+                        ownership,
+                        direction,
+                        count_value,
+                        staff_active_est,
+                        duration_seconds,
+                        confidence,
+                        track_id_hash,
+                        ts,
+                        raw_payload
+                    FROM public.vision_atomic_events
+                    WHERE {where_sql}
+                    ORDER BY ts DESC
+                    LIMIT %s
+                    """,
+                    [*params, limit],
+                )
+                for row in cursor.fetchall():
+                    items.append(
+                        {
+                            "receipt_id": row[0],
+                            "event_type": row[1],
+                            "camera_id": row[2],
+                            "camera_role": row[3],
+                            "zone_id": row[4],
+                            "roi_entity_id": row[5],
+                            "roi_version": row[6],
+                            "metric_type": row[7],
+                            "ownership": row[8],
+                            "direction": row[9],
+                            "count_value": int(row[10] or 0),
+                            "staff_active_est": int(row[11] or 0) if row[11] is not None else None,
+                            "duration_seconds": int(row[12] or 0) if row[12] is not None else None,
+                            "confidence": float(row[13]) if row[13] is not None else None,
+                            "track_id_hash": row[14],
+                            "ts": row[15].isoformat() if row[15] else None,
+                            "raw_payload": row[16] or {},
+                        }
+                    )
+
+            if event_source in {"retail", "all"}:
+                retail_filters = [
+                    "event_name LIKE 'retail_%'",
+                    "ts >= %s",
+                    "ts < %s",
+                    "((raw->'data'->>'store_id') = %s OR (meta->>'store_id') = %s)",
+                ]
+                retail_params = [start, end, str(store.id), str(store.id)]
+                if event_type:
+                    normalized_retail = event_type if event_type.startswith("retail_") else f"retail_{event_type}"
+                    retail_filters.append("event_name = %s")
+                    retail_params.append(normalized_retail)
+                if camera_id:
+                    retail_filters.append("(raw->'data'->>'camera_id') = %s")
+                    retail_params.append(camera_id)
+                if zone_id:
+                    retail_filters.append("(raw->'data'->>'zone_id') = %s")
+                    retail_params.append(zone_id)
+                if roi_entity_id:
+                    retail_filters.append("(raw->'data'->>'roi_entity_id') = %s")
+                    retail_params.append(roi_entity_id)
+
+                retail_where_sql = " AND ".join(retail_filters)
+
+                cursor.execute(
+                    f"""
+                    SELECT event_name, COUNT(*)
+                    FROM public.event_receipts
+                    WHERE {retail_where_sql}
+                    GROUP BY 1
+                    ORDER BY 1 ASC
+                    """,
+                    retail_params,
+                )
+                for row in cursor.fetchall():
+                    retail_summary[str(row[0])] = int(row[1] or 0)
+
+                cursor.execute(
+                    f"""
+                    SELECT event_id, event_name, ts, raw, meta, source
+                    FROM public.event_receipts
+                    WHERE {retail_where_sql}
+                    ORDER BY ts DESC
+                    LIMIT %s
+                    """,
+                    [*retail_params, limit],
+                )
+                for row in cursor.fetchall():
+                    retail_items.append(
+                        {
+                            "receipt_id": row[0],
+                            "event_name": row[1],
+                            "ts": row[2].isoformat() if row[2] else None,
+                            "raw_payload": row[3] or {},
+                            "meta": row[4] or {},
+                            "source": row[5],
+                        }
+                    )
 
         return Response(
             {
@@ -2848,6 +2914,7 @@ class StoreViewSet(viewsets.ModelViewSet):
                 "from": start.isoformat(),
                 "to": end.isoformat(),
                 "filters": {
+                    "event_source": event_source,
                     "event_type": event_type,
                     "camera_id": camera_id,
                     "zone_id": zone_id,
@@ -2856,6 +2923,8 @@ class StoreViewSet(viewsets.ModelViewSet):
                 },
                 "summary": summary,
                 "items": items,
+                "retail_summary": retail_summary,
+                "retail_items": retail_items,
             }
         )
 

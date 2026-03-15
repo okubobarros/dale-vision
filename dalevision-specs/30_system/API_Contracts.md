@@ -40,6 +40,7 @@
 - `GET /api/v1/stores/{store_id}/ceo-dashboard/` (query: `period=day|7d`)
 - `GET /api/v1/stores/{store_id}/productivity/evidence/` (query: `hour_bucket`)
 - `GET /api/v1/stores/network_dashboard/`
+- `GET /api/v1/stores/{store_id}/vision/audit/` (query: `event_source=vision|retail|all`, `event_type`, `camera_id`, `zone_id`, `roi_entity_id`, `from`, `to`, `limit`)
 - `GET|POST /api/v1/stores/{store_id}/cameras/`
 - `PATCH /api/v1/stores/{store_id}/cameras/{camera_id}/` (ativa/desativa câmera)
 - `GET /api/v1/stores/{store_id}/metrics/summary/`
