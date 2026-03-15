@@ -121,6 +121,7 @@ const Reports = () => {
   const [to, setTo] = useState<string>("")
   const [exporting, setExporting] = useState<"csv" | "pdf" | null>(null)
   const [delegatingStoreId, setDelegatingStoreId] = useState<string | null>(null)
+  const [approvingIntervention, setApprovingIntervention] = useState(false)
 
   const rangeParams = useMemo(() => {
     if (period === "custom") {
@@ -268,15 +269,58 @@ const Reports = () => {
     return "Rede sob controle. Recomendo validar apenas as lojas com pior conversão relativa nesta janela."
   }, [coverageData?.summary?.worst_window])
 
-  const triggerCopilotAction = () => {
+  const triggerCopilotAction = async () => {
+    const targetStoreId = selectedStore || interventionCards[0]?.id || ""
+    const targetStoreName =
+      stores.find((store) => store.id === targetStoreId)?.name ||
+      interventionCards[0]?.name ||
+      "rede"
+    const insightId = `reports-priority-${targetStoreId || "network"}-${Date.now()}`
+
+    if (targetStoreId) {
+      setApprovingIntervention(true)
+      try {
+        await alertsService.dispatchAction({
+          store_id: targetStoreId,
+          insight_id: insightId,
+          action_type: "priority_intervention_approval",
+          channel: "copilot",
+          source: "reports_decision_center",
+          expected_impact_brl: Math.max(0, Math.round(revenueAtRiskToday)),
+          confidence_score: coverageData?.confidence_governance?.score ?? undefined,
+          context: {
+            origin: "reports_decision_center",
+            period,
+            selected_store: selectedStore || null,
+            window_label: formatWindowLabel(operationalWindow),
+          },
+        })
+      } catch (error) {
+        const payload = (error as { response?: { data?: Record<string, unknown> } })?.response?.data
+        const message =
+          (typeof payload?.message === "string" && payload.message) ||
+          (typeof payload?.detail === "string" && payload.detail) ||
+          "Não foi possível aprovar a intervenção agora."
+        toast.error(message)
+        setApprovingIntervention(false)
+        return
+      } finally {
+        setApprovingIntervention(false)
+      }
+    }
+
     window.dispatchEvent(
       new CustomEvent("dv-open-copilot", {
         detail: {
-          prompt:
-            "Aprovar intervenção imediata nas lojas com maior risco de fila e gerar plano de ação por gerente.",
+          prompt: `Aprovar intervenção imediata para ${
+            targetStoreName
+          }. Priorizar fila e cobertura operacional na janela ${formatWindowLabel(
+            operationalWindow
+          )}. Impacto esperado: ${formatCurrencyBRL(revenueAtRiskToday)} hoje.`,
         },
       })
     )
+    toast.success("Intervenção aprovada e enviada para o Copiloto.")
   }
 
   const ranking = useMemo(() => {
@@ -451,10 +495,11 @@ const Reports = () => {
             </span>
             <button
               type="button"
-              onClick={triggerCopilotAction}
+              onClick={() => void triggerCopilotAction()}
+              disabled={approvingIntervention}
               className="rounded-lg bg-indigo-500 px-3 py-2 text-xs font-semibold text-white hover:bg-indigo-400"
             >
-              Aprovar Intervenção
+              {approvingIntervention ? "Aprovando..." : "Aprovar Intervenção"}
             </button>
           </div>
         </div>
