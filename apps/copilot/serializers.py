@@ -1,10 +1,12 @@
 from rest_framework import serializers
 
 from .models import (
+    ActionOutcome,
     CopilotMessage,
     CopilotOperationalInsight,
     CopilotReport72h,
     StoreProfile,
+    ValueLedgerDaily,
 )
 
 
@@ -93,3 +95,70 @@ class StoreProfileSerializer(serializers.ModelSerializer):
             "updated_at",
         )
         read_only_fields = ("id", "org_id", "store_id", "created_at", "updated_at")
+
+
+class CopilotActionOutcomeSerializer(serializers.ModelSerializer):
+    baseline = serializers.JSONField(source="baseline_json")
+    outcome = serializers.JSONField(source="outcome_json")
+
+    class Meta:
+        model = ActionOutcome
+        fields = (
+            "id",
+            "org_id",
+            "store_id",
+            "action_event_id",
+            "insight_id",
+            "action_type",
+            "channel",
+            "source",
+            "status",
+            "baseline",
+            "outcome",
+            "impact_expected_brl",
+            "impact_realized_brl",
+            "confidence_score",
+            "dispatched_at",
+            "completed_at",
+            "created_at",
+            "updated_at",
+        )
+
+
+class CopilotActionOutcomeCreateSerializer(serializers.Serializer):
+    action_event_id = serializers.UUIDField(required=False, allow_null=True)
+    insight_id = serializers.CharField(max_length=128)
+    action_type = serializers.CharField(max_length=64, required=False, default="whatsapp_delegation")
+    channel = serializers.CharField(max_length=32, required=False, default="whatsapp")
+    source = serializers.CharField(max_length=64, required=False, default="copilot_decision_center")
+    status = serializers.ChoiceField(
+        choices=["dispatched", "completed", "failed", "canceled"],
+        required=False,
+        default="dispatched",
+    )
+    baseline = serializers.JSONField(required=False)
+    outcome = serializers.JSONField(required=False)
+    impact_expected_brl = serializers.FloatField(required=False, default=0, min_value=0)
+    impact_realized_brl = serializers.FloatField(required=False, default=0, min_value=0)
+    confidence_score = serializers.IntegerField(required=False, default=0, min_value=0, max_value=100)
+    dispatched_at = serializers.DateTimeField(required=False)
+    completed_at = serializers.DateTimeField(required=False, allow_null=True)
+
+
+class ValueLedgerDailySerializer(serializers.ModelSerializer):
+    class Meta:
+        model = ValueLedgerDaily
+        fields = (
+            "id",
+            "org_id",
+            "store_id",
+            "ledger_date",
+            "value_recovered_brl",
+            "value_at_risk_brl",
+            "actions_dispatched",
+            "actions_completed",
+            "confidence_score_avg",
+            "method_version",
+            "created_at",
+            "updated_at",
+        )

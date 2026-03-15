@@ -27,6 +27,13 @@ MESSAGE_ROLE = (
     ("user", "user"),
 )
 
+ACTION_OUTCOME_STATUS = (
+    ("dispatched", "dispatched"),
+    ("completed", "completed"),
+    ("failed", "failed"),
+    ("canceled", "canceled"),
+)
+
 BUSINESS_MODEL = (
     ("default", "default"),
     ("cafe", "cafe"),
@@ -181,4 +188,56 @@ class OperationalWindowHourly(models.Model):
         indexes = [
             models.Index(fields=["store_id", "-ts_bucket"], name="op_window_store_bucket_idx"),
             models.Index(fields=["org_id", "-ts_bucket"], name="op_window_org_bucket_idx"),
+        ]
+
+
+class ActionOutcome(models.Model):
+    id = models.UUIDField(primary_key=True, default=uuid.uuid4, editable=False)
+    org_id = models.UUIDField(db_index=True)
+    store_id = models.UUIDField(db_index=True)
+    action_event_id = models.UUIDField(null=True, blank=True, db_index=True)
+    insight_id = models.CharField(max_length=128, db_index=True)
+    action_type = models.CharField(max_length=64, default="whatsapp_delegation")
+    channel = models.CharField(max_length=32, default="whatsapp")
+    source = models.CharField(max_length=64, default="copilot_decision_center")
+    status = models.CharField(max_length=16, choices=ACTION_OUTCOME_STATUS, default="dispatched", db_index=True)
+    baseline_json = models.JSONField(default=dict)
+    outcome_json = models.JSONField(default=dict)
+    impact_expected_brl = models.FloatField(default=0)
+    impact_realized_brl = models.FloatField(default=0)
+    confidence_score = models.PositiveSmallIntegerField(default=0)
+    dispatched_at = models.DateTimeField(default=timezone.now, db_index=True)
+    completed_at = models.DateTimeField(null=True, blank=True)
+    created_at = models.DateTimeField(default=timezone.now)
+    updated_at = models.DateTimeField(default=timezone.now, db_index=True)
+
+    class Meta:
+        db_table = "action_outcome"
+        indexes = [
+            models.Index(fields=["store_id", "-dispatched_at"], name="action_outcome_store_ds_idx"),
+            models.Index(fields=["org_id", "-dispatched_at"], name="action_outcome_org_ds_idx"),
+            models.Index(fields=["store_id", "status", "-dispatched_at"], name="action_outcome_store_st_idx"),
+        ]
+
+
+class ValueLedgerDaily(models.Model):
+    id = models.UUIDField(primary_key=True, default=uuid.uuid4, editable=False)
+    org_id = models.UUIDField(db_index=True)
+    store_id = models.UUIDField(db_index=True)
+    ledger_date = models.DateField(db_index=True)
+    value_recovered_brl = models.FloatField(default=0)
+    value_at_risk_brl = models.FloatField(default=0)
+    actions_dispatched = models.PositiveIntegerField(default=0)
+    actions_completed = models.PositiveIntegerField(default=0)
+    confidence_score_avg = models.FloatField(default=0)
+    method_version = models.CharField(max_length=64, default="value_ledger_v1_2026-03-15")
+    created_at = models.DateTimeField(default=timezone.now)
+    updated_at = models.DateTimeField(default=timezone.now, db_index=True)
+
+    class Meta:
+        db_table = "value_ledger_daily"
+        unique_together = (("store_id", "ledger_date"),)
+        indexes = [
+            models.Index(fields=["store_id", "-ledger_date"], name="value_ledger_store_dt_idx"),
+            models.Index(fields=["org_id", "-ledger_date"], name="value_ledger_org_dt_idx"),
         ]
