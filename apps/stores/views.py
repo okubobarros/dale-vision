@@ -2925,6 +2925,14 @@ class StoreViewSet(viewsets.ModelViewSet):
                 "items": items,
                 "retail_summary": retail_summary,
                 "retail_items": retail_items,
+                "operational_summary": {
+                    "vision_events_total": int(sum(summary.values())),
+                    "retail_events_total": int(sum(retail_summary.values())),
+                    "events_total": int(sum(summary.values()) + sum(retail_summary.values())),
+                    "latest_vision_event_at": items[0]["ts"] if items else None,
+                    "latest_retail_event_at": retail_items[0]["ts"] if retail_items else None,
+                    "dedupe_model": "event_receipts_unique_event_id",
+                },
             }
         )
 

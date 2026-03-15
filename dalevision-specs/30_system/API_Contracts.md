@@ -131,6 +131,17 @@ Schema:
 
 Observação: detalhes completos em `SPEC-007-Event-Pipeline.md`.
 
+Resposta de `vision/audit` (resumo):
+- `summary` + `items`: trilha `vision_atomic_events`
+- `retail_summary` + `retail_items`: trilha `event_receipts` (`retail_*`)
+- `operational_summary`:
+  - `vision_events_total`
+  - `retail_events_total`
+  - `events_total`
+  - `latest_vision_event_at`
+  - `latest_retail_event_at`
+  - `dedupe_model` (`event_receipts_unique_event_id`)
+
 ## Endpoints TBD (não implementar sem definição)
  (não implementar sem definição)
 - Relatórios mensais por Org (SPEC-005)

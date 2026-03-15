@@ -84,6 +84,10 @@ class StoreVisionAuditTests(SimpleTestCase):
         self.assertEqual(response.data["filters"]["event_source"], "vision")
         self.assertEqual(response.data["retail_summary"], {})
         self.assertEqual(response.data["retail_items"], [])
+        self.assertEqual(response.data["operational_summary"]["vision_events_total"], 5)
+        self.assertEqual(response.data["operational_summary"]["retail_events_total"], 0)
+        self.assertEqual(response.data["operational_summary"]["events_total"], 5)
+        self.assertEqual(response.data["operational_summary"]["latest_vision_event_at"], "2026-03-09T12:00:05")
 
     @patch("apps.stores.views._get_org_timezone")
     @patch("apps.stores.views.StoreViewSet._require_subscription_for_store")
@@ -138,3 +142,7 @@ class StoreVisionAuditTests(SimpleTestCase):
         self.assertEqual(response.data["retail_summary"]["retail_queue_length"], 4)
         self.assertEqual(len(response.data["retail_items"]), 1)
         self.assertEqual(response.data["retail_items"][0]["event_name"], "retail_queue_length")
+        self.assertEqual(response.data["operational_summary"]["vision_events_total"], 0)
+        self.assertEqual(response.data["operational_summary"]["retail_events_total"], 6)
+        self.assertEqual(response.data["operational_summary"]["events_total"], 6)
+        self.assertEqual(response.data["operational_summary"]["latest_retail_event_at"], "2026-03-09T12:04:00")
