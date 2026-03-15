@@ -27,6 +27,7 @@ from apps.edge.views import (
     _compute_receipt_id,
     _normalize_ingest_event_name,
     _validate_retail_event_contract,
+    EdgeEventsIngestView,
 )
 
 
@@ -455,6 +456,124 @@ class EdgeEventsAuthTests(TestCase):
         self.assertTrue(resp.data.get("ok"))
         atomic_insert.assert_called_once()
         apply_queue.assert_called_once()
+
+    def test_retail_event_contract_valid_normalizes_event_name_on_receipt(self):
+        self._skip_if_not_pg()
+        store_id = uuid.uuid4()
+        token = "edge-store-token-retail-valid"
+        self._create_edge_token(store_id, token)
+        payload = {
+            "event_name": "retail.event.v1",
+            "data": {
+                "store_id": str(store_id),
+                "ts": "2026-03-15T10:32:00Z",
+                "event_type": "queue_length",
+                "value": 6,
+                "source": "edge",
+                "confidence": 0.92,
+                "camera_id": "cam-1",
+            },
+        }
+        with patch("apps.edge.views.insert_event_receipt_if_new", return_value=True) as insert_receipt:
+            resp = self.client.post(
+                "/api/edge/events/",
+                payload,
+                format="json",
+                HTTP_X_EDGE_TOKEN=token,
+            )
+        self.assertIn(resp.status_code, (200, 201))
+        self.assertTrue(resp.data.get("ok"))
+        self.assertTrue(resp.data.get("stored"))
+        self.assertTrue(resp.data.get("receipt_id"))
+        insert_receipt.assert_called_once()
+        self.assertEqual(insert_receipt.call_args.kwargs.get("event_name"), "retail_queue_length")
+
+    def test_retail_event_contract_invalid_returns_400(self):
+        self._skip_if_not_pg()
+        store_id = uuid.uuid4()
+        token = "edge-store-token-retail-invalid"
+        self._create_edge_token(store_id, token)
+        payload = {
+            "event_name": "retail.event.v1",
+            "data": {
+                "store_id": str(store_id),
+                "ts": "invalid-ts",
+                "event_type": "not_supported",
+                "source": "edge",
+            },
+        }
+        with patch("apps.edge.views.insert_event_receipt_if_new") as insert_receipt:
+            resp = self.client.post(
+                "/api/edge/events/",
+                payload,
+                format="json",
+                HTTP_X_EDGE_TOKEN=token,
+            )
+        self.assertEqual(resp.status_code, 400)
+        self.assertEqual(resp.data.get("reason"), "retail_event_contract_invalid")
+        self.assertEqual(resp.data.get("contract_version"), "retail_event_v1")
+        insert_receipt.assert_not_called()
+
+
+class EdgeRetailIngestUnitTests(SimpleTestCase):
+    def setUp(self):
+        self.factory = APIRequestFactory()
+
+    @patch("apps.edge.views.TokenAuthentication.authenticate", return_value=None)
+    @patch("apps.edge.views.EdgeEventsIngestView._is_edge_request")
+    @patch("apps.edge.views.insert_event_receipt_if_new", return_value=True)
+    @patch("apps.edge.views._touch_store_seen")
+    def test_retail_event_ingest_normalizes_event_name_without_db(
+        self,
+        _touch_store_seen,
+        insert_receipt,
+        is_edge_request,
+        _token_auth,
+    ):
+        store_id = "11111111-1111-1111-1111-111111111111"
+        is_edge_request.return_value = SimpleNamespace(ok=True, status_code=200, store_id=store_id, code=None, detail=None)
+        payload = {
+            "event_name": "retail.event.v1",
+            "data": {
+                "store_id": store_id,
+                "ts": "2026-03-15T10:32:00Z",
+                "event_type": "queue_length",
+                "value": 6,
+                "source": "edge",
+                "confidence": 0.92,
+            },
+        }
+        request = self.factory.post("/api/edge/events/", payload, format="json")
+        response = EdgeEventsIngestView.as_view()(request)
+        self.assertIn(response.status_code, (200, 201))
+        self.assertTrue(response.data.get("ok"))
+        self.assertEqual(insert_receipt.call_args.kwargs.get("event_name"), "retail_queue_length")
+
+    @patch("apps.edge.views.TokenAuthentication.authenticate", return_value=None)
+    @patch("apps.edge.views.EdgeEventsIngestView._is_edge_request")
+    @patch("apps.edge.views.insert_event_receipt_if_new")
+    def test_retail_event_ingest_rejects_invalid_contract_without_db(
+        self,
+        insert_receipt,
+        is_edge_request,
+        _token_auth,
+    ):
+        store_id = "11111111-1111-1111-1111-111111111111"
+        is_edge_request.return_value = SimpleNamespace(ok=True, status_code=200, store_id=store_id, code=None, detail=None)
+        payload = {
+            "event_name": "retail.event.v1",
+            "data": {
+                "store_id": store_id,
+                "ts": "invalid-ts",
+                "event_type": "invalid_event",
+                "source": "edge",
+            },
+        }
+        request = self.factory.post("/api/edge/events/", payload, format="json")
+        response = EdgeEventsIngestView.as_view()(request)
+        self.assertEqual(response.status_code, 400)
+        self.assertEqual(response.data.get("reason"), "retail_event_contract_invalid")
+        insert_receipt.assert_not_called()
 
 
 class EdgeSetupTokenTests(TestCase):
