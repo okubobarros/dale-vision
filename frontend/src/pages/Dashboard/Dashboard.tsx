@@ -1549,6 +1549,11 @@ const Dashboard = () => {
                 {networkIngestionSummary?.operational_summary?.recommended_action ||
                   "Monitorando ingestão da rede para recomendações mais confiáveis."}
               </p>
+              <p className="mt-1 text-[11px] text-gray-500">
+                Materialização operacional:{" "}
+                {networkIngestionSummary?.operational_summary?.operational_window?.status || "no_data"} ·
+                cobertura {networkIngestionSummary?.operational_summary?.operational_window?.coverage_rate ?? 0}%
+              </p>
               <div className="mt-3">
                 <Link
                   to="/app/reports"

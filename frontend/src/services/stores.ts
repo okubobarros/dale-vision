@@ -238,6 +238,15 @@ export interface NetworkVisionIngestionSummary {
     pipeline_status: "healthy" | "stale" | "no_signal"
     recommended_action: string
     dedupe_model: string
+    operational_window?: {
+      status: "healthy" | "stale" | "no_data"
+      latest_bucket_at?: string | null
+      freshness_seconds?: number | null
+      coverage_stores: number
+      coverage_rate: number
+      recommended_action: string
+      model: string
+    }
   }
 }
 
@@ -268,6 +277,15 @@ export interface StoreVisionIngestionSummary {
     pipeline_status: "healthy" | "stale" | "no_signal"
     recommended_action: string
     dedupe_model: string
+    operational_window?: {
+      status: "healthy" | "stale" | "no_data"
+      latest_bucket_at?: string | null
+      freshness_seconds?: number | null
+      coverage_stores: number
+      coverage_rate: number
+      recommended_action: string
+      model: string
+    }
   }
 }
 

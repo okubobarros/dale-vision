@@ -637,6 +637,11 @@ const StoreDetails = () => {
               {ingestionSummaryQ.data?.operational_summary?.recommended_action ||
                 "Monitorando ingestão da loja para manter a leitura operacional estável."}
             </p>
+            <p className="mt-1 text-xs text-slate-500">
+              Materialização operacional:{" "}
+              {ingestionSummaryQ.data?.operational_summary?.operational_window?.status || "no_data"} · cobertura{" "}
+              {ingestionSummaryQ.data?.operational_summary?.operational_window?.coverage_rate ?? 0}%
+            </p>
           </div>
 
           <div className="rounded-xl border border-slate-200 bg-white p-5 sm:p-6 shadow-sm">

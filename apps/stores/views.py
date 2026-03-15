@@ -19,6 +19,7 @@ from django.conf import settings
 from django.utils.dateparse import parse_datetime
 from apps.core.models import Store, OrgMember, Organization, Camera, Employee, DetectionEvent, Subscription
 from apps.edge.models import EdgeToken, StoreCalibrationRun
+from apps.copilot.models import OperationalWindowHourly
 from apps.edge.auth import validate_store_token, EdgeAwareJWTAuthentication
 from apps.cameras.limits import (
     enforce_trial_camera_limit,
@@ -51,6 +52,61 @@ from apps.stores.services.user_uuid import ensure_user_uuid
 from apps.stores.services.user_orgs import get_user_org_ids
 
 logger = logging.getLogger(__name__)
+
+
+def _compute_operational_window_health(store_ids, end_dt, stale_minutes=15):
+    total_stores = max(len(store_ids or []), 0)
+    empty = {
+        "status": "no_data",
+        "latest_bucket_at": None,
+        "freshness_seconds": None,
+        "coverage_stores": 0,
+        "coverage_rate": 0,
+        "recommended_action": "Sem materialização operacional. Verificar job copilot_operational_window_tick.",
+        "model": "operational_window_hourly_v1",
+    }
+    if total_stores == 0:
+        return empty
+
+    try:
+        qs = OperationalWindowHourly.objects.filter(store_id__in=list(store_ids))
+        latest_bucket = qs.order_by("-ts_bucket").values_list("ts_bucket", flat=True).first()
+        coverage_stores = qs.values("store_id").distinct().count()
+    except Exception:
+        return {
+            **empty,
+            "recommended_action": "Falha ao consultar materialização operacional. Validar migração e permissões de leitura.",
+        }
+
+    coverage_rate = int(round((coverage_stores / total_stores) * 100)) if total_stores > 0 else 0
+    if not latest_bucket:
+        return {
+            **empty,
+            "coverage_stores": int(coverage_stores or 0),
+            "coverage_rate": coverage_rate,
+        }
+
+    latest_aware = latest_bucket
+    if timezone.is_naive(latest_aware):
+        latest_aware = timezone.make_aware(latest_aware, timezone.get_current_timezone())
+
+    freshness_seconds = max(0, int((end_dt - latest_aware).total_seconds()))
+    stale_threshold_seconds = int(max(stale_minutes, 1) * 60)
+    status_value = "healthy" if freshness_seconds <= stale_threshold_seconds else "stale"
+    recommended_action = (
+        "Materialização operacional em dia."
+        if status_value == "healthy"
+        else "Materialização desatualizada. Verificar scheduler do tick operacional."
+    )
+    return {
+        "status": status_value,
+        "latest_bucket_at": latest_aware.isoformat(),
+        "freshness_seconds": freshness_seconds,
+        "coverage_stores": int(coverage_stores or 0),
+        "coverage_rate": coverage_rate,
+        "recommended_action": recommended_action,
+        "model": "operational_window_hourly_v1",
+    }
 
 
 def _build_metric_governance():
@@ -3098,6 +3154,11 @@ class StoreViewSet(viewsets.ModelViewSet):
         latest_event_at = max(latest_candidates).isoformat() if latest_candidates else None
         pipeline_status = "no_signal"
         recommended_action = "Verificar edge/cameras e validar envio de eventos."
+        operational_window_health = _compute_operational_window_health(
+            [str(store.id)],
+            end,
+            stale_minutes=15,
+        )
         if events_total > 0:
             stale_threshold = end - timedelta(minutes=30)
             latest_dt = max(latest_candidates) if latest_candidates else None
@@ -3137,6 +3198,7 @@ class StoreViewSet(viewsets.ModelViewSet):
                     "pipeline_status": pipeline_status,
                     "recommended_action": recommended_action,
                     "dedupe_model": "event_receipts_unique_event_id",
+                    "operational_window": operational_window_health,
                 },
             }
         )
@@ -3460,6 +3522,11 @@ class StoreViewSet(viewsets.ModelViewSet):
         events_total = vision_total + retail_total
         pipeline_status = "no_signal"
         recommended_action = "Verificar edge/cameras e validar envio da rede."
+        operational_window_health = _compute_operational_window_health(
+            store_ids,
+            end,
+            stale_minutes=15,
+        )
         if events_total > 0:
             stale_threshold = end - timedelta(minutes=30)
             latest_dt = max(latest_candidates) if latest_candidates else None
@@ -3502,6 +3569,7 @@ class StoreViewSet(viewsets.ModelViewSet):
                     "pipeline_status": pipeline_status,
                     "recommended_action": recommended_action,
                     "dedupe_model": "event_receipts_unique_event_id",
+                    "operational_window": operational_window_health,
                 },
             }
         )

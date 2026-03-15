@@ -152,8 +152,10 @@ class StoreVisionAuditTests(SimpleTestCase):
     @patch("apps.stores.views.require_store_role")
     @patch("apps.stores.views.StoreViewSet.get_object")
     @patch("apps.stores.views.connection")
+    @patch("apps.stores.views._compute_operational_window_health")
     def test_vision_ingestion_summary_returns_pipeline_health(
         self,
+        operational_window_health_mock,
         connection_mock,
         get_object_mock,
         _require_role,
@@ -162,6 +164,15 @@ class StoreVisionAuditTests(SimpleTestCase):
     ):
         get_object_mock.return_value = self.store
         _tz.return_value = datetime.now().astimezone().tzinfo
+        operational_window_health_mock.return_value = {
+            "status": "healthy",
+            "latest_bucket_at": "2026-03-09T12:10:00+00:00",
+            "freshness_seconds": 120,
+            "coverage_stores": 1,
+            "coverage_rate": 100,
+            "recommended_action": "Materialização operacional em dia.",
+            "model": "operational_window_hourly_v1",
+        }
 
         cursor = MagicMock()
         cursor.fetchall.side_effect = [
@@ -194,4 +205,8 @@ class StoreVisionAuditTests(SimpleTestCase):
         self.assertIn(
             response.data["operational_summary"]["pipeline_status"],
             {"healthy", "stale"},
+        )
+        self.assertEqual(
+            response.data["operational_summary"]["operational_window"]["status"],
+            "healthy",
         )

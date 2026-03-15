@@ -16,13 +16,24 @@ class StoreNetworkIngestionSummaryTests(SimpleTestCase):
     @patch("apps.stores.views.get_user_org_ids", return_value=["org-1"])
     @patch("apps.stores.views.StoreViewSet.get_queryset")
     @patch("apps.stores.views.connection")
+    @patch("apps.stores.views._compute_operational_window_health")
     def test_network_ingestion_summary_returns_aggregated_payload(
         self,
+        operational_window_health_mock,
         connection_mock,
         get_queryset_mock,
         _get_user_org_ids,
         _require_subscription,
     ):
+        operational_window_health_mock.return_value = {
+            "status": "healthy",
+            "latest_bucket_at": "2026-03-10T12:10:00+00:00",
+            "freshness_seconds": 180,
+            "coverage_stores": 2,
+            "coverage_rate": 100,
+            "recommended_action": "Materialização operacional em dia.",
+            "model": "operational_window_hourly_v1",
+        }
         store_a = MagicMock()
         store_a.id = "11111111-1111-1111-1111-111111111111"
         store_a.status = "active"
@@ -63,4 +74,8 @@ class StoreNetworkIngestionSummaryTests(SimpleTestCase):
         self.assertIn(
             response.data["operational_summary"]["pipeline_status"],
             {"healthy", "stale"},
+        )
+        self.assertEqual(
+            response.data["operational_summary"]["operational_window"]["coverage_stores"],
+            2,
         )
