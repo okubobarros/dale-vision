@@ -10,6 +10,7 @@ jobs:
   export:
     runs-on: ubuntu-latest
     env:
+      FORCE_JAVASCRIPT_ACTIONS_TO_NODE24: "true"
       GOOGLE_DRIVE_FOLDER_ID: ${{ secrets.GOOGLE_DRIVE_FOLDER_ID }}
       GOOGLE_DRIVE_EXPORT_TZ: America/Sao_Paulo
       TRAFFIC_METRICS_TTL_DAYS: "90"
