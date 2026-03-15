@@ -42,6 +42,7 @@
 - `GET /api/v1/stores/network_dashboard/`
 - `GET /api/v1/stores/{store_id}/vision/audit/` (query: `event_source=vision|retail|all`, `event_type`, `camera_id`, `zone_id`, `roi_entity_id`, `from`, `to`, `limit`)
 - `GET /api/v1/stores/{store_id}/vision/ingestion-summary/` (query: `event_source=vision|retail|all`, `window_hours`, `camera_id`, `zone_id`, `roi_entity_id`)
+- `GET /api/v1/stores/network/vision/ingestion-summary/` (query: `event_source=vision|retail|all`, `window_hours`, `camera_id`, `zone_id`, `roi_entity_id`)
 - `GET|POST /api/v1/stores/{store_id}/cameras/`
 - `PATCH /api/v1/stores/{store_id}/cameras/{camera_id}/` (ativa/desativa câmera)
 - `GET /api/v1/stores/{store_id}/metrics/summary/`
@@ -149,6 +150,14 @@ Resposta de `vision/ingestion-summary`:
 - `operational_summary.events_total`
 - `operational_summary.pipeline_status` (`healthy|stale|no_signal`)
 - `operational_summary.recommended_action`
+
+Resposta de `network/vision/ingestion-summary`:
+- `network.total_stores`
+- `network.active_stores`
+- `vision_summary.by_event_type` + `vision_summary.total` + `vision_summary.latest_event_at`
+- `retail_summary.by_event_name` + `retail_summary.total` + `retail_summary.latest_event_at`
+- `operational_summary.events_total`
+- `operational_summary.pipeline_status` (`healthy|stale|no_signal`)
 
 ## Endpoints TBD (não implementar sem definição)
  (não implementar sem definição)
