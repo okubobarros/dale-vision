@@ -135,6 +135,22 @@ Payload:
 - `metadata`
 - `status`
 
+### `action_dispatched`
+When: an executive action is explicitly dispatched from Copilot/Decision Center.
+Emitted by: backend `DetectionEventViewSet.delegate_whatsapp`.
+Payload:
+- `event_name` (`action_dispatched`)
+- `event_version` (`v1`)
+- `store_id`
+- `insight_id`
+- `channel` (`whatsapp`)
+- `expected_impact_brl` (nullable)
+- `confidence_score` (nullable)
+- `requested_by_user_id`
+- `requested_at`
+- `source` (`copilot_decision_center` default)
+- `event_id`
+
 ## Dedupe Rules
 - `upgrade_viewed`: session-based dedupe (1 per tab/session).
 - `trial_expired_shown`: session-based dedupe on frontend; backend also throttles per org.

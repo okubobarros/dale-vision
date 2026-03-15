@@ -994,6 +994,24 @@ class DetectionEventViewSet(viewsets.ModelViewSet):
         destination = _dest_to_text(destination_phone)
         manager_name = str(request.data.get("manager_name") or "").strip() or None
         note = str(request.data.get("note") or "").strip() or None
+        source = str(request.data.get("source") or "").strip() or "copilot_decision_center"
+        insight_id = str(request.data.get("insight_id") or "").strip() or f"event-{event.id}"
+        expected_impact_brl = None
+        confidence_score = None
+
+        raw_expected_impact = request.data.get("expected_impact_brl")
+        if raw_expected_impact not in (None, ""):
+            try:
+                expected_impact_brl = max(0.0, float(raw_expected_impact))
+            except (TypeError, ValueError):
+                expected_impact_brl = None
+
+        raw_confidence_score = request.data.get("confidence_score")
+        if raw_confidence_score not in (None, ""):
+            try:
+                confidence_score = int(max(0, min(100, int(raw_confidence_score))))
+            except (TypeError, ValueError):
+                confidence_score = None
 
         media_qs = EventMedia.objects.filter(event_id=event.id).order_by("-created_at")
         media_payload = EventMediaSerializer(media_qs, many=True).data
@@ -1023,6 +1041,19 @@ class DetectionEventViewSet(viewsets.ModelViewSet):
             "metadata": event.metadata or {},
             "status": event.status,
         }
+        action_dispatched_payload = {
+            "event_name": "action_dispatched",
+            "event_version": "v1",
+            "store_id": str(event.store_id),
+            "insight_id": insight_id,
+            "channel": "whatsapp",
+            "expected_impact_brl": expected_impact_brl,
+            "confidence_score": confidence_score,
+            "requested_by_user_id": str(getattr(request.user, "id", "") or ""),
+            "requested_at": timezone.now().isoformat(),
+            "source": source,
+            "event_id": str(event.id),
+        }
 
         now = timezone.now()
         journey_event = JourneyEvent.objects.create(
@@ -1041,6 +1072,24 @@ class DetectionEventViewSet(viewsets.ModelViewSet):
             data=payload,
             meta={
                 "source": "alerts_delegate",
+                "request_user": getattr(request.user, "email", None),
+            },
+        )
+        action_dispatched_event = JourneyEvent.objects.create(
+            lead_id=None,
+            org_id=event.org_id,
+            event_name="action_dispatched",
+            payload=action_dispatched_payload,
+            created_at=now,
+        )
+        action_dispatched_n8n = send_event_to_n8n(
+            event_name="action_dispatched",
+            event_id=str(action_dispatched_event.id),
+            lead_id=None,
+            org_id=event.org_id,
+            data=action_dispatched_payload,
+            meta={
+                "source": source,
                 "request_user": getattr(request.user, "email", None),
             },
         )
@@ -1082,6 +1131,10 @@ class DetectionEventViewSet(viewsets.ModelViewSet):
                     "id": str(employee.id),
                     "name": employee.full_name,
                     "destination": destination,
+                },
+                "action_dispatched": {
+                    "event_id": str(action_dispatched_event.id),
+                    "ok": bool(action_dispatched_n8n.get("ok")),
                 },
                 "n8n": n8n_result,
             },

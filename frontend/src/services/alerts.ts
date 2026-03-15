@@ -96,6 +96,10 @@ export interface DelegateWhatsappPayload {
   employee_id?: string
   manager_name?: string
   note?: string
+  insight_id?: string
+  source?: string
+  expected_impact_brl?: number
+  confidence_score?: number
 }
 
 export interface DelegateWhatsappResponse {

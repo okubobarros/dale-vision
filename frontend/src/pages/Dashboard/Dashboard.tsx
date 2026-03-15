@@ -953,7 +953,11 @@ const Dashboard = () => {
     setDelegatingEventId(action.id)
     try {
       const note = buildDelegationMessage(action)
-      const response = await alertsService.delegateEventWhatsapp(action.id, { note })
+      const response = await alertsService.delegateEventWhatsapp(action.id, {
+        note,
+        insight_id: `event-${action.id}`,
+        source: "copilot_decision_center",
+      })
       if (response?.ok) {
         toast.success(
           response?.employee?.name
