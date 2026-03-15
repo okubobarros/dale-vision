@@ -187,3 +187,37 @@ Vender como:
 - Mais acao orientada por prioridade (onde agir agora).
 - Menos risco de perda operacional por fila/equipe/cobertura.
 - Mais controle executivo da rede sem expor complexidade tecnica.
+
+---
+
+## Atualizacao executiva (2026-03-15) - Fechamento Sprint 1 (governanca)
+
+### Leitura rapida
+- Sprint 1 (Aderencia Operacional) em estado de fechamento tecnico/governanca.
+- Progresso estimado da sprint: `85-90%`.
+- Base pronta para operacao assistida com trilha executiva de acao.
+
+### Feito nesta etapa de fechamento
+- Scheduler de materializacao operacional validado (`tick` 5/10 min).
+- Retencao operacional validada (`cleanup` diario).
+- Saude de ingestao consolidada em:
+  - Dashboard da rede,
+  - Reports,
+  - Store View.
+- Saude da materializacao (`operational_window`) exposta em API e UI:
+  - `status`,
+  - `freshness`,
+  - `coverage_stores/coverage_rate`.
+- Fluxo de delegacao com `action_dispatched` padronizado:
+  - por evento (`delegate-whatsapp`);
+  - generico (`POST /api/v1/alerts/actions/dispatch/`).
+
+### Impacto direto para o produto
+- Copiloto deixou de ser apenas leitura e passou a registrar acao executiva.
+- Reports e Dashboard convergem para a mesma semantica de confianca e pipeline.
+- Reducao de risco de tela "analitica passiva" sem prova de valor acionavel.
+
+### O que falta para encerrar 100% da sprint
+1. Rodar smoke final em producao com evidencia consolidada (tick, cleanup, dispatch, UI).
+2. Registrar outcome de acao (depois da execucao) para fechar loop no value ledger.
+3. Incluir monitoramento operacional de erro por endpoint de dispatch (SLO minimo).

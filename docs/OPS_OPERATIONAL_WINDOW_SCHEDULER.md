@@ -84,3 +84,14 @@ Cleanup diário:
 ### Observações
 - O cron do GitHub usa UTC e pode ter atraso de poucos minutos.
 - Em pico, prefira reduzir `MAX_STORES` para manter execução abaixo de 10 minutos.
+
+## Checklist de Fechamento (Sprint 1)
+- [x] Tick operacional agendado (`copilot_operational_window_tick.yml`).
+- [x] Cleanup diário agendado (`copilot_operational_window_cleanup.yml`).
+- [x] API de cobertura em produção com `method.version` versionado.
+- [x] Dashboard/Reports/Store View exibindo confiança + saúde de ingestão.
+- [x] Endpoints de ingestão com `operational_window.status` e `coverage_rate`.
+- [x] Fluxo de ação com `action_dispatched`:
+  - via `delegate-whatsapp` por evento;
+  - via endpoint genérico `POST /api/v1/alerts/actions/dispatch/`.
+- [x] Lint/build frontend e testes backend críticos executados.

@@ -111,13 +111,72 @@ Quando não existir materialização em `operational_window_hourly`:
 ## 6) Evento de ação (delegação)
 Para alimentar Value Ledger, o clique de delegação deve gerar evento lógico `action_dispatched`.
 
-Canônico atual:
+Canônicos atuais:
 - `event_name`: `alert_delegate_whatsapp_requested`
 - Persistência: `journey_events` + `notification_logs`
+- `event_name`: `action_dispatched`
+- Persistência: `journey_events` (sempre) + `notification_logs` (quando aplicável)
 
 Mapeamento para o domínio executivo:
 - `action_dispatched.type = whatsapp_delegation`
 - `action_dispatched.source = copilot_decision_center`
+
+### 6.1 Delegação por evento operacional existente
+`POST /api/v1/alerts/events/{event_id}/delegate-whatsapp/`
+
+Uso:
+- quando existe `DetectionEvent` e há destinatário de WhatsApp na loja.
+- gera `alert_delegate_whatsapp_requested` e também `action_dispatched`.
+
+Campos adicionais aceitos:
+- `insight_id` (opcional)
+- `source` (opcional, default `copilot_decision_center`)
+- `expected_impact_brl` (opcional)
+- `confidence_score` (opcional)
+
+### 6.2 Dispatch genérico (sem depender de event_id)
+`POST /api/v1/alerts/actions/dispatch/`
+
+Uso:
+- quando a ação nasce em contexto executivo (ex.: `/app/reports`) sem um `event_id` único.
+
+Payload mínimo:
+```json
+{
+  "store_id": "uuid",
+  "insight_id": "reports-priority-123",
+  "action_type": "whatsapp_delegation",
+  "channel": "whatsapp",
+  "source": "reports_executive"
+}
+```
+
+Payload recomendado:
+```json
+{
+  "store_id": "uuid",
+  "insight_id": "reports-priority-123",
+  "action_type": "priority_intervention_approval",
+  "channel": "copilot",
+  "source": "reports_decision_center",
+  "expected_impact_brl": 420.0,
+  "confidence_score": 84,
+  "context": {
+    "origin": "reports_decision_center",
+    "period": "30d"
+  }
+}
+```
+
+Resposta:
+```json
+{
+  "ok": true,
+  "message": "Ação despachada para execução e acompanhamento.",
+  "event_id": "journey-event-uuid",
+  "n8n": {}
+}
+```
 
 Payload mínimo recomendado:
 ```json
