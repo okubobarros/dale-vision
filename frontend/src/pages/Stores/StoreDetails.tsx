@@ -13,11 +13,27 @@ import { copilotService } from "../../services/copilot"
 const ONLINE_MAX_AGE_SEC = 120
 
 type StoreTab = "overview" | "cameras" | "infrastructure"
+type IngestionEventTypeFilter =
+  | ""
+  | "queue_length"
+  | "staff_detected"
+  | "person_enter"
+  | "sale_completed"
+  | "zone_dwell"
 
 const STORE_TABS: Array<{ key: StoreTab; label: string }> = [
   { key: "overview", label: "Decisão" },
   { key: "cameras", label: "Operação Visual" },
   { key: "infrastructure", label: "Infra TI" },
+]
+
+const ingestionEventFilterOptions: Array<{ value: IngestionEventTypeFilter; label: string }> = [
+  { value: "", label: "Todos eventos" },
+  { value: "queue_length", label: "Fila" },
+  { value: "staff_detected", label: "Staff detectado" },
+  { value: "person_enter", label: "Entrada de pessoas" },
+  { value: "sale_completed", label: "Checkout/Sale" },
+  { value: "zone_dwell", label: "Permanência em zona" },
 ]
 
 const isRecent = (iso?: string | null, maxAgeSec = ONLINE_MAX_AGE_SEC) => {
@@ -164,11 +180,12 @@ const StoreDetails = () => {
     staleTime: 60000,
   })
   const ingestionSummaryQ = useQuery<StoreVisionIngestionSummary>({
-    queryKey: ["store-vision-ingestion-summary", storeId],
+    queryKey: ["store-vision-ingestion-summary", storeId, ingestionEventType],
     queryFn: () =>
       storesService.getStoreVisionIngestionSummary(String(storeId), {
         event_source: "all",
         window_hours: 24,
+        event_type: ingestionEventType || undefined,
       }),
     enabled: Boolean(storeId),
     retry: false,
@@ -189,6 +206,7 @@ const StoreDetails = () => {
   const alerts = data?.last_alerts ?? []
   const [staffWeeklyInput, setStaffWeeklyInput] = useState<number | null>(null)
   const [staffSaveMessage, setStaffSaveMessage] = useState<string>("")
+  const [ingestionEventType, setIngestionEventType] = useState<IngestionEventTypeFilter>("")
   const staffWeeklyValue = staffWeeklyInput ?? Math.max(0, Number(data?.store?.employees_count || 0))
 
   const camerasOnline = useMemo(
@@ -576,9 +594,24 @@ const StoreDetails = () => {
                   Sinal de ingestão usado para alimentar dashboard e recomendações.
                 </p>
               </div>
-              <span className={`rounded-full border px-2.5 py-1 text-[11px] font-semibold ${storePipelineStatusClass}`}>
-                {storePipelineStatusLabel}
-              </span>
+              <div className="flex items-center gap-2">
+                <select
+                  value={ingestionEventType}
+                  onChange={(event) =>
+                    setIngestionEventType(event.target.value as IngestionEventTypeFilter)
+                  }
+                  className="rounded-lg border border-slate-200 bg-white px-2 py-1.5 text-xs text-slate-700"
+                >
+                  {ingestionEventFilterOptions.map((option) => (
+                    <option key={option.value || "all"} value={option.value}>
+                      {option.label}
+                    </option>
+                  ))}
+                </select>
+                <span className={`rounded-full border px-2.5 py-1 text-[11px] font-semibold ${storePipelineStatusClass}`}>
+                  {storePipelineStatusLabel}
+                </span>
+              </div>
             </div>
             <div className="mt-3 grid grid-cols-1 sm:grid-cols-3 gap-2 text-xs">
               <div className="rounded-lg border border-slate-100 bg-slate-50 px-3 py-2">

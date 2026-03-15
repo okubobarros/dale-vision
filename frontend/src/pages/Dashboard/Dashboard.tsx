@@ -133,6 +133,7 @@ const ALL_STORES_VALUE = "all"
 const CEO_PERIOD: "day" | "7d" = "day"
 type DashboardMetricGovernance = MetricGovernanceItem
 type NetworkPeriod = "day" | "7d" | "30d"
+type IngestionEventTypeFilter = "" | "queue_length" | "staff_detected" | "person_enter" | "sale_completed" | "zone_dwell"
 
 const governanceStyles: Record<string, string> = {
   official: "bg-emerald-50 text-emerald-700 border-emerald-200",
@@ -191,6 +192,15 @@ const networkPeriodOptions: Array<{ value: NetworkPeriod; label: string }> = [
   { value: "30d", label: "30 dias" },
 ]
 
+const ingestionEventFilterOptions: Array<{ value: IngestionEventTypeFilter; label: string }> = [
+  { value: "", label: "Todos eventos" },
+  { value: "queue_length", label: "Fila" },
+  { value: "staff_detected", label: "Staff detectado" },
+  { value: "person_enter", label: "Entrada de pessoas" },
+  { value: "sale_completed", label: "Checkout/Sale" },
+  { value: "zone_dwell", label: "Permanência em zona" },
+]
+
 
 const Dashboard = () => {
   const { user, authReady, isAuthenticated } = useAuth()
@@ -209,6 +219,7 @@ const Dashboard = () => {
   const [delegatingEventId, setDelegatingEventId] = useState<string | null>(null)
   const [edgeSetupOpen, setEdgeSetupOpen] = useState(initialOpenEdgeSetup)
   const [networkPeriod, setNetworkPeriod] = useState<NetworkPeriod>("7d")
+  const [networkIngestionEventType, setNetworkIngestionEventType] = useState<IngestionEventTypeFilter>("")
 
   const canFetchAuth = authReady && isAuthenticated
 
@@ -292,8 +303,13 @@ const Dashboard = () => {
     retry: false,
   })
   const { data: networkIngestionSummary } = useQuery<NetworkVisionIngestionSummary>({
-    queryKey: ["network-vision-ingestion-summary-dashboard"],
-    queryFn: () => storesService.getNetworkVisionIngestionSummary({ event_source: "all", window_hours: 24 }),
+    queryKey: ["network-vision-ingestion-summary-dashboard", networkIngestionEventType],
+    queryFn: () =>
+      storesService.getNetworkVisionIngestionSummary({
+        event_source: "all",
+        window_hours: 24,
+        event_type: networkIngestionEventType || undefined,
+      }),
     enabled: canFetchAuth && isNetworkMode,
     staleTime: 30000,
     retry: false,
@@ -1447,6 +1463,20 @@ const Dashboard = () => {
                   >
                     {networkPeriodOptions.map((option) => (
                       <option key={option.value} value={option.value}>
+                        {option.label}
+                      </option>
+                    ))}
+                  </select>
+                )}
+                {isNetworkMode && (
+                  <select
+                    value={networkIngestionEventType}
+                    onChange={(e) => setNetworkIngestionEventType(e.target.value as IngestionEventTypeFilter)}
+                    className="w-full sm:w-[180px] border border-gray-300 rounded-lg px-4 py-2 focus:ring-2 focus:ring-blue-500 focus:border-transparent"
+                    aria-label="Filtrar saúde de ingestão por tipo de evento"
+                  >
+                    {ingestionEventFilterOptions.map((option) => (
+                      <option key={option.value || "all"} value={option.value}>
                         {option.label}
                       </option>
                     ))}
