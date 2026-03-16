@@ -987,6 +987,7 @@ const Dashboard = () => {
 
   const handleDelegateWhatsapp = async (action: {
     id: string
+    storeId: string
     title: string
     impact: string
     action: string
@@ -996,11 +997,12 @@ const Dashboard = () => {
     confidenceScore?: number | null
   }) => {
     setDelegatingEventId(action.id)
+    const insightId = `dashboard-event-${action.id}-${Date.now()}`
     try {
       const note = buildDelegationMessage(action)
       const response = await alertsService.delegateEventWhatsapp(action.id, {
         note,
-        insight_id: `event-${action.id}`,
+        insight_id: insightId,
         source: "dashboard_decision_center",
         expected_impact_brl:
           typeof action.expectedImpactBrl === "number" ? Math.max(0, action.expectedImpactBrl) : undefined,
@@ -1010,6 +1012,29 @@ const Dashboard = () => {
             : undefined,
       })
       if (response?.ok) {
+        try {
+          await copilotService.createActionOutcome(action.storeId, {
+            action_event_id: response.event_id ?? null,
+            insight_id: insightId,
+            action_type: "whatsapp_delegation",
+            channel: "whatsapp",
+            source: "dashboard_decision_center",
+            status: "dispatched",
+            impact_expected_brl:
+              typeof action.expectedImpactBrl === "number" ? Math.max(0, action.expectedImpactBrl) : undefined,
+            confidence_score:
+              typeof action.confidenceScore === "number"
+                ? Math.max(0, Math.min(100, Math.round(action.confidenceScore)))
+                : undefined,
+            baseline: {
+              event_id: action.id,
+              title: action.title,
+              origin: "dashboard_decision_center",
+            },
+          })
+        } catch {
+          // Non-blocking: dispatch already persisted.
+        }
         toast.success(
           response?.employee?.name
             ? `Delegação enviada para ${response.employee.name}.`
@@ -1025,6 +1050,28 @@ const Dashboard = () => {
         (typeof payload?.employee_id === "string" && payload.employee_id) ||
         (typeof payload?.detail === "string" && payload.detail) ||
         "Delegação indisponível: vincule um telefone válido a um colaborador da loja."
+      try {
+        await copilotService.createActionOutcome(action.storeId, {
+          insight_id: insightId,
+          action_type: "whatsapp_delegation",
+          channel: "whatsapp",
+          source: "dashboard_decision_center",
+          status: "failed",
+          impact_expected_brl:
+            typeof action.expectedImpactBrl === "number" ? Math.max(0, action.expectedImpactBrl) : undefined,
+          confidence_score:
+            typeof action.confidenceScore === "number"
+              ? Math.max(0, Math.min(100, Math.round(action.confidenceScore)))
+              : undefined,
+          outcome: {
+            failed_from: "dashboard_decision_center",
+            error_message: message,
+            event_id: action.id,
+          },
+        })
+      } catch {
+        // Non-blocking: failure already visible in UI.
+      }
       toast.error(message)
     } finally {
       setDelegatingEventId(null)
@@ -1087,6 +1134,24 @@ const Dashboard = () => {
         (typeof payload?.message === "string" && payload.message) ||
         (typeof payload?.detail === "string" && payload.detail) ||
         "Não foi possível registrar a ação de rollout."
+      try {
+        await copilotService.createActionOutcome(storeId, {
+          insight_id: insightId,
+          action_type: "edge_rollout_intervention",
+          channel: "copilot",
+          source: "dashboard_rollout_health",
+          status: "failed",
+          impact_expected_brl: expectedImpact || undefined,
+          confidence_score: store.health === "degraded" ? 85 : 75,
+          outcome: {
+            failed_from: "dashboard_rollout_health",
+            error_message: message,
+            reason_code: store.reason_code || null,
+          },
+        })
+      } catch {
+        // Non-blocking: failure already visible in UI.
+      }
       toast.error(message)
     } finally {
       setRolloutActionStoreId(null)

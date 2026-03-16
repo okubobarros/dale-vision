@@ -446,6 +446,23 @@ const Operations = () => {
         (typeof payload?.message === "string" && payload.message) ||
         (typeof payload?.detail === "string" && payload.detail) ||
         "Não foi possível registrar a ação de rollout."
+      try {
+        await copilotService.createActionOutcome(storeId, {
+          insight_id: insightId,
+          action_type: "edge_rollout_intervention",
+          channel: "copilot",
+          source: "operations_rollout",
+          status: "failed",
+          confidence_score: store.health === "degraded" ? 85 : 75,
+          outcome: {
+            failed_from: "operations_rollout",
+            error_message: message,
+            reason_code: store.reason_code || null,
+          },
+        })
+      } catch {
+        // Non-blocking: failure already visible in UI.
+      }
       toast.error(message)
       setRolloutActionStoreId(null)
       return

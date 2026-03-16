@@ -145,6 +145,7 @@ const Reports = () => {
   const [rolloutActionStoreId, setRolloutActionStoreId] = useState<string | null>(null)
   const [approvingIntervention, setApprovingIntervention] = useState(false)
   const [completingOutcomeId, setCompletingOutcomeId] = useState<string | null>(null)
+  const [failingOutcomeId, setFailingOutcomeId] = useState<string | null>(null)
 
   const rangeParams = useMemo(() => {
     if (period === "custom") {
@@ -388,6 +389,25 @@ const Reports = () => {
           (typeof payload?.message === "string" && payload.message) ||
           (typeof payload?.detail === "string" && payload.detail) ||
           "Não foi possível aprovar a intervenção agora."
+        try {
+          await copilotService.createActionOutcome(targetStoreId, {
+            action_event_id: dispatchedEventId ?? null,
+            insight_id: insightId,
+            action_type: "priority_intervention_approval",
+            channel: "copilot",
+            source: "reports_decision_center",
+            status: "failed",
+            impact_expected_brl: Math.max(0, Math.round(revenueAtRiskToday)),
+            confidence_score: coverageData?.confidence_governance?.score ?? undefined,
+            outcome: {
+              failed_from: "reports_decision_center",
+              error_message: message,
+              period,
+            },
+          })
+        } catch {
+          // Non-blocking: dispatch failure already visible in UI.
+        }
         toast.error(message)
         setApprovingIntervention(false)
         return
@@ -487,6 +507,24 @@ const Reports = () => {
         (typeof payload?.message === "string" && payload.message) ||
         (typeof payload?.detail === "string" && payload.detail) ||
         "Não foi possível registrar a delegação agora."
+      try {
+        await copilotService.createActionOutcome(item.id, {
+          insight_id: insightId,
+          action_type: "whatsapp_delegation",
+          channel: "whatsapp",
+          source: "reports_executive",
+          status: "failed",
+          impact_expected_brl: Math.max(0, Math.round(item.riskValue)),
+          confidence_score: coverageData?.confidence_governance?.score ?? undefined,
+          outcome: {
+            failed_from: "reports_where_to_act_now",
+            error_message: message,
+            period,
+          },
+        })
+      } catch {
+        // Non-blocking: failure already visible in UI.
+      }
       toast.error(message)
       setDelegatingStoreId(null)
       return
@@ -524,6 +562,28 @@ const Reports = () => {
       toast.error(message)
     } finally {
       setCompletingOutcomeId(null)
+    }
+  }
+
+  const handleFailOutcome = async (storeId: string, outcomeId: string) => {
+    if (!storeId) return
+    setFailingOutcomeId(outcomeId)
+    try {
+      await copilotService.updateActionOutcome(storeId, outcomeId, {
+        status: "failed",
+        outcome: { failed_by: "reports_ui", failed_from: "executive_outcomes" },
+      })
+      await Promise.all([ledgerQ.refetch(), outcomesQ.refetch()])
+      toast.success("Ação marcada como falha.")
+    } catch (error) {
+      const payload = (error as { response?: { data?: Record<string, unknown> } })?.response?.data
+      const message =
+        (typeof payload?.message === "string" && payload.message) ||
+        (typeof payload?.detail === "string" && payload.detail) ||
+        "Não foi possível marcar a ação como falha."
+      toast.error(message)
+    } finally {
+      setFailingOutcomeId(null)
     }
   }
 
@@ -585,6 +645,24 @@ const Reports = () => {
         (typeof payload?.message === "string" && payload.message) ||
         (typeof payload?.detail === "string" && payload.detail) ||
         "Não foi possível registrar a ação de rollout."
+      try {
+        await copilotService.createActionOutcome(storeId, {
+          insight_id: insightId,
+          action_type: "edge_rollout_intervention",
+          channel: "copilot",
+          source: "reports_rollout",
+          status: "failed",
+          impact_expected_brl: expectedImpact || undefined,
+          confidence_score: item.health === "degraded" ? 85 : 75,
+          outcome: {
+            failed_from: "reports_rollout",
+            error_message: message,
+            reason_code: item.reason_code || null,
+          },
+        })
+      } catch {
+        // Non-blocking: failure already visible in UI.
+      }
       toast.error(message)
       setRolloutActionStoreId(null)
       return
@@ -1109,17 +1187,27 @@ const Reports = () => {
                   >
                     {item.status}
                   </span>
-                  {item.status !== "completed" && (
-                    <button
-                      type="button"
-                      onClick={() =>
-                        void handleCompleteOutcome(item.store_id, item.id, item.impact_expected_brl || 0)
-                      }
-                      disabled={completingOutcomeId === item.id}
-                      className="rounded-lg border border-slate-300 bg-white px-3 py-1.5 text-xs font-semibold text-slate-700 hover:bg-slate-100"
-                    >
-                      {completingOutcomeId === item.id ? "Concluindo..." : "Marcar concluída"}
-                    </button>
+                  {item.status !== "completed" && item.status !== "failed" && (
+                    <>
+                      <button
+                        type="button"
+                        onClick={() =>
+                          void handleCompleteOutcome(item.store_id, item.id, item.impact_expected_brl || 0)
+                        }
+                        disabled={completingOutcomeId === item.id || failingOutcomeId === item.id}
+                        className="rounded-lg border border-slate-300 bg-white px-3 py-1.5 text-xs font-semibold text-slate-700 hover:bg-slate-100"
+                      >
+                        {completingOutcomeId === item.id ? "Concluindo..." : "Marcar concluída"}
+                      </button>
+                      <button
+                        type="button"
+                        onClick={() => void handleFailOutcome(item.store_id, item.id)}
+                        disabled={completingOutcomeId === item.id || failingOutcomeId === item.id}
+                        className="rounded-lg border border-rose-300 bg-white px-3 py-1.5 text-xs font-semibold text-rose-700 hover:bg-rose-50"
+                      >
+                        {failingOutcomeId === item.id ? "Marcando..." : "Marcar falha"}
+                      </button>
+                    </>
                   )}
                 </div>
               </article>
