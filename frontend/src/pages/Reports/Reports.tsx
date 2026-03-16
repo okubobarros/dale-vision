@@ -98,6 +98,13 @@ const formatWindowLabel = (window: { startHour: number; endHour: number }) =>
 
 const clamp = (value: number, min: number, max: number) => Math.min(max, Math.max(min, value))
 
+const formatDateTime = (value?: string | null) => {
+  if (!value) return "—"
+  const date = new Date(value)
+  if (Number.isNaN(date.getTime())) return "—"
+  return date.toLocaleString("pt-BR", { day: "2-digit", month: "2-digit", hour: "2-digit", minute: "2-digit" })
+}
+
 const TrustBadge = ({ status }: { status?: string | null }) => {
   const normalized = String(status || "estimated").toLowerCase()
   const map: Record<string, { label: string; className: string }> = {
@@ -637,6 +644,9 @@ const Reports = () => {
               <span className="text-[11px] text-slate-500">
                 SLO alvo {(ledgerQ.data.pipeline_health.slo_target_seconds / 60).toFixed(0)} min
               </span>
+              <span className="text-[11px] text-slate-500">
+                Atualizado em {formatDateTime(ledgerQ.data.pipeline_health.last_updated_at)}
+              </span>
             </div>
           )}
           {selectedStore && ledgerQ.data?.pipeline_health && (
@@ -657,6 +667,9 @@ const Reports = () => {
               </span>
               <span className="text-[11px] text-slate-500">
                 SLO alvo {(ledgerQ.data.pipeline_health.slo_target_seconds / 60).toFixed(0)} min
+              </span>
+              <span className="text-[11px] text-slate-500">
+                Atualizado em {formatDateTime(ledgerQ.data.pipeline_health.last_updated_at)}
               </span>
             </div>
           )}

@@ -179,6 +179,7 @@ export interface CopilotValueLedgerDailyResponse {
   pipeline_health?: {
     status: "healthy" | "stale" | "no_data"
     freshness_seconds: number | null
+    last_updated_at: string | null
     stores_with_ledger: number
     stores_total: number
     coverage_rate: number

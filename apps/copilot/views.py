@@ -574,6 +574,7 @@ class CopilotValueLedgerDailyView(APIView):
                 "pipeline_health": {
                     "status": pipeline_status,
                     "freshness_seconds": freshness_seconds,
+                    "last_updated_at": latest_row.updated_at.isoformat() if latest_row and latest_row.updated_at else None,
                     "stores_with_ledger": 1 if latest_row else 0,
                     "stores_total": 1,
                     "coverage_rate": 100 if latest_row else 0,
@@ -731,6 +732,7 @@ class CopilotNetworkValueLedgerDailyView(APIView):
                     "pipeline_health": {
                         "status": "no_data",
                         "freshness_seconds": None,
+                        "last_updated_at": None,
                         "stores_with_ledger": 0,
                         "stores_total": 0,
                         "coverage_rate": 0,
@@ -808,6 +810,7 @@ class CopilotNetworkValueLedgerDailyView(APIView):
                 "pipeline_health": {
                     "status": pipeline_status,
                     "freshness_seconds": freshness_seconds,
+                    "last_updated_at": latest_row.updated_at.isoformat() if latest_row and latest_row.updated_at else None,
                     "stores_with_ledger": int(stores_with_ledger or 0),
                     "stores_total": int(stores_total or 0),
                     "coverage_rate": coverage_rate,
