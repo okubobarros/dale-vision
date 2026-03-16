@@ -71,7 +71,7 @@ Query params:
 Resposta:
 - `store_id: "all"`
 - `summary` consolidado da rede (tenant atual)
-- `breakdown_by_store` (top lojas por impacto esperado)
+- `breakdown_by_store` (top lojas por impacto esperado, com `store_id` e `store_name`)
 - `items` com outcomes recentes da rede
 
 ### 2.4 Value Ledger Daily (network scoped)
@@ -83,7 +83,7 @@ Query params:
 Resposta:
 - `store_id: "all"`
 - `totals` consolidados da rede (tenant atual)
-- `breakdown_by_store` (top lojas por risco no período)
+- `breakdown_by_store` (top lojas por risco no período, com `store_id` e `store_name`)
 - `items` com série diária consolidada
 
 ## 3) Regras v1

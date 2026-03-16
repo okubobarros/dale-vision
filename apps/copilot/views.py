@@ -615,6 +615,10 @@ class CopilotNetworkActionOutcomeView(APIView):
             )
             .order_by("-impact_expected_brl")[:10]
         )
+        store_name_map = {
+            str(row["id"]): row["name"]
+            for row in Store.objects.filter(id__in=[row.get("store_id") for row in breakdown_rows]).values("id", "name")
+        }
         return Response(
             {
                 "store_id": "all",
@@ -628,6 +632,7 @@ class CopilotNetworkActionOutcomeView(APIView):
                 "breakdown_by_store": [
                     {
                         "store_id": str(row.get("store_id")),
+                        "store_name": store_name_map.get(str(row.get("store_id"))),
                         "actions_dispatched": int(row.get("actions_dispatched") or 0),
                         "actions_completed": int(row.get("actions_completed") or 0),
                         "impact_expected_brl": float(row.get("impact_expected_brl") or 0),
@@ -688,6 +693,10 @@ class CopilotNetworkValueLedgerDailyView(APIView):
             )
             .order_by("-value_at_risk_brl")[:10]
         )
+        store_name_map = {
+            str(row["id"]): row["name"]
+            for row in Store.objects.filter(id__in=[row.get("store_id") for row in breakdown_rows]).values("id", "name")
+        }
         return Response(
             {
                 "store_id": "all",
@@ -702,6 +711,7 @@ class CopilotNetworkValueLedgerDailyView(APIView):
                 "breakdown_by_store": [
                     {
                         "store_id": str(row.get("store_id")),
+                        "store_name": store_name_map.get(str(row.get("store_id"))),
                         "value_recovered_brl": float(row.get("value_recovered_brl") or 0),
                         "value_at_risk_brl": float(row.get("value_at_risk_brl") or 0),
                         "actions_dispatched": int(row.get("actions_dispatched") or 0),

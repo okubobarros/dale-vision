@@ -706,7 +706,7 @@ const Reports = () => {
                 >
                   <div>
                     <p className="text-sm font-semibold text-slate-800">
-                      {storeNameById[item.store_id] || `Loja ${item.store_id.slice(0, 8)}`}
+                      {item.store_name || storeNameById[item.store_id] || `Loja ${item.store_id.slice(0, 8)}`}
                     </p>
                     <p className="text-xs text-slate-500">
                       Recuperado {formatCurrencyBRL(item.value_recovered_brl)} · Ações {item.actions_dispatched}

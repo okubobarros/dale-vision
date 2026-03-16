@@ -143,6 +143,7 @@ export interface CopilotActionOutcomeListResponse {
   summary: CopilotActionOutcomeSummary
   breakdown_by_store?: Array<{
     store_id: string
+    store_name?: string | null
     actions_dispatched: number
     actions_completed: number
     impact_expected_brl: number
@@ -179,6 +180,7 @@ export interface CopilotValueLedgerDailyResponse {
   }
   breakdown_by_store?: Array<{
     store_id: string
+    store_name?: string | null
     value_recovered_brl: number
     value_at_risk_brl: number
     actions_dispatched: number
