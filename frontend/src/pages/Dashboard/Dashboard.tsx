@@ -7,6 +7,7 @@ import {
   storesService,
   type MetricGovernanceItem,
   type NetworkDashboard,
+  type NetworkEdgeUpdateRolloutSummaryResponse,
   type NetworkVisionIngestionSummary,
   type StoreAnalyticsSummary,
   type StoreSummary,
@@ -229,6 +230,7 @@ const Dashboard = () => {
   const [resolvingEventId, setResolvingEventId] = useState<string | null>(null)
   const [ignoringEventId, setIgnoringEventId] = useState<string | null>(null)
   const [delegatingEventId, setDelegatingEventId] = useState<string | null>(null)
+  const [rolloutActionStoreId, setRolloutActionStoreId] = useState<string | null>(null)
   const [edgeSetupOpen, setEdgeSetupOpen] = useState(initialOpenEdgeSetup)
   const [networkPeriod, setNetworkPeriod] = useState<NetworkPeriod>("7d")
   const [networkIngestionEventType, setNetworkIngestionEventType] = useState<IngestionEventTypeFilter>("")
@@ -336,6 +338,13 @@ const Dashboard = () => {
   const { data: networkCoverageSummary } = useQuery({
     queryKey: ["network-coverage-dashboard", networkPeriod],
     queryFn: () => meService.getProductivityCoverage(undefined, { period: networkPeriod }),
+    enabled: canFetchAuth && isNetworkMode,
+    staleTime: 30000,
+    retry: false,
+  })
+  const { data: networkRolloutSummary } = useQuery<NetworkEdgeUpdateRolloutSummaryResponse>({
+    queryKey: ["network-edge-rollout-summary-dashboard"],
+    queryFn: () => storesService.getNetworkEdgeUpdateRolloutSummary(),
     enabled: canFetchAuth && isNetworkMode,
     staleTime: 30000,
     retry: false,
@@ -1022,6 +1031,74 @@ const Dashboard = () => {
     }
   }
 
+  const handleRolloutCopilotAction = async (store: {
+    store_id: string
+    store_name?: string | null
+    health: "degraded" | "in_progress"
+    last_event?: string | null
+    reason_code?: string | null
+    target_version?: string | null
+  }) => {
+    const storeId = store.store_id
+    const storeName = store.store_name || "loja"
+    const insightId = `rollout-${storeId}-${Date.now()}`
+    const expectedImpact = Math.max(0, Math.round(revenueAtRiskDay * 0.2))
+    setRolloutActionStoreId(storeId)
+    try {
+      const dispatch = await alertsService.dispatchAction({
+        store_id: storeId,
+        insight_id: insightId,
+        action_type: "edge_rollout_intervention",
+        channel: "copilot",
+        source: "dashboard_rollout_health",
+        expected_impact_brl: expectedImpact || undefined,
+        confidence_score: store.health === "degraded" ? 85 : 75,
+        context: {
+          scope: "network",
+          rollout_health: store.health,
+          last_event: store.last_event || null,
+          reason_code: store.reason_code || null,
+          target_version: store.target_version || null,
+        },
+      })
+      try {
+        await copilotService.createActionOutcome(storeId, {
+          action_event_id: dispatch.event_id ?? null,
+          insight_id: insightId,
+          action_type: "edge_rollout_intervention",
+          channel: "copilot",
+          source: "dashboard_rollout_health",
+          status: "dispatched",
+          impact_expected_brl: expectedImpact || undefined,
+          confidence_score: store.health === "degraded" ? 85 : 75,
+          baseline: {
+            scope: "network",
+            rollout_health: store.health,
+            reason_code: store.reason_code || null,
+          },
+        })
+      } catch {
+        // Non-blocking: dispatch already persisted.
+      }
+      toast.success(`Ação registrada para ${storeName}.`)
+    } catch (error) {
+      const payload = (error as { response?: { data?: Record<string, unknown> } })?.response?.data
+      const message =
+        (typeof payload?.message === "string" && payload.message) ||
+        (typeof payload?.detail === "string" && payload.detail) ||
+        "Não foi possível registrar a ação de rollout."
+      toast.error(message)
+    } finally {
+      setRolloutActionStoreId(null)
+    }
+
+    openCopilot(
+      `Montar plano imediato para update da ${storeName}. Status: ${store.health}. Evento: ${
+        store.last_event || "sem evento"
+      }. Motivo: ${store.reason_code || "não informado"}. Versão alvo: ${store.target_version || "não informada"}.`
+    )
+  }
+
   const avgQueueSecondsForRoi =
     computedQueueSeconds ?? summaryTotals?.avg_queue_seconds ?? ceoDashboard?.kpis?.avg_queue_seconds ?? 0
   const avgVisitorsPerHour =
@@ -1129,6 +1206,23 @@ const Dashboard = () => {
       : pipelineStatus === "stale"
       ? "bg-amber-50 text-amber-700 border-amber-200"
       : "bg-slate-50 text-slate-700 border-slate-200"
+  const rolloutStatus = networkRolloutSummary?.rollout_health?.status || "no_data"
+  const rolloutStatusClass =
+    rolloutStatus === "healthy"
+      ? "bg-emerald-50 text-emerald-700 border-emerald-200"
+      : rolloutStatus === "degraded"
+      ? "bg-rose-50 text-rose-700 border-rose-200"
+      : rolloutStatus === "attention"
+      ? "bg-amber-50 text-amber-700 border-amber-200"
+      : "bg-slate-50 text-slate-700 border-slate-200"
+  const rolloutStatusLabel =
+    rolloutStatus === "healthy"
+      ? "Rollout estável"
+      : rolloutStatus === "degraded"
+      ? "Rollout crítico"
+      : rolloutStatus === "attention"
+      ? "Rollout em atenção"
+      : "Sem dados de rollout"
 
   const wealthCards = [
     {
@@ -1785,6 +1879,103 @@ const Dashboard = () => {
                   </p>
                 </article>
               </div>
+            </section>
+
+            <section className="rounded-xl border border-gray-200 bg-white p-4 sm:p-6 shadow-sm">
+              <div className="flex items-center justify-between gap-3">
+                <div>
+                  <h3 className="text-base sm:text-lg font-semibold text-gray-900">Saúde de rollout edge</h3>
+                  <p className="text-sm text-gray-600 mt-1">Execução de versão por loja para reduzir risco operacional.</p>
+                </div>
+                <span className={`rounded-full border px-2.5 py-1 text-[11px] font-semibold ${rolloutStatusClass}`}>
+                  {rolloutStatusLabel}
+                </span>
+              </div>
+              <div className="mt-4 grid grid-cols-1 md:grid-cols-4 gap-3">
+                <article className="rounded-lg border border-slate-200 bg-slate-50 p-3">
+                  <p className="text-xs font-semibold uppercase tracking-wide text-slate-700">Lojas no rollout</p>
+                  <p className="mt-2 text-2xl font-bold text-slate-900">{networkRolloutSummary?.totals?.stores ?? 0}</p>
+                  <p className="mt-1 text-xs text-slate-600">Com policy ativa {networkRolloutSummary?.totals?.with_policy ?? 0}</p>
+                </article>
+                <article className="rounded-lg border border-emerald-200 bg-emerald-50 p-3">
+                  <p className="text-xs font-semibold uppercase tracking-wide text-emerald-700">Saudáveis</p>
+                  <p className="mt-2 text-2xl font-bold text-emerald-700">
+                    {networkRolloutSummary?.totals?.health?.healthy ?? 0}
+                  </p>
+                  <p className="mt-1 text-xs text-emerald-700">Canary {networkRolloutSummary?.totals?.channel?.canary ?? 0}</p>
+                </article>
+                <article className="rounded-lg border border-rose-200 bg-rose-50 p-3">
+                  <p className="text-xs font-semibold uppercase tracking-wide text-rose-700">Críticas</p>
+                  <p className="mt-2 text-2xl font-bold text-rose-700">
+                    {networkRolloutSummary?.totals?.health?.degraded ?? 0}
+                  </p>
+                  <p className="mt-1 text-xs text-rose-700">
+                    Em progresso {networkRolloutSummary?.totals?.health?.in_progress ?? 0}
+                  </p>
+                </article>
+                <article className="rounded-lg border border-amber-200 bg-amber-50 p-3">
+                  <p className="text-xs font-semibold uppercase tracking-wide text-amber-700">Sem sinal</p>
+                  <p className="mt-2 text-2xl font-bold text-amber-700">
+                    {networkRolloutSummary?.totals?.health?.no_data ?? 0}
+                  </p>
+                  <p className="mt-1 text-xs text-amber-700">Stable {networkRolloutSummary?.totals?.channel?.stable ?? 0}</p>
+                </article>
+              </div>
+              <p className="mt-3 text-xs text-gray-600">
+                {networkRolloutSummary?.rollout_health?.recommended_action ||
+                  "Sem recomendação ativa de rollout para a rede."}
+              </p>
+              {networkRolloutSummary?.critical_stores?.length ? (
+                <div className="mt-4 space-y-2">
+                  {networkRolloutSummary.critical_stores.slice(0, 3).map((store) => (
+                    <article key={`${store.store_id}-${store.timestamp || "latest"}`} className="rounded-lg border border-gray-200 bg-gray-50 p-3">
+                      <div className="flex flex-wrap items-center justify-between gap-2">
+                        <div className="flex items-center gap-2">
+                          <p className="text-sm font-semibold text-gray-900">{store.store_name || "Loja"}</p>
+                          <span
+                            className={`rounded-full border px-2 py-0.5 text-[11px] font-semibold ${
+                              store.health === "degraded"
+                                ? "border-rose-200 bg-rose-50 text-rose-700"
+                                : "border-amber-200 bg-amber-50 text-amber-700"
+                            }`}
+                          >
+                            {store.health === "degraded" ? "Falha/rollback" : "Em progresso"}
+                          </span>
+                        </div>
+                        <div className="flex items-center gap-2">
+                          <Link
+                            to={`/app/edge-help?store_id=${store.store_id}${
+                              store.reason_code ? `&reason_code=${encodeURIComponent(store.reason_code)}` : ""
+                            }`}
+                            className="rounded-lg border border-amber-200 bg-amber-50 px-2.5 py-1 text-[11px] font-semibold text-amber-700 hover:bg-amber-100"
+                          >
+                            Abrir runbook
+                          </Link>
+                          <button
+                            type="button"
+                            onClick={() => handleRolloutCopilotAction(store)}
+                            disabled={rolloutActionStoreId === store.store_id}
+                            className="rounded-lg border border-indigo-200 bg-indigo-50 px-2.5 py-1 text-[11px] font-semibold text-indigo-700 hover:bg-indigo-100"
+                          >
+                            {rolloutActionStoreId === store.store_id ? "Acionando..." : "Acionar Copiloto"}
+                          </button>
+                          <Link
+                            to={`/app/operations/stores/${store.store_id}`}
+                            className="rounded-lg border border-gray-200 px-2.5 py-1 text-[11px] font-semibold text-gray-700 hover:bg-gray-100"
+                          >
+                            Abrir loja
+                          </Link>
+                        </div>
+                      </div>
+                      <p className="mt-1 text-xs text-gray-600">
+                        {store.last_event || "Sem evento"} · versão alvo {store.target_version || "—"} · motivo {store.reason_code || "não informado"}
+                      </p>
+                    </article>
+                  ))}
+                </div>
+              ) : (
+                <p className="mt-3 text-sm text-gray-600">Sem lojas críticas de update no momento.</p>
+              )}
             </section>
 
             <section className="rounded-xl border border-gray-200 bg-white p-4 sm:p-6 shadow-sm">

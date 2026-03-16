@@ -13,6 +13,13 @@
 1. auto-update do edge-agent;
 2. refinamento de computer vision via admin (calibracao e confianca).
 
+Gate de encerramento tecnico (definitivo):
+1. `incident_response.target_status.overall = go` por 3 dias seguidos;
+2. `runbook_coverage_rate_pct >= 80`;
+3. `avg_time_to_runbook_seconds <= 900`;
+4. evidence pack diario sem falha.
+Checklist de campo para aceite final: `70_ops/S2_Field_Validation_Gate.md`.
+
 ## Plano da semana (complementar ao roadmap de sprint)
 
 ### D1-D2 (Sprint 2 operacional)
@@ -46,10 +53,10 @@
 2. Sprint 3 (confianca CV/admin).
 
 ## Sprint atual (oficial)
-- `Sprint S0 - Stabilize Edge in Production`
-- Status: `IN_PROGRESS`
-- Janela alvo: ate retorno em loja (12/03/2026 ou 13/03/2026)
-- Objetivo: sair de `Unreliable` para `Operationally Stable` no piloto.
+- `Sprint S2 - Repeatable Multi-Store Foundation`
+- Status: `DONE (ENG + GOVERNANCA) / FIELD VALIDATION PENDING`
+- Janela alvo: fechamento operacional nesta semana de campo
+- Objetivo: confirmar em campo que o pacote tecnico ja implantado sustenta repeticao multi-loja.
 
 ## Atualizacao de status (11/03/2026)
 - `S0`:
@@ -73,12 +80,11 @@
 - Sem evidencia em log/teste repetivel = item nao concluido.
 
 ## Como saber em qual sprint estamos
-- Estamos em `S0` enquanto qualquer item abaixo nao estiver 100% aprovado:
-1. autostart 5/5 reboots sem intervencao manual;
-2. soak >= 30 min com heartbeat e camera health ativos;
-3. integridade por camera sem contaminacao;
-4. eventos atomicos minimos ativos no piloto.
-- Quando os 4 itens acima estiverem aprovados com evidencia, o status muda para `S1`.
+- `S2` fecha quando o gate tecnico acima ficar `go` por 3 dias e a validacao em loja remota for anexada.
+- Enquanto isso, podemos executar itens de `S3/S4` em paralelo desde que:
+1. nao removam evidencias do S2;
+2. nao quebrem o `incident_response` no reports;
+3. mantenham rollback rapido para edge update.
 
 ---
 

@@ -2,6 +2,8 @@ from datetime import datetime, timedelta
 from io import BytesIO, StringIO
 import csv
 from zoneinfo import ZoneInfo
+from bisect import bisect_left
+from collections import defaultdict
 
 from django.conf import settings
 from django.db import connection
@@ -13,6 +15,7 @@ from rest_framework.views import APIView
 
 from django.db.models import Count
 from apps.core.models import Store, DetectionEvent, Organization
+from apps.edge.models import EdgeUpdateEvent
 from apps.stores.services.user_orgs import get_user_org_ids
 
 
@@ -280,6 +283,124 @@ def _build_report_payload(*, org_id: str, store_id: str | None, start, end):
             for row in type_counts
         ][:5]
 
+    incident_response = {
+        "method": {
+            "id": "edge_incident_response",
+            "version": "edge_incident_response_v1_2026-03-16",
+            "label": "Resposta a incidentes de update",
+            "description": "Mede falhas de update, abertura de runbook e tempo de resposta operacional.",
+        },
+        "targets": {
+            "runbook_coverage_rate_min": 90.0,
+            "time_to_runbook_seconds_max": 600,
+        },
+        "failures_total": 0,
+        "rollbacks_total": 0,
+        "runbook_opened_total": 0,
+        "failures_with_runbook": 0,
+        "runbook_coverage_rate": 0.0,
+        "avg_time_to_runbook_seconds": None,
+        "latest_failure_at": None,
+        "latest_runbook_opened_at": None,
+        "target_status": {
+            "runbook_coverage": "no_data",
+            "time_to_runbook": "no_data",
+            "overall": "no_data",
+        },
+    }
+    if store_ids:
+        failures_qs = (
+            EdgeUpdateEvent.objects.filter(
+                store_id__in=store_ids,
+                timestamp__gte=start,
+                timestamp__lt=end,
+                status__in=["failed", "rolled_back"],
+            )
+            .values("store_id", "timestamp", "status")
+            .order_by("store_id", "timestamp")
+        )
+        runbooks_qs = (
+            EdgeUpdateEvent.objects.filter(
+                store_id__in=store_ids,
+                timestamp__gte=start,
+                timestamp__lt=end,
+                event="runbook_opened",
+            )
+            .values("store_id", "timestamp")
+            .order_by("store_id", "timestamp")
+        )
+
+        failures = list(failures_qs)
+        runbooks = list(runbooks_qs)
+        runbooks_by_store = defaultdict(list)
+        for item in runbooks:
+            runbooks_by_store[str(item["store_id"])].append(item["timestamp"])
+
+        deltas = []
+        failures_with_runbook = 0
+        for failure in failures:
+            store_key = str(failure["store_id"])
+            failure_ts = failure["timestamp"]
+            choices = runbooks_by_store.get(store_key) or []
+            if not choices:
+                continue
+            idx = bisect_left(choices, failure_ts)
+            if idx >= len(choices):
+                continue
+            runbook_ts = choices[idx]
+            failures_with_runbook += 1
+            delta_seconds = int((runbook_ts - failure_ts).total_seconds())
+            if delta_seconds >= 0:
+                deltas.append(delta_seconds)
+
+        failures_total = len(failures)
+        rollbacks_total = sum(
+            1 for item in failures if str(item.get("status") or "").lower() == "rolled_back"
+        )
+        runbook_opened_total = len(runbooks)
+        runbook_coverage_rate = (
+            round((failures_with_runbook / failures_total) * 100, 1) if failures_total > 0 else 0.0
+        )
+        avg_time_to_runbook_seconds = (
+            int(round(sum(deltas) / len(deltas))) if len(deltas) > 0 else None
+        )
+        latest_failure_at = failures[-1]["timestamp"].isoformat() if failures else None
+        latest_runbook_opened_at = runbooks[-1]["timestamp"].isoformat() if runbooks else None
+
+        incident_response = {
+            **incident_response,
+            "failures_total": failures_total,
+            "rollbacks_total": rollbacks_total,
+            "runbook_opened_total": runbook_opened_total,
+            "failures_with_runbook": failures_with_runbook,
+            "runbook_coverage_rate": runbook_coverage_rate,
+            "avg_time_to_runbook_seconds": avg_time_to_runbook_seconds,
+            "latest_failure_at": latest_failure_at,
+            "latest_runbook_opened_at": latest_runbook_opened_at,
+        }
+        coverage_target = incident_response["targets"]["runbook_coverage_rate_min"]
+        ttr_target = incident_response["targets"]["time_to_runbook_seconds_max"]
+        coverage_status = (
+            "no_data"
+            if failures_total == 0
+            else ("go" if runbook_coverage_rate >= coverage_target else "no_go")
+        )
+        ttr_status = (
+            "no_data"
+            if avg_time_to_runbook_seconds is None
+            else ("go" if avg_time_to_runbook_seconds <= ttr_target else "no_go")
+        )
+        overall_status = (
+            "go"
+            if coverage_status == "go" and ttr_status in {"go", "no_data"}
+            else ("no_data" if coverage_status == "no_data" and ttr_status == "no_data" else "no_go")
+        )
+        incident_response["target_status"] = {
+            "runbook_coverage": coverage_status,
+            "time_to_runbook": ttr_status,
+            "overall": overall_status,
+        }
+
     insights = []
     if totals["total_visitors"] == 0:
         insights.append("Nenhum visitante registrado no período.")
@@ -334,6 +455,7 @@ def _build_report_payload(*, org_id: str, store_id: str | None, start, end):
         "alert_counts_by_type": alert_counts,
         "insights": insights,
         "recent_alerts": alerts,
+        "incident_response": incident_response,
     }
     return payload
 
@@ -815,6 +937,31 @@ class ReportSummaryView(APIView):
                     "chart_footfall_by_hour": [],
                     "alert_counts_by_type": [],
                     "insights": [],
+                    "incident_response": {
+                        "method": {
+                            "id": "edge_incident_response",
+                            "version": "edge_incident_response_v1_2026-03-16",
+                            "label": "Resposta a incidentes de update",
+                            "description": "Sem organizacao ativa para calculo.",
+                        },
+                        "targets": {
+                            "runbook_coverage_rate_min": 90.0,
+                            "time_to_runbook_seconds_max": 600,
+                        },
+                        "failures_total": 0,
+                        "rollbacks_total": 0,
+                        "runbook_opened_total": 0,
+                        "failures_with_runbook": 0,
+                        "runbook_coverage_rate": 0.0,
+                        "avg_time_to_runbook_seconds": None,
+                        "latest_failure_at": None,
+                        "latest_runbook_opened_at": None,
+                        "target_status": {
+                            "runbook_coverage": "no_data",
+                            "time_to_runbook": "no_data",
+                            "overall": "no_data",
+                        },
+                    },
                 }
             )
 

@@ -61,6 +61,31 @@ export type ReportSummary = {
     source_flags: Record<string, string>
     caveats: string[]
   }
+  incident_response?: {
+    method: {
+      id: string
+      version: string
+      label: string
+      description: string
+    }
+    failures_total: number
+    rollbacks_total: number
+    runbook_opened_total: number
+    failures_with_runbook: number
+    runbook_coverage_rate: number
+    avg_time_to_runbook_seconds?: number | null
+    latest_failure_at?: string | null
+    latest_runbook_opened_at?: string | null
+    targets?: {
+      runbook_coverage_rate_min: number
+      time_to_runbook_seconds_max: number
+    }
+    target_status?: {
+      runbook_coverage: "go" | "no_go" | "no_data"
+      time_to_runbook: "go" | "no_go" | "no_data"
+      overall: "go" | "no_go" | "no_data"
+    }
+  }
 }
 
 export type ReportImpact = ReportSummary & {

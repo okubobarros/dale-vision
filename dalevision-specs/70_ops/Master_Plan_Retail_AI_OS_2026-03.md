@@ -50,6 +50,21 @@ Decisao de trilha:
 - Fechamento operacional definitivo sera registrado apos validacao de campo (loja geograficamente distante).
 - Enquanto isso, a equipe segue em paralelo com itens de sprint seguinte (auto-update edge + refinamento CV/admin).
 
+Gate tecnico objetivo para encerrar Sprint 2 sem ambiguidade:
+- fonte unica: `incident_response.target_status.overall` em `/app/reports`;
+- criterio de aceite:
+1. `overall = go` por 3 snapshots diarios consecutivos;
+2. `runbook_coverage_rate_pct >= 80`;
+3. `avg_time_to_runbook_seconds <= 900`;
+4. sem regressao em `sprint2_acceptance.status`.
+- se qualquer item cair para `no_go`, sprint volta para `in_progress` ate correcao + nova evidencia.
+
+Proximo passo operacional (sem bloquear engenharia):
+1. validar em campo o pacote de update remoto do edge-agent;
+2. capturar evidencia real de ingestao/calibracao por camera;
+3. consolidar no evidence pack diario para fechamento executivo.
+Referencia operacional: `70_ops/S2_Field_Validation_Gate.md`.
+
 ---
 
 ## Proximo foco (paralelo ao campo)
