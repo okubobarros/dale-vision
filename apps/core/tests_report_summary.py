@@ -22,6 +22,8 @@ class ReportSummaryViewTests(SimpleTestCase):
         assert payload["stores_count"] == 0
         assert payload["incident_response"]["failures_total"] == 0
         assert payload["incident_response"]["runbook_opened_total"] == 0
+        assert payload["action_execution"]["actions_dispatched_total"] == 0
+        assert payload["action_execution"]["sources"]["reports"]["dispatched"] == 0
 
     @patch("apps.core.views_report._build_report_payload")
     @patch("apps.core.views_report._parse_date_range")
@@ -74,6 +76,25 @@ class ReportSummaryViewTests(SimpleTestCase):
                 "latest_failure_at": now.isoformat(),
                 "latest_runbook_opened_at": now.isoformat(),
             },
+            "action_execution": {
+                "method": {
+                    "id": "action_execution",
+                    "version": "action_execution_v1_2026-03-16",
+                    "label": "",
+                    "description": "",
+                },
+                "actions_dispatched_total": 10,
+                "actions_completed_total": 4,
+                "completion_rate": 40.0,
+                "sources": {
+                    "dashboard": {"dispatched": 2, "completed": 1, "completion_rate": 50.0},
+                    "reports": {"dispatched": 6, "completed": 2, "completion_rate": 33.3},
+                    "operations": {"dispatched": 2, "completed": 1, "completion_rate": 50.0},
+                    "other": {"dispatched": 0, "completed": 0, "completion_rate": 0.0},
+                },
+                "rollout": {"dispatched": 3, "completed": 1, "completion_rate": 33.3},
+                "top_source": "reports",
+            },
         }
 
         request = self.factory.get("/api/v1/report/summary?period=7d")
@@ -82,3 +103,4 @@ class ReportSummaryViewTests(SimpleTestCase):
         assert response.status_code == 200
         assert response.data["period"] == "7d"
         assert response.data["incident_response"]["method"]["version"] == "edge_incident_response_v1_2026-03-16"
+        assert response.data["action_execution"]["method"]["version"] == "action_execution_v1_2026-03-16"

@@ -1001,7 +1001,7 @@ const Dashboard = () => {
       const response = await alertsService.delegateEventWhatsapp(action.id, {
         note,
         insight_id: `event-${action.id}`,
-        source: "copilot_decision_center",
+        source: "dashboard_decision_center",
         expected_impact_brl:
           typeof action.expectedImpactBrl === "number" ? Math.max(0, action.expectedImpactBrl) : undefined,
         confidence_score:

@@ -13,9 +13,10 @@ from rest_framework.permissions import IsAuthenticated
 from rest_framework.response import Response
 from rest_framework.views import APIView
 
-from django.db.models import Count
+from django.db.models import Count, Q
 from apps.core.models import Store, DetectionEvent, Organization
 from apps.edge.models import EdgeUpdateEvent
+from apps.copilot.models import ActionOutcome
 from apps.stores.services.user_orgs import get_user_org_ids
 
 
@@ -308,6 +309,29 @@ def _build_report_payload(*, org_id: str, store_id: str | None, start, end):
             "overall": "no_data",
         },
     }
+    action_execution = {
+        "method": {
+            "id": "action_execution",
+            "version": "action_execution_v1_2026-03-16",
+            "label": "Execução de ações por origem",
+            "description": "Mede volume e conclusão de ações despachadas por superfície de decisão.",
+        },
+        "actions_dispatched_total": 0,
+        "actions_completed_total": 0,
+        "completion_rate": 0.0,
+        "sources": {
+            "dashboard": {"dispatched": 0, "completed": 0, "completion_rate": 0.0},
+            "reports": {"dispatched": 0, "completed": 0, "completion_rate": 0.0},
+            "operations": {"dispatched": 0, "completed": 0, "completion_rate": 0.0},
+            "other": {"dispatched": 0, "completed": 0, "completion_rate": 0.0},
+        },
+        "rollout": {
+            "dispatched": 0,
+            "completed": 0,
+            "completion_rate": 0.0,
+        },
+        "top_source": None,
+    }
     if store_ids:
         failures_qs = (
             EdgeUpdateEvent.objects.filter(
@@ -400,6 +424,78 @@ def _build_report_payload(*, org_id: str, store_id: str | None, start, end):
             "time_to_runbook": ttr_status,
             "overall": overall_status,
         }
+        action_qs = ActionOutcome.objects.filter(
+            store_id__in=store_ids,
+            dispatched_at__gte=start,
+            dispatched_at__lt=end,
+        )
+        actions_dispatched_total = action_qs.count()
+        actions_completed_total = action_qs.filter(status="completed").count()
+        completion_rate = (
+            round((actions_completed_total / actions_dispatched_total) * 100, 1)
+            if actions_dispatched_total > 0
+            else 0.0
+        )
+
+        source_buckets = {
+            "dashboard": {"dispatched": 0, "completed": 0, "completion_rate": 0.0},
+            "reports": {"dispatched": 0, "completed": 0, "completion_rate": 0.0},
+            "operations": {"dispatched": 0, "completed": 0, "completion_rate": 0.0},
+            "other": {"dispatched": 0, "completed": 0, "completion_rate": 0.0},
+        }
+        source_rows = (
+            action_qs.values("source")
+            .annotate(
+                dispatched=Count("id"),
+                completed=Count("id", filter=Q(status="completed")),
+            )
+            .order_by("-dispatched")
+        )
+
+        def _source_key(source: str | None) -> str:
+            value = str(source or "").lower()
+            if value.startswith("dashboard_"):
+                return "dashboard"
+            if value.startswith("reports_"):
+                return "reports"
+            if value.startswith("operations_"):
+                return "operations"
+            if value == "copilot_decision_center":
+                return "dashboard"
+            return "other"
+
+        for row in source_rows:
+            key = _source_key(row.get("source"))
+            source_buckets[key]["dispatched"] += int(row.get("dispatched") or 0)
+            source_buckets[key]["completed"] += int(row.get("completed") or 0)
+
+        for key, item in source_buckets.items():
+            dispatched = item["dispatched"]
+            completed = item["completed"]
+            item["completion_rate"] = round((completed / dispatched) * 100, 1) if dispatched > 0 else 0.0
+
+        rollout_qs = action_qs.filter(action_type="edge_rollout_intervention")
+        rollout_dispatched = rollout_qs.count()
+        rollout_completed = rollout_qs.filter(status="completed").count()
+        rollout_completion_rate = (
+            round((rollout_completed / rollout_dispatched) * 100, 1)
+            if rollout_dispatched > 0
+            else 0.0
+        )
+        top_source = max(source_buckets.items(), key=lambda item: item[1]["dispatched"])[0] if source_rows else None
+        action_execution = {
+            **action_execution,
+            "actions_dispatched_total": actions_dispatched_total,
+            "actions_completed_total": actions_completed_total,
+            "completion_rate": completion_rate,
+            "sources": source_buckets,
+            "rollout": {
+                "dispatched": rollout_dispatched,
+                "completed": rollout_completed,
+                "completion_rate": rollout_completion_rate,
+            },
+            "top_source": top_source,
+        }
 
     insights = []
     if totals["total_visitors"] == 0:
@@ -456,6 +552,7 @@ def _build_report_payload(*, org_id: str, store_id: str | None, start, end):
         "insights": insights,
         "recent_alerts": alerts,
         "incident_response": incident_response,
+        "action_execution": action_execution,
     }
     return payload
 
@@ -961,6 +1058,29 @@ class ReportSummaryView(APIView):
                             "time_to_runbook": "no_data",
                             "overall": "no_data",
                         },
+                    },
+                    "action_execution": {
+                        "method": {
+                            "id": "action_execution",
+                            "version": "action_execution_v1_2026-03-16",
+                            "label": "Execução de ações por origem",
+                            "description": "Sem organização ativa para cálculo.",
+                        },
+                        "actions_dispatched_total": 0,
+                        "actions_completed_total": 0,
+                        "completion_rate": 0.0,
+                        "sources": {
+                            "dashboard": {"dispatched": 0, "completed": 0, "completion_rate": 0.0},
+                            "reports": {"dispatched": 0, "completed": 0, "completion_rate": 0.0},
+                            "operations": {"dispatched": 0, "completed": 0, "completion_rate": 0.0},
+                            "other": {"dispatched": 0, "completed": 0, "completion_rate": 0.0},
+                        },
+                        "rollout": {
+                            "dispatched": 0,
+                            "completed": 0,
+                            "completion_rate": 0.0,
+                        },
+                        "top_source": None,
                     },
                 }
             )

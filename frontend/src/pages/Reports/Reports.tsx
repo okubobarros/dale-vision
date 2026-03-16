@@ -230,6 +230,7 @@ const Reports = () => {
   const stores = useMemo(() => storesQ.data ?? [], [storesQ.data])
   const summaryData = summaryQ.data
   const incidentResponse = summaryData?.incident_response
+  const actionExecution = summaryData?.action_execution
   const impactData = impactQ.data
   const coverageData = coverageQ.data
   const selectedStoreMeta = stores.find((store) => store.id === selectedStore) ?? null
@@ -909,6 +910,55 @@ const Reports = () => {
             Meta cobertura ≥ {(incidentResponse?.targets?.runbook_coverage_rate_min ?? 90).toFixed(0)}% ·
             Meta tempo ≤ {Math.round((incidentResponse?.targets?.time_to_runbook_seconds_max ?? 600) / 60)} min
           </p>
+        </div>
+      </section>
+
+      <section className="rounded-xl border border-slate-200 bg-white p-4 shadow-sm">
+        <div className="flex items-center justify-between">
+          <h2 className="text-base font-semibold text-slate-900">Execução de ações por origem</h2>
+          <span className="text-xs text-slate-500">
+            {actionExecution?.method?.version || "action_execution_v1_2026-03-16"}
+          </span>
+        </div>
+        <div className="mt-3 grid grid-cols-1 md:grid-cols-2 xl:grid-cols-4 gap-3">
+          <article className="rounded-lg border border-slate-200 bg-slate-50 p-3">
+            <p className="text-xs uppercase tracking-[0.08em] text-slate-600">Despachadas</p>
+            <p className="mt-2 text-2xl font-semibold text-slate-900">
+              {actionExecution?.actions_dispatched_total ?? 0}
+            </p>
+          </article>
+          <article className="rounded-lg border border-emerald-200 bg-emerald-50 p-3">
+            <p className="text-xs uppercase tracking-[0.08em] text-emerald-700">Concluídas</p>
+            <p className="mt-2 text-2xl font-semibold text-emerald-800">
+              {actionExecution?.actions_completed_total ?? 0}
+            </p>
+          </article>
+          <article className="rounded-lg border border-indigo-200 bg-indigo-50 p-3">
+            <p className="text-xs uppercase tracking-[0.08em] text-indigo-700">Taxa de conclusão</p>
+            <p className="mt-2 text-2xl font-semibold text-indigo-800">
+              {(actionExecution?.completion_rate ?? 0).toFixed(1)}%
+            </p>
+          </article>
+          <article className="rounded-lg border border-amber-200 bg-amber-50 p-3">
+            <p className="text-xs uppercase tracking-[0.08em] text-amber-700">Top origem</p>
+            <p className="mt-2 text-lg font-semibold text-amber-800">
+              {actionExecution?.top_source || "—"}
+            </p>
+            <p className="mt-1 text-[11px] text-amber-700">
+              Rollout {(actionExecution?.rollout?.completion_rate ?? 0).toFixed(1)}%
+            </p>
+          </article>
+        </div>
+        <div className="mt-3 grid grid-cols-1 md:grid-cols-2 xl:grid-cols-4 gap-2 text-xs">
+          {(["dashboard", "reports", "operations", "other"] as const).map((sourceKey) => (
+            <div key={sourceKey} className="rounded-lg border border-slate-200 bg-slate-50 p-2">
+              <p className="font-semibold text-slate-700 uppercase">{sourceKey}</p>
+              <p className="mt-1 text-slate-600">
+                {actionExecution?.sources?.[sourceKey]?.dispatched ?? 0} despachadas ·{" "}
+                {actionExecution?.sources?.[sourceKey]?.completed ?? 0} concluídas
+              </p>
+            </div>
+          ))}
         </div>
       </section>
 

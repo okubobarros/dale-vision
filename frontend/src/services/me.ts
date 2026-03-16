@@ -86,6 +86,25 @@ export type ReportSummary = {
       overall: "go" | "no_go" | "no_data"
     }
   }
+  action_execution?: {
+    method: {
+      id: string
+      version: string
+      label: string
+      description: string
+    }
+    actions_dispatched_total: number
+    actions_completed_total: number
+    completion_rate: number
+    sources: {
+      dashboard: { dispatched: number; completed: number; completion_rate: number }
+      reports: { dispatched: number; completed: number; completion_rate: number }
+      operations: { dispatched: number; completed: number; completion_rate: number }
+      other: { dispatched: number; completed: number; completion_rate: number }
+    }
+    rollout: { dispatched: number; completed: number; completion_rate: number }
+    top_source?: "dashboard" | "reports" | "operations" | "other" | null
+  }
 }
 
 export type ReportImpact = ReportSummary & {
