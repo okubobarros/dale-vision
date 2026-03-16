@@ -18,6 +18,28 @@ Escopo: backend + frontend + edge + dados + copiloto + operacao
 
 ---
 
+## Atualizacao de execucao (2026-03-15)
+
+Status pratico da trilha de produto/ROI:
+- Sprint 2: `IN_PROGRESS (80-85%)`.
+- Avanco principal: loop `dispatch -> outcome -> value ledger` implementado no backend/frontend de reports.
+
+Entregas tecnicas confirmadas em codigo:
+- `ActionOutcome` e `ValueLedgerDaily` ativos.
+- Endpoints store e network para outcomes/ledger.
+- Patch de conclusao de outcome (`dispatched -> completed`).
+- Breakdown por loja no modo rede (com `store_name`).
+- Governanca de metodo no payload (`method_version_current`).
+- UI `/app/reports` com leitura executiva de risco/valor e acao rapida por loja.
+
+Pendencias para cravar fechamento da Sprint 2:
+- validacao operacional com dados reais multi-loja (evidencia em producao).
+- runbook de suporte atualizado com fluxo outcome/ledger.
+- SLO minimo para endpoints/job criticos da trilha de valor.
+- checklist final de aceite com evidencias centralizadas.
+
+---
+
 ## 1) Estado atual consolidado
 
 ### 1.1 O que ja esta pronto (base forte)
@@ -30,7 +52,7 @@ Escopo: backend + frontend + edge + dados + copiloto + operacao
 ### 1.2 O que ainda e lacuna critica
 - Backbone de streaming duravel (hoje arquitetura hibrida API + job).
 - Contrato unico de evento de varejo com versionamento formal para todos os produtores.
-- Loop fechado de acao (dispatch -> execucao -> outcome -> ledger de valor).
+- Loop fechado de acao implementado em v1; falta hardening operacional e medicao em producao.
 - Modelo financeiro conservador com penalizador por confianca (padrao unico no backend).
 - Read models event-driven para network/store/event sem recomputar no request.
 
@@ -134,10 +156,13 @@ Entregas:
 - materializacao `operational_window`.
 - read models para network e store.
 - fallback de baixa confianca na API/UI.
+- outcome + value ledger em reports (store/network), com governanca de metodo.
+- ranking de risco por loja no modo rede para priorizacao executiva.
 
 DoD:
 - SLO de atualizacao < 5 min;
 - dashboard sem estado vazio com lojas ativas.
+- evidencias multi-loja em producao para fechar aceite da sprint.
 
 ### Sprint 3 - Decision Engine V1
 Objetivo:
@@ -323,7 +348,7 @@ Mensal:
 3. Publicar ADR do broker e ADR do action outcome ledger.
 4. Formalizar contrato `RetailEvent` v1 e `action_outcome` v1.
 5. Atualizar `10_product/Pricing_Plans.md` com entitlements por plano (single-store vs multi-store).
-6. Fechar backlog de Sprint 1 com owner e data por task.
+6. Fechar aceite operacional da Sprint 2 com evidencias multi-loja e SLO documentado.
 
 ---
 
