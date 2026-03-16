@@ -158,3 +158,30 @@ Regra de decisao:
 2. Capturar evidencias em `Daily_Log` + ticket S4-UPD correspondente.
 3. Executar teste de rollback controlado e anexar runbook/evidencia.
 4. Consolidar decisao final S4 (`GO` ou `NO-GO`) no fim da semana.
+
+## Roteiro pratico para validacao de campo (amanha)
+
+1. Antes da mudanca:
+- confirmar policy ativa da loja (`channel`, `target_version`, janela, health gate).
+- confirmar status baseline da loja em `/app/operations` (sem critico aberto fora do update).
+
+2. Durante canary:
+- acompanhar timeline de update em tempo real (`started`, `downloaded`, `verified`, `activated`, `healthy`).
+- se houver falha, validar evento `failed` com `reason_code` e comportamento de recuperacao.
+
+3. Depois da janela:
+- gerar pacote de evidencias S4 com comando:
+
+```bash
+python manage.py edge_s4_validation_pack --hours 24 --store-id <STORE_ID>
+```
+
+- opcional (JSON para anexar em ticket):
+
+```bash
+python manage.py edge_s4_validation_pack --hours 24 --store-id <STORE_ID> --json-output dalevision-specs/70_ops/S4_Field_Validation_Pack_<STORE_ID>.json
+```
+
+Saidas:
+- markdown: `dalevision-specs/70_ops/S4_Field_Validation_Pack_YYYY-MM-DD.md`
+- decisao automatica inicial: `GO`/`NO-GO` baseada em canary + telemetria + falha/rollback evidenciado.

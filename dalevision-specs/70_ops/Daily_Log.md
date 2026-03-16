@@ -27,6 +27,7 @@ Registrar decisões e eventos do dia.
     - resumo de rollout por canal (`all/stable/canary`) ativo em `/app/operations`, `/app/reports` e `/app/dashboard`;
     - leitura por loja critica agora mostra `current_version`, `target_version` e `version_gap`;
     - edge-agent passou a manter `attempt` incremental por tentativa de update e a reaproveitar este contexto no `health_check` pos-restart.
+  - Comando operacional de campo criado: `edge_s4_validation_pack`, que gera pacote markdown/json de validacao S4 com timeline por tentativa e decisao inicial GO/NO-GO.
 - Bloqueios:
   - Validacao operacional em loja remota ainda pendente para fechamento definitivo do gate de campo.
 - Decisões:
