@@ -10,6 +10,48 @@ Registrar decisões e eventos do dia.
 - Decisões:
 - Próximos passos:
 
+## 2026-03-16
+- Data: 2026-03-16
+- Highlights:
+  - Governanca do loop de acao consolidada no reports com status e filtros de outcomes (`all`, `dispatched`, `completed`, `failed`).
+  - Taxas de falha e agregados de execucao incorporados nos resumos executivos (`actions_failed_total`, `failure_rate` e recortes por fonte/rollout).
+  - Breakdown por origem de execucao de acao adicionado para leitura de completion/failure por canal.
+  - Documentacao central de execucao de sprint sincronizada para refletir estado atual: engenharia e governanca concluida, validacao de campo ainda pendente.
+- Bloqueios:
+  - Validacao operacional em loja remota ainda pendente para fechamento definitivo do gate de campo.
+- Decisões:
+  - Manter Sprint 2 como `DONE (ENG + GOVERNANCA)` e separar explicitamente o gate operacional de campo como criterio final.
+  - Seguir em paralelo com trilhas de auto-update do edge e refinamento CV/admin sem perder evidencias da Sprint 2.
+- Próximos passos:
+  - Coletar 3 dias consecutivos de evidencia operacional real para cravar GO final.
+  - Publicar consolidado executivo de aceite com snapshot de cobertura, runbook e completion rate.
+
+## 2026-03-15
+- Data: 2026-03-15
+- Highlights:
+  - `value_net_gap_brl` e `slo_breached` integrados ao fluxo de leitura executiva (store/network).
+  - Comandos de evidencia operacional fortalecidos (`copilot_value_ledger_health_snapshot` e pacote diario de evidencia).
+  - `/app/reports` passou a expor status de aceite de sprint e saude do pipeline de valor.
+- Bloqueios:
+  - Evidencia multi-loja real ainda nao anexada para fechamento operacional.
+- Decisões:
+  - Fechar engenharia/governanca da Sprint 2 e condicionar fechamento operacional ao gate de campo.
+- Próximos passos:
+  - Rodar rotina diaria de evidence pack e registrar decisao GO/NO-GO com base em dados reais.
+
+## 2026-03-14
+- Data: 2026-03-14
+- Highlights:
+  - Scheduler operacional (`copilot_operational_window_tick`) estabilizado com execucao recorrente e trilha de governanca.
+  - Ajustes de compatibilidade em statuses de camera e materializacao para evitar quebra de job.
+  - Base de `operational_window` consolidada como fonte de leitura executiva para dashboard/reports.
+- Bloqueios:
+  - Ambiente de campo nao validado ainda com a versao mais recente do pacote edge.
+- Decisões:
+  - Manter janela de materializacao curta para feedback rapido executivo e fallback seguro quando cobertura cair.
+- Próximos passos:
+  - Validar atualizacao remota em loja e coletar evidencia de estabilidade por 48-72h.
+
 ## 2026-02-21
 - Data: 2026-02-21
 - Highlights:

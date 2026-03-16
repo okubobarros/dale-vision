@@ -75,3 +75,23 @@ Consideramos valor entregue quando o gestor consegue, em menos de 5 minutos:
 4. acompanhar se risco caiu apos a acao.
 
 Sem esses quatro pontos, ainda estamos entregando visibilidade; com eles, entregamos gestao remota real.
+
+---
+
+## Addendum de status (2026-03-16)
+
+### Evolucao desde 13/03
+- Reports evoluiu para medir desfecho de acao, nao apenas disparo.
+- Novos indicadores executivos adicionados:
+  - `actions_failed_total`;
+  - `failure_rate`;
+  - recortes por source de execucao.
+- Fluxo de outcomes com filtro por status (`all/dispatched/completed/failed`) habilitado para operacao diaria.
+
+### Leitura executiva atual
+- Engenharia e governanca da Sprint 2: concluida.
+- Pendencia critica: validacao operacional de campo (loja remota) para consolidar estabilidade de completion/failure em dados reais.
+
+### Proxima decisao de gestao
+- manter evolucao de produto em paralelo (auto-update edge + refinamento CV/admin);
+- nao declarar fechamento operacional total da sprint sem gate de campo evidenciado.

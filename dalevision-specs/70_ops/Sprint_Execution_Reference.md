@@ -2,6 +2,8 @@
 
 ## Plano executivo consolidado
 - Ver `70_ops/Plano_Executavel_Edge_to_Product.md` para backlog com DoR, DoD, testes e evidencias por task.
+- Ver `70_ops/Matriz_Operacional_CV_AI_2026-03.md` para trilha tecnica completa de dados/CV/ML/MLOps e estagio de maturidade.
+- Ver `70_ops/Backlog_Executavel_CV_AI_MLOps_2026-03.md` para tickets priorizados por sprint com owner, esforco e aceite.
 
 ## Data de referencia
 - 2026-03-09
@@ -19,6 +21,16 @@ Gate de encerramento tecnico (definitivo):
 3. `avg_time_to_runbook_seconds <= 900`;
 4. evidence pack diario sem falha.
 Checklist de campo para aceite final: `70_ops/S2_Field_Validation_Gate.md`.
+
+## Atualizacao complementar (2026-03-16)
+- Reports recebeu governanca de desfecho de acao (status `completed`/`failed`) com filtro operacional dedicado.
+- Resumo executivo passou a destacar tambem taxa de falha (`failure_rate`) e total de falhas (`actions_failed_total`).
+- Breakdown por source de acao (dispatch/completion/failure) incorporado para leitura de gargalo por canal.
+- Completion rate agora pode ser acompanhado junto de failure rate na mesma superficie, reduzindo "falso positivo" de execucao.
+
+Leitura de sprint:
+- `S2` continua fechado para engenharia.
+- pendencia restante continua exclusivamente operacional (validacao remota de campo + evidencia de estabilidade).
 
 ## Plano da semana (complementar ao roadmap de sprint)
 

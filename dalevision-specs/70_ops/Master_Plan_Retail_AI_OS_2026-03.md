@@ -65,6 +65,25 @@ Proximo passo operacional (sem bloquear engenharia):
 3. consolidar no evidence pack diario para fechamento executivo.
 Referencia operacional: `70_ops/S2_Field_Validation_Gate.md`.
 
+## Atualizacao de execucao (2026-03-16)
+
+Status consolidado:
+- Sprint 2 segue `DONE (ENG + GOVERNANCA)` com `FIELD VALIDATION PENDING`.
+- Reports evoluiu de monitoramento para leitura de execucao de acao com foco em completion/failure.
+
+Evolucoes aplicadas:
+- breakdown de outcomes por fonte de execucao;
+- filtros de status de acao em reports (`all`, `dispatched`, `completed`, `failed`);
+- agregados de falha no resumo executivo (`actions_failed_total`, `failure_rate`);
+- suporte operacional para marcar resultado de acao como `failed` e fechar loop de acompanhamento.
+
+Impacto no plano master:
+- gate de maturidade de `Actionability` ficou mais mensuravel (nao apenas dispatch, mas desfecho da acao).
+- preparacao para S3/S4 ficou mais solida porque completion rate e failure rate agora tem trilha objetiva.
+
+Pendencia unica para fechamento definitivo da Sprint 2:
+- validar em campo (loja remota) que os indicadores de execucao e ledger ficam estaveis por 3 dias consecutivos.
+
 ---
 
 ## Proximo foco (paralelo ao campo)

@@ -221,3 +221,22 @@ Vender como:
 1. Rodar smoke final em producao com evidencia consolidada (tick, cleanup, dispatch, UI).
 2. Registrar outcome de acao (depois da execucao) para fechar loop no value ledger.
 3. Incluir monitoramento operacional de erro por endpoint de dispatch (SLO minimo).
+
+## Atualizacao executiva (2026-03-16) - Fechamento de loop no Reports
+
+### O que avancou hoje
+- reports passou a suportar leitura explicita de outcomes com status de falha e nao apenas sucesso.
+- agregados de risco de execucao foram adicionados ao resumo:
+  - `actions_failed_total`;
+  - `failure_rate`.
+- filtros de status no fluxo de outcomes liberados para operacao:
+  - `all`, `dispatched`, `completed`, `failed`.
+- breakdown por origem de acao reforcado para identificar quais canais estao com pior desempenho de conclusao.
+
+### Efeito no score de maturidade
+- confianca de "acao executada com evidência" subiu por reduzir zona cega de falha.
+- leitura executiva fica mais honesta: nao apenas quantas acoes foram disparadas, mas quantas efetivamente concluiram e quantas falharam.
+
+### O que ainda falta
+1. Validacao de campo em loja remota com 3 dias de evidencias consecutivas.
+2. Consolidar decisao final GO/NO-GO operacional da sprint com base nesses dados reais.
