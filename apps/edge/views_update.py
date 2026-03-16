@@ -1,5 +1,6 @@
 import hashlib
 import json
+import logging
 
 from django.utils import timezone
 from django.db import IntegrityError
@@ -11,6 +12,94 @@ from rest_framework.views import APIView
 from .auth import authenticate_edge_token
 from .models import EdgeUpdateEvent, EdgeUpdatePolicy
 from .serializers import EdgeUpdateReportSerializer
+from apps.core.models import DetectionEvent, Store
+
+
+logger = logging.getLogger(__name__)
+
+
+EDGE_UPDATE_ALERT_BLOCKED_REASONS = {
+    "ROLLOUT_WINDOW_CLOSED",
+    "UNSUPPORTED_VERSION",
+    "UPDATE_LOCKED",
+}
+
+
+def _emit_edge_update_detection_event(*, store_id: str, update_event: EdgeUpdateEvent) -> None:
+    status_value = str(getattr(update_event, "status", "") or "").lower()
+    if status_value not in {"failed", "rolled_back"}:
+        return
+
+    reason_code = str(getattr(update_event, "reason_code", "") or "")
+    if reason_code in EDGE_UPDATE_ALERT_BLOCKED_REASONS:
+        return
+
+    store = Store.objects.filter(id=store_id).first()
+    if not store:
+        return
+
+    existing = (
+        DetectionEvent.objects.filter(
+            store_id=store_id,
+            type="edge_update_rollout",
+            metadata__edge_update_event_id=str(update_event.id),
+        )
+        .order_by("-created_at")
+        .first()
+    )
+    if existing:
+        return
+
+    to_version = getattr(update_event, "to_version", None)
+    from_version = getattr(update_event, "from_version", None)
+    phase = getattr(update_event, "phase", None)
+    attempt = getattr(update_event, "attempt", None)
+    channel = getattr(update_event, "channel", None)
+    reason_detail = getattr(update_event, "reason_detail", None)
+    event_name = getattr(update_event, "event", None)
+    severity = "critical" if status_value == "failed" else "warning"
+
+    title = (
+        "Falha crítica no update do edge-agent"
+        if severity == "critical"
+        else "Rollback automático executado no edge-agent"
+    )
+    description = (
+        f"Status={status_value}; evento={event_name or '-'}; fase={phase or '-'}; "
+        f"attempt={attempt or 1}; versão {from_version or '-'} -> {to_version or '-'}; "
+        f"motivo={reason_code or '-'}."
+    )
+    if reason_detail:
+        description = f"{description} detalhe={reason_detail}"
+
+    DetectionEvent.objects.create(
+        org_id=store.org_id,
+        store_id=store.id,
+        camera_id=None,
+        zone_id=None,
+        type="edge_update_rollout",
+        severity=severity,
+        status="open",
+        title=title,
+        description=description,
+        occurred_at=getattr(update_event, "timestamp", None) or timezone.now(),
+        metadata={
+            "origin": "edge_update_report",
+            "edge_update_event_id": str(update_event.id),
+            "store_id": store_id,
+            "agent_id": getattr(update_event, "agent_id", None),
+            "event": event_name,
+            "status": status_value,
+            "phase": phase,
+            "attempt": attempt,
+            "from_version": from_version,
+            "to_version": to_version,
+            "channel": channel,
+            "reason_code": reason_code or None,
+            "reason_detail": reason_detail or None,
+        },
+        created_at=timezone.now(),
+    )
 
 
 def _build_policy_fingerprint(policy: EdgeUpdatePolicy | None) -> str | None:
@@ -217,6 +306,14 @@ class EdgeUpdateReportView(APIView):
                         status=status.HTTP_200_OK,
                     )
             raise
+        try:
+            _emit_edge_update_detection_event(store_id=store_id, update_event=row)
+        except Exception:
+            logger.exception(
+                "[EDGE_UPDATE_REPORT] failed to emit detection event store_id=%s event_id=%s",
+                store_id,
+                str(row.id),
+            )
         return Response(
             {
                 "ok": True,

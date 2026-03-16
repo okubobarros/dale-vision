@@ -397,6 +397,37 @@ export type StoreEdgeUpdateEventsResponse = {
   items: StoreEdgeUpdateEvent[]
 }
 
+export type StoreEdgeUpdateAttempt = {
+  attempt: number
+  agent_id?: string | null
+  channel?: string | null
+  from_version?: string | null
+  to_version?: string | null
+  final_status: "healthy" | "failed" | "rolled_back" | "incomplete"
+  first_event_at?: string | null
+  last_event_at?: string | null
+  duration_seconds?: number | null
+  event_count: number
+  reason_codes: string[]
+  events: Array<{
+    id: string
+    event?: string | null
+    status?: string | null
+    phase?: string | null
+    reason_code?: string | null
+    timestamp?: string | null
+  }>
+}
+
+export type StoreEdgeUpdateAttemptsResponse = {
+  store_id: string
+  store_name: string
+  filters: {
+    limit: number
+  }
+  items: StoreEdgeUpdateAttempt[]
+}
+
 export type StoreEdgeUpdateRunbookResponse = {
   store_id: string
   store_name: string
@@ -1265,6 +1296,16 @@ export const storesService = {
   ): Promise<StoreEdgeUpdateEventsResponse> {
     const response = await api.get(`/v1/stores/${storeId}/edge-update-events/`, { params })
     return response.data as StoreEdgeUpdateEventsResponse
+  },
+
+  async getStoreEdgeUpdateAttempts(
+    storeId: string,
+    params?: { limit?: number }
+  ): Promise<StoreEdgeUpdateAttemptsResponse> {
+    const response = await api.get(`/v1/stores/${storeId}/edge-update-attempts/`, {
+      params: params || undefined,
+    })
+    return response.data as StoreEdgeUpdateAttemptsResponse
   },
 
   async getStoreEdgeUpdateRunbook(

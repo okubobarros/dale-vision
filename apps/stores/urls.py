@@ -10,6 +10,7 @@ from .views_edge_update_management import (
     StoreEdgeUpdateRunbookView,
     StoreEdgeUpdateRunbookOpenedView,
 )
+from .views_edge_update_attempts import StoreEdgeUpdateAttemptsView
 from .views_edge_update_network import NetworkEdgeUpdateRolloutSummaryView
 from .views_support import (
     StoreSupportRequestView,
@@ -28,6 +29,7 @@ urlpatterns = [
     path("stores/<uuid:store_id>/edge-update-status/", StoreEdgeUpdateStatusView.as_view(), name="store-edge-update-status"),
     path("stores/<uuid:store_id>/edge-update-policy/", StoreEdgeUpdatePolicyManagementView.as_view(), name="store-edge-update-policy"),
     path("stores/<uuid:store_id>/edge-update-events/", StoreEdgeUpdateEventsListView.as_view(), name="store-edge-update-events"),
+    path("stores/<uuid:store_id>/edge-update-attempts/", StoreEdgeUpdateAttemptsView.as_view(), name="store-edge-update-attempts"),
     path("stores/<uuid:store_id>/edge-update-runbook/", StoreEdgeUpdateRunbookView.as_view(), name="store-edge-update-runbook"),
     path("stores/<uuid:store_id>/edge-update-runbook/opened/", StoreEdgeUpdateRunbookOpenedView.as_view(), name="store-edge-update-runbook-opened"),
     path("stores/network/edge-update-rollout-summary/", NetworkEdgeUpdateRolloutSummaryView.as_view(), name="network-edge-update-rollout-summary"),
