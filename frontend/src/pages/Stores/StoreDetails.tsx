@@ -1,8 +1,11 @@
-import { useMemo, useState } from "react"
+import { useEffect, useMemo, useState } from "react"
 import { Link, useParams, useSearchParams } from "react-router-dom"
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query"
 import {
   storesService,
+  type StoreEdgeUpdateEvent,
+  type StoreEdgeUpdatePolicyResponse,
+  type StoreEdgeUpdateRunbookResponse,
   type StoreOverviewCamera,
   type StoreOverview,
   type StoreProductivityCoverageResponse,
@@ -148,6 +151,52 @@ const cameraStatusClass = (status?: string | null) => {
   return "bg-gray-100 text-gray-700"
 }
 
+const updateStatusClass = (status?: string | null) => {
+  const normalized = String(status || "").toLowerCase()
+  if (normalized === "healthy") return "bg-emerald-100 text-emerald-700"
+  if (normalized === "failed" || normalized === "rolled_back") return "bg-rose-100 text-rose-700"
+  if (
+    normalized === "started" ||
+    normalized === "downloaded" ||
+    normalized === "verified" ||
+    normalized === "activated"
+  ) {
+    return "bg-amber-100 text-amber-700"
+  }
+  return "bg-slate-100 text-slate-700"
+}
+
+const updateStatusLabel = (status?: string | null) => {
+  const normalized = String(status || "").toLowerCase()
+  if (normalized === "healthy") return "Saudável"
+  if (normalized === "failed") return "Falha"
+  if (normalized === "rolled_back") return "Rollback"
+  if (
+    normalized === "started" ||
+    normalized === "downloaded" ||
+    normalized === "verified" ||
+    normalized === "activated"
+  ) {
+    return "Em progresso"
+  }
+  return status || "Sem status"
+}
+
+const updateStatusPriority = (status?: string | null) => {
+  const normalized = String(status || "").toLowerCase()
+  if (normalized === "failed" || normalized === "rolled_back") return 3
+  if (
+    normalized === "started" ||
+    normalized === "downloaded" ||
+    normalized === "verified" ||
+    normalized === "activated"
+  ) {
+    return 2
+  }
+  if (normalized === "healthy") return 1
+  return 0
+}
+
 const storeImagePlaceholder = (name: string) => {
   const letter = (name.trim().charAt(0) || "L").toUpperCase()
   return { letter, label: "Imagem da loja em configuração" }
@@ -163,6 +212,16 @@ const StoreDetails = () => {
     ? (tabParam as StoreTab)
     : "overview"
   const [ingestionEventType, setIngestionEventType] = useState<IngestionEventTypeFilter>("")
+  const [edgePolicyDraft, setEdgePolicyDraft] = useState({
+    channel: "stable" as "stable" | "canary",
+    target_version: "",
+    package_url: "",
+    package_sha256: "",
+  })
+  const [edgePolicyFeedback, setEdgePolicyFeedback] = useState<string>("")
+  const [edgeEventStatusFilter, setEdgeEventStatusFilter] = useState<string>("")
+  const [edgeEventAgentFilter, setEdgeEventAgentFilter] = useState<string>("")
+  const [copyFeedback, setCopyFeedback] = useState<string>("")
 
   const {
     data,
@@ -191,6 +250,25 @@ const StoreDetails = () => {
     enabled: Boolean(storeId),
     retry: false,
     staleTime: 60000,
+  })
+  const edgeUpdatePolicyQ = useQuery<StoreEdgeUpdatePolicyResponse>({
+    queryKey: ["store-edge-update-policy", storeId],
+    queryFn: () => storesService.getStoreEdgeUpdatePolicy(String(storeId)),
+    enabled: Boolean(storeId) && activeTab === "infrastructure",
+    retry: false,
+    staleTime: 60000,
+  })
+  const edgeUpdateEventsQ = useQuery({
+    queryKey: ["store-edge-update-events", storeId, edgeEventStatusFilter, edgeEventAgentFilter],
+    queryFn: () =>
+      storesService.getStoreEdgeUpdateEvents(String(storeId), {
+        limit: 10,
+        status: edgeEventStatusFilter || undefined,
+        agent_id: edgeEventAgentFilter || undefined,
+      }),
+    enabled: Boolean(storeId) && activeTab === "infrastructure",
+    retry: false,
+    staleTime: 30000,
   })
 
   const metrics = data?.metrics_summary?.totals
@@ -405,6 +483,104 @@ const StoreDetails = () => {
       setStaffSaveMessage(`Falha na atualização via Copiloto: ${(mutationError as Error).message}`)
     },
   })
+  const edgePolicyMutation = useMutation({
+    mutationFn: async () => {
+      if (!storeId) throw new Error("Loja inválida.")
+      return storesService.updateStoreEdgeUpdatePolicy(String(storeId), {
+        channel: edgePolicyDraft.channel,
+        target_version: edgePolicyDraft.target_version,
+        package: {
+          url: edgePolicyDraft.package_url,
+          sha256: edgePolicyDraft.package_sha256,
+        },
+      })
+    },
+    onSuccess: async () => {
+      setEdgePolicyFeedback("Policy de auto-update atualizada.")
+      await queryClient.invalidateQueries({ queryKey: ["store-edge-update-policy", storeId] })
+      await queryClient.invalidateQueries({ queryKey: ["store-edge-update-events", storeId] })
+    },
+    onError: (mutationError) => {
+      setEdgePolicyFeedback(`Falha ao salvar policy: ${(mutationError as Error).message}`)
+    },
+  })
+
+  const edgePolicySource = edgeUpdatePolicyQ.data?.policy
+  const edgeUpdateEvents: StoreEdgeUpdateEvent[] = edgeUpdateEventsQ.data?.items ?? []
+  const rolloutSummary = useMemo(() => {
+    const healthy = edgeUpdateEvents.filter((item) => String(item.status).toLowerCase() === "healthy").length
+    const failed = edgeUpdateEvents.filter((item) =>
+      ["failed", "rolled_back"].includes(String(item.status).toLowerCase())
+    ).length
+    const inProgress = edgeUpdateEvents.filter((item) =>
+      ["started", "downloaded", "verified", "activated"].includes(String(item.status).toLowerCase())
+    ).length
+    return { healthy, failed, inProgress }
+  }, [edgeUpdateEvents])
+  const prioritizedEdgeEvents = useMemo(() => {
+    return [...edgeUpdateEvents].sort((a, b) => {
+      const pDiff = updateStatusPriority(b.status) - updateStatusPriority(a.status)
+      if (pDiff !== 0) return pDiff
+      const aTs = a.timestamp ? new Date(a.timestamp).getTime() : 0
+      const bTs = b.timestamp ? new Date(b.timestamp).getTime() : 0
+      return bTs - aTs
+    })
+  }, [edgeUpdateEvents])
+  const latestFailureEvent = useMemo(
+    () =>
+      prioritizedEdgeEvents.find((item) =>
+        ["failed", "rolled_back"].includes(String(item.status || "").toLowerCase())
+      ) || null,
+    [prioritizedEdgeEvents]
+  )
+  const runbookQ = useQuery<StoreEdgeUpdateRunbookResponse>({
+    queryKey: [
+      "store-edge-update-runbook",
+      storeId,
+      latestFailureEvent?.reason_code || "fallback",
+      activeTab,
+    ],
+    queryFn: () =>
+      storesService.getStoreEdgeUpdateRunbook(String(storeId), {
+        reason_code: latestFailureEvent?.reason_code || undefined,
+      }),
+    enabled: Boolean(storeId) && activeTab === "infrastructure" && Boolean(latestFailureEvent),
+    retry: false,
+    staleTime: 60000,
+  })
+
+  useEffect(() => {
+    if (!edgePolicySource) return
+    setEdgePolicyDraft({
+      channel: edgePolicySource.channel,
+      target_version: edgePolicySource.target_version || "",
+      package_url: edgePolicySource.package?.url || "",
+      package_sha256: edgePolicySource.package?.sha256 || "",
+    })
+  }, [
+    edgePolicySource?.channel,
+    edgePolicySource?.target_version,
+    edgePolicySource?.package?.url,
+    edgePolicySource?.package?.sha256,
+  ])
+
+  const copyDiagnosis = async (event: StoreEdgeUpdateEvent) => {
+    const payload = [
+      `event=${event.event || "-"}`,
+      `status=${event.status || "-"}`,
+      `reason_code=${event.reason_code || "-"}`,
+      `reason_detail=${event.reason_detail || "-"}`,
+      `playbook_hint=${event.playbook_hint || "-"}`,
+      `agent_id=${event.agent_id || "-"}`,
+      `timestamp=${event.timestamp || "-"}`,
+    ].join(" | ")
+    try {
+      await navigator.clipboard.writeText(payload)
+      setCopyFeedback("Diagnóstico copiado para área de transferência.")
+    } catch {
+      setCopyFeedback("Falha ao copiar diagnóstico.")
+    }
+  }
 
   if (isLoading) {
     return (
@@ -990,6 +1166,296 @@ const StoreDetails = () => {
                 ))}
               </ul>
             )}
+          </div>
+
+          <div className="bg-white rounded-xl border border-gray-100 p-4 sm:p-6 lg:col-span-2">
+            <div className="flex items-center justify-between gap-3 flex-wrap">
+              <div>
+                <h2 className="text-lg font-bold text-gray-800">Auto-update Edge Agent</h2>
+                <p className="text-sm text-gray-600">
+                  Controle de versão da loja e histórico de atualização remota.
+                </p>
+              </div>
+              <button
+                type="button"
+                onClick={() => edgeUpdateEventsQ.refetch()}
+                className="rounded-lg border border-gray-200 bg-white px-3 py-1.5 text-xs font-semibold text-gray-700 hover:bg-gray-50"
+              >
+                Atualizar timeline
+              </button>
+            </div>
+
+            <div className="mt-4 grid grid-cols-1 md:grid-cols-2 gap-3">
+              <div>
+                <label className="text-xs font-semibold text-gray-600">Versão alvo</label>
+                <input
+                  type="text"
+                  value={edgePolicyDraft.target_version}
+                  onChange={(event) =>
+                    setEdgePolicyDraft((prev) => ({
+                      ...prev,
+                      target_version: event.target.value,
+                    }))
+                  }
+                  className="mt-1 w-full rounded-lg border border-gray-200 px-3 py-2 text-sm"
+                  placeholder="ex: 1.5.0"
+                />
+              </div>
+              <div>
+                <label className="text-xs font-semibold text-gray-600">Canal</label>
+                <select
+                  value={edgePolicyDraft.channel}
+                  onChange={(event) =>
+                    setEdgePolicyDraft((prev) => ({
+                      ...prev,
+                      channel: event.target.value === "canary" ? "canary" : "stable",
+                    }))
+                  }
+                  className="mt-1 w-full rounded-lg border border-gray-200 px-3 py-2 text-sm"
+                >
+                  <option value="stable">stable</option>
+                  <option value="canary">canary</option>
+                </select>
+              </div>
+              <div className="md:col-span-2">
+                <label className="text-xs font-semibold text-gray-600">Package URL</label>
+                <input
+                  type="text"
+                  value={edgePolicyDraft.package_url}
+                  onChange={(event) =>
+                    setEdgePolicyDraft((prev) => ({
+                      ...prev,
+                      package_url: event.target.value,
+                    }))
+                  }
+                  className="mt-1 w-full rounded-lg border border-gray-200 px-3 py-2 text-sm"
+                  placeholder="https://cdn.dalevision.com/edge/..."
+                />
+              </div>
+              <div className="md:col-span-2">
+                <label className="text-xs font-semibold text-gray-600">SHA256</label>
+                <input
+                  type="text"
+                  value={edgePolicyDraft.package_sha256}
+                  onChange={(event) =>
+                    setEdgePolicyDraft((prev) => ({
+                      ...prev,
+                      package_sha256: event.target.value,
+                    }))
+                  }
+                  className="mt-1 w-full rounded-lg border border-gray-200 px-3 py-2 text-sm"
+                  placeholder="hash sha256 do pacote"
+                />
+              </div>
+            </div>
+
+            <div className="mt-3 flex items-center gap-2">
+              <button
+                type="button"
+                onClick={() => {
+                  setEdgePolicyFeedback("")
+                  edgePolicyMutation.mutate()
+                }}
+                disabled={edgePolicyMutation.isPending || edgeUpdatePolicyQ.isLoading}
+                className="rounded-lg bg-slate-900 px-4 py-2 text-sm font-semibold text-white hover:bg-slate-800 disabled:opacity-60"
+              >
+                {edgePolicyMutation.isPending ? "Salvando..." : "Salvar policy"}
+              </button>
+              <span className="text-xs text-gray-500">
+                Última atualização: {edgePolicySource?.updated_at ? new Date(edgePolicySource.updated_at).toLocaleString("pt-BR") : "—"}
+              </span>
+            </div>
+
+            {edgePolicyFeedback && <p className="mt-2 text-xs text-gray-600">{edgePolicyFeedback}</p>}
+
+            <div className="mt-3 grid grid-cols-1 sm:grid-cols-3 gap-2 text-xs">
+              <div className="rounded-lg border border-emerald-100 bg-emerald-50 px-3 py-2">
+                <p className="text-emerald-700">Rollouts saudáveis</p>
+                <p className="mt-1 text-base font-semibold text-emerald-800">{rolloutSummary.healthy}</p>
+              </div>
+              <div className="rounded-lg border border-amber-100 bg-amber-50 px-3 py-2">
+                <p className="text-amber-700">Em progresso</p>
+                <p className="mt-1 text-base font-semibold text-amber-800">{rolloutSummary.inProgress}</p>
+              </div>
+              <div className="rounded-lg border border-rose-100 bg-rose-50 px-3 py-2">
+                <p className="text-rose-700">Falhas / rollback</p>
+                <p className="mt-1 text-base font-semibold text-rose-800">{rolloutSummary.failed}</p>
+              </div>
+            </div>
+            {latestFailureEvent && (
+              <div className="mt-3 rounded-lg border border-rose-200 bg-rose-50 px-3 py-2 text-xs text-rose-800">
+                <p className="font-semibold">
+                  Atenção: falha recente de update ({latestFailureEvent.status})
+                </p>
+                <p className="mt-1">
+                  {latestFailureEvent.reason_code || "Sem reason_code"} ·{" "}
+                  {latestFailureEvent.reason_detail || "Sem reason_detail"}
+                </p>
+                <div className="mt-2 flex items-center gap-2 flex-wrap">
+                  <Link
+                    to={`/app/edge-help?store_id=${data.store.id}${
+                      latestFailureEvent.reason_code
+                        ? `&reason_code=${encodeURIComponent(latestFailureEvent.reason_code)}`
+                        : ""
+                    }`}
+                    className="inline-flex items-center rounded border border-rose-300 bg-white px-2 py-1 text-[11px] font-semibold text-rose-700 hover:bg-rose-100"
+                  >
+                    Abrir runbook
+                  </Link>
+                  <button
+                    type="button"
+                    onClick={() =>
+                      openCopilot(
+                        `Diagnosticar falha de auto-update da loja ${data.store.name}. reason_code=${latestFailureEvent.reason_code || "n/a"} reason_detail=${latestFailureEvent.reason_detail || "n/a"} event=${latestFailureEvent.event || "n/a"} agent=${latestFailureEvent.agent_id || "n/a"}.`
+                      )
+                    }
+                    className="inline-flex items-center rounded border border-rose-300 bg-white px-2 py-1 text-[11px] font-semibold text-rose-700 hover:bg-rose-100"
+                  >
+                    Diagnosticar no Copiloto
+                  </button>
+                </div>
+              </div>
+            )}
+            {runbookQ.data?.runbook && (
+              <div className="mt-3 rounded-lg border border-blue-200 bg-blue-50 px-3 py-3 text-xs text-blue-900 space-y-2">
+                <div className="flex items-center justify-between gap-2 flex-wrap">
+                  <p className="font-semibold">{runbookQ.data.runbook.title}</p>
+                  <span className="rounded-full border border-blue-300 bg-white px-2 py-0.5 text-[10px] font-semibold text-blue-700">
+                    Severidade: {runbookQ.data.runbook.severity}
+                  </span>
+                </div>
+                <p>{runbookQ.data.runbook.summary}</p>
+                <div className="grid grid-cols-1 md:grid-cols-3 gap-2">
+                  <div>
+                    <p className="font-semibold">Ação imediata</p>
+                    <ul className="mt-1 space-y-1">
+                      {runbookQ.data.runbook.immediate_actions.map((item) => (
+                        <li key={item}>- {item}</li>
+                      ))}
+                    </ul>
+                  </div>
+                  <div>
+                    <p className="font-semibold">Diagnóstico</p>
+                    <ul className="mt-1 space-y-1">
+                      {runbookQ.data.runbook.diagnostic_steps.map((item) => (
+                        <li key={item}>- {item}</li>
+                      ))}
+                    </ul>
+                  </div>
+                  <div>
+                    <p className="font-semibold">Evidências</p>
+                    <ul className="mt-1 space-y-1">
+                      {runbookQ.data.runbook.evidence_to_collect.map((item) => (
+                        <li key={item}>- {item}</li>
+                      ))}
+                    </ul>
+                  </div>
+                </div>
+              </div>
+            )}
+
+            <div className="mt-3 grid grid-cols-1 md:grid-cols-3 gap-2">
+              <div>
+                <label className="text-xs font-semibold text-gray-600">Filtrar por status</label>
+                <select
+                  value={edgeEventStatusFilter}
+                  onChange={(event) => setEdgeEventStatusFilter(event.target.value)}
+                  className="mt-1 w-full rounded-lg border border-gray-200 px-3 py-2 text-sm"
+                >
+                  <option value="">Todos</option>
+                  <option value="healthy">healthy</option>
+                  <option value="started">started</option>
+                  <option value="downloaded">downloaded</option>
+                  <option value="verified">verified</option>
+                  <option value="activated">activated</option>
+                  <option value="failed">failed</option>
+                  <option value="rolled_back">rolled_back</option>
+                </select>
+              </div>
+              <div>
+                <label className="text-xs font-semibold text-gray-600">Filtrar por agent_id</label>
+                <input
+                  type="text"
+                  value={edgeEventAgentFilter}
+                  onChange={(event) => setEdgeEventAgentFilter(event.target.value)}
+                  className="mt-1 w-full rounded-lg border border-gray-200 px-3 py-2 text-sm"
+                  placeholder="ex: edge-kiosk-01"
+                />
+              </div>
+              <div className="flex items-end">
+                <button
+                  type="button"
+                  onClick={() => edgeUpdateEventsQ.refetch()}
+                  className="w-full rounded-lg border border-gray-200 bg-white px-3 py-2 text-sm font-semibold text-gray-700 hover:bg-gray-50"
+                >
+                  Aplicar filtros
+                </button>
+              </div>
+            </div>
+
+            <div className="mt-4 rounded-lg border border-gray-100 overflow-auto">
+              <div className="min-w-[860px]">
+                <div className="grid grid-cols-[110px_1fr_170px_260px_110px] bg-gray-50 px-3 py-2 text-[11px] font-semibold uppercase tracking-[0.08em] text-gray-600">
+                  <span>Status</span>
+                  <span>Evento</span>
+                  <span>Versão</span>
+                  <span>Diagnóstico</span>
+                  <span>Horário</span>
+                </div>
+                {edgeUpdateEventsQ.isLoading ? (
+                  <div className="px-3 py-3 text-sm text-gray-500">Carregando eventos...</div>
+                ) : edgeUpdateEvents.length === 0 ? (
+                  <div className="px-3 py-3 text-sm text-gray-500">
+                    Sem eventos de auto-update para esta loja.
+                  </div>
+                ) : (
+                  <div className="divide-y divide-gray-100">
+                    {prioritizedEdgeEvents.map((event) => (
+                      <div
+                        key={event.event_id}
+                        className={`grid grid-cols-[110px_1fr_170px_260px_110px] items-center px-3 py-2 text-sm text-gray-700 ${
+                          ["failed", "rolled_back"].includes(String(event.status || "").toLowerCase())
+                            ? "bg-rose-50/70"
+                            : "bg-white"
+                        }`}
+                      >
+                        <span
+                          className={`inline-flex w-fit items-center rounded-full px-2 py-0.5 text-[11px] font-semibold ${updateStatusClass(
+                            event.status
+                          )}`}
+                        >
+                          {updateStatusLabel(event.status)}
+                        </span>
+                        <span>{event.event}</span>
+                        <span>
+                          {event.from_version || "—"} {"->"} {event.to_version || "—"}
+                        </span>
+                        <div className="text-xs text-gray-600 space-y-1">
+                          <div>{event.reason_code || "—"}</div>
+                          <div className="line-clamp-2">{event.reason_detail || "Sem detalhe"}</div>
+                          {event.playbook_hint && (
+                            <div className="line-clamp-2 rounded border border-blue-100 bg-blue-50 px-2 py-1 text-[11px] text-blue-800">
+                              {event.playbook_hint}
+                            </div>
+                          )}
+                          {(event.reason_code || event.reason_detail) && (
+                            <button
+                              type="button"
+                              onClick={() => copyDiagnosis(event)}
+                              className="inline-flex items-center rounded border border-gray-200 px-2 py-0.5 text-[10px] font-semibold text-gray-700 hover:bg-gray-50"
+                            >
+                              Copiar
+                            </button>
+                          )}
+                        </div>
+                        <span>{event.timestamp ? new Date(event.timestamp).toLocaleString("pt-BR") : "—"}</span>
+                      </div>
+                    ))}
+                  </div>
+                )}
+              </div>
+            </div>
+            {copyFeedback && <p className="mt-2 text-xs text-gray-600">{copyFeedback}</p>}
           </div>
         </div>
       )}

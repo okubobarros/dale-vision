@@ -1,0 +1,87 @@
+from types import SimpleNamespace
+from unittest.mock import MagicMock, patch
+from uuid import uuid4
+
+from django.test import SimpleTestCase
+from rest_framework.test import APIRequestFactory, force_authenticate
+
+from apps.stores.views_edge_update_network import NetworkEdgeUpdateRolloutSummaryView
+
+
+class NetworkEdgeUpdateRolloutSummaryViewTests(SimpleTestCase):
+    def setUp(self):
+        self.factory = APIRequestFactory()
+        self.view = NetworkEdgeUpdateRolloutSummaryView.as_view()
+
+    @patch("apps.stores.views_edge_update_network.get_user_org_ids")
+    def test_returns_no_data_when_user_has_no_orgs(self, mock_org_ids):
+        mock_org_ids.return_value = []
+
+        request = self.factory.get("/api/v1/stores/network/edge-update-rollout-summary/")
+        force_authenticate(request, user=SimpleNamespace(is_authenticated=True))
+        response = self.view(request)
+
+        self.assertEqual(response.status_code, 200)
+        self.assertEqual(response.data["totals"]["stores"], 0)
+        self.assertEqual(response.data["rollout_health"]["status"], "no_data")
+
+    @patch("apps.stores.views_edge_update_network.EdgeUpdateEvent.objects.filter")
+    @patch("apps.stores.views_edge_update_network.EdgeUpdatePolicy.objects.filter")
+    @patch("apps.stores.views_edge_update_network.Store.objects.filter")
+    @patch("apps.stores.views_edge_update_network.get_user_org_ids")
+    def test_returns_aggregated_summary(
+        self,
+        mock_org_ids,
+        mock_store_filter,
+        mock_policy_filter,
+        mock_event_filter,
+    ):
+        store_a = uuid4()
+        store_b = uuid4()
+        mock_org_ids.return_value = [uuid4()]
+
+        store_qs = MagicMock()
+        store_qs.values.return_value = [
+            {"id": store_a, "name": "Loja A"},
+            {"id": store_b, "name": "Loja B"},
+        ]
+        mock_store_filter.return_value = store_qs
+
+        policy_qs = MagicMock()
+        policy_qs.order_by.return_value = [
+            SimpleNamespace(store_id=store_a, channel="canary", target_version="1.5.0"),
+            SimpleNamespace(store_id=store_b, channel="stable", target_version="1.5.0"),
+        ]
+        mock_policy_filter.return_value = policy_qs
+
+        event_qs = MagicMock()
+        event_qs.order_by.return_value = [
+            SimpleNamespace(
+                store_id=store_a,
+                status="failed",
+                event="edge_update_failed",
+                reason_code="NETWORK_ERROR",
+                timestamp=None,
+            ),
+            SimpleNamespace(
+                store_id=store_b,
+                status="healthy",
+                event="edge_update_healthy",
+                reason_code=None,
+                timestamp=None,
+            ),
+        ]
+        mock_event_filter.return_value = event_qs
+
+        request = self.factory.get("/api/v1/stores/network/edge-update-rollout-summary/")
+        force_authenticate(request, user=SimpleNamespace(is_authenticated=True))
+        response = self.view(request)
+
+        self.assertEqual(response.status_code, 200)
+        self.assertEqual(response.data["totals"]["stores"], 2)
+        self.assertEqual(response.data["totals"]["with_policy"], 2)
+        self.assertEqual(response.data["totals"]["channel"]["canary"], 1)
+        self.assertEqual(response.data["totals"]["health"]["degraded"], 1)
+        self.assertEqual(response.data["rollout_health"]["status"], "degraded")
+        self.assertEqual(len(response.data["critical_stores"]), 1)
+        self.assertEqual(response.data["critical_stores"][0]["store_name"], "Loja A")

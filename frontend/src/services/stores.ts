@@ -334,6 +334,122 @@ export interface StoreEdgeSetupPayload {
   token_last_used_at?: string | null;
 }
 
+export type StoreEdgeUpdatePolicy = {
+  active: boolean
+  channel: "stable" | "canary"
+  target_version?: string | null
+  current_min_supported?: string | null
+  rollout_window: {
+    start_local: string
+    end_local: string
+    timezone: string
+  }
+  package?: {
+    url: string
+    sha256: string
+    size_bytes?: number | null
+  } | null
+  health_gate: {
+    max_boot_seconds: number
+    require_heartbeat_seconds: number
+    require_camera_health_count: number
+  }
+  rollback_policy: {
+    enabled: boolean
+    max_failed_attempts: number
+  }
+  updated_at?: string | null
+}
+
+export type StoreEdgeUpdatePolicyResponse = {
+  store_id: string
+  store_name: string
+  policy: StoreEdgeUpdatePolicy
+}
+
+export type StoreEdgeUpdateEvent = {
+  event_id: string
+  agent_id?: string | null
+  from_version?: string | null
+  to_version?: string | null
+  channel?: string | null
+  status: string
+  phase?: string | null
+  event: string
+  attempt?: number | null
+  elapsed_ms?: number | null
+  reason_code?: string | null
+  reason_detail?: string | null
+  playbook_hint?: string | null
+  timestamp?: string | null
+}
+
+export type StoreEdgeUpdateEventsResponse = {
+  store_id: string
+  store_name: string
+  filters: {
+    limit: number
+    status?: string | null
+    agent_id?: string | null
+  }
+  items: StoreEdgeUpdateEvent[]
+}
+
+export type StoreEdgeUpdateRunbookResponse = {
+  store_id: string
+  store_name: string
+  generated_at: string
+  runbook: {
+    reason_code?: string | null
+    known_reason: boolean
+    title: string
+    severity: "media" | "alta" | "critica"
+    summary: string
+    immediate_actions: string[]
+    diagnostic_steps: string[]
+    evidence_to_collect: string[]
+  }
+}
+
+export type StoreEdgeUpdateRunbookOpenedPayload = {
+  reason_code?: string
+  source_page?: string
+}
+
+export type NetworkEdgeUpdateRolloutSummaryResponse = {
+  scope: "network"
+  totals: {
+    stores: number
+    with_policy: number
+    channel: {
+      stable: number
+      canary: number
+    }
+    health: {
+      healthy: number
+      degraded: number
+      in_progress: number
+      no_data: number
+    }
+  }
+  rollout_health: {
+    status: "healthy" | "degraded" | "attention" | "no_data"
+    recommended_action: string
+  }
+  critical_stores: Array<{
+    store_id: string
+    store_name?: string | null
+    health: "degraded" | "in_progress"
+    channel: "stable" | "canary"
+    target_version?: string | null
+    last_event?: string | null
+    last_status?: string | null
+    reason_code?: string | null
+    timestamp?: string | null
+  }>
+  generated_at: string
+}
+
 export type RotateEdgeTokenResult =
   | ({ supported: true } & StoreEdgeSetupPayload)
   | { supported: false };
@@ -1113,6 +1229,51 @@ export const storesService = {
       }
       throw normalizeApiError(error, 'Falha ao consultar status do edge.');
     }
+  },
+
+  async getStoreEdgeUpdatePolicy(storeId: string): Promise<StoreEdgeUpdatePolicyResponse> {
+    const response = await api.get(`/v1/stores/${storeId}/edge-update-policy/`)
+    return response.data as StoreEdgeUpdatePolicyResponse
+  },
+
+  async updateStoreEdgeUpdatePolicy(
+    storeId: string,
+    payload: Partial<StoreEdgeUpdatePolicy> & {
+      target_version: string
+      package: { url: string; sha256: string; size_bytes?: number | null }
+    }
+  ): Promise<StoreEdgeUpdatePolicyResponse> {
+    const response = await api.put(`/v1/stores/${storeId}/edge-update-policy/`, payload)
+    return response.data as StoreEdgeUpdatePolicyResponse
+  },
+
+  async getStoreEdgeUpdateEvents(
+    storeId: string,
+    params?: { limit?: number; status?: string; agent_id?: string }
+  ): Promise<StoreEdgeUpdateEventsResponse> {
+    const response = await api.get(`/v1/stores/${storeId}/edge-update-events/`, { params })
+    return response.data as StoreEdgeUpdateEventsResponse
+  },
+
+  async getStoreEdgeUpdateRunbook(
+    storeId: string,
+    params?: { reason_code?: string }
+  ): Promise<StoreEdgeUpdateRunbookResponse> {
+    const response = await api.get(`/v1/stores/${storeId}/edge-update-runbook/`, { params })
+    return response.data as StoreEdgeUpdateRunbookResponse
+  },
+
+  async trackStoreEdgeUpdateRunbookOpened(
+    storeId: string,
+    payload?: StoreEdgeUpdateRunbookOpenedPayload
+  ): Promise<{ ok: boolean; store_id: string; event_id: string; event: string }> {
+    const response = await api.post(`/v1/stores/${storeId}/edge-update-runbook/opened/`, payload || {})
+    return response.data as { ok: boolean; store_id: string; event_id: string; event: string }
+  },
+
+  async getNetworkEdgeUpdateRolloutSummary(): Promise<NetworkEdgeUpdateRolloutSummaryResponse> {
+    const response = await api.get("/v1/stores/network/edge-update-rollout-summary/")
+    return response.data as NetworkEdgeUpdateRolloutSummaryResponse
   },
 
   // Criar nova loja

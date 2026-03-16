@@ -26,6 +26,122 @@ Uso:
   - último evento de update;
   - status resumido de rollout (`healthy|degraded|in_progress|no_data`).
 
+### 3.0.1 Gestão de policy por loja (app/admin)
+`GET /api/v1/stores/{store_id}/edge-update-policy/`  
+`PUT /api/v1/stores/{store_id}/edge-update-policy/`
+
+Uso:
+- `GET`: leitura da policy efetiva da loja para operação/suporte.
+- `PUT`: atualização da policy por papéis de gestão (`owner|admin|manager`).
+
+Payload mínimo do `PUT`:
+```json
+{
+  "target_version": "1.5.0",
+  "package": {
+    "url": "https://cdn.dalevision.com/edge/1.5.0/edge-agent-windows.zip",
+    "sha256": "hexstring"
+  }
+}
+```
+
+Campos opcionais:
+- `channel`, `current_min_supported`, `rollout_window`, `health_gate`, `rollback_policy`, `active`.
+
+### 3.0.2 Feed de eventos de update por loja (app/ops)
+`GET /api/v1/stores/{store_id}/edge-update-events/`
+
+Query params:
+- `limit` (default `20`, max `100`)
+- `status` (opcional)
+- `agent_id` (opcional)
+
+Uso:
+- timeline de execução do auto-update para suporte e auditoria operacional.
+- cada item retorna `playbook_hint` quando `reason_code` tiver mapeamento conhecido.
+
+### 3.0.3 Runbook estruturado por motivo (app/ops)
+`GET /api/v1/stores/{store_id}/edge-update-runbook/`
+
+Query params:
+- `reason_code` (opcional; se ausente, usa último `failed|rolled_back` da loja)
+
+Uso:
+- retornar checklist operacional estruturado para diagnóstico e resolução.
+
+Resposta (resumo):
+```json
+{
+  "store_id": "...",
+  "store_name": "...",
+  "generated_at": "2026-03-16T10:30:00Z",
+  "runbook": {
+    "reason_code": "NETWORK_ERROR",
+    "known_reason": true,
+    "title": "Falha de conectividade no update",
+    "severity": "alta",
+    "summary": "...",
+    "immediate_actions": ["..."],
+    "diagnostic_steps": ["..."],
+    "evidence_to_collect": ["..."]
+  }
+}
+```
+
+### 3.0.4 Telemetria de abertura de runbook (app/ops)
+`POST /api/v1/stores/{store_id}/edge-update-runbook/opened/`
+
+Payload:
+```json
+{
+  "reason_code": "NETWORK_ERROR",
+  "source_page": "edge_help"
+}
+```
+
+Uso:
+- registrar que o time abriu runbook contextual para medição de adoção e tempo de resolução.
+
+### 3.0.5 Resumo de rollout em nível de rede (app/ops executivo)
+`GET /api/v1/stores/network/edge-update-rollout-summary/`
+
+Uso:
+- visão consolidada da rede para operação executiva, com:
+  - contagem de lojas por `health` (`healthy|degraded|in_progress|no_data`);
+  - distribuição por canal (`stable|canary`);
+  - lista priorizada de lojas críticas para intervenção imediata.
+
+Resposta (resumo):
+```json
+{
+  "scope": "network",
+  "totals": {
+    "stores": 12,
+    "with_policy": 10,
+    "channel": { "stable": 8, "canary": 2 },
+    "health": { "healthy": 7, "degraded": 2, "in_progress": 1, "no_data": 2 }
+  },
+  "rollout_health": {
+    "status": "degraded",
+    "recommended_action": "Lojas com falha/rollback detectado. Priorizar runbook e estabilização."
+  },
+  "critical_stores": [
+    {
+      "store_id": "...",
+      "store_name": "Loja Centro",
+      "health": "degraded",
+      "channel": "canary",
+      "target_version": "1.5.0",
+      "last_event": "edge_update_failed",
+      "last_status": "failed",
+      "reason_code": "NETWORK_ERROR",
+      "timestamp": "2026-03-16T10:32:00Z"
+    }
+  ],
+  "generated_at": "2026-03-16T10:35:00Z"
+}
+```
+
 ### 3.1 Policy pull (agent -> cloud)
 `GET /api/v1/edge/update-policy/`
 
