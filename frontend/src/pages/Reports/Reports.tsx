@@ -142,6 +142,7 @@ const Reports = () => {
   const [to, setTo] = useState<string>("")
   const [exporting, setExporting] = useState<"csv" | "pdf" | null>(null)
   const [delegatingStoreId, setDelegatingStoreId] = useState<string | null>(null)
+  const [rolloutActionStoreId, setRolloutActionStoreId] = useState<string | null>(null)
   const [approvingIntervention, setApprovingIntervention] = useState(false)
   const [completingOutcomeId, setCompletingOutcomeId] = useState<string | null>(null)
 
@@ -523,6 +524,80 @@ const Reports = () => {
     } finally {
       setCompletingOutcomeId(null)
     }
+  }
+
+  const handleRolloutCopilotAction = async (item: {
+    store_id: string
+    store_name?: string | null
+    health: "degraded" | "in_progress"
+    channel: "stable" | "canary"
+    target_version?: string | null
+    last_event?: string | null
+    last_status?: string | null
+    reason_code?: string | null
+  }) => {
+    const storeId = item.store_id
+    const storeName = item.store_name || "loja"
+    const insightId = `reports-rollout-${storeId}-${Date.now()}`
+    const expectedImpact = Math.max(0, Math.round(revenueAtRiskToday * 0.2))
+    setRolloutActionStoreId(storeId)
+    try {
+      const dispatchResponse = await alertsService.dispatchAction({
+        store_id: storeId,
+        insight_id: insightId,
+        action_type: "edge_rollout_intervention",
+        channel: "copilot",
+        source: "reports_rollout",
+        expected_impact_brl: expectedImpact || undefined,
+        confidence_score: item.health === "degraded" ? 85 : 75,
+        context: {
+          origin: "reports_rollout",
+          rollout_health: item.health,
+          reason_code: item.reason_code || null,
+          last_event: item.last_event || null,
+          target_version: item.target_version || null,
+        },
+      })
+      try {
+        await copilotService.createActionOutcome(storeId, {
+          action_event_id: dispatchResponse.event_id ?? null,
+          insight_id: insightId,
+          action_type: "edge_rollout_intervention",
+          channel: "copilot",
+          source: "reports_rollout",
+          status: "dispatched",
+          impact_expected_brl: expectedImpact || undefined,
+          confidence_score: item.health === "degraded" ? 85 : 75,
+          baseline: {
+            origin: "reports_rollout",
+            rollout_health: item.health,
+            reason_code: item.reason_code || null,
+          },
+        })
+      } catch {
+        // Non-blocking: dispatch already persisted.
+      }
+      toast.success(`Ação registrada para ${storeName}.`)
+    } catch (error) {
+      const payload = (error as { response?: { data?: Record<string, unknown> } })?.response?.data
+      const message =
+        (typeof payload?.message === "string" && payload.message) ||
+        (typeof payload?.detail === "string" && payload.detail) ||
+        "Não foi possível registrar a ação de rollout."
+      toast.error(message)
+      setRolloutActionStoreId(null)
+      return
+    }
+    window.dispatchEvent(
+      new CustomEvent("dv-open-copilot", {
+        detail: {
+          prompt: `Montar plano imediato para update da ${storeName}. Status: ${item.health}. Evento: ${
+            item.last_event || "sem evento"
+          }. Motivo: ${item.reason_code || "não informado"}. Versão alvo: ${item.target_version || "não informada"}.`,
+        },
+      })
+    )
+    setRolloutActionStoreId(null)
   }
 
   const handleExport = async (format: "csv" | "pdf") => {
@@ -920,6 +995,24 @@ const Reports = () => {
                     {item.last_event || "Sem evento"} · versão alvo {item.target_version || "—"} · motivo{" "}
                     {item.reason_code || "não informado"}
                   </p>
+                  <div className="mt-2 flex flex-wrap items-center gap-2">
+                    <a
+                      href={`/app/edge-help?store_id=${item.store_id}${
+                        item.reason_code ? `&reason_code=${encodeURIComponent(item.reason_code)}` : ""
+                      }`}
+                      className="rounded-lg border border-amber-200 bg-amber-50 px-2.5 py-1 text-[11px] font-semibold text-amber-700 hover:bg-amber-100"
+                    >
+                      Abrir runbook
+                    </a>
+                    <button
+                      type="button"
+                      onClick={() => void handleRolloutCopilotAction(item)}
+                      disabled={rolloutActionStoreId === item.store_id}
+                      className="rounded-lg border border-indigo-200 bg-indigo-50 px-2.5 py-1 text-[11px] font-semibold text-indigo-700 hover:bg-indigo-100 disabled:cursor-not-allowed disabled:opacity-70"
+                    >
+                      {rolloutActionStoreId === item.store_id ? "Acionando..." : "Acionar Copiloto"}
+                    </button>
+                  </div>
                 </article>
               ))}
             </div>
