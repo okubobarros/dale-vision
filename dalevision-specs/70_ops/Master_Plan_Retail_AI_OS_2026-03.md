@@ -84,6 +84,15 @@ Impacto no plano master:
 Pendencia unica para fechamento definitivo da Sprint 2:
 - validar em campo (loja remota) que os indicadores de execucao e ledger ficam estaveis por 3 dias consecutivos.
 
+Atualizacao complementar S4 (2026-03-16):
+- contrato de update evoluiu com idempotencia e fingerprint de policy;
+- observabilidade de rollout por canal (`all/stable/canary`) aplicada nas 3 superficies executivas;
+- executor edge agora preserva contexto de tentativa (`attempt`) entre pre-update e health-check pos-restart.
+
+Leitura objetiva:
+- `S4` esta com engenharia em estado avancado e pronto para fase de validacao de campo controlada.
+- pendencia para `GO`: evidenciar canary real, rollback controlado e lote de lojas sem regressao critica.
+
 ---
 
 ## Proximo foco (paralelo ao campo)

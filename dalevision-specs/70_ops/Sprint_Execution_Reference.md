@@ -27,10 +27,15 @@ Checklist de campo para aceite final: `70_ops/S2_Field_Validation_Gate.md`.
 - Resumo executivo passou a destacar tambem taxa de falha (`failure_rate`) e total de falhas (`actions_failed_total`).
 - Breakdown por source de acao (dispatch/completion/failure) incorporado para leitura de gargalo por canal.
 - Completion rate agora pode ser acompanhado junto de failure rate na mesma superficie, reduzindo "falso positivo" de execucao.
+- Sprint 4 (auto-update) avancou para estado `ENG AVANCADA`:
+  - canal de rollout (`all/stable/canary`) ativo em Operations, Reports e Dashboard;
+  - leitura de `current_version` + `target_version` + `version_gap` nas lojas criticas;
+  - edge-agent com `attempt` incremental persistido no ciclo de update (pre/post restart).
 
 Leitura de sprint:
 - `S2` continua fechado para engenharia.
 - pendencia restante continua exclusivamente operacional (validacao remota de campo + evidencia de estabilidade).
+- `S4` segue em execucao com pendencia de campo (canary real + rollback controlado + lote de lojas).
 
 ## Plano da semana (complementar ao roadmap de sprint)
 

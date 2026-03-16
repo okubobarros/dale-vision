@@ -23,14 +23,20 @@ Registrar decisões e eventos do dia.
   - Teste runtime concluido em ambiente local com token de edge:
     - primeira submissao `deduped=false`;
     - retry com mesmo payload `deduped=true` e mesmo `event_id`.
+  - S4 auto-update avancou em execucao:
+    - resumo de rollout por canal (`all/stable/canary`) ativo em `/app/operations`, `/app/reports` e `/app/dashboard`;
+    - leitura por loja critica agora mostra `current_version`, `target_version` e `version_gap`;
+    - edge-agent passou a manter `attempt` incremental por tentativa de update e a reaproveitar este contexto no `health_check` pos-restart.
 - Bloqueios:
   - Validacao operacional em loja remota ainda pendente para fechamento definitivo do gate de campo.
 - Decisões:
   - Manter Sprint 2 como `DONE (ENG + GOVERNANCA)` e separar explicitamente o gate operacional de campo como criterio final.
   - Seguir em paralelo com trilhas de auto-update do edge e refinamento CV/admin sem perder evidencias da Sprint 2.
+  - Tratar S4 como `ENG AVANCADA / FIELD PENDING` ate concluir canary real + rollback controlado.
 - Próximos passos:
   - Coletar 3 dias consecutivos de evidencia operacional real para cravar GO final.
   - Publicar consolidado executivo de aceite com snapshot de cobertura, runbook e completion rate.
+  - Executar canary real da politica de update e anexar evidencia no pacote diario.
 
 ## 2026-03-15
 - Data: 2026-03-15

@@ -1,7 +1,7 @@
 # S4 Auto-Update Execution Plan
 
 Data base: 2026-03-15  
-Status: `IN_PROGRESS`  
+Status: `IN_PROGRESS (ENG AVANCADA / CAMPO PENDENTE)`  
 Dependência de campo: baixa (execução majoritariamente remota)
 
 ## Objetivo
@@ -29,6 +29,26 @@ Implementar auto-update seguro do edge-agent para reduzir visitas presenciais, a
   - retry idêntico => `deduped=true` com mesmo `event_id`.
 - Pendencia para fechar `S4-UPD-01`:
   - alinhar executor do edge-agent ao novo campo `idempotency_key` em todos os eventos de update.
+
+## Atualizacao complementar (2026-03-16 / noite)
+Entregas concluídas desde a ultima revisao:
+- Edge-agent (`dalevision-edge-agent`):
+  - `attempt` de rollout deixou de ser fixo e passou a ser incremental por tentativa.
+  - contexto da tentativa foi persistido em `pending.json` e reutilizado no `health_check` pos-restart.
+  - eventos de update agora preservam correlacao por tentativa (`started`, `downloaded`, `verified`, `activated`, `healthy`, `failed`).
+- Backend/API (`dale-vision`):
+  - resumo de rollout da rede ganhou filtro por canal (`all`, `stable`, `canary`).
+  - resposta de resumo inclui `filters.channel`, contadores de `version_gap` e leitura de `current_version`.
+- Frontend (`/app/operations`, `/app/reports`, `/app/dashboard`):
+  - visao de rollout ganhou filtro por canal nas 3 superficies.
+  - leitura executiva passou a exibir `versao atual`, `versao alvo` e `gap` por loja critica.
+
+Leitura atual de estado por ticket:
+- `S4-UPD-01`: `DONE (ENG)` / `PENDING (campo)`
+- `S4-UPD-02`: `DONE (ENG)` / `PENDING (campo)`
+- `S4-UPD-03`: `DONE (ENG)` / `PENDING (canary real)`
+- `S4-UPD-04`: `DONE (ENG)` / `PENDING (rollback validado em loja)`
+- `S4-UPD-05`: `DONE (ENG)`
 
 ### S4-UPD-01: Contrato e política de update
 Owner: Backend  
@@ -99,6 +119,25 @@ DoD:
 3. Pelo menos 1 cenário de rollback validado em teste controlado.
 4. Telemetria completa disponível para auditoria de update.
 
+## Checklist de fechamento (GO/NO-GO)
+
+### Bloco tecnico (engenharia)
+- [x] `update-policy` com fingerprint e governanca de policy ativa por loja.
+- [x] `update-report` idempotente com dedupe em retry.
+- [x] executor edge com lock, janela de rollout, min-supported e health gate.
+- [x] correlacao de tentativa (`attempt`) persistida no ciclo pre/post restart.
+- [x] observabilidade executiva de rollout em Dashboard, Reports e Operations.
+
+### Bloco operacional (campo)
+- [ ] canary real em 1 loja com timeline completa (`started -> healthy`) sem intervencao manual.
+- [ ] simular 1 falha controlada e evidenciar `failed` + rollback + retorno operacional.
+- [ ] validar 5 lojas com rollout em lote sem degradacao critica.
+- [ ] anexar evidencia de suporte (diagnostico em <= 10 min por loja critica).
+
+Regra de decisao:
+- `GO` somente com 4/4 itens de campo concluídos.
+- sem isso, status permanece `IN_PROGRESS (FIELD PENDING)`.
+
 ## Riscos e mitigação
 - Risco: rede instável na loja -> Mitigação: retry/backoff + timeout de download.
 - Risco: pacote corrompido -> Mitigação: checksum obrigatório.
@@ -113,3 +152,9 @@ DoD:
 5. D5: canary em 1 loja.
 6. D6: rollout em 5 lojas.
 7. D7: relatório S4 + decisão GO/NO-GO para escala.
+
+## Proximo passo objetivo (imediato)
+1. Rodar canary real na loja piloto remota (janela controlada).
+2. Capturar evidencias em `Daily_Log` + ticket S4-UPD correspondente.
+3. Executar teste de rollback controlado e anexar runbook/evidencia.
+4. Consolidar decisao final S4 (`GO` ou `NO-GO`) no fim da semana.
