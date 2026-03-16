@@ -119,11 +119,13 @@ class CopilotNetworkValueLedgerDailyViewTests(SimpleTestCase):
         self.assertEqual(response.data["totals"]["actions_dispatched"], 14)
         self.assertIn("completion_rate", response.data["totals"])
         self.assertIn("recovery_rate", response.data["totals"])
+        self.assertIn("value_net_gap_brl", response.data["totals"])
         self.assertIn("breakdown_by_store", response.data)
         if response.data["breakdown_by_store"]:
             self.assertIn("store_name", response.data["breakdown_by_store"][0])
             self.assertIn("completion_rate", response.data["breakdown_by_store"][0])
             self.assertIn("recovery_rate", response.data["breakdown_by_store"][0])
+            self.assertIn("value_net_gap_brl", response.data["breakdown_by_store"][0])
         self.assertEqual(len(response.data["items"]), 1)
 
     @patch("apps.copilot.views.get_user_org_ids")
@@ -143,4 +145,5 @@ class CopilotNetworkValueLedgerDailyViewTests(SimpleTestCase):
         self.assertIsNone(response.data["pipeline_health"]["last_updated_at"])
         self.assertEqual(response.data["totals"].get("completion_rate"), 0.0)
         self.assertEqual(response.data["totals"].get("recovery_rate"), 0.0)
+        self.assertEqual(response.data["totals"].get("value_net_gap_brl"), 0.0)
         self.assertEqual(response.data["items"], [])

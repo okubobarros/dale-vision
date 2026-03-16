@@ -685,6 +685,9 @@ const Reports = () => {
             {ledgerTotals?.actions_dispatched ?? 0}
           </p>
           <p className="text-[11px] text-slate-500 mt-2">Intervenções registradas no ledger</p>
+          <p className="text-[11px] text-rose-600 mt-1">
+            Saldo em risco {formatCurrencyBRL(ledgerTotals?.value_net_gap_brl ?? 0)}
+          </p>
         </article>
         <article className="rounded-xl border border-slate-200 bg-white p-4 shadow-sm">
           <p className="text-xs uppercase tracking-[0.08em] text-slate-500">Ações Concluídas</p>
@@ -789,6 +792,9 @@ const Reports = () => {
                     <p className="text-xs text-slate-500">
                       Conclusão {(item.completion_rate ?? 0).toFixed(1)}% · Recuperação{" "}
                       {(item.recovery_rate ?? 0).toFixed(1)}%
+                    </p>
+                    <p className="text-xs text-rose-600">
+                      Saldo em risco {formatCurrencyBRL(item.value_net_gap_brl ?? 0)}
                     </p>
                   </div>
                   <div className="flex items-center gap-3">

@@ -61,7 +61,7 @@ Query params:
 Resposta:
 - `method_version_current` (versão atual do método de cálculo em uso)
 - `pipeline_health` (status `healthy|stale|no_data`, frescor, `last_updated_at` e orientação operacional)
-- `totals` da janela solicitada (inclui `completion_rate` e `recovery_rate`)
+- `totals` da janela solicitada (inclui `completion_rate`, `recovery_rate`, `value_net_gap_brl`)
 - `items` por dia (`ledger_date`)
 
 ### 2.3 Action Outcomes (network scoped)
@@ -87,8 +87,8 @@ Resposta:
 - `method_version_current` (versão atual do método de cálculo em uso)
 - `store_id: "all"`
 - `pipeline_health` (status `healthy|stale|no_data`, frescor, `last_updated_at` e cobertura de lojas)
-- `totals` consolidados da rede (tenant atual, inclui `completion_rate` e `recovery_rate`)
-- `breakdown_by_store` (top lojas por risco no período, com `store_id`, `store_name`, `completion_rate`, `recovery_rate`)
+- `totals` consolidados da rede (tenant atual, inclui `completion_rate`, `recovery_rate`, `value_net_gap_brl`)
+- `breakdown_by_store` (top lojas por risco no período, com `store_id`, `store_name`, `completion_rate`, `recovery_rate`, `value_net_gap_brl`)
 - `items` com série diária consolidada
 
 ## 3) Regras v1

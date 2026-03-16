@@ -562,6 +562,7 @@ class CopilotValueLedgerDailyView(APIView):
         )
         value_recovered_brl = float(totals.get("value_recovered") or 0)
         value_at_risk_brl = float(totals.get("value_at_risk") or 0)
+        value_net_gap_brl = max(0.0, round(value_at_risk_brl - value_recovered_brl, 2))
         actions_dispatched = int(totals.get("actions_dispatched") or 0)
         actions_completed = int(totals.get("actions_completed") or 0)
         completion_rate = round((actions_completed / actions_dispatched) * 100, 1) if actions_dispatched > 0 else 0.0
@@ -584,6 +585,7 @@ class CopilotValueLedgerDailyView(APIView):
                 "totals": {
                     "value_recovered_brl": value_recovered_brl,
                     "value_at_risk_brl": value_at_risk_brl,
+                    "value_net_gap_brl": value_net_gap_brl,
                     "actions_dispatched": actions_dispatched,
                     "actions_completed": actions_completed,
                     "completion_rate": completion_rate,
@@ -742,6 +744,7 @@ class CopilotNetworkValueLedgerDailyView(APIView):
                     "totals": {
                         "value_recovered_brl": 0.0,
                         "value_at_risk_brl": 0.0,
+                        "value_net_gap_brl": 0.0,
                         "actions_dispatched": 0,
                         "actions_completed": 0,
                         "completion_rate": 0.0,
@@ -769,6 +772,7 @@ class CopilotNetworkValueLedgerDailyView(APIView):
         )
         value_recovered_brl = float(totals.get("value_recovered") or 0)
         value_at_risk_brl = float(totals.get("value_at_risk") or 0)
+        value_net_gap_brl = max(0.0, round(value_at_risk_brl - value_recovered_brl, 2))
         actions_dispatched = int(totals.get("actions_dispatched") or 0)
         actions_completed = int(totals.get("actions_completed") or 0)
         completion_rate = round((actions_completed / actions_dispatched) * 100, 1) if actions_dispatched > 0 else 0.0
@@ -820,6 +824,7 @@ class CopilotNetworkValueLedgerDailyView(APIView):
                 "totals": {
                     "value_recovered_brl": value_recovered_brl,
                     "value_at_risk_brl": value_at_risk_brl,
+                    "value_net_gap_brl": value_net_gap_brl,
                     "actions_dispatched": actions_dispatched,
                     "actions_completed": actions_completed,
                     "completion_rate": completion_rate,
@@ -832,6 +837,13 @@ class CopilotNetworkValueLedgerDailyView(APIView):
                         "store_name": store_name_map.get(str(row.get("store_id"))),
                         "value_recovered_brl": float(row.get("value_recovered_brl") or 0),
                         "value_at_risk_brl": float(row.get("value_at_risk_brl") or 0),
+                        "value_net_gap_brl": max(
+                            0.0,
+                            round(
+                                float(row.get("value_at_risk_brl") or 0) - float(row.get("value_recovered_brl") or 0),
+                                2,
+                            ),
+                        ),
                         "actions_dispatched": int(row.get("actions_dispatched") or 0),
                         "actions_completed": int(row.get("actions_completed") or 0),
                         "completion_rate": round(

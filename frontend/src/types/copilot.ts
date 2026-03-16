@@ -189,6 +189,7 @@ export interface CopilotValueLedgerDailyResponse {
   totals: {
     value_recovered_brl: number
     value_at_risk_brl: number
+    value_net_gap_brl?: number
     actions_dispatched: number
     actions_completed: number
     completion_rate?: number
@@ -200,6 +201,7 @@ export interface CopilotValueLedgerDailyResponse {
     store_name?: string | null
     value_recovered_brl: number
     value_at_risk_brl: number
+    value_net_gap_brl?: number
     actions_dispatched: number
     actions_completed: number
     completion_rate?: number
