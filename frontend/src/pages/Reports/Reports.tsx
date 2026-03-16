@@ -644,6 +644,11 @@ const Reports = () => {
               <span className="text-[11px] text-slate-500">
                 SLO alvo {(ledgerQ.data.pipeline_health.slo_target_seconds / 60).toFixed(0)} min
               </span>
+              {ledgerQ.data.pipeline_health.slo_breached && (
+                <span className="rounded-full border border-rose-200 bg-rose-50 px-2 py-0.5 text-[11px] font-semibold text-rose-700">
+                  SLO violado
+                </span>
+              )}
               <span className="text-[11px] text-slate-500">
                 Atualizado em {formatDateTime(ledgerQ.data.pipeline_health.last_updated_at)}
               </span>
@@ -668,6 +673,11 @@ const Reports = () => {
               <span className="text-[11px] text-slate-500">
                 SLO alvo {(ledgerQ.data.pipeline_health.slo_target_seconds / 60).toFixed(0)} min
               </span>
+              {ledgerQ.data.pipeline_health.slo_breached && (
+                <span className="rounded-full border border-rose-200 bg-rose-50 px-2 py-0.5 text-[11px] font-semibold text-rose-700">
+                  SLO violado
+                </span>
+              )}
               <span className="text-[11px] text-slate-500">
                 Atualizado em {formatDateTime(ledgerQ.data.pipeline_health.last_updated_at)}
               </span>

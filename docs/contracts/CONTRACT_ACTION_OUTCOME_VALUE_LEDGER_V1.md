@@ -60,7 +60,7 @@ Query params:
 
 Resposta:
 - `method_version_current` (versão atual do método de cálculo em uso)
-- `pipeline_health` (status `healthy|stale|no_data`, frescor, `last_updated_at` e orientação operacional)
+- `pipeline_health` (status `healthy|stale|no_data`, frescor, `last_updated_at`, `slo_target_seconds`, `slo_breached` e orientação operacional)
 - `totals` da janela solicitada (inclui `completion_rate`, `recovery_rate`, `value_net_gap_brl`)
 - `items` por dia (`ledger_date`)
 
@@ -86,7 +86,7 @@ Query params:
 Resposta:
 - `method_version_current` (versão atual do método de cálculo em uso)
 - `store_id: "all"`
-- `pipeline_health` (status `healthy|stale|no_data`, frescor, `last_updated_at` e cobertura de lojas)
+- `pipeline_health` (status `healthy|stale|no_data`, frescor, `last_updated_at`, `slo_target_seconds`, `slo_breached` e cobertura de lojas)
 - `totals` consolidados da rede (tenant atual, inclui `completion_rate`, `recovery_rate`, `value_net_gap_brl`)
 - `breakdown_by_store` (top lojas por risco no período, com `store_id`, `store_name`, `completion_rate`, `recovery_rate`, `value_net_gap_brl`)
 - `items` com série diária consolidada

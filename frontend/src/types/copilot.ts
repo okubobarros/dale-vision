@@ -184,6 +184,7 @@ export interface CopilotValueLedgerDailyResponse {
     stores_total: number
     coverage_rate: number
     slo_target_seconds: number
+    slo_breached?: boolean
     recommended_action: string
   }
   totals: {

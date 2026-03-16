@@ -544,6 +544,7 @@ class CopilotValueLedgerDailyView(APIView):
         if latest_row and latest_row.updated_at:
             freshness_seconds = max(0, int((timezone.now() - latest_row.updated_at).total_seconds()))
             pipeline_status = "healthy" if freshness_seconds <= slo_target_seconds else "stale"
+            slo_breached = freshness_seconds > slo_target_seconds
             recommended_action = (
                 "Trilha de valor da loja em dia."
                 if pipeline_status == "healthy"
@@ -552,6 +553,7 @@ class CopilotValueLedgerDailyView(APIView):
         else:
             freshness_seconds = None
             pipeline_status = "no_data"
+            slo_breached = False
             recommended_action = "Sem dados de ledger para esta loja no periodo selecionado."
         totals = rows.aggregate(
             value_recovered=Sum("value_recovered_brl"),
@@ -580,6 +582,7 @@ class CopilotValueLedgerDailyView(APIView):
                     "stores_total": 1,
                     "coverage_rate": 100 if latest_row else 0,
                     "slo_target_seconds": slo_target_seconds,
+                    "slo_breached": slo_breached,
                     "recommended_action": recommended_action,
                 },
                 "totals": {
@@ -737,10 +740,11 @@ class CopilotNetworkValueLedgerDailyView(APIView):
                         "last_updated_at": None,
                         "stores_with_ledger": 0,
                         "stores_total": 0,
-                        "coverage_rate": 0,
-                        "slo_target_seconds": 900,
-                        "recommended_action": "Sem escopo de org para leitura de ledger.",
-                    },
+                    "coverage_rate": 0,
+                    "slo_target_seconds": 900,
+                    "slo_breached": False,
+                    "recommended_action": "Sem escopo de org para leitura de ledger.",
+                },
                     "totals": {
                         "value_recovered_brl": 0.0,
                         "value_at_risk_brl": 0.0,
@@ -781,6 +785,7 @@ class CopilotNetworkValueLedgerDailyView(APIView):
         if latest_row and latest_row.updated_at:
             freshness_seconds = max(0, int((timezone.now() - latest_row.updated_at).total_seconds()))
             pipeline_status = "healthy" if freshness_seconds <= slo_target_seconds else "stale"
+            slo_breached = freshness_seconds > slo_target_seconds
             recommended_action = (
                 "Trilha de valor em dia."
                 if pipeline_status == "healthy"
@@ -789,6 +794,7 @@ class CopilotNetworkValueLedgerDailyView(APIView):
         else:
             freshness_seconds = None
             pipeline_status = "no_data"
+            slo_breached = False
             recommended_action = "Sem dados de ledger no periodo. Validar dispatch e conclusao de acoes."
         coverage_rate = int(round((stores_with_ledger / stores_total) * 100)) if stores_total > 0 else 0
         breakdown_rows = list(
@@ -819,6 +825,7 @@ class CopilotNetworkValueLedgerDailyView(APIView):
                     "stores_total": int(stores_total or 0),
                     "coverage_rate": coverage_rate,
                     "slo_target_seconds": slo_target_seconds,
+                    "slo_breached": slo_breached,
                     "recommended_action": recommended_action,
                 },
                 "totals": {
