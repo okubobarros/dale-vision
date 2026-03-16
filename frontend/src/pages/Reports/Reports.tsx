@@ -634,6 +634,9 @@ const Reports = () => {
               <span className="text-[11px] text-slate-500">
                 Cobertura {ledgerQ.data.pipeline_health.stores_with_ledger}/{ledgerQ.data.pipeline_health.stores_total} lojas
               </span>
+              <span className="text-[11px] text-slate-500">
+                SLO alvo {(ledgerQ.data.pipeline_health.slo_target_seconds / 60).toFixed(0)} min
+              </span>
             </div>
           )}
           {selectedStore && ledgerQ.data?.pipeline_health && (
@@ -652,7 +655,15 @@ const Reports = () => {
               <span className="text-[11px] text-slate-500">
                 Freshness {ledgerQ.data.pipeline_health.freshness_seconds ?? "—"}s
               </span>
+              <span className="text-[11px] text-slate-500">
+                SLO alvo {(ledgerQ.data.pipeline_health.slo_target_seconds / 60).toFixed(0)} min
+              </span>
             </div>
+          )}
+          {ledgerQ.data?.pipeline_health?.recommended_action && (
+            <p className="text-[11px] text-slate-600 mt-2">
+              Próxima ação: {ledgerQ.data.pipeline_health.recommended_action}
+            </p>
           )}
         </article>
         <article className="rounded-xl border border-slate-200 bg-white p-4 shadow-sm">
