@@ -57,3 +57,70 @@ class StoreCalibrationRun(models.Model):
     def __str__(self):
         return f"{self.store_id} {self.camera_id} {self.metric_type} ({self.status})"
 
+
+class EdgeUpdatePolicy(models.Model):
+    CHANNEL_STABLE = "stable"
+    CHANNEL_CANARY = "canary"
+    CHANNEL_CHOICES = (
+        (CHANNEL_STABLE, CHANNEL_STABLE),
+        (CHANNEL_CANARY, CHANNEL_CANARY),
+    )
+
+    id = models.UUIDField(primary_key=True, default=uuid.uuid4, editable=False)
+    store_id = models.UUIDField(db_index=True, unique=True)
+    channel = models.CharField(max_length=16, choices=CHANNEL_CHOICES, default=CHANNEL_STABLE)
+    target_version = models.CharField(max_length=64)
+    current_min_supported = models.CharField(max_length=64, null=True, blank=True)
+    rollout_start_local = models.CharField(max_length=5, default="02:00")
+    rollout_end_local = models.CharField(max_length=5, default="05:00")
+    rollout_timezone = models.CharField(max_length=64, default="America/Sao_Paulo")
+    package_url = models.TextField()
+    package_sha256 = models.CharField(max_length=128)
+    package_size_bytes = models.BigIntegerField(null=True, blank=True)
+    health_max_boot_seconds = models.IntegerField(default=120)
+    health_require_heartbeat_seconds = models.IntegerField(default=180)
+    health_require_camera_health_count = models.IntegerField(default=3)
+    rollback_enabled = models.BooleanField(default=True)
+    rollback_max_failed_attempts = models.IntegerField(default=1)
+    active = models.BooleanField(default=True)
+    created_at = models.DateTimeField(default=timezone.now)
+    updated_at = models.DateTimeField(default=timezone.now)
+
+    class Meta:
+        db_table = "edge_update_policies"
+        indexes = [
+            models.Index(fields=["store_id", "active", "-updated_at"]),
+        ]
+
+    def __str__(self):
+        return f"{self.store_id} {self.channel} {self.target_version}"
+
+
+class EdgeUpdateEvent(models.Model):
+    id = models.UUIDField(primary_key=True, default=uuid.uuid4, editable=False)
+    store_id = models.UUIDField(db_index=True)
+    agent_id = models.CharField(max_length=64, null=True, blank=True)
+    from_version = models.CharField(max_length=64, null=True, blank=True)
+    to_version = models.CharField(max_length=64, null=True, blank=True)
+    channel = models.CharField(max_length=16, null=True, blank=True)
+    status = models.CharField(max_length=32, db_index=True)
+    phase = models.CharField(max_length=64, null=True, blank=True)
+    event = models.CharField(max_length=64, db_index=True)
+    attempt = models.IntegerField(default=1)
+    elapsed_ms = models.IntegerField(null=True, blank=True)
+    reason_code = models.CharField(max_length=64, null=True, blank=True)
+    reason_detail = models.TextField(null=True, blank=True)
+    meta = models.JSONField(default=dict, blank=True)
+    timestamp = models.DateTimeField(default=timezone.now, db_index=True)
+    created_at = models.DateTimeField(default=timezone.now)
+
+    class Meta:
+        db_table = "edge_update_events"
+        indexes = [
+            models.Index(fields=["store_id", "-timestamp"]),
+            models.Index(fields=["store_id", "agent_id", "-timestamp"]),
+        ]
+
+    def __str__(self):
+        return f"{self.store_id} {self.event} {self.status}"
+
