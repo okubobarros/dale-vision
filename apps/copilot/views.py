@@ -532,6 +532,19 @@ class CopilotValueLedgerDailyView(APIView):
             .order_by("-ledger_date")
         )
         latest_row = rows.first()
+        slo_target_seconds = 900
+        if latest_row and latest_row.updated_at:
+            freshness_seconds = max(0, int((timezone.now() - latest_row.updated_at).total_seconds()))
+            pipeline_status = "healthy" if freshness_seconds <= slo_target_seconds else "stale"
+            recommended_action = (
+                "Trilha de valor da loja em dia."
+                if pipeline_status == "healthy"
+                else "Ledger da loja desatualizado. Verificar dispatch/outcome e job de materializacao."
+            )
+        else:
+            freshness_seconds = None
+            pipeline_status = "no_data"
+            recommended_action = "Sem dados de ledger para esta loja no periodo selecionado."
         totals = rows.aggregate(
             value_recovered=Sum("value_recovered_brl"),
             value_at_risk=Sum("value_at_risk_brl"),
@@ -544,6 +557,15 @@ class CopilotValueLedgerDailyView(APIView):
                 "store_id": str(store_id),
                 "days": days,
                 "method_version_current": getattr(latest_row, "method_version", "value_ledger_v1_2026-03-15"),
+                "pipeline_health": {
+                    "status": pipeline_status,
+                    "freshness_seconds": freshness_seconds,
+                    "stores_with_ledger": 1 if latest_row else 0,
+                    "stores_total": 1,
+                    "coverage_rate": 100 if latest_row else 0,
+                    "slo_target_seconds": slo_target_seconds,
+                    "recommended_action": recommended_action,
+                },
                 "totals": {
                     "value_recovered_brl": float(totals.get("value_recovered") or 0),
                     "value_at_risk_brl": float(totals.get("value_at_risk") or 0),

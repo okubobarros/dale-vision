@@ -635,6 +635,24 @@ const Reports = () => {
               </span>
             </div>
           )}
+          {selectedStore && ledgerQ.data?.pipeline_health && (
+            <div className="mt-2 flex flex-wrap items-center gap-2">
+              <span
+                className={`rounded-full border px-2 py-0.5 text-[11px] font-semibold ${
+                  ledgerQ.data.pipeline_health.status === "healthy"
+                    ? "border-emerald-200 bg-emerald-50 text-emerald-700"
+                    : ledgerQ.data.pipeline_health.status === "stale"
+                    ? "border-amber-200 bg-amber-50 text-amber-700"
+                    : "border-slate-200 bg-slate-100 text-slate-600"
+                }`}
+              >
+                Ledger {ledgerQ.data.pipeline_health.status}
+              </span>
+              <span className="text-[11px] text-slate-500">
+                Freshness {ledgerQ.data.pipeline_health.freshness_seconds ?? "—"}s
+              </span>
+            </div>
+          )}
         </article>
         <article className="rounded-xl border border-slate-200 bg-white p-4 shadow-sm">
           <p className="text-xs uppercase tracking-[0.08em] text-slate-500">Ações Despachadas</p>

@@ -59,6 +59,7 @@ Query params:
 
 Resposta:
 - `method_version_current` (versão atual do método de cálculo em uso)
+- `pipeline_health` (status `healthy|stale|no_data`, frescor e orientação operacional)
 - `totals` da janela solicitada
 - `items` por dia (`ledger_date`)
 
