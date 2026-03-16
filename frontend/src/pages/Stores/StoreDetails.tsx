@@ -3,6 +3,7 @@ import { Link, useParams, useSearchParams } from "react-router-dom"
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query"
 import {
   storesService,
+  type StoreEdgeUpdateAttempt,
   type StoreEdgeUpdateEvent,
   type StoreEdgeUpdatePolicyResponse,
   type StoreEdgeUpdateRunbookResponse,
@@ -197,6 +198,23 @@ const updateStatusPriority = (status?: string | null) => {
   return 0
 }
 
+const attemptStatusClass = (status?: string | null) => {
+  const normalized = String(status || "").toLowerCase()
+  if (normalized === "healthy") return "bg-emerald-100 text-emerald-700"
+  if (normalized === "failed" || normalized === "rolled_back") return "bg-rose-100 text-rose-700"
+  if (normalized === "incomplete") return "bg-amber-100 text-amber-700"
+  return "bg-slate-100 text-slate-700"
+}
+
+const attemptStatusLabel = (status?: string | null) => {
+  const normalized = String(status || "").toLowerCase()
+  if (normalized === "healthy") return "Saudável"
+  if (normalized === "failed") return "Falha"
+  if (normalized === "rolled_back") return "Rollback"
+  if (normalized === "incomplete") return "Incompleta"
+  return status || "Sem status"
+}
+
 const storeImagePlaceholder = (name: string) => {
   const letter = (name.trim().charAt(0) || "L").toUpperCase()
   return { letter, label: "Imagem da loja em configuração" }
@@ -266,6 +284,13 @@ const StoreDetails = () => {
         status: edgeEventStatusFilter || undefined,
         agent_id: edgeEventAgentFilter || undefined,
       }),
+    enabled: Boolean(storeId) && activeTab === "infrastructure",
+    retry: false,
+    staleTime: 30000,
+  })
+  const edgeUpdateAttemptsQ = useQuery({
+    queryKey: ["store-edge-update-attempts", storeId],
+    queryFn: () => storesService.getStoreEdgeUpdateAttempts(String(storeId), { limit: 20 }),
     enabled: Boolean(storeId) && activeTab === "infrastructure",
     retry: false,
     staleTime: 30000,
@@ -507,6 +532,7 @@ const StoreDetails = () => {
 
   const edgePolicySource = edgeUpdatePolicyQ.data?.policy
   const edgeUpdateEvents: StoreEdgeUpdateEvent[] = edgeUpdateEventsQ.data?.items ?? []
+  const edgeUpdateAttempts: StoreEdgeUpdateAttempt[] = edgeUpdateAttemptsQ.data?.items ?? []
   const rolloutSummary = useMemo(() => {
     const healthy = edgeUpdateEvents.filter((item) => String(item.status).toLowerCase() === "healthy").length
     const failed = edgeUpdateEvents.filter((item) =>
@@ -517,6 +543,18 @@ const StoreDetails = () => {
     ).length
     return { healthy, failed, inProgress }
   }, [edgeUpdateEvents])
+  const attemptsSummary = useMemo(() => {
+    return edgeUpdateAttempts.reduce(
+      (acc, item) => {
+        const status = String(item.final_status || "").toLowerCase()
+        if (status === "healthy") acc.healthy += 1
+        else if (status === "failed" || status === "rolled_back") acc.failed += 1
+        else acc.incomplete += 1
+        return acc
+      },
+      { healthy: 0, failed: 0, incomplete: 0 }
+    )
+  }, [edgeUpdateAttempts])
   const prioritizedEdgeEvents = useMemo(() => {
     return [...edgeUpdateEvents].sort((a, b) => {
       const pDiff = updateStatusPriority(b.status) - updateStatusPriority(a.status)
@@ -1178,7 +1216,10 @@ const StoreDetails = () => {
               </div>
               <button
                 type="button"
-                onClick={() => edgeUpdateEventsQ.refetch()}
+                onClick={() => {
+                  edgeUpdateEventsQ.refetch()
+                  edgeUpdateAttemptsQ.refetch()
+                }}
                 className="rounded-lg border border-gray-200 bg-white px-3 py-1.5 text-xs font-semibold text-gray-700 hover:bg-gray-50"
               >
                 Atualizar timeline
@@ -1353,6 +1394,105 @@ const StoreDetails = () => {
                 </div>
               </div>
             )}
+
+            <div className="mt-4 rounded-lg border border-gray-100 overflow-hidden">
+              <div className="border-b border-gray-100 bg-gray-50 px-3 py-2">
+                <div className="flex items-center justify-between gap-3 flex-wrap">
+                  <p className="text-xs font-semibold uppercase tracking-[0.08em] text-gray-600">
+                    Timeline de tentativas
+                  </p>
+                  <div className="flex items-center gap-2 text-[11px]">
+                    <span className="rounded-full border border-emerald-200 bg-emerald-50 px-2 py-0.5 font-semibold text-emerald-700">
+                      Saudáveis: {attemptsSummary.healthy}
+                    </span>
+                    <span className="rounded-full border border-amber-200 bg-amber-50 px-2 py-0.5 font-semibold text-amber-700">
+                      Incompletas: {attemptsSummary.incomplete}
+                    </span>
+                    <span className="rounded-full border border-rose-200 bg-rose-50 px-2 py-0.5 font-semibold text-rose-700">
+                      Falha/Rollback: {attemptsSummary.failed}
+                    </span>
+                  </div>
+                </div>
+              </div>
+              {edgeUpdateAttemptsQ.isLoading ? (
+                <div className="px-3 py-3 text-sm text-gray-500">Carregando tentativas...</div>
+              ) : edgeUpdateAttempts.length === 0 ? (
+                <div className="px-3 py-3 text-sm text-gray-500">
+                  Sem tentativas registradas para esta loja.
+                </div>
+              ) : (
+                <div className="divide-y divide-gray-100">
+                  {edgeUpdateAttempts.map((attemptItem) => (
+                    <details key={`${attemptItem.attempt}-${attemptItem.last_event_at || "none"}`} className="group">
+                      <summary className="grid cursor-pointer grid-cols-1 gap-2 px-3 py-3 text-sm text-gray-700 md:grid-cols-[120px_150px_170px_1fr_160px]">
+                        <span
+                          className={`inline-flex w-fit items-center rounded-full px-2 py-0.5 text-[11px] font-semibold ${attemptStatusClass(
+                            attemptItem.final_status
+                          )}`}
+                        >
+                          {attemptStatusLabel(attemptItem.final_status)}
+                        </span>
+                        <span className="font-semibold">Tentativa #{attemptItem.attempt}</span>
+                        <span>{attemptItem.from_version || "—"} {"->"} {attemptItem.to_version || "—"}</span>
+                        <span className="line-clamp-1 text-xs text-gray-600">
+                          {attemptItem.reason_codes.length > 0
+                            ? attemptItem.reason_codes.join(", ")
+                            : "Sem reason_code"}
+                        </span>
+                        <span className="text-xs text-gray-500">
+                          {attemptItem.last_event_at
+                            ? new Date(attemptItem.last_event_at).toLocaleString("pt-BR")
+                            : "—"}
+                        </span>
+                      </summary>
+                      <div className="border-t border-gray-100 bg-gray-50/60 px-3 py-2 text-xs text-gray-600">
+                        <div className="grid grid-cols-1 gap-2 md:grid-cols-4">
+                          <div>
+                            <p className="font-semibold text-gray-700">Agent</p>
+                            <p>{attemptItem.agent_id || "—"}</p>
+                          </div>
+                          <div>
+                            <p className="font-semibold text-gray-700">Canal</p>
+                            <p>{attemptItem.channel || "—"}</p>
+                          </div>
+                          <div>
+                            <p className="font-semibold text-gray-700">Duração</p>
+                            <p>{formatSeconds(attemptItem.duration_seconds ?? null)}</p>
+                          </div>
+                          <div>
+                            <p className="font-semibold text-gray-700">Eventos</p>
+                            <p>{attemptItem.event_count}</p>
+                          </div>
+                        </div>
+                        {attemptItem.events.length > 0 && (
+                          <div className="mt-2 rounded-lg border border-gray-200 bg-white">
+                            <div className="grid grid-cols-[110px_1fr_120px_150px] bg-gray-50 px-2 py-1 text-[10px] font-semibold uppercase tracking-[0.08em] text-gray-600">
+                              <span>Status</span>
+                              <span>Evento/Fase</span>
+                              <span>Reason</span>
+                              <span>Horário</span>
+                            </div>
+                            <div className="divide-y divide-gray-100">
+                              {attemptItem.events.map((evt) => (
+                                <div
+                                  key={evt.id}
+                                  className="grid grid-cols-[110px_1fr_120px_150px] px-2 py-1 text-[11px] text-gray-700"
+                                >
+                                  <span>{evt.status || "—"}</span>
+                                  <span>{evt.event || "—"} {evt.phase ? `· ${evt.phase}` : ""}</span>
+                                  <span>{evt.reason_code || "—"}</span>
+                                  <span>{evt.timestamp ? new Date(evt.timestamp).toLocaleString("pt-BR") : "—"}</span>
+                                </div>
+                              ))}
+                            </div>
+                          </div>
+                        )}
+                      </div>
+                    </details>
+                  ))}
+                </div>
+              )}
+            </div>
 
             <div className="mt-3 grid grid-cols-1 md:grid-cols-3 gap-2">
               <div>
