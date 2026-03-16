@@ -36,6 +36,9 @@ class EdgeUpdatePolicyViewTests(SimpleTestCase):
         response = self.view(request)
         self.assertEqual(response.status_code, 200)
         self.assertEqual(response.data["store_id"], store_id)
+        self.assertIsNone(response.data["policy_id"])
+        self.assertIsNone(response.data["policy_updated_at"])
+        self.assertIsNone(response.data["policy_fingerprint"])
         self.assertEqual(response.data["channel"], "stable")
         self.assertIsNone(response.data["target_version"])
 
@@ -45,6 +48,7 @@ class EdgeUpdatePolicyViewTests(SimpleTestCase):
         store_id = str(uuid4())
         mock_auth.return_value = SimpleNamespace(ok=True, status_code=200, store_id=store_id)
         policy = SimpleNamespace(
+            id=uuid4(),
             channel="canary",
             target_version="1.4.2",
             current_min_supported="1.3.0",
@@ -59,6 +63,9 @@ class EdgeUpdatePolicyViewTests(SimpleTestCase):
             health_require_camera_health_count=3,
             rollback_enabled=True,
             rollback_max_failed_attempts=1,
+            active=True,
+            updated_at=None,
+            store_id=store_id,
         )
         qs = MagicMock()
         qs.order_by.return_value = qs
@@ -67,6 +74,8 @@ class EdgeUpdatePolicyViewTests(SimpleTestCase):
         request = self.factory.get("/api/edge/update-policy/", HTTP_X_EDGE_TOKEN="valid")
         response = self.view(request)
         self.assertEqual(response.status_code, 200)
+        self.assertEqual(response.data["policy_id"], str(policy.id))
+        self.assertIn("policy_fingerprint", response.data)
         self.assertEqual(response.data["channel"], "canary")
         self.assertEqual(response.data["target_version"], "1.4.2")
         self.assertEqual(response.data["package"]["sha256"], "abc123")
@@ -119,5 +128,36 @@ class EdgeUpdateReportViewTests(SimpleTestCase):
         response = self.view(request)
         self.assertEqual(response.status_code, 201)
         self.assertTrue(response.data["ok"])
+        self.assertFalse(response.data["deduped"])
         self.assertEqual(response.data["store_id"], store_id)
         mock_create.assert_called_once()
+
+    @patch("apps.edge.views_update.EdgeUpdateEvent.objects.filter")
+    @patch("apps.edge.views_update.authenticate_edge_token")
+    def test_post_returns_200_when_idempotency_key_already_exists(self, mock_auth, mock_filter):
+        store_id = str(uuid4())
+        event_id = uuid4()
+        mock_auth.return_value = SimpleNamespace(ok=True, status_code=200, store_id=store_id)
+
+        qs = MagicMock()
+        qs.order_by.return_value = qs
+        qs.first.return_value = SimpleNamespace(id=event_id, status="healthy")
+        mock_filter.return_value = qs
+
+        request = self.factory.post(
+            "/api/edge/update-report/",
+            {
+                "store_id": store_id,
+                "agent_id": "edge-1",
+                "event": "edge_update_healthy",
+                "status": "healthy",
+                "idempotency_key": "abc-123",
+            },
+            format="json",
+            HTTP_X_EDGE_TOKEN="valid",
+        )
+        response = self.view(request)
+        self.assertEqual(response.status_code, 200)
+        self.assertTrue(response.data["ok"])
+        self.assertTrue(response.data["deduped"])
+        self.assertEqual(response.data["event_id"], str(event_id))

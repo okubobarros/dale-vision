@@ -1,3 +1,6 @@
+import hashlib
+import json
+
 from django.utils import timezone
 from rest_framework import status
 from rest_framework.permissions import AllowAny
@@ -7,6 +10,31 @@ from rest_framework.views import APIView
 from .auth import authenticate_edge_token
 from .models import EdgeUpdateEvent, EdgeUpdatePolicy
 from .serializers import EdgeUpdateReportSerializer
+
+
+def _build_policy_fingerprint(policy: EdgeUpdatePolicy | None) -> str | None:
+    if not policy:
+        return None
+    base = {
+        "store_id": str(policy.store_id),
+        "channel": policy.channel,
+        "target_version": policy.target_version,
+        "current_min_supported": policy.current_min_supported,
+        "rollout_start_local": policy.rollout_start_local,
+        "rollout_end_local": policy.rollout_end_local,
+        "rollout_timezone": policy.rollout_timezone,
+        "package_url": policy.package_url,
+        "package_sha256": policy.package_sha256,
+        "package_size_bytes": policy.package_size_bytes,
+        "health_max_boot_seconds": policy.health_max_boot_seconds,
+        "health_require_heartbeat_seconds": policy.health_require_heartbeat_seconds,
+        "health_require_camera_health_count": policy.health_require_camera_health_count,
+        "rollback_enabled": policy.rollback_enabled,
+        "rollback_max_failed_attempts": policy.rollback_max_failed_attempts,
+        "active": bool(policy.active),
+    }
+    raw = json.dumps(base, sort_keys=True, ensure_ascii=False).encode("utf-8")
+    return hashlib.sha256(raw).hexdigest()
 
 
 class EdgeUpdatePolicyView(APIView):
@@ -36,6 +64,9 @@ class EdgeUpdatePolicyView(APIView):
                 {
                     "store_id": store_id,
                     "agent_id": agent_id,
+                    "policy_id": None,
+                    "policy_updated_at": None,
+                    "policy_fingerprint": None,
                     "channel": "stable",
                     "target_version": None,
                     "current_min_supported": None,
@@ -63,6 +94,9 @@ class EdgeUpdatePolicyView(APIView):
             {
                 "store_id": store_id,
                 "agent_id": agent_id,
+                "policy_id": str(policy.id),
+                "policy_updated_at": policy.updated_at.isoformat() if policy.updated_at else None,
+                "policy_fingerprint": _build_policy_fingerprint(policy),
                 "channel": policy.channel,
                 "target_version": policy.target_version,
                 "current_min_supported": policy.current_min_supported,
@@ -115,6 +149,32 @@ class EdgeUpdateReportView(APIView):
             )
 
         store_id = requested_store_id or str(auth_result.store_id)
+        idempotency_key = (data.get("idempotency_key") or "").strip()
+        if idempotency_key:
+            existing = (
+                EdgeUpdateEvent.objects.filter(
+                    store_id=store_id,
+                    meta__idempotency_key=idempotency_key,
+                )
+                .order_by("-timestamp")
+                .first()
+            )
+            if existing:
+                return Response(
+                    {
+                        "ok": True,
+                        "store_id": store_id,
+                        "event_id": str(existing.id),
+                        "status": existing.status,
+                        "deduped": True,
+                    },
+                    status=status.HTTP_200_OK,
+                )
+
+        meta = data.get("meta") or {}
+        if idempotency_key:
+            meta = dict(meta)
+            meta["idempotency_key"] = idempotency_key
         row = EdgeUpdateEvent.objects.create(
             store_id=store_id,
             agent_id=data.get("agent_id"),
@@ -128,7 +188,7 @@ class EdgeUpdateReportView(APIView):
             elapsed_ms=data.get("elapsed_ms"),
             reason_code=data.get("reason_code"),
             reason_detail=data.get("reason_detail"),
-            meta=data.get("meta") or {},
+            meta=meta,
             timestamp=data.get("timestamp") or timezone.now(),
             created_at=timezone.now(),
         )
@@ -138,6 +198,7 @@ class EdgeUpdateReportView(APIView):
                 "store_id": store_id,
                 "event_id": str(row.id),
                 "status": row.status,
+                "deduped": False,
             },
             status=status.HTTP_201_CREATED,
         )

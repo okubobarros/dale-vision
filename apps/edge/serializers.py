@@ -29,4 +29,5 @@ class EdgeUpdateReportSerializer(serializers.Serializer):
     reason_code = serializers.CharField(required=False, allow_blank=True, allow_null=True)
     reason_detail = serializers.CharField(required=False, allow_blank=True, allow_null=True)
     meta = serializers.DictField(required=False)
+    idempotency_key = serializers.CharField(required=False, allow_blank=True, allow_null=True, max_length=128)
     timestamp = serializers.DateTimeField(required=False)
