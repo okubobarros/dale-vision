@@ -158,6 +158,7 @@ Regra de decisao:
 2. Capturar evidencias em `Daily_Log` + ticket S4-UPD correspondente.
 3. Executar teste de rollback controlado e anexar runbook/evidencia.
 4. Consolidar decisao final S4 (`GO` ou `NO-GO`) no fim da semana.
+5. Usar runbook de campo: `docs/OPS_S4_FIELD_VALIDATION_RUNBOOK.md`.
 
 ## Roteiro pratico para validacao de campo (amanha)
 
