@@ -32,7 +32,7 @@ class StoreEdgeUpdateAttemptsView(APIView):
         require_store_role(request.user, str(store_id), ALLOWED_READ_ROLES)
 
         try:
-            limit = max(10, min(int(request.query_params.get("limit") or 200), 2000))
+            limit = max(10, min(int(request.query_params.get("limit") or 50), 200))
         except Exception:
             limit = 200
 
@@ -133,7 +133,7 @@ class StoreEdgeUpdateAttemptsView(APIView):
                 "store_id": str(store_id),
                 "store_name": store.name,
                 "filters": {"limit": limit},
-                "items": items[:50],
+                "items": items[:limit],
             },
             status=status.HTTP_200_OK,
         )
