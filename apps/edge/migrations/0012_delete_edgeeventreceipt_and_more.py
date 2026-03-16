@@ -10,8 +10,18 @@ class Migration(migrations.Migration):
     ]
 
     operations = [
-        migrations.DeleteModel(
-            name='EdgeEventReceipt',
+        migrations.SeparateDatabaseAndState(
+            database_operations=[
+                migrations.RunSQL(
+                    sql="DROP TABLE IF EXISTS edge_edgeeventreceipt;",
+                    reverse_sql=migrations.RunSQL.noop,
+                ),
+            ],
+            state_operations=[
+                migrations.DeleteModel(
+                    name='EdgeEventReceipt',
+                ),
+            ],
         ),
         migrations.RenameIndex(
             model_name='edgeupdateevent',
