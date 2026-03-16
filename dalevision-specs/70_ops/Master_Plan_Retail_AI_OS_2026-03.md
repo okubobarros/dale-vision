@@ -42,6 +42,7 @@ Pendencias para cravar fechamento da Sprint 2:
 
 Avanco de governanca operacional (15/03/2026):
 - comando `copilot_value_ledger_health_snapshot` implementado para gerar evidencia diaria multi-loja (`stdout + JSON`), com cobertura, frescor/SLO e gap liquido por loja.
+- comando `copilot_sprint2_evidence_pack` implementado e automatizado via workflow diario para consolidar checklist final + decisao GO/NO-GO em um unico markdown.
 
 ---
 

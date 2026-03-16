@@ -115,3 +115,16 @@ Conteudo:
 - KPIs de aceite (coverage/stale/no_data/completion/recovery/gap);
 - top lojas por risco liquido;
 - referencias de workflows/docs para auditoria.
+
+Automação recomendada (principal):
+- workflow `.github/workflows/copilot_sprint2_evidence_pack.yml`
+- agenda diária às `23:45 UTC` + execução manual.
+- artifact: `sprint2-evidence-pack` (Markdown único para decisão executiva).
+
+Variáveis opcionais (Repository Variables):
+- `COPILOT_EVIDENCE_PACK_DAYS`
+- `COPILOT_EVIDENCE_PACK_MAX_STORES`
+- `COPILOT_EVIDENCE_PACK_SLO_SECONDS`
+- `COPILOT_EVIDENCE_PACK_COVERAGE_MIN`
+- `COPILOT_EVIDENCE_PACK_STALE_RATE_MAX`
+- `COPILOT_EVIDENCE_PACK_NO_DATA_RATE_MAX`
