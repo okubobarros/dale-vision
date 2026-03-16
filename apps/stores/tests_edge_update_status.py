@@ -56,6 +56,8 @@ class StoreEdgeUpdateStatusViewTests(SimpleTestCase):
 
         self.assertEqual(response.status_code, 200)
         self.assertEqual(response.data["policy"]["active"], False)
+        self.assertEqual(response.data["policy"]["current_version"], None)
+        self.assertEqual(response.data["policy"]["version_gap"], "unknown")
         self.assertEqual(response.data["rollout_health"]["status"], "no_data")
 
     @patch("apps.stores.views_edge_update_status.EdgeUpdateEvent.objects.filter")
@@ -119,5 +121,7 @@ class StoreEdgeUpdateStatusViewTests(SimpleTestCase):
         self.assertEqual(response.status_code, 200)
         self.assertEqual(response.data["policy"]["active"], True)
         self.assertEqual(response.data["policy"]["channel"], "canary")
+        self.assertEqual(response.data["policy"]["current_version"], "1.4.2")
+        self.assertEqual(response.data["policy"]["version_gap"], "up_to_date")
         self.assertEqual(response.data["latest_update_event"]["status"], "healthy")
         self.assertEqual(response.data["rollout_health"]["status"], "healthy")

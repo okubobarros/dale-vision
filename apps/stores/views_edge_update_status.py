@@ -9,6 +9,34 @@ from apps.core.models import Store
 from apps.edge.models import EdgeUpdateEvent, EdgeUpdatePolicy
 
 
+def _version_tuple(value: str | None) -> tuple[int, ...]:
+    import re
+
+    parts = re.findall(r"\d+", str(value or ""))
+    if not parts:
+        return (0,)
+    return tuple(int(p) for p in parts)
+
+
+def _resolve_current_version(event: EdgeUpdateEvent | None) -> str | None:
+    if not event:
+        return None
+    status = str(getattr(event, "status", "") or "")
+    from_version = getattr(event, "from_version", None)
+    to_version = getattr(event, "to_version", None)
+    if status in {"failed", "rolled_back"}:
+        return from_version or to_version
+    return to_version or from_version
+
+
+def _resolve_version_gap(current_version: str | None, target_version: str | None) -> str:
+    if not current_version or not target_version:
+        return "unknown"
+    if _version_tuple(current_version) >= _version_tuple(target_version):
+        return "up_to_date"
+    return "outdated"
+
+
 class StoreEdgeUpdateStatusView(APIView):
     permission_classes = [IsAuthenticated]
 
@@ -31,6 +59,10 @@ class StoreEdgeUpdateStatusView(APIView):
         else:
             age_seconds = None
 
+        current_version = _resolve_current_version(latest_event)
+        target_version = policy.target_version if policy else None
+        version_gap = _resolve_version_gap(current_version, target_version)
+
         update_health = "no_data"
         if latest_event:
             if latest_event.status == "healthy":
@@ -47,7 +79,9 @@ class StoreEdgeUpdateStatusView(APIView):
                 "policy": {
                     "active": bool(policy),
                     "channel": policy.channel if policy else "stable",
-                    "target_version": policy.target_version if policy else None,
+                    "target_version": target_version,
+                    "current_version": current_version,
+                    "version_gap": version_gap,
                     "current_min_supported": policy.current_min_supported if policy else None,
                     "rollout_window": {
                         "start_local": policy.rollout_start_local if policy else "02:00",

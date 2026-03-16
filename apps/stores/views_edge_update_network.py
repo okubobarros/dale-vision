@@ -9,6 +9,34 @@ from apps.edge.models import EdgeUpdateEvent, EdgeUpdatePolicy
 from apps.stores.services.user_orgs import get_user_org_ids
 
 
+def _version_tuple(value: str | None) -> tuple[int, ...]:
+    import re
+
+    parts = re.findall(r"\d+", str(value or ""))
+    if not parts:
+        return (0,)
+    return tuple(int(p) for p in parts)
+
+
+def _resolve_current_version(event: EdgeUpdateEvent | None) -> str | None:
+    if not event:
+        return None
+    status = str(getattr(event, "status", "") or "")
+    from_version = getattr(event, "from_version", None)
+    to_version = getattr(event, "to_version", None)
+    if status in {"failed", "rolled_back"}:
+        return from_version or to_version
+    return to_version or from_version
+
+
+def _resolve_version_gap(current_version: str | None, target_version: str | None) -> str:
+    if not current_version or not target_version:
+        return "unknown"
+    if _version_tuple(current_version) >= _version_tuple(target_version):
+        return "up_to_date"
+    return "outdated"
+
+
 def _classify_rollout_health(event_status: str | None) -> str:
     if not event_status:
         return "no_data"
@@ -32,6 +60,7 @@ class NetworkEdgeUpdateRolloutSummaryView(APIView):
                         "stores": 0,
                         "with_policy": 0,
                         "channel": {"stable": 0, "canary": 0},
+                        "version_gap": {"up_to_date": 0, "outdated": 0, "unknown": 0},
                         "health": {
                             "healthy": 0,
                             "degraded": 0,
@@ -58,6 +87,7 @@ class NetworkEdgeUpdateRolloutSummaryView(APIView):
                         "stores": 0,
                         "with_policy": 0,
                         "channel": {"stable": 0, "canary": 0},
+                        "version_gap": {"up_to_date": 0, "outdated": 0, "unknown": 0},
                         "health": {
                             "healthy": 0,
                             "degraded": 0,
@@ -103,6 +133,7 @@ class NetworkEdgeUpdateRolloutSummaryView(APIView):
             "stores": len(store_ids),
             "with_policy": 0,
             "channel": {"stable": 0, "canary": 0},
+            "version_gap": {"up_to_date": 0, "outdated": 0, "unknown": 0},
             "health": {
                 "healthy": 0,
                 "degraded": 0,
@@ -115,8 +146,12 @@ class NetworkEdgeUpdateRolloutSummaryView(APIView):
         for store_id in store_ids:
             policy = policy_by_store.get(store_id)
             event = latest_event_by_store.get(store_id)
+            current_version = _resolve_current_version(event)
+            target_version = getattr(policy, "target_version", None)
+            version_gap = _resolve_version_gap(current_version, target_version)
             health = _classify_rollout_health(getattr(event, "status", None))
             totals["health"][health] += 1
+            totals["version_gap"][version_gap] += 1
 
             if policy:
                 totals["with_policy"] += 1
@@ -132,7 +167,9 @@ class NetworkEdgeUpdateRolloutSummaryView(APIView):
                         "store_name": store_index.get(store_id),
                         "health": health,
                         "channel": getattr(policy, "channel", "stable") if policy else "stable",
-                        "target_version": getattr(policy, "target_version", None),
+                        "current_version": current_version,
+                        "target_version": target_version,
+                        "version_gap": version_gap,
                         "last_event": getattr(event, "event", None),
                         "last_status": getattr(event, "status", None),
                         "reason_code": getattr(event, "reason_code", None),

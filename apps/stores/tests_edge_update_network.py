@@ -60,6 +60,8 @@ class NetworkEdgeUpdateRolloutSummaryViewTests(SimpleTestCase):
                 store_id=store_a,
                 status="failed",
                 event="edge_update_failed",
+                from_version="1.4.1",
+                to_version="1.5.0",
                 reason_code="NETWORK_ERROR",
                 timestamp=None,
             ),
@@ -67,6 +69,8 @@ class NetworkEdgeUpdateRolloutSummaryViewTests(SimpleTestCase):
                 store_id=store_b,
                 status="healthy",
                 event="edge_update_healthy",
+                from_version="1.4.9",
+                to_version="1.5.0",
                 reason_code=None,
                 timestamp=None,
             ),
@@ -81,7 +85,12 @@ class NetworkEdgeUpdateRolloutSummaryViewTests(SimpleTestCase):
         self.assertEqual(response.data["totals"]["stores"], 2)
         self.assertEqual(response.data["totals"]["with_policy"], 2)
         self.assertEqual(response.data["totals"]["channel"]["canary"], 1)
+        self.assertEqual(response.data["totals"]["version_gap"]["up_to_date"], 1)
+        self.assertEqual(response.data["totals"]["version_gap"]["outdated"], 1)
         self.assertEqual(response.data["totals"]["health"]["degraded"], 1)
         self.assertEqual(response.data["rollout_health"]["status"], "degraded")
         self.assertEqual(len(response.data["critical_stores"]), 1)
         self.assertEqual(response.data["critical_stores"][0]["store_name"], "Loja A")
+        self.assertEqual(response.data["critical_stores"][0]["current_version"], "1.4.1")
+        self.assertEqual(response.data["critical_stores"][0]["target_version"], "1.5.0")
+        self.assertEqual(response.data["critical_stores"][0]["version_gap"], "outdated")
