@@ -74,7 +74,7 @@ Query params:
 Resposta:
 - `store_id: "all"`
 - `summary` consolidado da rede (tenant atual, inclui `completion_rate` e `recovery_rate`)
-- `breakdown_by_store` (top lojas por impacto esperado, com `store_id` e `store_name`)
+- `breakdown_by_store` (top lojas por impacto esperado, com `store_id`, `store_name`, `completion_rate`, `recovery_rate`)
 - `items` com outcomes recentes da rede
 
 ### 2.4 Value Ledger Daily (network scoped)
@@ -88,7 +88,7 @@ Resposta:
 - `store_id: "all"`
 - `pipeline_health` (status `healthy|stale|no_data`, frescor e cobertura de lojas)
 - `totals` consolidados da rede (tenant atual, inclui `completion_rate` e `recovery_rate`)
-- `breakdown_by_store` (top lojas por risco no período, com `store_id` e `store_name`)
+- `breakdown_by_store` (top lojas por risco no período, com `store_id`, `store_name`, `completion_rate`, `recovery_rate`)
 - `items` com série diária consolidada
 
 ## 3) Regras v1

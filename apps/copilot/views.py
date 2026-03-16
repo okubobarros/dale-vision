@@ -687,6 +687,24 @@ class CopilotNetworkActionOutcomeView(APIView):
                         "actions_completed": int(row.get("actions_completed") or 0),
                         "impact_expected_brl": float(row.get("impact_expected_brl") or 0),
                         "impact_realized_brl": float(row.get("impact_realized_brl") or 0),
+                        "completion_rate": round(
+                            (
+                                (int(row.get("actions_completed") or 0) / int(row.get("actions_dispatched") or 0))
+                                * 100
+                            ),
+                            1,
+                        )
+                        if int(row.get("actions_dispatched") or 0) > 0
+                        else 0.0,
+                        "recovery_rate": round(
+                            (
+                                (float(row.get("impact_realized_brl") or 0) / float(row.get("impact_expected_brl") or 0))
+                                * 100
+                            ),
+                            1,
+                        )
+                        if float(row.get("impact_expected_brl") or 0) > 0
+                        else 0.0,
                         "confidence_score_avg": float(row.get("confidence_score_avg") or 0),
                     }
                     for row in breakdown_rows
@@ -813,6 +831,24 @@ class CopilotNetworkValueLedgerDailyView(APIView):
                         "value_at_risk_brl": float(row.get("value_at_risk_brl") or 0),
                         "actions_dispatched": int(row.get("actions_dispatched") or 0),
                         "actions_completed": int(row.get("actions_completed") or 0),
+                        "completion_rate": round(
+                            (
+                                (int(row.get("actions_completed") or 0) / int(row.get("actions_dispatched") or 0))
+                                * 100
+                            ),
+                            1,
+                        )
+                        if int(row.get("actions_dispatched") or 0) > 0
+                        else 0.0,
+                        "recovery_rate": round(
+                            (
+                                (float(row.get("value_recovered_brl") or 0) / float(row.get("value_at_risk_brl") or 0))
+                                * 100
+                            ),
+                            1,
+                        )
+                        if float(row.get("value_at_risk_brl") or 0) > 0
+                        else 0.0,
                         "confidence_score_avg": float(row.get("confidence_score_avg") or 0),
                     }
                     for row in breakdown_rows

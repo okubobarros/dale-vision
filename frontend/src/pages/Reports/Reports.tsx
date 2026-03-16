@@ -762,6 +762,10 @@ const Reports = () => {
                     <p className="text-xs text-slate-500">
                       Recuperado {formatCurrencyBRL(item.value_recovered_brl)} · Ações {item.actions_dispatched}
                     </p>
+                    <p className="text-xs text-slate-500">
+                      Conclusão {(item.completion_rate ?? 0).toFixed(1)}% · Recuperação{" "}
+                      {(item.recovery_rate ?? 0).toFixed(1)}%
+                    </p>
                   </div>
                   <div className="flex items-center gap-3">
                     <p className="text-sm font-semibold text-rose-600">
