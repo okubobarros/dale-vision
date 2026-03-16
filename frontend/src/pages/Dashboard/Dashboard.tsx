@@ -147,6 +147,7 @@ const CEO_PERIOD: "day" | "7d" = "day"
 type DashboardMetricGovernance = MetricGovernanceItem
 type NetworkPeriod = "day" | "7d" | "30d"
 type IngestionEventTypeFilter = "" | "queue_length" | "staff_detected" | "person_enter" | "sale_completed" | "zone_dwell"
+type RolloutChannelFilter = "all" | "stable" | "canary"
 
 const governanceStyles: Record<string, string> = {
   official: "bg-emerald-50 text-emerald-700 border-emerald-200",
@@ -234,6 +235,7 @@ const Dashboard = () => {
   const [edgeSetupOpen, setEdgeSetupOpen] = useState(initialOpenEdgeSetup)
   const [networkPeriod, setNetworkPeriod] = useState<NetworkPeriod>("7d")
   const [networkIngestionEventType, setNetworkIngestionEventType] = useState<IngestionEventTypeFilter>("")
+  const [rolloutChannelFilter, setRolloutChannelFilter] = useState<RolloutChannelFilter>("all")
 
   const canFetchAuth = authReady && isAuthenticated
 
@@ -343,8 +345,11 @@ const Dashboard = () => {
     retry: false,
   })
   const { data: networkRolloutSummary } = useQuery<NetworkEdgeUpdateRolloutSummaryResponse>({
-    queryKey: ["network-edge-rollout-summary-dashboard"],
-    queryFn: () => storesService.getNetworkEdgeUpdateRolloutSummary(),
+    queryKey: ["network-edge-rollout-summary-dashboard", rolloutChannelFilter],
+    queryFn: () =>
+      storesService.getNetworkEdgeUpdateRolloutSummary(
+        rolloutChannelFilter === "all" ? undefined : rolloutChannelFilter
+      ),
     enabled: canFetchAuth && isNetworkMode,
     staleTime: 30000,
     retry: false,
@@ -1952,9 +1957,27 @@ const Dashboard = () => {
                   <h3 className="text-base sm:text-lg font-semibold text-gray-900">Saúde de rollout edge</h3>
                   <p className="text-sm text-gray-600 mt-1">Execução de versão por loja para reduzir risco operacional.</p>
                 </div>
-                <span className={`rounded-full border px-2.5 py-1 text-[11px] font-semibold ${rolloutStatusClass}`}>
-                  {rolloutStatusLabel}
-                </span>
+                <div className="flex items-center gap-2">
+                  <div className="inline-flex rounded-lg border border-slate-200 bg-white p-1">
+                    {(["all", "stable", "canary"] as const).map((item) => (
+                      <button
+                        key={item}
+                        type="button"
+                        onClick={() => setRolloutChannelFilter(item)}
+                        className={`rounded-md px-2.5 py-1 text-[11px] font-semibold transition ${
+                          rolloutChannelFilter === item
+                            ? "bg-slate-900 text-white"
+                            : "text-slate-600 hover:bg-slate-50"
+                        }`}
+                      >
+                        {item === "all" ? "Todos" : item}
+                      </button>
+                    ))}
+                  </div>
+                  <span className={`rounded-full border px-2.5 py-1 text-[11px] font-semibold ${rolloutStatusClass}`}>
+                    {rolloutStatusLabel}
+                  </span>
+                </div>
               </div>
               <div className="mt-4 grid grid-cols-1 md:grid-cols-4 gap-3">
                 <article className="rounded-lg border border-slate-200 bg-slate-50 p-3">

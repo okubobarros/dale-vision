@@ -23,6 +23,7 @@ type OperationalWindow = {
   endHour: number
   source: "opening_hours" | "fallback_flow"
 }
+type RolloutChannelFilter = "all" | "stable" | "canary"
 
 const formatSeconds = (value?: number | null) => {
   if (value === null || value === undefined) return "—"
@@ -147,6 +148,7 @@ const Reports = () => {
   const [completingOutcomeId, setCompletingOutcomeId] = useState<string | null>(null)
   const [failingOutcomeId, setFailingOutcomeId] = useState<string | null>(null)
   const [outcomeStatusFilter, setOutcomeStatusFilter] = useState<"all" | "dispatched" | "completed" | "failed">("all")
+  const [rolloutChannelFilter, setRolloutChannelFilter] = useState<RolloutChannelFilter>("all")
 
   const rangeParams = useMemo(() => {
     if (period === "custom") {
@@ -202,8 +204,11 @@ const Reports = () => {
     retry: false,
   })
   const rolloutSummaryQ = useQuery<NetworkEdgeUpdateRolloutSummaryResponse>({
-    queryKey: ["reports-edge-rollout-summary"],
-    queryFn: () => storesService.getNetworkEdgeUpdateRolloutSummary(),
+    queryKey: ["reports-edge-rollout-summary", rolloutChannelFilter],
+    queryFn: () =>
+      storesService.getNetworkEdgeUpdateRolloutSummary(
+        rolloutChannelFilter === "all" ? undefined : rolloutChannelFilter
+      ),
     staleTime: 60000,
     retry: false,
     enabled: !selectedStore,
@@ -1064,25 +1069,43 @@ const Reports = () => {
 
       {!selectedStore && (
         <section className="rounded-xl border border-slate-200 bg-white p-4 shadow-sm">
-          <div className="flex items-center justify-between">
+          <div className="flex items-center justify-between gap-2">
             <h2 className="text-base font-semibold text-slate-900">Rollout do Edge na rede</h2>
-            <span
-              className={`rounded-full border px-2 py-0.5 text-[11px] font-semibold ${targetStatusClass(
-                rolloutSummary?.rollout_health?.status === "healthy"
-                  ? "go"
+            <div className="flex items-center gap-2">
+              <div className="inline-flex rounded-lg border border-slate-200 bg-white p-1">
+                {(["all", "stable", "canary"] as const).map((item) => (
+                  <button
+                    key={item}
+                    type="button"
+                    onClick={() => setRolloutChannelFilter(item)}
+                    className={`rounded-md px-2.5 py-1 text-[11px] font-semibold transition ${
+                      rolloutChannelFilter === item
+                        ? "bg-slate-900 text-white"
+                        : "text-slate-600 hover:bg-slate-50"
+                    }`}
+                  >
+                    {item === "all" ? "Todos" : item}
+                  </button>
+                ))}
+              </div>
+              <span
+                className={`rounded-full border px-2 py-0.5 text-[11px] font-semibold ${targetStatusClass(
+                  rolloutSummary?.rollout_health?.status === "healthy"
+                    ? "go"
+                    : rolloutSummary?.rollout_health?.status === "degraded"
+                    ? "no_go"
+                    : "no_data"
+                )}`}
+              >
+                {rolloutSummary?.rollout_health?.status === "healthy"
+                  ? "Estável"
                   : rolloutSummary?.rollout_health?.status === "degraded"
-                  ? "no_go"
-                  : "no_data"
-              )}`}
-            >
-              {rolloutSummary?.rollout_health?.status === "healthy"
-                ? "Estável"
-                : rolloutSummary?.rollout_health?.status === "degraded"
-                ? "Crítico"
-                : rolloutSummary?.rollout_health?.status === "attention"
-                ? "Atenção"
-                : "Sem dados"}
-            </span>
+                  ? "Crítico"
+                  : rolloutSummary?.rollout_health?.status === "attention"
+                  ? "Atenção"
+                  : "Sem dados"}
+              </span>
+            </div>
           </div>
           <div className="mt-3 grid grid-cols-1 md:grid-cols-2 xl:grid-cols-4 gap-3">
             <article className="rounded-lg border border-slate-200 bg-slate-50 p-3">
