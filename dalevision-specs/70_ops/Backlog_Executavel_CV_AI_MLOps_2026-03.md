@@ -143,7 +143,7 @@ Owners sugeridos:
 - Esforco: `M`
 - Owner: `EDGE + BE`
 - Dependencias: nenhuma
-- Status: `todo`
+- Status: `in_progress` (backend validado; edge-agent pendente)
 - Entrega:
   - estados: `started`, `downloaded`, `activated`, `healthy`, `rolled_back`, `failed`;
   - canal `stable/canary`.
@@ -237,4 +237,3 @@ Owners sugeridos:
 2. evidencia de impacto em KPI tecnico ou de negocio;
 3. atualizacao de documentacao em `70_ops` no mesmo dia;
 4. estado final marcado (`done`) com data e owner.
-

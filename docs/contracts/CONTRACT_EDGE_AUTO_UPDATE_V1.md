@@ -1,7 +1,7 @@
 # CONTRACT: Edge Auto-Update v1
 
 Status: `draft-active`  
-Version: `edge_update_v1_2026-03-15`  
+Version: `edge_update_v1_2026-03-16`  
 Language: `pt-BR`
 
 ## 1) Objetivo
@@ -147,13 +147,16 @@ Resposta (resumo):
 
 Headers esperados:
 - `X-EDGE-TOKEN`
-- `X-STORE-ID` (opcional quando token já vincula loja)
+- `X-AGENT-ID` (opcional; usado para telemetria/contexto)
 
 Resposta (exemplo):
 ```json
 {
   "store_id": "47daec5a-11c3-4556-8dd8-fd2b00aa1bb0",
   "agent_id": "edge-kiosk-01",
+  "policy_id": "0f63c745-8d6f-49b5-ae9d-bf5e58b6b7c1",
+  "policy_updated_at": "2026-03-16T10:20:00Z",
+  "policy_fingerprint": "9f6c8a8a0f6f7f4a4c9a9a3f8f6e8aa65f7be2e8d8a7b7a08b665d7b9aa4a121",
   "channel": "stable",
   "target_version": "1.4.2",
   "current_min_supported": "1.3.0",
@@ -207,6 +210,24 @@ Payload (exemplo):
 }
 ```
 
+Campo adicional recomendado:
+- `idempotency_key` (string <= 128) para deduplicar retries do agente no backend.
+
+Payload com idempotência:
+```json
+{
+  "store_id": "47daec5a-11c3-4556-8dd8-fd2b00aa1bb0",
+  "agent_id": "edge-kiosk-01",
+  "event": "edge_update_healthy",
+  "status": "healthy",
+  "idempotency_key": "edge-kiosk-01:1.4.2:healthy:attempt-1"
+}
+```
+
+Resposta canônica:
+- novo evento persistido: `201` com `"deduped": false`;
+- retry deduplicado: `200` com `"deduped": true` e mesmo `event_id`.
+
 Status/eventos canônicos:
 - `started`
 - `downloaded`
@@ -248,6 +269,7 @@ Status/eventos canônicos:
 
 ## 8) Compatibilidade e evolução
 - v1 cobre política + telemetria + rollback.
+- v1.1 adiciona idempotência persistente de update-report (`store_id + idempotency_key`) e fingerprint da policy.
 - v2 deve incluir:
 - rollout por coorte/região;
 - bloqueio por hardware profile;

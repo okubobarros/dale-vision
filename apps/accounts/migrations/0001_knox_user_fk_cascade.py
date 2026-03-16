@@ -34,11 +34,25 @@ END $$;
 """
 
 
+def _run_if_postgres(schema_editor, sql: str):
+    if getattr(schema_editor.connection, "vendor", "") != "postgresql":
+        return
+    schema_editor.execute(sql)
+
+
+def forwards(apps, schema_editor):
+    _run_if_postgres(schema_editor, FORWARD_SQL)
+
+
+def backwards(apps, schema_editor):
+    _run_if_postgres(schema_editor, REVERSE_SQL)
+
+
 class Migration(migrations.Migration):
     dependencies = [
         ("knox", "0001_initial"),
     ]
 
     operations = [
-        migrations.RunSQL(FORWARD_SQL, REVERSE_SQL),
+        migrations.RunPython(forwards, backwards),
     ]

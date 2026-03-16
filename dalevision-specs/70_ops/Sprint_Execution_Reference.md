@@ -50,6 +50,10 @@ Leitura de sprint:
 - eventos de update (`started`, `downloaded`, `activated`, `healthy`, `rolled_back`, `failed`).
 2. Publicar runbook de rollback remoto.
 
+Status atual (2026-03-16):
+- contrato backend em andamento com validacao tecnica de idempotencia no `update-report` e fingerprint de policy no `update-policy`;
+- proximo fechamento: acoplar executor no edge-agent para publicar `idempotency_key` de forma padronizada.
+
 ### D5-D7 (ponte para Sprint 3 CV/admin)
 1. Rodar ajuste de calibracao assistida por admin:
 - ROI/thresholds por camera;

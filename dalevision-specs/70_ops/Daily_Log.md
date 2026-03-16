@@ -17,6 +17,12 @@ Registrar decisões e eventos do dia.
   - Taxas de falha e agregados de execucao incorporados nos resumos executivos (`actions_failed_total`, `failure_rate` e recortes por fonte/rollout).
   - Breakdown por origem de execucao de acao adicionado para leitura de completion/failure por canal.
   - Documentacao central de execucao de sprint sincronizada para refletir estado atual: engenharia e governanca concluida, validacao de campo ainda pendente.
+  - Auto-update (S4-UPD-01) avancou com hardening no backend:
+    - `update-policy` agora expõe `policy_id`, `policy_updated_at` e `policy_fingerprint`;
+    - `update-report` passou a deduplicar por `idempotency_key` persistente.
+  - Teste runtime concluido em ambiente local com token de edge:
+    - primeira submissao `deduped=false`;
+    - retry com mesmo payload `deduped=true` e mesmo `event_id`.
 - Bloqueios:
   - Validacao operacional em loja remota ainda pendente para fechamento definitivo do gate de campo.
 - Decisões:

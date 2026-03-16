@@ -1,7 +1,7 @@
 # S4 Auto-Update Execution Plan
 
 Data base: 2026-03-15  
-Status: `READY_FOR_BUILD`  
+Status: `IN_PROGRESS`  
 Dependência de campo: baixa (execução majoritariamente remota)
 
 ## Objetivo
@@ -19,6 +19,16 @@ Implementar auto-update seguro do edge-agent para reduzir visitas presenciais, a
 - Processo de release de pacote no `dalevision-edge-agent`.
 
 ## Tickets (ordem recomendada)
+
+## Atualizacao de execucao (2026-03-16)
+- `S4-UPD-01` avancou em backend com:
+  - `GET /api/v1/edge/update-policy/` retornando `policy_id`, `policy_updated_at`, `policy_fingerprint`;
+  - `POST /api/v1/edge/update-report/` com `idempotency_key` persistente e dedupe race-safe.
+- Validacao runtime concluida:
+  - primeira chamada `update-report` => `deduped=false`;
+  - retry idêntico => `deduped=true` com mesmo `event_id`.
+- Pendencia para fechar `S4-UPD-01`:
+  - alinhar executor do edge-agent ao novo campo `idempotency_key` em todos os eventos de update.
 
 ### S4-UPD-01: Contrato e política de update
 Owner: Backend  
