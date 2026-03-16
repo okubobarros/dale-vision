@@ -13,6 +13,9 @@ Este documento consolida:
 - roadmap em sprints;
 - matriz de continuidade dos docs existentes.
 
+Referencia complementar obrigatoria:
+- `30_system/AI_Operations_Brain_Backend_Deep_Spec_2026-03.md` (arquitetura backend alvo, gaps atuais, APIs/entidades/jobs e plano por sprint para fechar o loop de valor).
+
 Data base: 2026-03-14
 Escopo: backend + frontend + edge + dados + copiloto + operacao
 

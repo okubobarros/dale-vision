@@ -4,6 +4,7 @@
 - Ver `70_ops/Plano_Executavel_Edge_to_Product.md` para backlog com DoR, DoD, testes e evidencias por task.
 - Ver `70_ops/Matriz_Operacional_CV_AI_2026-03.md` para trilha tecnica completa de dados/CV/ML/MLOps e estagio de maturidade.
 - Ver `70_ops/Backlog_Executavel_CV_AI_MLOps_2026-03.md` para tickets priorizados por sprint com owner, esforco e aceite.
+- Ver `30_system/AI_Operations_Brain_Backend_Deep_Spec_2026-03.md` para arquitetura backend alvo (`evento -> decisao -> acao -> outcome -> valor`) e sequencia de implementacao por sprint.
 
 ## Data de referencia
 - 2026-03-09

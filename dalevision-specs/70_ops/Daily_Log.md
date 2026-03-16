@@ -38,6 +38,9 @@ Registrar decisões e eventos do dia.
     - `docs/N8N_SINGLE_SOURCE_OF_ACTION_BLUEPRINT.md`
     - fluxo ponta a ponta `event_router -> action_execution -> outcome_callback -> digest`;
     - expressões n8n e exemplo de Code Node Python para monetização conservadora.
+  - Deep spec de arquitetura backend publicado:
+    - `30_system/AI_Operations_Brain_Backend_Deep_Spec_2026-03.md`
+    - mapeamento `estado atual -> arquitetura alvo` e gaps para fechar loop `evento -> decisao -> acao -> outcome -> valor`.
 - Bloqueios:
   - Validacao operacional em loja remota ainda pendente para fechamento definitivo do gate de campo.
 - Decisões:
