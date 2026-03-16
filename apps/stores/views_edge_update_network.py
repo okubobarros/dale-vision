@@ -51,11 +51,16 @@ class NetworkEdgeUpdateRolloutSummaryView(APIView):
     permission_classes = [IsAuthenticated]
 
     def get(self, request):
+        channel_filter = str(request.query_params.get("channel") or "").strip().lower()
+        if channel_filter not in {"stable", "canary"}:
+            channel_filter = None
+
         org_ids = get_user_org_ids(request.user)
         if not org_ids:
             return Response(
                 {
                     "scope": "network",
+                    "filters": {"channel": channel_filter or "all"},
                     "totals": {
                         "stores": 0,
                         "with_policy": 0,
@@ -83,6 +88,7 @@ class NetworkEdgeUpdateRolloutSummaryView(APIView):
             return Response(
                 {
                     "scope": "network",
+                    "filters": {"channel": channel_filter or "all"},
                     "totals": {
                         "stores": 0,
                         "with_policy": 0,
@@ -108,15 +114,19 @@ class NetworkEdgeUpdateRolloutSummaryView(APIView):
         store_index = {str(row["id"]): row.get("name") for row in store_rows}
         store_ids = list(store_index.keys())
 
-        policy_rows = list(
-            EdgeUpdatePolicy.objects.filter(store_id__in=store_ids, active=True)
-            .order_by("store_id", "-updated_at")
-        )
+        policy_filter = {"store_id__in": store_ids, "active": True}
+        if channel_filter:
+            policy_filter["channel"] = channel_filter
+        policy_rows = list(EdgeUpdatePolicy.objects.filter(**policy_filter).order_by("store_id", "-updated_at"))
         policy_by_store: dict[str, EdgeUpdatePolicy] = {}
         for row in policy_rows:
             key = str(row.store_id)
             if key not in policy_by_store:
                 policy_by_store[key] = row
+
+        if channel_filter:
+            store_ids = [store_id for store_id in store_ids if store_id in policy_by_store]
+            store_index = {store_id: store_index[store_id] for store_id in store_ids}
 
         # Scan capped to keep response fast even with long event history.
         event_rows = list(
@@ -201,6 +211,7 @@ class NetworkEdgeUpdateRolloutSummaryView(APIView):
         return Response(
             {
                 "scope": "network",
+                "filters": {"channel": channel_filter or "all"},
                 "totals": totals,
                 "rollout_health": {
                     "status": rollout_status,

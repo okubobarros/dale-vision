@@ -203,7 +203,7 @@ const Reports = () => {
   })
   const rolloutSummaryQ = useQuery<NetworkEdgeUpdateRolloutSummaryResponse>({
     queryKey: ["reports-edge-rollout-summary"],
-    queryFn: storesService.getNetworkEdgeUpdateRolloutSummary,
+    queryFn: () => storesService.getNetworkEdgeUpdateRolloutSummary(),
     staleTime: 60000,
     retry: false,
     enabled: !selectedStore,

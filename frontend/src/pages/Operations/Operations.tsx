@@ -56,6 +56,7 @@ const OPERATIONAL_SCORE_WEIGHTS = {
 
 type QuickFilter = "all" | "critical" | "offline" | "people"
 type InterventionStatus = "pending" | "viewed" | "resolved"
+type RolloutChannelFilter = "all" | "stable" | "canary"
 type GroupedOperationalEvent = {
   id: string
   store_id: string
@@ -186,6 +187,7 @@ const networkStatusLabel = (
 const Operations = () => {
   const [quickFilter, setQuickFilter] = useState<QuickFilter>("all")
   const [rolloutActionStoreId, setRolloutActionStoreId] = useState<string | null>(null)
+  const [rolloutChannelFilter, setRolloutChannelFilter] = useState<RolloutChannelFilter>("all")
 
   const { data: account } = useQuery<MeAccount | null>({
     queryKey: ["operations-account"],
@@ -217,8 +219,11 @@ const Operations = () => {
     retry: false,
   })
   const { data: networkRolloutSummary } = useQuery<NetworkEdgeUpdateRolloutSummaryResponse>({
-    queryKey: ["operations-network-edge-rollout-summary"],
-    queryFn: () => storesService.getNetworkEdgeUpdateRolloutSummary(),
+    queryKey: ["operations-network-edge-rollout-summary", rolloutChannelFilter],
+    queryFn: () =>
+      storesService.getNetworkEdgeUpdateRolloutSummary(
+        rolloutChannelFilter === "all" ? undefined : rolloutChannelFilter
+      ),
     staleTime: 30000,
     retry: false,
   })
@@ -616,9 +621,27 @@ const Operations = () => {
             <h2 className="text-xl font-semibold text-gray-900">Rollout Edge na rede</h2>
             <p className="text-sm text-gray-600 mt-1">Saúde de atualização remota por loja para ação imediata.</p>
           </div>
-          <span className={`rounded-full border px-3 py-1 text-xs font-semibold ${rolloutStatusClass}`}>
-            {rolloutStatusLabel}
-          </span>
+          <div className="flex items-center gap-2">
+            <div className="inline-flex rounded-lg border border-slate-200 bg-white p-1">
+              {(["all", "stable", "canary"] as const).map((item) => (
+                <button
+                  key={item}
+                  type="button"
+                  onClick={() => setRolloutChannelFilter(item)}
+                  className={`rounded-md px-2.5 py-1 text-[11px] font-semibold transition ${
+                    rolloutChannelFilter === item
+                      ? "bg-slate-900 text-white"
+                      : "text-slate-600 hover:bg-slate-50"
+                  }`}
+                >
+                  {item === "all" ? "Todos" : item}
+                </button>
+              ))}
+            </div>
+            <span className={`rounded-full border px-3 py-1 text-xs font-semibold ${rolloutStatusClass}`}>
+              {rolloutStatusLabel}
+            </span>
+          </div>
         </div>
         <div className="mt-4 grid grid-cols-1 sm:grid-cols-2 xl:grid-cols-4 gap-3">
           <article className="rounded-xl border border-slate-200 bg-slate-50 p-3">

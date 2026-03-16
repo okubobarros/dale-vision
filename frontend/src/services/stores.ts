@@ -420,6 +420,9 @@ export type StoreEdgeUpdateRunbookOpenedPayload = {
 
 export type NetworkEdgeUpdateRolloutSummaryResponse = {
   scope: "network"
+  filters: {
+    channel: "all" | "stable" | "canary"
+  }
   totals: {
     stores: number
     with_policy: number
@@ -1280,8 +1283,10 @@ export const storesService = {
     return response.data as { ok: boolean; store_id: string; event_id: string; event: string }
   },
 
-  async getNetworkEdgeUpdateRolloutSummary(): Promise<NetworkEdgeUpdateRolloutSummaryResponse> {
-    const response = await api.get("/v1/stores/network/edge-update-rollout-summary/")
+  async getNetworkEdgeUpdateRolloutSummary(channel?: "stable" | "canary"): Promise<NetworkEdgeUpdateRolloutSummaryResponse> {
+    const response = await api.get("/v1/stores/network/edge-update-rollout-summary/", {
+      params: channel ? { channel } : undefined,
+    })
     return response.data as NetworkEdgeUpdateRolloutSummaryResponse
   },
 
