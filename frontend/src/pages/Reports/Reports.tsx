@@ -146,6 +146,7 @@ const Reports = () => {
   const [approvingIntervention, setApprovingIntervention] = useState(false)
   const [completingOutcomeId, setCompletingOutcomeId] = useState<string | null>(null)
   const [failingOutcomeId, setFailingOutcomeId] = useState<string | null>(null)
+  const [outcomeStatusFilter, setOutcomeStatusFilter] = useState<"all" | "dispatched" | "completed" | "failed">("all")
 
   const rangeParams = useMemo(() => {
     if (period === "custom") {
@@ -218,11 +219,17 @@ const Reports = () => {
     retry: false,
   })
   const outcomesQ = useQuery({
-    queryKey: ["reports-action-outcomes", selectedStore, period],
+    queryKey: ["reports-action-outcomes", selectedStore, period, outcomeStatusFilter],
     queryFn: () =>
       selectedStore
-        ? copilotService.listActionOutcomes(selectedStore, { limit: 12 })
-        : copilotService.listNetworkActionOutcomes({ limit: 12 }),
+        ? copilotService.listActionOutcomes(selectedStore, {
+            limit: 12,
+            status: outcomeStatusFilter === "all" ? undefined : outcomeStatusFilter,
+          })
+        : copilotService.listNetworkActionOutcomes({
+            limit: 12,
+            status: outcomeStatusFilter === "all" ? undefined : outcomeStatusFilter,
+          }),
     enabled: true,
     staleTime: 60000,
     retry: false,
@@ -1170,11 +1177,34 @@ const Reports = () => {
             {selectedStore ? "Fechamento do loop de valor" : "Visão consolidada da rede"}
           </span>
         </div>
+        <div className="mt-3 flex flex-wrap items-center gap-2">
+          {(
+            [
+              { key: "all", label: "Todas" },
+              { key: "dispatched", label: "Despachadas" },
+              { key: "completed", label: "Concluídas" },
+              { key: "failed", label: "Falharam" },
+            ] as const
+          ).map((item) => (
+            <button
+              key={item.key}
+              type="button"
+              onClick={() => setOutcomeStatusFilter(item.key)}
+              className={`rounded-full border px-2.5 py-1 text-[11px] font-semibold ${
+                outcomeStatusFilter === item.key
+                  ? "border-slate-900 bg-slate-900 text-white"
+                  : "border-slate-200 bg-white text-slate-700 hover:bg-slate-50"
+              }`}
+            >
+              {item.label}
+            </button>
+          ))}
+        </div>
         {!actionOutcomes.length ? (
           <p className="mt-3 text-sm text-slate-500">
             {selectedStore
-              ? "Sem ações registradas para esta loja no período."
-              : "Sem ações registradas na rede no período."}
+              ? "Sem ações registradas para este filtro na loja."
+              : "Sem ações registradas para este filtro na rede."}
           </p>
         ) : (
           <div className="mt-3 space-y-2">
