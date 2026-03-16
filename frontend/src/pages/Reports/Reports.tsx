@@ -228,6 +228,7 @@ const Reports = () => {
       : "border-slate-200 bg-slate-50 text-slate-700"
   const ledgerTotals = ledgerQ.data?.totals
   const networkLedgerBreakdown = ledgerQ.data?.breakdown_by_store ?? []
+  const outcomesSummary = outcomesQ.data?.summary
   const actionOutcomes = outcomesQ.data?.items ?? []
 
   const openingWindow = useMemo(() => {
@@ -672,6 +673,10 @@ const Reports = () => {
           <p className="text-[11px] text-slate-500 mt-1">
             Conclusão {(ledgerTotals?.completion_rate ?? 0).toFixed(1)}% · Recuperação{" "}
             {(ledgerTotals?.recovery_rate ?? 0).toFixed(1)}%
+          </p>
+          <p className="text-[11px] text-slate-500 mt-1">
+            Outcomes: conclusão {(outcomesSummary?.completion_rate ?? 0).toFixed(1)}% · recuperação{" "}
+            {(outcomesSummary?.recovery_rate ?? 0).toFixed(1)}%
           </p>
         </article>
       </section>

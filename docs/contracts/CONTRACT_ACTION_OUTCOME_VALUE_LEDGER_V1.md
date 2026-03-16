@@ -22,6 +22,7 @@ Query params:
 
 Resposta:
 - `summary` com totais agregados
+  - inclui `completion_rate` e `recovery_rate`
 - `items` com histórico de outcomes
 
 `POST /api/v1/copilot/stores/{store_id}/actions/outcomes/`
