@@ -1,7 +1,12 @@
 import { useMemo, useState } from "react"
 import { Link } from "react-router-dom"
 import { useQuery } from "@tanstack/react-query"
-import { storesService, type NetworkDashboard, type StoreSummary } from "../../services/stores"
+import {
+  storesService,
+  type NetworkDashboard,
+  type NetworkEdgeUpdateRolloutSummaryResponse,
+  type StoreSummary,
+} from "../../services/stores"
 import { useAlertsEvents } from "../../queries/alerts.queries"
 import { meService, type MeAccount, type MeStatus } from "../../services/me"
 import type { DetectionEvent } from "../../services/alerts"
@@ -207,6 +212,12 @@ const Operations = () => {
     staleTime: 30000,
     retry: false,
   })
+  const { data: networkRolloutSummary } = useQuery<NetworkEdgeUpdateRolloutSummaryResponse>({
+    queryKey: ["operations-network-edge-rollout-summary"],
+    queryFn: () => storesService.getNetworkEdgeUpdateRolloutSummary(),
+    staleTime: 30000,
+    retry: false,
+  })
 
   const {
     data: events = [],
@@ -378,6 +389,23 @@ const Operations = () => {
   const recommendationOfDay =
     groupedEvents[0]?.suggestion ||
     "Operação estável até o momento. Use o Copiloto para revisar oportunidades por loja."
+  const rolloutStatus = networkRolloutSummary?.rollout_health?.status || "no_data"
+  const rolloutStatusLabel =
+    rolloutStatus === "healthy"
+      ? "Rollout estável"
+      : rolloutStatus === "degraded"
+      ? "Rollout crítico"
+      : rolloutStatus === "attention"
+      ? "Rollout em atenção"
+      : "Sem dados de rollout"
+  const rolloutStatusClass =
+    rolloutStatus === "healthy"
+      ? "border-emerald-200 bg-emerald-50 text-emerald-700"
+      : rolloutStatus === "degraded"
+      ? "border-rose-200 bg-rose-50 text-rose-700"
+      : rolloutStatus === "attention"
+      ? "border-amber-200 bg-amber-50 text-amber-700"
+      : "border-slate-200 bg-slate-50 text-slate-700"
   const topOperationalRisk =
     groupedEvents[0]
       ? formatGroupedTitle(groupedEvents[0])
@@ -490,6 +518,93 @@ const Operations = () => {
             ? "Priorize a execução imediata para reduzir impacto operacional."
             : "Sem evento crítico agora. Direcione energia para ganho de conversão e produtividade."}
         </p>
+      </section>
+
+      <section className="rounded-2xl border border-gray-200 bg-white p-5 shadow-sm">
+        <div className="flex items-center justify-between gap-3 flex-wrap">
+          <div>
+            <h2 className="text-xl font-semibold text-gray-900">Rollout Edge na rede</h2>
+            <p className="text-sm text-gray-600 mt-1">Saúde de atualização remota por loja para ação imediata.</p>
+          </div>
+          <span className={`rounded-full border px-3 py-1 text-xs font-semibold ${rolloutStatusClass}`}>
+            {rolloutStatusLabel}
+          </span>
+        </div>
+        <div className="mt-4 grid grid-cols-1 sm:grid-cols-2 xl:grid-cols-4 gap-3">
+          <article className="rounded-xl border border-slate-200 bg-slate-50 p-3">
+            <p className="text-xs font-semibold uppercase tracking-wide text-slate-700">Lojas monitoradas</p>
+            <p className="mt-2 text-2xl font-bold text-slate-900">{networkRolloutSummary?.totals?.stores ?? 0}</p>
+            <p className="mt-1 text-xs text-slate-600">Com policy ativa {networkRolloutSummary?.totals?.with_policy ?? 0}</p>
+          </article>
+          <article className="rounded-xl border border-emerald-200 bg-emerald-50 p-3">
+            <p className="text-xs font-semibold uppercase tracking-wide text-emerald-700">Saudáveis</p>
+            <p className="mt-2 text-2xl font-bold text-emerald-700">{networkRolloutSummary?.totals?.health?.healthy ?? 0}</p>
+            <p className="mt-1 text-xs text-emerald-700">Canary {networkRolloutSummary?.totals?.channel?.canary ?? 0}</p>
+          </article>
+          <article className="rounded-xl border border-rose-200 bg-rose-50 p-3">
+            <p className="text-xs font-semibold uppercase tracking-wide text-rose-700">Críticas</p>
+            <p className="mt-2 text-2xl font-bold text-rose-700">{networkRolloutSummary?.totals?.health?.degraded ?? 0}</p>
+            <p className="mt-1 text-xs text-rose-700">Em progresso {networkRolloutSummary?.totals?.health?.in_progress ?? 0}</p>
+          </article>
+          <article className="rounded-xl border border-amber-200 bg-amber-50 p-3">
+            <p className="text-xs font-semibold uppercase tracking-wide text-amber-700">Sem sinal</p>
+            <p className="mt-2 text-2xl font-bold text-amber-700">{networkRolloutSummary?.totals?.health?.no_data ?? 0}</p>
+            <p className="mt-1 text-xs text-amber-700">Stable {networkRolloutSummary?.totals?.channel?.stable ?? 0}</p>
+          </article>
+        </div>
+        <p className="mt-3 text-xs text-gray-600">
+          {networkRolloutSummary?.rollout_health?.recommended_action || "Sem recomendação ativa de rollout."}
+        </p>
+        {networkRolloutSummary?.critical_stores?.length ? (
+          <div className="mt-3 space-y-2">
+            {networkRolloutSummary.critical_stores.slice(0, 4).map((store) => (
+              <article key={`${store.store_id}-${store.timestamp || "latest"}`} className="rounded-xl border border-gray-200 bg-gray-50 p-3">
+                <div className="flex flex-wrap items-center justify-between gap-2">
+                  <div>
+                    <p className="text-sm font-semibold text-gray-900">{store.store_name || "Loja"}</p>
+                    <p className="mt-1 text-xs text-gray-600">
+                      {store.last_event || "Sem evento"} · versão alvo {store.target_version || "—"} · motivo{" "}
+                      {store.reason_code || "não informado"}
+                    </p>
+                  </div>
+                  <div className="flex flex-wrap items-center gap-2">
+                    <Link
+                      to={`/app/edge-help?store_id=${store.store_id}${
+                        store.reason_code ? `&reason_code=${encodeURIComponent(store.reason_code)}` : ""
+                      }`}
+                      className="rounded-lg border border-amber-200 bg-amber-50 px-3 py-1.5 text-xs font-semibold text-amber-700 hover:bg-amber-100"
+                    >
+                      Runbook
+                    </Link>
+                    <button
+                      type="button"
+                      onClick={() =>
+                        openCopilot(
+                          `Montar plano imediato para update da ${store.store_name || "loja"}. Status: ${
+                            store.health
+                          }. Evento: ${store.last_event || "sem evento"}. Motivo: ${
+                            store.reason_code || "não informado"
+                          }.`
+                        )
+                      }
+                      className="rounded-lg bg-blue-600 px-3 py-1.5 text-xs font-semibold text-white hover:bg-blue-700"
+                    >
+                      Acionar Copiloto
+                    </button>
+                    <Link
+                      to={`/app/operations/stores/${store.store_id}`}
+                      className="rounded-lg border border-gray-200 bg-white px-3 py-1.5 text-xs font-semibold text-gray-700 hover:bg-gray-100"
+                    >
+                      Abrir loja
+                    </Link>
+                  </div>
+                </div>
+              </article>
+            ))}
+          </div>
+        ) : (
+          <p className="mt-3 text-sm text-gray-600">Sem lojas críticas de update no momento.</p>
+        )}
       </section>
 
       <section className="rounded-2xl border border-gray-200 bg-white p-5 shadow-sm">
