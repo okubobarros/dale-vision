@@ -1,4 +1,5 @@
 from django.db import models
+from django.db.models import Q
 from django.utils import timezone
 import uuid
 
@@ -110,6 +111,7 @@ class EdgeUpdateEvent(models.Model):
     elapsed_ms = models.IntegerField(null=True, blank=True)
     reason_code = models.CharField(max_length=64, null=True, blank=True)
     reason_detail = models.TextField(null=True, blank=True)
+    idempotency_key = models.CharField(max_length=128, null=True, blank=True, db_index=True)
     meta = models.JSONField(default=dict, blank=True)
     timestamp = models.DateTimeField(default=timezone.now, db_index=True)
     created_at = models.DateTimeField(default=timezone.now)
@@ -119,6 +121,13 @@ class EdgeUpdateEvent(models.Model):
         indexes = [
             models.Index(fields=["store_id", "-timestamp"]),
             models.Index(fields=["store_id", "agent_id", "-timestamp"]),
+        ]
+        constraints = [
+            models.UniqueConstraint(
+                fields=["store_id", "idempotency_key"],
+                condition=Q(idempotency_key__isnull=False),
+                name="edge_update_event_store_idemp_uniq",
+            ),
         ]
 
     def __str__(self):

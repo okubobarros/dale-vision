@@ -2,6 +2,7 @@ import hashlib
 import json
 
 from django.utils import timezone
+from django.db import IntegrityError
 from rest_framework import status
 from rest_framework.permissions import AllowAny
 from rest_framework.response import Response
@@ -154,7 +155,7 @@ class EdgeUpdateReportView(APIView):
             existing = (
                 EdgeUpdateEvent.objects.filter(
                     store_id=store_id,
-                    meta__idempotency_key=idempotency_key,
+                    idempotency_key=idempotency_key,
                 )
                 .order_by("-timestamp")
                 .first()
@@ -175,23 +176,47 @@ class EdgeUpdateReportView(APIView):
         if idempotency_key:
             meta = dict(meta)
             meta["idempotency_key"] = idempotency_key
-        row = EdgeUpdateEvent.objects.create(
-            store_id=store_id,
-            agent_id=data.get("agent_id"),
-            from_version=data.get("from_version"),
-            to_version=data.get("to_version"),
-            channel=data.get("channel"),
-            status=data.get("status"),
-            phase=data.get("phase"),
-            event=data.get("event"),
-            attempt=data.get("attempt") or 1,
-            elapsed_ms=data.get("elapsed_ms"),
-            reason_code=data.get("reason_code"),
-            reason_detail=data.get("reason_detail"),
-            meta=meta,
-            timestamp=data.get("timestamp") or timezone.now(),
-            created_at=timezone.now(),
-        )
+        try:
+            row = EdgeUpdateEvent.objects.create(
+                store_id=store_id,
+                agent_id=data.get("agent_id"),
+                from_version=data.get("from_version"),
+                to_version=data.get("to_version"),
+                channel=data.get("channel"),
+                status=data.get("status"),
+                phase=data.get("phase"),
+                event=data.get("event"),
+                attempt=data.get("attempt") or 1,
+                elapsed_ms=data.get("elapsed_ms"),
+                reason_code=data.get("reason_code"),
+                reason_detail=data.get("reason_detail"),
+                idempotency_key=idempotency_key or None,
+                meta=meta,
+                timestamp=data.get("timestamp") or timezone.now(),
+                created_at=timezone.now(),
+            )
+        except IntegrityError:
+            if idempotency_key:
+                existing = (
+                    EdgeUpdateEvent.objects.filter(
+                        store_id=store_id,
+                        idempotency_key=idempotency_key,
+                    )
+                    .order_by("-timestamp")
+                    .first()
+                )
+                if existing:
+                    return Response(
+                        {
+                            "ok": True,
+                            "store_id": store_id,
+                            "event_id": str(existing.id),
+                            "status": existing.status,
+                            "deduped": True,
+                        },
+                        status=status.HTTP_200_OK,
+                    )
+            raise
         return Response(
             {
                 "ok": True,

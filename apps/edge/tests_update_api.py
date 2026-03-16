@@ -3,6 +3,7 @@ from unittest.mock import MagicMock, patch
 from uuid import uuid4
 
 from django.test import SimpleTestCase
+from django.db import IntegrityError
 from rest_framework.test import APIRequestFactory
 
 from apps.edge.views_update import EdgeUpdatePolicyView, EdgeUpdateReportView
@@ -152,6 +153,38 @@ class EdgeUpdateReportViewTests(SimpleTestCase):
                 "event": "edge_update_healthy",
                 "status": "healthy",
                 "idempotency_key": "abc-123",
+            },
+            format="json",
+            HTTP_X_EDGE_TOKEN="valid",
+        )
+        response = self.view(request)
+        self.assertEqual(response.status_code, 200)
+        self.assertTrue(response.data["ok"])
+        self.assertTrue(response.data["deduped"])
+        self.assertEqual(response.data["event_id"], str(event_id))
+
+    @patch("apps.edge.views_update.EdgeUpdateEvent.objects.create")
+    @patch("apps.edge.views_update.EdgeUpdateEvent.objects.filter")
+    @patch("apps.edge.views_update.authenticate_edge_token")
+    def test_post_handles_integrity_error_as_deduped(self, mock_auth, mock_filter, mock_create):
+        store_id = str(uuid4())
+        event_id = uuid4()
+        mock_auth.return_value = SimpleNamespace(ok=True, status_code=200, store_id=store_id)
+        mock_create.side_effect = IntegrityError("duplicate key value violates unique constraint")
+
+        qs = MagicMock()
+        qs.order_by.return_value = qs
+        qs.first.return_value = SimpleNamespace(id=event_id, status="healthy")
+        mock_filter.return_value = qs
+
+        request = self.factory.post(
+            "/api/edge/update-report/",
+            {
+                "store_id": store_id,
+                "agent_id": "edge-1",
+                "event": "edge_update_healthy",
+                "status": "healthy",
+                "idempotency_key": "idemp-xyz",
             },
             format="json",
             HTTP_X_EDGE_TOKEN="valid",
