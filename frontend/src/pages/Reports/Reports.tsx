@@ -199,11 +199,19 @@ const Reports = () => {
     retry: false,
   })
 
-  const stores = storesQ.data ?? []
+  const stores = useMemo(() => storesQ.data ?? [], [storesQ.data])
   const summaryData = summaryQ.data
   const impactData = impactQ.data
   const coverageData = coverageQ.data
   const selectedStoreMeta = stores.find((store) => store.id === selectedStore) ?? null
+  const storeNameById = useMemo(
+    () =>
+      stores.reduce<Record<string, string>>((acc, row) => {
+        acc[row.id] = row.name
+        return acc
+      }, {}),
+    [stores]
+  )
   const ingestionOperational = ingestionQ.data?.operational_summary
   const ingestionPipelineStatus = ingestionOperational?.pipeline_status || "no_signal"
   const ingestionPipelineLabel =
@@ -219,6 +227,7 @@ const Reports = () => {
       ? "border-amber-200 bg-amber-50 text-amber-700"
       : "border-slate-200 bg-slate-50 text-slate-700"
   const ledgerTotals = ledgerQ.data?.totals
+  const networkLedgerBreakdown = ledgerQ.data?.breakdown_by_store ?? []
   const actionOutcomes = outcomesQ.data?.items ?? []
 
   const openingWindow = useMemo(() => {
@@ -679,6 +688,39 @@ const Reports = () => {
         )}
       </section>
 
+
+      {!selectedStore && (
+        <section className="rounded-xl border border-slate-200 bg-white p-4 shadow-sm">
+          <div className="flex items-center justify-between">
+            <h2 className="text-base font-semibold text-slate-900">Lojas com maior risco no período</h2>
+            <span className="text-xs text-slate-500">Priorização executiva da rede</span>
+          </div>
+          {!networkLedgerBreakdown.length ? (
+            <p className="mt-3 text-sm text-slate-500">Sem dados de risco por loja no período.</p>
+          ) : (
+            <div className="mt-3 space-y-2">
+              {networkLedgerBreakdown.slice(0, 5).map((item) => (
+                <article
+                  key={item.store_id}
+                  className="flex items-center justify-between rounded-lg border border-slate-200 bg-slate-50 p-3"
+                >
+                  <div>
+                    <p className="text-sm font-semibold text-slate-800">
+                      {storeNameById[item.store_id] || `Loja ${item.store_id.slice(0, 8)}`}
+                    </p>
+                    <p className="text-xs text-slate-500">
+                      Recuperado {formatCurrencyBRL(item.value_recovered_brl)} · Ações {item.actions_dispatched}
+                    </p>
+                  </div>
+                  <p className="text-sm font-semibold text-rose-600">
+                    {formatCurrencyBRL(item.value_at_risk_brl)} em risco
+                  </p>
+                </article>
+              ))}
+            </div>
+          )}
+        </section>
+      )}
 
       <section className="rounded-xl border border-slate-200 bg-white p-4 shadow-sm">
         <div className="grid grid-cols-1 lg:grid-cols-4 gap-3">

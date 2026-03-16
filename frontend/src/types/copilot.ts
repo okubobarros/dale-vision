@@ -141,6 +141,14 @@ export interface CopilotActionOutcomeSummary {
 export interface CopilotActionOutcomeListResponse {
   store_id: string
   summary: CopilotActionOutcomeSummary
+  breakdown_by_store?: Array<{
+    store_id: string
+    actions_dispatched: number
+    actions_completed: number
+    impact_expected_brl: number
+    impact_realized_brl: number
+    confidence_score_avg: number
+  }>
   items: CopilotActionOutcome[]
 }
 
@@ -169,5 +177,13 @@ export interface CopilotValueLedgerDailyResponse {
     actions_completed: number
     confidence_score_avg: number
   }
+  breakdown_by_store?: Array<{
+    store_id: string
+    value_recovered_brl: number
+    value_at_risk_brl: number
+    actions_dispatched: number
+    actions_completed: number
+    confidence_score_avg: number
+  }>
   items: CopilotValueLedgerDailyItem[]
 }

@@ -71,6 +71,7 @@ Query params:
 Resposta:
 - `store_id: "all"`
 - `summary` consolidado da rede (tenant atual)
+- `breakdown_by_store` (top lojas por impacto esperado)
 - `items` com outcomes recentes da rede
 
 ### 2.4 Value Ledger Daily (network scoped)
@@ -82,6 +83,7 @@ Query params:
 Resposta:
 - `store_id: "all"`
 - `totals` consolidados da rede (tenant atual)
+- `breakdown_by_store` (top lojas por risco no período)
 - `items` com série diária consolidada
 
 ## 3) Regras v1
@@ -94,6 +96,6 @@ Resposta:
 ## 4) Compatibilidade e evolução
 - v1 prioriza trilha de valor por loja.
 - v2 deve incluir:
-  - breakdown nativo por loja dentro dos endpoints de rede;
+  - breakdown nativo por loja e por turno dentro dos endpoints de rede;
   - regras de attribution por janela/turno;
   - reconciliação com POS quando disponível.

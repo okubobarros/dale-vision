@@ -573,6 +573,7 @@ class CopilotNetworkActionOutcomeView(APIView):
                         "impact_realized_brl": 0.0,
                         "confidence_score_avg": 0.0,
                     },
+                    "breakdown_by_store": [],
                     "items": [],
                 },
                 status=status.HTTP_200_OK,
@@ -597,6 +598,23 @@ class CopilotNetworkActionOutcomeView(APIView):
             realized=Sum("impact_realized_brl"),
             confidence_avg=Avg("confidence_score"),
         )
+        breakdown_rows = list(
+            qs.values("store_id")
+            .annotate(
+                actions_dispatched=Count("id"),
+                actions_completed=Sum(
+                    models.Case(
+                        models.When(status="completed", then=1),
+                        default=0,
+                        output_field=models.IntegerField(),
+                    )
+                ),
+                impact_expected_brl=Sum("impact_expected_brl"),
+                impact_realized_brl=Sum("impact_realized_brl"),
+                confidence_score_avg=Avg("confidence_score"),
+            )
+            .order_by("-impact_expected_brl")[:10]
+        )
         return Response(
             {
                 "store_id": "all",
@@ -607,6 +625,17 @@ class CopilotNetworkActionOutcomeView(APIView):
                     "impact_realized_brl": float(summary.get("realized") or 0),
                     "confidence_score_avg": float(summary.get("confidence_avg") or 0),
                 },
+                "breakdown_by_store": [
+                    {
+                        "store_id": str(row.get("store_id")),
+                        "actions_dispatched": int(row.get("actions_dispatched") or 0),
+                        "actions_completed": int(row.get("actions_completed") or 0),
+                        "impact_expected_brl": float(row.get("impact_expected_brl") or 0),
+                        "impact_realized_brl": float(row.get("impact_realized_brl") or 0),
+                        "confidence_score_avg": float(row.get("confidence_score_avg") or 0),
+                    }
+                    for row in breakdown_rows
+                ],
                 "items": CopilotActionOutcomeSerializer(items, many=True).data,
             },
             status=status.HTTP_200_OK,
@@ -632,6 +661,7 @@ class CopilotNetworkValueLedgerDailyView(APIView):
                         "actions_completed": 0,
                         "confidence_score_avg": 0.0,
                     },
+                    "breakdown_by_store": [],
                     "items": [],
                 },
                 status=status.HTTP_200_OK,
@@ -647,6 +677,17 @@ class CopilotNetworkValueLedgerDailyView(APIView):
             actions_completed=Sum("actions_completed"),
             confidence_avg=Avg("confidence_score_avg"),
         )
+        breakdown_rows = list(
+            rows.values("store_id")
+            .annotate(
+                value_recovered_brl=Sum("value_recovered_brl"),
+                value_at_risk_brl=Sum("value_at_risk_brl"),
+                actions_dispatched=Sum("actions_dispatched"),
+                actions_completed=Sum("actions_completed"),
+                confidence_score_avg=Avg("confidence_score_avg"),
+            )
+            .order_by("-value_at_risk_brl")[:10]
+        )
         return Response(
             {
                 "store_id": "all",
@@ -658,6 +699,17 @@ class CopilotNetworkValueLedgerDailyView(APIView):
                     "actions_completed": int(totals.get("actions_completed") or 0),
                     "confidence_score_avg": float(totals.get("confidence_avg") or 0),
                 },
+                "breakdown_by_store": [
+                    {
+                        "store_id": str(row.get("store_id")),
+                        "value_recovered_brl": float(row.get("value_recovered_brl") or 0),
+                        "value_at_risk_brl": float(row.get("value_at_risk_brl") or 0),
+                        "actions_dispatched": int(row.get("actions_dispatched") or 0),
+                        "actions_completed": int(row.get("actions_completed") or 0),
+                        "confidence_score_avg": float(row.get("confidence_score_avg") or 0),
+                    }
+                    for row in breakdown_rows
+                ],
                 "items": ValueLedgerDailySerializer(rows[:200], many=True).data,
             },
             status=status.HTTP_200_OK,

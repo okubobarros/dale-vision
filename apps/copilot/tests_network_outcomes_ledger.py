@@ -45,6 +45,7 @@ class CopilotNetworkActionOutcomeViewTests(SimpleTestCase):
         self.assertEqual(response.data["store_id"], "all")
         self.assertEqual(response.data["summary"]["actions_dispatched"], 5)
         self.assertEqual(response.data["summary"]["actions_completed"], 3)
+        self.assertIn("breakdown_by_store", response.data)
         self.assertEqual(len(response.data["items"]), 1)
 
     @patch("apps.copilot.views.get_user_org_ids")
@@ -60,6 +61,7 @@ class CopilotNetworkActionOutcomeViewTests(SimpleTestCase):
         self.assertEqual(response.status_code, 200)
         self.assertEqual(response.data["store_id"], "all")
         self.assertEqual(response.data["summary"]["actions_dispatched"], 0)
+        self.assertEqual(response.data["breakdown_by_store"], [])
         self.assertEqual(response.data["items"], [])
 
 
@@ -100,4 +102,5 @@ class CopilotNetworkValueLedgerDailyViewTests(SimpleTestCase):
         self.assertEqual(response.data["store_id"], "all")
         self.assertEqual(response.data["days"], 7)
         self.assertEqual(response.data["totals"]["actions_dispatched"], 14)
+        self.assertIn("breakdown_by_store", response.data)
         self.assertEqual(len(response.data["items"]), 1)
