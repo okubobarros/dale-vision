@@ -31,11 +31,13 @@ Entregas tecnicas confirmadas em codigo:
 - Breakdown por loja no modo rede (com `store_name`).
 - Governanca de metodo no payload (`method_version_current`).
 - UI `/app/reports` com leitura executiva de risco/valor e acao rapida por loja.
+- Campo de saldo financeiro liquido (`value_net_gap_brl`) no ledger store/network.
+- Sinalizacao explicita de SLO no pipeline do ledger (`slo_breached`) em API + Reports.
 
 Pendencias para cravar fechamento da Sprint 2:
 - validacao operacional com dados reais multi-loja (evidencia em producao).
 - runbook de suporte atualizado com fluxo outcome/ledger.
-- SLO minimo para endpoints/job criticos da trilha de valor.
+- SLO minimo para endpoints/job criticos da trilha de valor (com painel e alerta operacional).
 - checklist final de aceite com evidencias centralizadas.
 
 ---
