@@ -159,6 +159,8 @@ Regra de decisao:
 3. Executar teste de rollback controlado e anexar runbook/evidencia.
 4. Consolidar decisao final S4 (`GO` ou `NO-GO`) no fim da semana.
 5. Usar runbook de campo: `docs/OPS_S4_FIELD_VALIDATION_RUNBOOK.md`.
+6. Usar playbook de 30 minutos: `70_ops/S4_Field_Validation_30min_Playbook.md`.
+7. Seguir prioridades de codigo pre-field: `70_ops/S4_Code_Priorities_PreField.md`.
 
 ## Roteiro pratico para validacao de campo (amanha)
 
