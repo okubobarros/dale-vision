@@ -77,8 +77,29 @@ jobs:
             --no-data-rate-max "${REPORT_NO_DATA_RATE_MAX}" \
             --output "artifacts/Sprint2_Evidence_Pack.md"
 
+      - name: Generate daily log entry artifact
+        run: |
+          cp dalevision-specs/70_ops/Daily_Log.md artifacts/Daily_Log.md
+          python manage.py copilot_daily_log_entry \
+            --days "${REPORT_DAYS}" \
+            --max-stores "${REPORT_MAX_STORES}" \
+            --slo-target-seconds "${REPORT_SLO_TARGET_SECONDS}" \
+            --coverage-min "${REPORT_COVERAGE_MIN}" \
+            --stale-rate-max "${REPORT_STALE_RATE_MAX}" \
+            --no-data-rate-max "${REPORT_NO_DATA_RATE_MAX}" \
+            --output "artifacts/Daily_Log_Entry.md" \
+            --append-to "artifacts/Daily_Log.md"
+
       - name: Upload evidence pack artifact
         uses: actions/upload-artifact@v4
         with:
           name: sprint2-evidence-pack
           path: artifacts/Sprint2_Evidence_Pack.md
+
+      - name: Upload daily log artifacts
+        uses: actions/upload-artifact@v4
+        with:
+          name: sprint2-daily-log
+          path: |
+            artifacts/Daily_Log_Entry.md
+            artifacts/Daily_Log.md

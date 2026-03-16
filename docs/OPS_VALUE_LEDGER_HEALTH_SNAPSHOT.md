@@ -120,6 +120,9 @@ Automação recomendada (principal):
 - workflow `.github/workflows/copilot_sprint2_evidence_pack.yml`
 - agenda diária às `23:45 UTC` + execução manual.
 - artifact: `sprint2-evidence-pack` (Markdown único para decisão executiva).
+- artifact complementar: `sprint2-daily-log` com:
+  - `Daily_Log_Entry.md` (bloco diário pronto)
+  - `Daily_Log.md` (versão appendada em artifact, sem commit automático)
 
 Variáveis opcionais (Repository Variables):
 - `COPILOT_EVIDENCE_PACK_DAYS`
@@ -128,3 +131,15 @@ Variáveis opcionais (Repository Variables):
 - `COPILOT_EVIDENCE_PACK_COVERAGE_MIN`
 - `COPILOT_EVIDENCE_PACK_STALE_RATE_MAX`
 - `COPILOT_EVIDENCE_PACK_NO_DATA_RATE_MAX`
+
+Comando utilizado para entrada diária:
+```bash
+python manage.py copilot_daily_log_entry \
+  --days 7 \
+  --max-stores 500 \
+  --slo-target-seconds 900 \
+  --coverage-min 80 \
+  --stale-rate-max 20 \
+  --no-data-rate-max 20 \
+  --append-to dalevision-specs/70_ops/Daily_Log.md
+```
