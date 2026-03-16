@@ -1088,7 +1088,10 @@ const Reports = () => {
             <article className="rounded-lg border border-slate-200 bg-slate-50 p-3">
               <p className="text-xs uppercase tracking-[0.08em] text-slate-600">Lojas monitoradas</p>
               <p className="mt-2 text-2xl font-semibold text-slate-900">{rolloutSummary?.totals?.stores ?? 0}</p>
-              <p className="text-[11px] text-slate-500 mt-1">Com policy ativa {rolloutSummary?.totals?.with_policy ?? 0}</p>
+              <p className="text-[11px] text-slate-500 mt-1">
+                Com policy ativa {rolloutSummary?.totals?.with_policy ?? 0} · atualizadas{" "}
+                {rolloutSummary?.totals?.version_gap?.up_to_date ?? 0}
+              </p>
             </article>
             <article className="rounded-lg border border-emerald-200 bg-emerald-50 p-3">
               <p className="text-xs uppercase tracking-[0.08em] text-emerald-700">Lojas saudáveis</p>
@@ -1103,7 +1106,8 @@ const Reports = () => {
                 {rolloutSummary?.totals?.health?.degraded ?? 0}
               </p>
               <p className="text-[11px] text-rose-700 mt-1">
-                Em progresso {rolloutSummary?.totals?.health?.in_progress ?? 0}
+                Em progresso {rolloutSummary?.totals?.health?.in_progress ?? 0} · desatualizadas{" "}
+                {rolloutSummary?.totals?.version_gap?.outdated ?? 0}
               </p>
             </article>
             <article className="rounded-lg border border-amber-200 bg-amber-50 p-3">
@@ -1111,7 +1115,10 @@ const Reports = () => {
               <p className="mt-2 text-2xl font-semibold text-amber-800">
                 {rolloutSummary?.totals?.health?.no_data ?? 0}
               </p>
-              <p className="text-[11px] text-amber-700 mt-1">Stable {rolloutSummary?.totals?.channel?.stable ?? 0}</p>
+              <p className="text-[11px] text-amber-700 mt-1">
+                Stable {rolloutSummary?.totals?.channel?.stable ?? 0} · gap desconhecido{" "}
+                {rolloutSummary?.totals?.version_gap?.unknown ?? 0}
+              </p>
             </article>
           </div>
           <p className="mt-3 text-xs text-slate-600">
@@ -1142,8 +1149,14 @@ const Reports = () => {
                     </span>
                   </div>
                   <p className="mt-1 text-xs text-slate-600">
-                    {item.last_event || "Sem evento"} · versão alvo {item.target_version || "—"} · motivo{" "}
-                    {item.reason_code || "não informado"}
+                    {item.last_event || "Sem evento"} · versão atual {item.current_version || "—"} · versão alvo{" "}
+                    {item.target_version || "—"} · gap{" "}
+                    {item.version_gap === "up_to_date"
+                      ? "atualizada"
+                      : item.version_gap === "outdated"
+                      ? "desatualizada"
+                      : "desconhecido"}{" "}
+                    · motivo {item.reason_code || "não informado"}
                   </p>
                   <div className="mt-2 flex flex-wrap items-center gap-2">
                     <a

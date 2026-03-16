@@ -338,6 +338,8 @@ export type StoreEdgeUpdatePolicy = {
   active: boolean
   channel: "stable" | "canary"
   target_version?: string | null
+  current_version?: string | null
+  version_gap?: "up_to_date" | "outdated" | "unknown"
   current_min_supported?: string | null
   rollout_window: {
     start_local: string
@@ -425,6 +427,11 @@ export type NetworkEdgeUpdateRolloutSummaryResponse = {
       stable: number
       canary: number
     }
+    version_gap: {
+      up_to_date: number
+      outdated: number
+      unknown: number
+    }
     health: {
       healthy: number
       degraded: number
@@ -441,7 +448,9 @@ export type NetworkEdgeUpdateRolloutSummaryResponse = {
     store_name?: string | null
     health: "degraded" | "in_progress"
     channel: "stable" | "canary"
+    current_version?: string | null
     target_version?: string | null
+    version_gap?: "up_to_date" | "outdated" | "unknown"
     last_event?: string | null
     last_status?: string | null
     reason_code?: string | null

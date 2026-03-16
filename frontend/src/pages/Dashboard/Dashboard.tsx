@@ -1960,7 +1960,10 @@ const Dashboard = () => {
                 <article className="rounded-lg border border-slate-200 bg-slate-50 p-3">
                   <p className="text-xs font-semibold uppercase tracking-wide text-slate-700">Lojas no rollout</p>
                   <p className="mt-2 text-2xl font-bold text-slate-900">{networkRolloutSummary?.totals?.stores ?? 0}</p>
-                  <p className="mt-1 text-xs text-slate-600">Com policy ativa {networkRolloutSummary?.totals?.with_policy ?? 0}</p>
+                  <p className="mt-1 text-xs text-slate-600">
+                    Com policy ativa {networkRolloutSummary?.totals?.with_policy ?? 0} · atualizadas{" "}
+                    {networkRolloutSummary?.totals?.version_gap?.up_to_date ?? 0}
+                  </p>
                 </article>
                 <article className="rounded-lg border border-emerald-200 bg-emerald-50 p-3">
                   <p className="text-xs font-semibold uppercase tracking-wide text-emerald-700">Saudáveis</p>
@@ -1975,7 +1978,8 @@ const Dashboard = () => {
                     {networkRolloutSummary?.totals?.health?.degraded ?? 0}
                   </p>
                   <p className="mt-1 text-xs text-rose-700">
-                    Em progresso {networkRolloutSummary?.totals?.health?.in_progress ?? 0}
+                    Em progresso {networkRolloutSummary?.totals?.health?.in_progress ?? 0} · desatualizadas{" "}
+                    {networkRolloutSummary?.totals?.version_gap?.outdated ?? 0}
                   </p>
                 </article>
                 <article className="rounded-lg border border-amber-200 bg-amber-50 p-3">
@@ -1983,7 +1987,10 @@ const Dashboard = () => {
                   <p className="mt-2 text-2xl font-bold text-amber-700">
                     {networkRolloutSummary?.totals?.health?.no_data ?? 0}
                   </p>
-                  <p className="mt-1 text-xs text-amber-700">Stable {networkRolloutSummary?.totals?.channel?.stable ?? 0}</p>
+                  <p className="mt-1 text-xs text-amber-700">
+                    Stable {networkRolloutSummary?.totals?.channel?.stable ?? 0} · gap desconhecido{" "}
+                    {networkRolloutSummary?.totals?.version_gap?.unknown ?? 0}
+                  </p>
                 </article>
               </div>
               <p className="mt-3 text-xs text-gray-600">
@@ -2033,7 +2040,14 @@ const Dashboard = () => {
                         </div>
                       </div>
                       <p className="mt-1 text-xs text-gray-600">
-                        {store.last_event || "Sem evento"} · versão alvo {store.target_version || "—"} · motivo {store.reason_code || "não informado"}
+                        {store.last_event || "Sem evento"} · versão atual {store.current_version || "—"} · versão alvo{" "}
+                        {store.target_version || "—"} · gap{" "}
+                        {store.version_gap === "up_to_date"
+                          ? "atualizada"
+                          : store.version_gap === "outdated"
+                          ? "desatualizada"
+                          : "desconhecido"}{" "}
+                        · motivo {store.reason_code || "não informado"}
                       </p>
                     </article>
                   ))}
