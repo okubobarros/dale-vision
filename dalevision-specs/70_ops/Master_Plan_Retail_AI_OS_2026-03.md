@@ -376,6 +376,35 @@ Mensal:
 5. Atualizar `10_product/Pricing_Plans.md` com entitlements por plano (single-store vs multi-store).
 6. Fechar aceite operacional da Sprint 2 com evidencias multi-loja e SLO documentado.
 
+### 9.1 Plano complementar (remoto + campo) sem perder trilha de sprint
+
+Objetivo:
+- manter a Sprint 2 fechada em engenharia/governanca;
+- executar validacao de campo remota nesta semana;
+- adiantar blocos de S3/S4 que destravam evolucao sem depender de visita presencial.
+
+Mapa por sprint:
+
+1. `S2` (fechamento operacional pendente)
+- Task S2-OP-01: validar nova versao em loja remota (`autostart + ingestao + camera_health + atomic events`).
+- Task S2-OP-02: rodar 48-72h de evidencias (`health snapshot`, `acceptance report`, `evidence pack`, `daily log`).
+- Task S2-OP-03: registrar GO/NO-GO operacional definitivo no fim da janela.
+
+2. `S3` (confianca de dado / CV)
+- Task S3-CV-01: calibracao assistida por admin (ROI/thresholds por camera).
+- Task S3-CV-02: baseline por segmento e checklist de falso positivo.
+- Task S3-CV-03: regras de confianca para exibicao monetaria (score bands e fallback).
+
+3. `S4` (orquestracao/execucao de campo remoto)
+- Task S4-UPD-01: contrato de auto-update por canal (`stable/canary`) e telemetria de versao.
+- Task S4-UPD-02: rollout canary com rollback automatico e health gate.
+- Task S4-UPD-03: observabilidade de update por loja/agent no suporte.
+
+Regra de prioridade:
+- primeiro garantir estabilidade + ingestao real (S2-OP).
+- segundo reduzir custo de iteracao remota com auto-update (S4-UPD).
+- terceiro endurecer qualidade de CV e confianca executiva (S3-CV).
+
 ---
 
 ## 10) Regra de ouro para investidor e execucao

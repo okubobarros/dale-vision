@@ -13,6 +13,38 @@
 1. auto-update do edge-agent;
 2. refinamento de computer vision via admin (calibracao e confianca).
 
+## Plano da semana (complementar ao roadmap de sprint)
+
+### D1-D2 (Sprint 2 operacional)
+1. Validar em loja remota:
+- autostart sem intervencao;
+- ingestao backend com `camera_health` e eventos atomicos;
+- status de pipeline no reports.
+2. Capturar primeira rodada de evidencia automatica:
+- `sprint2-evidence-pack`;
+- `sprint2-daily-log`.
+
+### D3-D4 (ponte para Sprint 4 auto-update)
+1. Definir contrato de update:
+- versao atual/alvo por loja;
+- canal `stable/canary`;
+- eventos de update (`started`, `downloaded`, `activated`, `healthy`, `rolled_back`, `failed`).
+2. Publicar runbook de rollback remoto.
+
+### D5-D7 (ponte para Sprint 3 CV/admin)
+1. Rodar ajuste de calibracao assistida por admin:
+- ROI/thresholds por camera;
+- criterios de aceitacao por segmento.
+2. Consolidar comparativo before/after:
+- fila, cobertura, confianca;
+- impacto estimado em R$ com governanca (`official/proxy/estimated`).
+
+### Entregavel da semana (executivo)
+- decisao operacional documentada: `GO` ou `NO-GO` da validacao de campo;
+- backlog priorizado e pronto para execucao de:
+1. Sprint 4 (auto-update);
+2. Sprint 3 (confianca CV/admin).
+
 ## Sprint atual (oficial)
 - `Sprint S0 - Stabilize Edge in Production`
 - Status: `IN_PROGRESS`
