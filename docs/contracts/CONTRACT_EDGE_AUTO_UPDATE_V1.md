@@ -17,6 +17,15 @@ Padronizar auto-update do edge-agent para reduzir operação manual em lojas rem
 
 ## 3) Endpoints (backend)
 
+### 3.0 Status operacional por loja (app)
+`GET /api/v1/stores/{store_id}/edge-update-status/`
+
+Uso:
+- leitura operacional para dashboard/ops com:
+  - policy ativa (`channel`, `target_version`);
+  - último evento de update;
+  - status resumido de rollout (`healthy|degraded|in_progress|no_data`).
+
 ### 3.1 Policy pull (agent -> cloud)
 `GET /api/v1/edge/update-policy/`
 
