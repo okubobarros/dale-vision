@@ -2020,6 +2020,39 @@ const Dashboard = () => {
                 {networkRolloutSummary?.rollout_health?.recommended_action ||
                   "Sem recomendação ativa de rollout para a rede."}
               </p>
+              <div className="mt-3 grid grid-cols-1 sm:grid-cols-3 gap-3">
+                <article className="rounded-lg border border-emerald-200 bg-emerald-50 p-3">
+                  <p className="text-xs uppercase tracking-[0.08em] text-emerald-700">Taxa de sucesso</p>
+                  <p className="mt-2 text-2xl font-semibold text-emerald-800">
+                    {networkRolloutSummary?.rollout_metrics?.success_rate_pct?.toFixed(1) ?? "0.0"}%
+                  </p>
+                  <p className="text-[11px] text-emerald-700 mt-1">
+                    {networkRolloutSummary?.rollout_metrics?.attempts_successful ?? 0} de{" "}
+                    {networkRolloutSummary?.rollout_metrics?.attempts_total ?? 0} tentativas
+                  </p>
+                </article>
+                <article className="rounded-lg border border-rose-200 bg-rose-50 p-3">
+                  <p className="text-xs uppercase tracking-[0.08em] text-rose-700">Taxa de falha</p>
+                  <p className="mt-2 text-2xl font-semibold text-rose-800">
+                    {networkRolloutSummary?.rollout_metrics?.failure_rate_pct?.toFixed(1) ?? "0.0"}%
+                  </p>
+                  <p className="text-[11px] text-rose-700 mt-1">
+                    Falhas {networkRolloutSummary?.rollout_metrics?.attempts_failed ?? 0} · rollback{" "}
+                    {networkRolloutSummary?.rollout_metrics?.attempts_rolled_back ?? 0}
+                  </p>
+                </article>
+                <article className="rounded-lg border border-slate-200 bg-slate-50 p-3">
+                  <p className="text-xs uppercase tracking-[0.08em] text-slate-700">Duração média</p>
+                  <p className="mt-2 text-2xl font-semibold text-slate-900">
+                    {networkRolloutSummary?.rollout_metrics?.avg_duration_seconds
+                      ? `${Math.round(networkRolloutSummary.rollout_metrics.avg_duration_seconds)}s`
+                      : "—"}
+                  </p>
+                  <p className="text-[11px] text-slate-600 mt-1">
+                    Incompletas {networkRolloutSummary?.rollout_metrics?.attempts_incomplete ?? 0}
+                  </p>
+                </article>
+              </div>
               {networkRolloutSummary?.critical_stores?.length ? (
                 <div className="mt-4 space-y-2">
                   {networkRolloutSummary.critical_stores.slice(0, 3).map((store) => (

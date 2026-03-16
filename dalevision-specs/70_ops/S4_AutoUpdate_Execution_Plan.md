@@ -42,13 +42,20 @@ Entregas concluídas desde a ultima revisao:
 - Frontend (`/app/operations`, `/app/reports`, `/app/dashboard`):
   - visao de rollout ganhou filtro por canal nas 3 superficies.
   - leitura executiva passou a exibir `versao atual`, `versao alvo` e `gap` por loja critica.
+  - Store View (`/app/operations/stores/:storeId`) passou a exibir `timeline de tentativas` agregada por attempt (status final, reason codes, duracao e drill-down de eventos).
+  - Operations/Reports/Dashboard passaram a exibir KPIs executivos de rollout:
+    - `taxa de sucesso`;
+    - `taxa de falha`;
+    - `duracao media por tentativa`.
+  - endpoint de rede passou a retornar `rollout_metrics` com governanca tipada no frontend.
+  - endpoint de tentativas por loja ficou consistente com `limit` (default 50, max 200) e resposta paginada por limite solicitado.
 
 Leitura atual de estado por ticket:
 - `S4-UPD-01`: `DONE (ENG)` / `PENDING (campo)`
 - `S4-UPD-02`: `DONE (ENG)` / `PENDING (campo)`
 - `S4-UPD-03`: `DONE (ENG)` / `PENDING (canary real)`
 - `S4-UPD-04`: `DONE (ENG)` / `PENDING (rollback validado em loja)`
-- `S4-UPD-05`: `DONE (ENG)`
+- `S4-UPD-05`: `DONE (ENG)` / `PENDING (evidencia final de suporte em campo)`
 
 ### S4-UPD-01: Contrato e política de update
 Owner: Backend  

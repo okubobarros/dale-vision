@@ -1147,6 +1147,39 @@ const Reports = () => {
           <p className="mt-3 text-xs text-slate-600">
             {rolloutSummary?.rollout_health?.recommended_action || "Sem recomendação de rollout no momento."}
           </p>
+          <div className="mt-3 grid grid-cols-1 sm:grid-cols-3 gap-3">
+            <article className="rounded-lg border border-emerald-200 bg-emerald-50 p-3">
+              <p className="text-xs uppercase tracking-[0.08em] text-emerald-700">Taxa de sucesso</p>
+              <p className="mt-2 text-2xl font-semibold text-emerald-800">
+                {rolloutSummary?.rollout_metrics?.success_rate_pct?.toFixed(1) ?? "0.0"}%
+              </p>
+              <p className="text-[11px] text-emerald-700 mt-1">
+                {rolloutSummary?.rollout_metrics?.attempts_successful ?? 0} de{" "}
+                {rolloutSummary?.rollout_metrics?.attempts_total ?? 0} tentativas
+              </p>
+            </article>
+            <article className="rounded-lg border border-rose-200 bg-rose-50 p-3">
+              <p className="text-xs uppercase tracking-[0.08em] text-rose-700">Taxa de falha</p>
+              <p className="mt-2 text-2xl font-semibold text-rose-800">
+                {rolloutSummary?.rollout_metrics?.failure_rate_pct?.toFixed(1) ?? "0.0"}%
+              </p>
+              <p className="text-[11px] text-rose-700 mt-1">
+                Falhas {rolloutSummary?.rollout_metrics?.attempts_failed ?? 0} · rollback{" "}
+                {rolloutSummary?.rollout_metrics?.attempts_rolled_back ?? 0}
+              </p>
+            </article>
+            <article className="rounded-lg border border-slate-200 bg-slate-50 p-3">
+              <p className="text-xs uppercase tracking-[0.08em] text-slate-700">Duração média</p>
+              <p className="mt-2 text-2xl font-semibold text-slate-900">
+                {rolloutSummary?.rollout_metrics?.avg_duration_seconds
+                  ? `${Math.round(rolloutSummary.rollout_metrics.avg_duration_seconds)}s`
+                  : "—"}
+              </p>
+              <p className="text-[11px] text-slate-600 mt-1">
+                Incompletas {rolloutSummary?.rollout_metrics?.attempts_incomplete ?? 0}
+              </p>
+            </article>
+          </div>
           {!rolloutSummary?.critical_stores?.length ? (
             <p className="mt-3 text-sm text-slate-500">Sem lojas críticas de update neste momento.</p>
           ) : (

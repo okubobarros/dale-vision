@@ -11,16 +11,6 @@ from apps.cameras.permissions import ALLOWED_READ_ROLES, require_store_role
 from apps.core.models import Store
 from apps.edge.models import EdgeUpdateEvent
 
-
-SUCCESS_FLOW = {
-    "edge_update_started",
-    "edge_update_downloaded",
-    "edge_update_verified",
-    "edge_update_activated",
-    "edge_update_healthy",
-}
-
-
 class StoreEdgeUpdateAttemptsView(APIView):
     permission_classes = [IsAuthenticated]
 
@@ -78,7 +68,7 @@ class StoreEdgeUpdateAttemptsView(APIView):
                 final_status = "failed"
             elif "rolled_back" in statuses or "edge_update_rolled_back" in event_names:
                 final_status = "rolled_back"
-            elif "healthy" in statuses and SUCCESS_FLOW.issubset(event_names):
+            elif "healthy" in statuses or "edge_update_healthy" in event_names:
                 final_status = "healthy"
             else:
                 final_status = "incomplete"

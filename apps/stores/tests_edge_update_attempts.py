@@ -107,7 +107,7 @@ class StoreEdgeUpdateAttemptsViewTests(SimpleTestCase):
         self.assertEqual(response.data["filters"]["limit"], 20)
         self.assertEqual(len(response.data["items"]), 2)
         statuses = {item["attempt"]: item["final_status"] for item in response.data["items"]}
-        self.assertEqual(statuses[1], "incomplete")
+        self.assertEqual(statuses[1], "healthy")
         self.assertEqual(statuses[2], "failed")
 
     @patch("apps.stores.views_edge_update_attempts.EdgeUpdateEvent.objects.filter")
@@ -160,4 +160,3 @@ class StoreEdgeUpdateAttemptsViewTests(SimpleTestCase):
         self.assertEqual(response.status_code, 200)
         self.assertEqual(response.data["filters"]["limit"], 10)
         self.assertEqual(len(response.data["items"]), 10)
-
