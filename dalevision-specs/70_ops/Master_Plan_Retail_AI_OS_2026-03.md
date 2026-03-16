@@ -21,7 +21,7 @@ Escopo: backend + frontend + edge + dados + copiloto + operacao
 ## Atualizacao de execucao (2026-03-15)
 
 Status pratico da trilha de produto/ROI:
-- Sprint 2: `IN_PROGRESS (80-85%)`.
+- Sprint 2: `DONE (ENG + GOVERNANCA)` com `VALIDACAO DE CAMPO PENDENTE`.
 - Avanco principal: loop `dispatch -> outcome -> value ledger` implementado no backend/frontend de reports.
 
 Entregas tecnicas confirmadas em codigo:
@@ -34,15 +34,35 @@ Entregas tecnicas confirmadas em codigo:
 - Campo de saldo financeiro liquido (`value_net_gap_brl`) no ledger store/network.
 - Sinalizacao explicita de SLO no pipeline do ledger (`slo_breached`) em API + Reports.
 
-Pendencias para cravar fechamento da Sprint 2:
-- validacao operacional com dados reais multi-loja (evidencia em producao).
-- runbook de suporte atualizado com fluxo outcome/ledger.
-- SLO minimo para endpoints/job criticos da trilha de valor (com painel e alerta operacional).
-- checklist final de aceite com evidencias centralizadas (comando `copilot_sprint2_evidence_pack`).
+Checklist de fechamento Sprint 2 (estado atual):
+- [x] runbook de suporte atualizado com fluxo outcome/ledger.
+- [x] SLO minimo para endpoints/job criticos da trilha de valor (painel + alertas no reports).
+- [x] checklist final centralizado com evidencias (health snapshot + acceptance report + evidence pack + daily log entry).
+- [ ] validacao operacional com dados reais multi-loja (evidencia em loja remota nesta semana).
 
 Avanco de governanca operacional (15/03/2026):
 - comando `copilot_value_ledger_health_snapshot` implementado para gerar evidencia diaria multi-loja (`stdout + JSON`), com cobertura, frescor/SLO e gap liquido por loja.
 - comando `copilot_sprint2_evidence_pack` implementado e automatizado via workflow diario para consolidar checklist final + decisao GO/NO-GO em um unico markdown.
+- status `sprint2_acceptance` exposto em `/app/reports` para leitura executiva direta de GO/NO-GO.
+
+Decisao de trilha:
+- Sprint 2 considerada `done` para engenharia e governanca.
+- Fechamento operacional definitivo sera registrado apos validacao de campo (loja geograficamente distante).
+- Enquanto isso, a equipe segue em paralelo com itens de sprint seguinte (auto-update edge + refinamento CV/admin).
+
+---
+
+## Proximo foco (paralelo ao campo)
+
+### Trilha A - Auto-update Edge (S2/S3)
+- rollout seguro de versao por lotes (canary 1 loja -> 5 lojas -> rede).
+- telemetria de update (sucesso/falha, rollback, tempo de recuperacao).
+- controles de versao no dashboard/admin.
+
+### Trilha B - Computer Vision e Refinamento Admin (S3)
+- calibracao por segmento de loja (cafeteria, lavanderia, moda, farmacia etc.).
+- ajustes assistidos por admin para ROI/thresholds sem depender do usuario final.
+- hardening de confianca (deteccao de drift, dedupe de evento, controle de falso positivo).
 
 ---
 

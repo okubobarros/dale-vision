@@ -6,6 +6,13 @@
 ## Data de referencia
 - 2026-03-09
 
+## Atualizacao complementar (2026-03-15)
+- Trilha produto/ROI (Sprint 2): `DONE (ENG + GOVERNANCA)` com validacao de campo pendente.
+- Pendencia remanescente: evidencia operacional em loja remota (dados reais multi-loja).
+- Decisao: manter checklist de Sprint 2 marcado como concluido em engenharia e seguir em paralelo com:
+1. auto-update do edge-agent;
+2. refinamento de computer vision via admin (calibracao e confianca).
+
 ## Sprint atual (oficial)
 - `Sprint S0 - Stabilize Edge in Production`
 - Status: `IN_PROGRESS`
