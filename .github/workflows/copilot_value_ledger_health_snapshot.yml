@@ -1,0 +1,66 @@
+name: Copilot Value Ledger Health Snapshot
+
+on:
+  schedule:
+    - cron: "0 * * * *"
+  workflow_dispatch:
+    inputs:
+      days:
+        description: "Janela de dias (1-180)"
+        required: false
+        default: "7"
+      max_stores:
+        description: "Máximo de lojas por execução"
+        required: false
+        default: "500"
+      slo_target_seconds:
+        description: "SLO alvo em segundos"
+        required: false
+        default: "900"
+
+concurrency:
+  group: copilot-value-ledger-health-snapshot
+  cancel-in-progress: false
+
+jobs:
+  run-snapshot:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    env:
+      FORCE_JAVASCRIPT_ACTIONS_TO_NODE24: "true"
+      DJANGO_SECRET_KEY: ${{ secrets.DJANGO_SECRET_KEY }}
+      DEBUG: "0"
+      DATABASE_URL: ${{ secrets.DATABASE_URL }}
+      ALLOWED_HOSTS: ${{ secrets.ALLOWED_HOSTS || 'api.dalevision.com,.onrender.com' }}
+      SNAPSHOT_DAYS: ${{ github.event.inputs.days || vars.COPILOT_LEDGER_SNAPSHOT_DAYS || '7' }}
+      SNAPSHOT_MAX_STORES: ${{ github.event.inputs.max_stores || vars.COPILOT_LEDGER_SNAPSHOT_MAX_STORES || '500' }}
+      SNAPSHOT_SLO_TARGET_SECONDS: ${{ github.event.inputs.slo_target_seconds || vars.COPILOT_LEDGER_SNAPSHOT_SLO_SECONDS || '900' }}
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Setup Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+
+      - name: Install dependencies
+        run: |
+          python -m pip install --upgrade pip setuptools wheel
+          pip install -r requirements.prod.txt
+
+      - name: Generate ledger health snapshot
+        run: |
+          mkdir -p artifacts
+          python manage.py copilot_value_ledger_health_snapshot \
+            --days "${SNAPSHOT_DAYS}" \
+            --max-stores "${SNAPSHOT_MAX_STORES}" \
+            --slo-target-seconds "${SNAPSHOT_SLO_TARGET_SECONDS}" \
+            --json-output "artifacts/value_ledger_health_snapshot.json"
+
+      - name: Upload snapshot artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: value-ledger-health-snapshot
+          path: artifacts/value_ledger_health_snapshot.json

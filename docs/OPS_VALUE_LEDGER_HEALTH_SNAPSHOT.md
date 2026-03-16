@@ -44,3 +44,21 @@ python manage.py copilot_value_ledger_health_snapshot \
   - `coverage_rate >= 80%`
   - `stale` em tendência de queda
   - `no_data` somente para lojas explicitamente sem operação no período.
+
+## Automação via GitHub Actions
+Workflow:
+- `.github/workflows/copilot_value_ledger_health_snapshot.yml`
+
+Comportamento:
+- `schedule`: executa de hora em hora (`0 * * * *`).
+- `workflow_dispatch`: execução manual com parâmetros (`days`, `max_stores`, `slo_target_seconds`).
+- gera artifact `value-ledger-health-snapshot` com o JSON do snapshot.
+
+Secrets obrigatórios:
+- `DJANGO_SECRET_KEY`
+- `DATABASE_URL`
+
+Variáveis opcionais (Repository Variables):
+- `COPILOT_LEDGER_SNAPSHOT_DAYS`
+- `COPILOT_LEDGER_SNAPSHOT_MAX_STORES`
+- `COPILOT_LEDGER_SNAPSHOT_SLO_SECONDS`
