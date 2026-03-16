@@ -142,6 +142,64 @@ Resposta (resumo):
 }
 ```
 
+### 3.0.6 Resumo de validação S4 (GO/NO-GO) em nível de rede
+`GET /api/v1/stores/network/edge-update-validation-summary/`
+
+Query params:
+- `channel` (opcional: `stable|canary`; default `all`)
+- `hours` (opcional; default `72`; max operacional definido no backend)
+
+Uso:
+- consolidar decisão operacional de campo (`GO` ou `NO-GO`) com checklist objetivo;
+- servir Dashboard/Operations/Reports com leitura única de readiness da Sprint 4;
+- reduzir dependência de comando manual para leitura executiva diária.
+
+Resposta (resumo):
+```json
+{
+  "scope": "network",
+  "filters": {
+    "channel": "all",
+    "hours": 72
+  },
+  "summary": {
+    "stores_total": 12,
+    "stores_with_healthy_attempt": 3,
+    "stores_with_failure_attempt": 2,
+    "stores_with_rollback_attempt": 1,
+    "attempts_total": 18,
+    "healthy_attempts": 10,
+    "failed_attempts": 5,
+    "rollback_attempts": 2,
+    "incomplete_attempts": 1,
+    "success_rate_pct": 55.56,
+    "failure_rate_pct": 27.78,
+    "rollback_rate_pct": 11.11,
+    "avg_duration_seconds": 92.4,
+    "decision": "NO-GO"
+  },
+  "checklist": {
+    "canary_ready": true,
+    "rollback_ready": true,
+    "telemetry_ready": true
+  },
+  "stores": [
+    {
+      "store_id": "47daec5a-11c3-4556-8dd8-fd2b00aa1bb0",
+      "attempts_total": 4,
+      "healthy_attempts": 2,
+      "failed_attempts": 1,
+      "rollback_attempts": 1,
+      "incomplete_attempts": 0,
+      "has_healthy_attempt": true,
+      "has_failure_attempt": true,
+      "has_rollback_attempt": true
+    }
+  ],
+  "generated_at": "2026-03-16T22:55:00Z"
+}
+```
+
 ### 3.1 Policy pull (agent -> cloud)
 `GET /api/v1/edge/update-policy/`
 
