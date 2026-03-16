@@ -708,7 +708,7 @@ const Reports = () => {
               {networkLedgerBreakdown.slice(0, 5).map((item) => (
                 <article
                   key={item.store_id}
-                  className="flex items-center justify-between rounded-lg border border-slate-200 bg-slate-50 p-3"
+                  className="flex flex-col gap-3 rounded-lg border border-slate-200 bg-slate-50 p-3 md:flex-row md:items-center md:justify-between"
                 >
                   <div>
                     <p className="text-sm font-semibold text-slate-800">
@@ -718,9 +718,18 @@ const Reports = () => {
                       Recuperado {formatCurrencyBRL(item.value_recovered_brl)} · Ações {item.actions_dispatched}
                     </p>
                   </div>
-                  <p className="text-sm font-semibold text-rose-600">
-                    {formatCurrencyBRL(item.value_at_risk_brl)} em risco
-                  </p>
+                  <div className="flex items-center gap-3">
+                    <p className="text-sm font-semibold text-rose-600">
+                      {formatCurrencyBRL(item.value_at_risk_brl)} em risco
+                    </p>
+                    <button
+                      type="button"
+                      onClick={() => setSelectedStore(item.store_id)}
+                      className="rounded-lg border border-slate-300 bg-white px-3 py-1.5 text-xs font-semibold text-slate-700 hover:bg-slate-100"
+                    >
+                      Abrir loja
+                    </button>
+                  </div>
                 </article>
               ))}
             </div>
