@@ -93,3 +93,25 @@ Variáveis opcionais (Repository Variables):
 - `COPILOT_ACCEPTANCE_REPORT_COVERAGE_MIN`
 - `COPILOT_ACCEPTANCE_REPORT_STALE_RATE_MAX`
 - `COPILOT_ACCEPTANCE_REPORT_NO_DATA_RATE_MAX`
+
+## Pacote final de evidencias (checklist centralizado)
+Comando:
+```bash
+python manage.py copilot_sprint2_evidence_pack \
+  --days 7 \
+  --max-stores 500 \
+  --slo-target-seconds 900 \
+  --coverage-min 80 \
+  --stale-rate-max 20 \
+  --no-data-rate-max 20
+```
+
+Saida default:
+- `dalevision-specs/70_ops/Sprint2_Evidence_Pack_YYYY-MM-DD.md`
+
+Conteudo:
+- decisao `GO/NO-GO`;
+- checklist final de fechamento da Sprint 2;
+- KPIs de aceite (coverage/stale/no_data/completion/recovery/gap);
+- top lojas por risco liquido;
+- referencias de workflows/docs para auditoria.

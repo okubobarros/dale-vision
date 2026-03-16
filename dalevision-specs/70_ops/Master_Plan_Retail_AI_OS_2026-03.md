@@ -38,7 +38,7 @@ Pendencias para cravar fechamento da Sprint 2:
 - validacao operacional com dados reais multi-loja (evidencia em producao).
 - runbook de suporte atualizado com fluxo outcome/ledger.
 - SLO minimo para endpoints/job criticos da trilha de valor (com painel e alerta operacional).
-- checklist final de aceite com evidencias centralizadas.
+- checklist final de aceite com evidencias centralizadas (comando `copilot_sprint2_evidence_pack`).
 
 Avanco de governanca operacional (15/03/2026):
 - comando `copilot_value_ledger_health_snapshot` implementado para gerar evidencia diaria multi-loja (`stdout + JSON`), com cobertura, frescor/SLO e gap liquido por loja.
