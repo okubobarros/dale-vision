@@ -62,3 +62,34 @@ Variáveis opcionais (Repository Variables):
 - `COPILOT_LEDGER_SNAPSHOT_DAYS`
 - `COPILOT_LEDGER_SNAPSHOT_MAX_STORES`
 - `COPILOT_LEDGER_SNAPSHOT_SLO_SECONDS`
+
+## Relatório diário de aceite (GO/NO-GO)
+Comando:
+```bash
+python manage.py copilot_value_ledger_acceptance_report \
+  --days 7 \
+  --max-stores 500 \
+  --slo-target-seconds 900 \
+  --coverage-min 80 \
+  --stale-rate-max 20 \
+  --no-data-rate-max 20
+```
+
+Saída default:
+- `dalevision-specs/70_ops/Sprint2_Acceptance_Report_YYYY-MM-DD.md`
+
+Objetivo:
+- transformar o snapshot técnico em decisão operacional diária de sprint (`GO` ou `NO-GO`) com critérios explícitos.
+
+Automação:
+- workflow `.github/workflows/copilot_sprint2_acceptance_report.yml`
+- agenda diária às `23:30 UTC` + execução manual.
+- artifact: `sprint2-acceptance-report` (Markdown consolidado).
+
+Variáveis opcionais (Repository Variables):
+- `COPILOT_ACCEPTANCE_REPORT_DAYS`
+- `COPILOT_ACCEPTANCE_REPORT_MAX_STORES`
+- `COPILOT_ACCEPTANCE_REPORT_SLO_SECONDS`
+- `COPILOT_ACCEPTANCE_REPORT_COVERAGE_MIN`
+- `COPILOT_ACCEPTANCE_REPORT_STALE_RATE_MAX`
+- `COPILOT_ACCEPTANCE_REPORT_NO_DATA_RATE_MAX`

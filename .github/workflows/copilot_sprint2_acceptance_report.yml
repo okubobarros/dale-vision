@@ -1,0 +1,84 @@
+name: Copilot Sprint2 Acceptance Report
+
+on:
+  schedule:
+    - cron: "30 23 * * *"
+  workflow_dispatch:
+    inputs:
+      days:
+        description: "Janela de dias (1-180)"
+        required: false
+        default: "7"
+      max_stores:
+        description: "Máximo de lojas por execução"
+        required: false
+        default: "500"
+      slo_target_seconds:
+        description: "SLO alvo em segundos"
+        required: false
+        default: "900"
+      coverage_min:
+        description: "Cobertura mínima (%)"
+        required: false
+        default: "80"
+      stale_rate_max:
+        description: "Taxa máxima stale (%)"
+        required: false
+        default: "20"
+      no_data_rate_max:
+        description: "Taxa máxima no_data (%)"
+        required: false
+        default: "20"
+
+concurrency:
+  group: copilot-sprint2-acceptance-report
+  cancel-in-progress: false
+
+jobs:
+  run-report:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    env:
+      FORCE_JAVASCRIPT_ACTIONS_TO_NODE24: "true"
+      DJANGO_SECRET_KEY: ${{ secrets.DJANGO_SECRET_KEY }}
+      DEBUG: "0"
+      DATABASE_URL: ${{ secrets.DATABASE_URL }}
+      ALLOWED_HOSTS: ${{ secrets.ALLOWED_HOSTS || 'api.dalevision.com,.onrender.com' }}
+      REPORT_DAYS: ${{ github.event.inputs.days || vars.COPILOT_ACCEPTANCE_REPORT_DAYS || '7' }}
+      REPORT_MAX_STORES: ${{ github.event.inputs.max_stores || vars.COPILOT_ACCEPTANCE_REPORT_MAX_STORES || '500' }}
+      REPORT_SLO_TARGET_SECONDS: ${{ github.event.inputs.slo_target_seconds || vars.COPILOT_ACCEPTANCE_REPORT_SLO_SECONDS || '900' }}
+      REPORT_COVERAGE_MIN: ${{ github.event.inputs.coverage_min || vars.COPILOT_ACCEPTANCE_REPORT_COVERAGE_MIN || '80' }}
+      REPORT_STALE_RATE_MAX: ${{ github.event.inputs.stale_rate_max || vars.COPILOT_ACCEPTANCE_REPORT_STALE_RATE_MAX || '20' }}
+      REPORT_NO_DATA_RATE_MAX: ${{ github.event.inputs.no_data_rate_max || vars.COPILOT_ACCEPTANCE_REPORT_NO_DATA_RATE_MAX || '20' }}
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Setup Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+
+      - name: Install dependencies
+        run: |
+          python -m pip install --upgrade pip setuptools wheel
+          pip install -r requirements.prod.txt
+
+      - name: Generate acceptance markdown
+        run: |
+          mkdir -p artifacts
+          python manage.py copilot_value_ledger_acceptance_report \
+            --days "${REPORT_DAYS}" \
+            --max-stores "${REPORT_MAX_STORES}" \
+            --slo-target-seconds "${REPORT_SLO_TARGET_SECONDS}" \
+            --coverage-min "${REPORT_COVERAGE_MIN}" \
+            --stale-rate-max "${REPORT_STALE_RATE_MAX}" \
+            --no-data-rate-max "${REPORT_NO_DATA_RATE_MAX}" \
+            --output "artifacts/Sprint2_Acceptance_Report.md"
+
+      - name: Upload acceptance report artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: sprint2-acceptance-report
+          path: artifacts/Sprint2_Acceptance_Report.md
