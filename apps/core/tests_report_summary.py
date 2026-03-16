@@ -23,7 +23,9 @@ class ReportSummaryViewTests(SimpleTestCase):
         assert payload["incident_response"]["failures_total"] == 0
         assert payload["incident_response"]["runbook_opened_total"] == 0
         assert payload["action_execution"]["actions_dispatched_total"] == 0
+        assert payload["action_execution"]["actions_failed_total"] == 0
         assert payload["action_execution"]["sources"]["reports"]["dispatched"] == 0
+        assert payload["action_execution"]["sources"]["reports"]["failed"] == 0
 
     @patch("apps.core.views_report._build_report_payload")
     @patch("apps.core.views_report._parse_date_range")
@@ -85,14 +87,16 @@ class ReportSummaryViewTests(SimpleTestCase):
                 },
                 "actions_dispatched_total": 10,
                 "actions_completed_total": 4,
+                "actions_failed_total": 2,
                 "completion_rate": 40.0,
+                "failure_rate": 20.0,
                 "sources": {
-                    "dashboard": {"dispatched": 2, "completed": 1, "completion_rate": 50.0},
-                    "reports": {"dispatched": 6, "completed": 2, "completion_rate": 33.3},
-                    "operations": {"dispatched": 2, "completed": 1, "completion_rate": 50.0},
-                    "other": {"dispatched": 0, "completed": 0, "completion_rate": 0.0},
+                    "dashboard": {"dispatched": 2, "completed": 1, "failed": 0, "completion_rate": 50.0, "failure_rate": 0.0},
+                    "reports": {"dispatched": 6, "completed": 2, "failed": 2, "completion_rate": 33.3, "failure_rate": 33.3},
+                    "operations": {"dispatched": 2, "completed": 1, "failed": 0, "completion_rate": 50.0, "failure_rate": 0.0},
+                    "other": {"dispatched": 0, "completed": 0, "failed": 0, "completion_rate": 0.0, "failure_rate": 0.0},
                 },
-                "rollout": {"dispatched": 3, "completed": 1, "completion_rate": 33.3},
+                "rollout": {"dispatched": 3, "completed": 1, "failed": 1, "completion_rate": 33.3, "failure_rate": 33.3},
                 "top_source": "reports",
             },
         }

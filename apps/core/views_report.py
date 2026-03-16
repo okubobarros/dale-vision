@@ -318,17 +318,21 @@ def _build_report_payload(*, org_id: str, store_id: str | None, start, end):
         },
         "actions_dispatched_total": 0,
         "actions_completed_total": 0,
+        "actions_failed_total": 0,
         "completion_rate": 0.0,
+        "failure_rate": 0.0,
         "sources": {
-            "dashboard": {"dispatched": 0, "completed": 0, "completion_rate": 0.0},
-            "reports": {"dispatched": 0, "completed": 0, "completion_rate": 0.0},
-            "operations": {"dispatched": 0, "completed": 0, "completion_rate": 0.0},
-            "other": {"dispatched": 0, "completed": 0, "completion_rate": 0.0},
+            "dashboard": {"dispatched": 0, "completed": 0, "failed": 0, "completion_rate": 0.0, "failure_rate": 0.0},
+            "reports": {"dispatched": 0, "completed": 0, "failed": 0, "completion_rate": 0.0, "failure_rate": 0.0},
+            "operations": {"dispatched": 0, "completed": 0, "failed": 0, "completion_rate": 0.0, "failure_rate": 0.0},
+            "other": {"dispatched": 0, "completed": 0, "failed": 0, "completion_rate": 0.0, "failure_rate": 0.0},
         },
         "rollout": {
             "dispatched": 0,
             "completed": 0,
+            "failed": 0,
             "completion_rate": 0.0,
+            "failure_rate": 0.0,
         },
         "top_source": None,
     }
@@ -431,23 +435,30 @@ def _build_report_payload(*, org_id: str, store_id: str | None, start, end):
         )
         actions_dispatched_total = action_qs.count()
         actions_completed_total = action_qs.filter(status="completed").count()
+        actions_failed_total = action_qs.filter(status="failed").count()
         completion_rate = (
             round((actions_completed_total / actions_dispatched_total) * 100, 1)
             if actions_dispatched_total > 0
             else 0.0
         )
+        failure_rate = (
+            round((actions_failed_total / actions_dispatched_total) * 100, 1)
+            if actions_dispatched_total > 0
+            else 0.0
+        )
 
         source_buckets = {
-            "dashboard": {"dispatched": 0, "completed": 0, "completion_rate": 0.0},
-            "reports": {"dispatched": 0, "completed": 0, "completion_rate": 0.0},
-            "operations": {"dispatched": 0, "completed": 0, "completion_rate": 0.0},
-            "other": {"dispatched": 0, "completed": 0, "completion_rate": 0.0},
+            "dashboard": {"dispatched": 0, "completed": 0, "failed": 0, "completion_rate": 0.0, "failure_rate": 0.0},
+            "reports": {"dispatched": 0, "completed": 0, "failed": 0, "completion_rate": 0.0, "failure_rate": 0.0},
+            "operations": {"dispatched": 0, "completed": 0, "failed": 0, "completion_rate": 0.0, "failure_rate": 0.0},
+            "other": {"dispatched": 0, "completed": 0, "failed": 0, "completion_rate": 0.0, "failure_rate": 0.0},
         }
         source_rows = (
             action_qs.values("source")
             .annotate(
                 dispatched=Count("id"),
                 completed=Count("id", filter=Q(status="completed")),
+                failed=Count("id", filter=Q(status="failed")),
             )
             .order_by("-dispatched")
         )
@@ -468,17 +479,26 @@ def _build_report_payload(*, org_id: str, store_id: str | None, start, end):
             key = _source_key(row.get("source"))
             source_buckets[key]["dispatched"] += int(row.get("dispatched") or 0)
             source_buckets[key]["completed"] += int(row.get("completed") or 0)
+            source_buckets[key]["failed"] += int(row.get("failed") or 0)
 
         for key, item in source_buckets.items():
             dispatched = item["dispatched"]
             completed = item["completed"]
+            failed = item["failed"]
             item["completion_rate"] = round((completed / dispatched) * 100, 1) if dispatched > 0 else 0.0
+            item["failure_rate"] = round((failed / dispatched) * 100, 1) if dispatched > 0 else 0.0
 
         rollout_qs = action_qs.filter(action_type="edge_rollout_intervention")
         rollout_dispatched = rollout_qs.count()
         rollout_completed = rollout_qs.filter(status="completed").count()
+        rollout_failed = rollout_qs.filter(status="failed").count()
         rollout_completion_rate = (
             round((rollout_completed / rollout_dispatched) * 100, 1)
+            if rollout_dispatched > 0
+            else 0.0
+        )
+        rollout_failure_rate = (
+            round((rollout_failed / rollout_dispatched) * 100, 1)
             if rollout_dispatched > 0
             else 0.0
         )
@@ -487,12 +507,16 @@ def _build_report_payload(*, org_id: str, store_id: str | None, start, end):
             **action_execution,
             "actions_dispatched_total": actions_dispatched_total,
             "actions_completed_total": actions_completed_total,
+            "actions_failed_total": actions_failed_total,
             "completion_rate": completion_rate,
+            "failure_rate": failure_rate,
             "sources": source_buckets,
             "rollout": {
                 "dispatched": rollout_dispatched,
                 "completed": rollout_completed,
+                "failed": rollout_failed,
                 "completion_rate": rollout_completion_rate,
+                "failure_rate": rollout_failure_rate,
             },
             "top_source": top_source,
         }
@@ -1068,17 +1092,21 @@ class ReportSummaryView(APIView):
                         },
                         "actions_dispatched_total": 0,
                         "actions_completed_total": 0,
+                        "actions_failed_total": 0,
                         "completion_rate": 0.0,
+                        "failure_rate": 0.0,
                         "sources": {
-                            "dashboard": {"dispatched": 0, "completed": 0, "completion_rate": 0.0},
-                            "reports": {"dispatched": 0, "completed": 0, "completion_rate": 0.0},
-                            "operations": {"dispatched": 0, "completed": 0, "completion_rate": 0.0},
-                            "other": {"dispatched": 0, "completed": 0, "completion_rate": 0.0},
+                            "dashboard": {"dispatched": 0, "completed": 0, "failed": 0, "completion_rate": 0.0, "failure_rate": 0.0},
+                            "reports": {"dispatched": 0, "completed": 0, "failed": 0, "completion_rate": 0.0, "failure_rate": 0.0},
+                            "operations": {"dispatched": 0, "completed": 0, "failed": 0, "completion_rate": 0.0, "failure_rate": 0.0},
+                            "other": {"dispatched": 0, "completed": 0, "failed": 0, "completion_rate": 0.0, "failure_rate": 0.0},
                         },
                         "rollout": {
                             "dispatched": 0,
                             "completed": 0,
+                            "failed": 0,
                             "completion_rate": 0.0,
+                            "failure_rate": 0.0,
                         },
                         "top_source": None,
                     },

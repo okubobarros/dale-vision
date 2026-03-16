@@ -998,7 +998,7 @@ const Reports = () => {
             {actionExecution?.method?.version || "action_execution_v1_2026-03-16"}
           </span>
         </div>
-        <div className="mt-3 grid grid-cols-1 md:grid-cols-2 xl:grid-cols-4 gap-3">
+        <div className="mt-3 grid grid-cols-1 md:grid-cols-2 xl:grid-cols-5 gap-3">
           <article className="rounded-lg border border-slate-200 bg-slate-50 p-3">
             <p className="text-xs uppercase tracking-[0.08em] text-slate-600">Despachadas</p>
             <p className="mt-2 text-2xl font-semibold text-slate-900">
@@ -1011,10 +1011,19 @@ const Reports = () => {
               {actionExecution?.actions_completed_total ?? 0}
             </p>
           </article>
+          <article className="rounded-lg border border-rose-200 bg-rose-50 p-3">
+            <p className="text-xs uppercase tracking-[0.08em] text-rose-700">Falharam</p>
+            <p className="mt-2 text-2xl font-semibold text-rose-800">
+              {actionExecution?.actions_failed_total ?? 0}
+            </p>
+          </article>
           <article className="rounded-lg border border-indigo-200 bg-indigo-50 p-3">
             <p className="text-xs uppercase tracking-[0.08em] text-indigo-700">Taxa de conclusão</p>
             <p className="mt-2 text-2xl font-semibold text-indigo-800">
               {(actionExecution?.completion_rate ?? 0).toFixed(1)}%
+            </p>
+            <p className="mt-1 text-[11px] text-indigo-700">
+              Falha {(actionExecution?.failure_rate ?? 0).toFixed(1)}%
             </p>
           </article>
           <article className="rounded-lg border border-amber-200 bg-amber-50 p-3">
@@ -1023,7 +1032,8 @@ const Reports = () => {
               {actionExecution?.top_source || "—"}
             </p>
             <p className="mt-1 text-[11px] text-amber-700">
-              Rollout {(actionExecution?.rollout?.completion_rate ?? 0).toFixed(1)}%
+              Rollout {(actionExecution?.rollout?.completion_rate ?? 0).toFixed(1)}% · Falha{" "}
+              {(actionExecution?.rollout?.failure_rate ?? 0).toFixed(1)}%
             </p>
           </article>
         </div>
@@ -1033,7 +1043,12 @@ const Reports = () => {
               <p className="font-semibold text-slate-700 uppercase">{sourceKey}</p>
               <p className="mt-1 text-slate-600">
                 {actionExecution?.sources?.[sourceKey]?.dispatched ?? 0} despachadas ·{" "}
-                {actionExecution?.sources?.[sourceKey]?.completed ?? 0} concluídas
+                {actionExecution?.sources?.[sourceKey]?.completed ?? 0} concluídas ·{" "}
+                {actionExecution?.sources?.[sourceKey]?.failed ?? 0} falharam
+              </p>
+              <p className="mt-1 text-slate-500">
+                Conclusão {(actionExecution?.sources?.[sourceKey]?.completion_rate ?? 0).toFixed(1)}% · Falha{" "}
+                {(actionExecution?.sources?.[sourceKey]?.failure_rate ?? 0).toFixed(1)}%
               </p>
             </div>
           ))}

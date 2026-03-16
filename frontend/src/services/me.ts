@@ -95,14 +95,16 @@ export type ReportSummary = {
     }
     actions_dispatched_total: number
     actions_completed_total: number
+    actions_failed_total: number
     completion_rate: number
+    failure_rate: number
     sources: {
-      dashboard: { dispatched: number; completed: number; completion_rate: number }
-      reports: { dispatched: number; completed: number; completion_rate: number }
-      operations: { dispatched: number; completed: number; completion_rate: number }
-      other: { dispatched: number; completed: number; completion_rate: number }
+      dashboard: { dispatched: number; completed: number; failed: number; completion_rate: number; failure_rate: number }
+      reports: { dispatched: number; completed: number; failed: number; completion_rate: number; failure_rate: number }
+      operations: { dispatched: number; completed: number; failed: number; completion_rate: number; failure_rate: number }
+      other: { dispatched: number; completed: number; failed: number; completion_rate: number; failure_rate: number }
     }
-    rollout: { dispatched: number; completed: number; completion_rate: number }
+    rollout: { dispatched: number; completed: number; failed: number; completion_rate: number; failure_rate: number }
     top_source?: "dashboard" | "reports" | "operations" | "other" | null
   }
 }
