@@ -477,6 +477,17 @@ export type NetworkEdgeUpdateRolloutSummaryResponse = {
     status: "healthy" | "degraded" | "attention" | "no_data"
     recommended_action: string
   }
+  rollout_metrics: {
+    attempts_total: number
+    attempts_successful: number
+    attempts_failed: number
+    attempts_rolled_back: number
+    attempts_incomplete: number
+    success_rate_pct: number
+    failure_rate_pct: number
+    rollback_rate_pct: number
+    avg_duration_seconds?: number | null
+  }
   critical_stores: Array<{
     store_id: string
     store_name?: string | null

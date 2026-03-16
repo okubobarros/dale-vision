@@ -501,6 +501,7 @@ const Operations = () => {
       : rolloutStatus === "attention"
       ? "border-amber-200 bg-amber-50 text-amber-700"
       : "border-slate-200 bg-slate-50 text-slate-700"
+  const rolloutMetrics = networkRolloutSummary?.rollout_metrics
   const topOperationalRisk =
     groupedEvents[0]
       ? formatGroupedTitle(groupedEvents[0])
@@ -677,6 +678,37 @@ const Operations = () => {
         <p className="mt-3 text-xs text-gray-600">
           {networkRolloutSummary?.rollout_health?.recommended_action || "Sem recomendação ativa de rollout."}
         </p>
+        <div className="mt-3 grid grid-cols-1 sm:grid-cols-3 gap-3">
+          <article className="rounded-xl border border-emerald-200 bg-emerald-50 p-3">
+            <p className="text-xs font-semibold uppercase tracking-wide text-emerald-700">Taxa de sucesso</p>
+            <p className="mt-2 text-2xl font-bold text-emerald-700">
+              {rolloutMetrics?.success_rate_pct?.toFixed(1) ?? "0.0"}%
+            </p>
+            <p className="mt-1 text-xs text-emerald-700">
+              {rolloutMetrics?.attempts_successful ?? 0} de {rolloutMetrics?.attempts_total ?? 0} tentativas
+            </p>
+          </article>
+          <article className="rounded-xl border border-rose-200 bg-rose-50 p-3">
+            <p className="text-xs font-semibold uppercase tracking-wide text-rose-700">Taxa de falha</p>
+            <p className="mt-2 text-2xl font-bold text-rose-700">
+              {rolloutMetrics?.failure_rate_pct?.toFixed(1) ?? "0.0"}%
+            </p>
+            <p className="mt-1 text-xs text-rose-700">
+              Falhas {rolloutMetrics?.attempts_failed ?? 0} · rollback {rolloutMetrics?.attempts_rolled_back ?? 0}
+            </p>
+          </article>
+          <article className="rounded-xl border border-slate-200 bg-slate-50 p-3">
+            <p className="text-xs font-semibold uppercase tracking-wide text-slate-700">Duração média</p>
+            <p className="mt-2 text-2xl font-bold text-slate-900">
+              {rolloutMetrics?.avg_duration_seconds
+                ? `${Math.round(rolloutMetrics.avg_duration_seconds)}s`
+                : "—"}
+            </p>
+            <p className="mt-1 text-xs text-slate-600">
+              Incompletas {rolloutMetrics?.attempts_incomplete ?? 0}
+            </p>
+          </article>
+        </div>
         {networkRolloutSummary?.critical_stores?.length ? (
           <div className="mt-3 space-y-2">
             {networkRolloutSummary.critical_stores.slice(0, 4).map((store) => (
