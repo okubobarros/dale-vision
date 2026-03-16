@@ -74,9 +74,13 @@ class CopilotNetworkValueLedgerDailyViewTests(SimpleTestCase):
 
     @patch("apps.copilot.views.ValueLedgerDailySerializer")
     @patch("apps.copilot.views.ValueLedgerDaily.objects.filter")
+    @patch("apps.copilot.views.Store.objects.filter")
     @patch("apps.copilot.views.get_user_org_ids")
-    def test_get_returns_network_ledger_payload(self, mock_org_ids, mock_filter, mock_serializer_cls):
+    def test_get_returns_network_ledger_payload(self, mock_org_ids, mock_store_filter, mock_filter, mock_serializer_cls):
         mock_org_ids.return_value = [uuid4()]
+        store_qs = MagicMock()
+        store_qs.values.return_value.distinct.return_value.count.return_value = 4
+        mock_store_filter.return_value = store_qs
         qs = MagicMock()
         qs.order_by.return_value = qs
         qs.filter.return_value = qs
@@ -104,8 +108,25 @@ class CopilotNetworkValueLedgerDailyViewTests(SimpleTestCase):
         self.assertEqual(response.data["store_id"], "all")
         self.assertEqual(response.data["days"], 7)
         self.assertIn("method_version_current", response.data)
+        self.assertIn("pipeline_health", response.data)
         self.assertEqual(response.data["totals"]["actions_dispatched"], 14)
         self.assertIn("breakdown_by_store", response.data)
         if response.data["breakdown_by_store"]:
             self.assertIn("store_name", response.data["breakdown_by_store"][0])
         self.assertEqual(len(response.data["items"]), 1)
+
+    @patch("apps.copilot.views.get_user_org_ids")
+    def test_get_returns_empty_network_ledger_when_user_has_no_org_scope(self, mock_org_ids):
+        mock_org_ids.return_value = []
+        request = self.factory.get("/api/v1/copilot/network/value-ledger/daily/?days=7")
+        force_authenticate(
+            request,
+            user=SimpleNamespace(is_authenticated=True, is_staff=False, is_superuser=False),
+        )
+
+        response = self.view(request)
+        self.assertEqual(response.status_code, 200)
+        self.assertEqual(response.data["store_id"], "all")
+        self.assertIn("pipeline_health", response.data)
+        self.assertEqual(response.data["pipeline_health"]["status"], "no_data")
+        self.assertEqual(response.data["items"], [])

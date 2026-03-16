@@ -172,6 +172,15 @@ export interface CopilotValueLedgerDailyResponse {
   store_id: string
   days: number
   method_version_current?: string
+  pipeline_health?: {
+    status: "healthy" | "stale" | "no_data"
+    freshness_seconds: number | null
+    stores_with_ledger: number
+    stores_total: number
+    coverage_rate: number
+    slo_target_seconds: number
+    recommended_action: string
+  }
   totals: {
     value_recovered_brl: number
     value_at_risk_brl: number

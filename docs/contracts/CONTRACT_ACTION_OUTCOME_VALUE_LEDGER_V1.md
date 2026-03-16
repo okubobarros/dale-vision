@@ -84,6 +84,7 @@ Query params:
 Resposta:
 - `method_version_current` (versão atual do método de cálculo em uso)
 - `store_id: "all"`
+- `pipeline_health` (status `healthy|stale|no_data`, frescor e cobertura de lojas)
 - `totals` consolidados da rede (tenant atual)
 - `breakdown_by_store` (top lojas por risco no período, com `store_id` e `store_name`)
 - `items` com série diária consolidada
