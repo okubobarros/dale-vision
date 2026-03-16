@@ -235,6 +235,7 @@ const Reports = () => {
       : "border-slate-200 bg-slate-50 text-slate-700"
   const ledgerTotals = ledgerQ.data?.totals
   const networkLedgerBreakdown = ledgerQ.data?.breakdown_by_store ?? []
+  const sprint2Acceptance = !selectedStore ? ledgerQ.data?.sprint2_acceptance : undefined
   const outcomesSummary = outcomesQ.data?.summary
   const actionOutcomes = outcomesQ.data?.items ?? []
 
@@ -611,6 +612,36 @@ const Reports = () => {
       </section>
 
       <section className="grid grid-cols-1 md:grid-cols-3 gap-4">
+        {!selectedStore && sprint2Acceptance && (
+          <article className="rounded-xl border border-slate-200 bg-white p-4 shadow-sm md:col-span-3">
+            <div className="flex flex-wrap items-center justify-between gap-2">
+              <div>
+                <p className="text-xs uppercase tracking-[0.08em] text-slate-500">Estado Sprint 2</p>
+                <p className="text-sm font-semibold text-slate-900 mt-1">{sprint2Acceptance.reason}</p>
+              </div>
+              <span
+                className={`rounded-full border px-3 py-1 text-xs font-semibold ${
+                  sprint2Acceptance.decision === "GO"
+                    ? "border-emerald-200 bg-emerald-50 text-emerald-700"
+                    : "border-rose-200 bg-rose-50 text-rose-700"
+                }`}
+              >
+                {sprint2Acceptance.decision}
+              </span>
+            </div>
+            <div className="mt-3 grid grid-cols-1 gap-2 text-[11px] text-slate-600 sm:grid-cols-3">
+              <p>
+                Cobertura {sprint2Acceptance.coverage_rate}% (mín. {sprint2Acceptance.coverage_min}%)
+              </p>
+              <p>
+                Stale {sprint2Acceptance.stale_rate}% (máx. {sprint2Acceptance.stale_rate_max}%)
+              </p>
+              <p>
+                No data {sprint2Acceptance.no_data_rate}% (máx. {sprint2Acceptance.no_data_rate_max}%)
+              </p>
+            </div>
+          </article>
+        )}
         <article className="rounded-xl border border-emerald-200 bg-white p-4 shadow-sm">
           <p className="text-xs uppercase tracking-[0.08em] text-slate-500">Valor Recuperado (Ledger)</p>
           <p className="text-2xl font-semibold text-emerald-700 mt-2">

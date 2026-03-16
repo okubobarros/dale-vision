@@ -3,7 +3,7 @@ import logging
 from datetime import timedelta
 
 from django.db import models, transaction
-from django.db.models import Avg, Count, Sum
+from django.db.models import Avg, Count, Max, Sum
 from django.utils import timezone
 from rest_framework import status
 from rest_framework.permissions import IsAuthenticated
@@ -726,6 +726,9 @@ class CopilotNetworkValueLedgerDailyView(APIView):
 
     def get(self, request):
         days = min(max(int(request.query_params.get("days", 30)), 1), 180)
+        coverage_min = min(max(int(request.query_params.get("coverage_min", 80)), 0), 100)
+        stale_rate_max = min(max(int(request.query_params.get("stale_rate_max", 20)), 0), 100)
+        no_data_rate_max = min(max(int(request.query_params.get("no_data_rate_max", 20)), 0), 100)
         from_date = timezone.localdate() - timedelta(days=days - 1)
         org_ids = list(get_user_org_ids(request.user))
         if not org_ids and not (getattr(request.user, "is_staff", False) or getattr(request.user, "is_superuser", False)):
@@ -745,6 +748,16 @@ class CopilotNetworkValueLedgerDailyView(APIView):
                     "slo_breached": False,
                     "recommended_action": "Sem escopo de org para leitura de ledger.",
                 },
+                    "sprint2_acceptance": {
+                        "decision": "NO-GO",
+                        "coverage_min": coverage_min,
+                        "stale_rate_max": stale_rate_max,
+                        "no_data_rate_max": no_data_rate_max,
+                        "coverage_rate": 0,
+                        "stale_rate": 0,
+                        "no_data_rate": 0,
+                        "reason": "Sem escopo de organização para avaliação.",
+                    },
                     "totals": {
                         "value_recovered_brl": 0.0,
                         "value_at_risk_brl": 0.0,
@@ -797,6 +810,29 @@ class CopilotNetworkValueLedgerDailyView(APIView):
             slo_breached = False
             recommended_action = "Sem dados de ledger no periodo. Validar dispatch e conclusao de acoes."
         coverage_rate = int(round((stores_with_ledger / stores_total) * 100)) if stores_total > 0 else 0
+        last_updates = list(rows.values("store_id").annotate(last_updated_at=Max("updated_at")))
+        stale_stores = 0
+        for entry in last_updates:
+            updated_at = entry.get("last_updated_at")
+            if not updated_at:
+                continue
+            freshness = max(0, int((timezone.now() - updated_at).total_seconds()))
+            if freshness > slo_target_seconds:
+                stale_stores += 1
+        no_data_stores = max(int(stores_total or 0) - int(stores_with_ledger or 0), 0)
+        stale_rate = int(round((stale_stores / stores_total) * 100)) if stores_total > 0 else 0
+        no_data_rate = int(round((no_data_stores / stores_total) * 100)) if stores_total > 0 else 0
+        decision_go = (
+            stores_total > 0
+            and coverage_rate >= coverage_min
+            and stale_rate <= stale_rate_max
+            and no_data_rate <= no_data_rate_max
+        )
+        sprint2_reason = (
+            "Critérios atendidos para fechamento operacional."
+            if decision_go
+            else "Critérios de aceite não atendidos. Priorizar lojas stale/no_data."
+        )
         breakdown_rows = list(
             rows.values("store_id")
             .annotate(
@@ -827,6 +863,16 @@ class CopilotNetworkValueLedgerDailyView(APIView):
                     "slo_target_seconds": slo_target_seconds,
                     "slo_breached": slo_breached,
                     "recommended_action": recommended_action,
+                },
+                "sprint2_acceptance": {
+                    "decision": "GO" if decision_go else "NO-GO",
+                    "coverage_min": coverage_min,
+                    "stale_rate_max": stale_rate_max,
+                    "no_data_rate_max": no_data_rate_max,
+                    "coverage_rate": coverage_rate,
+                    "stale_rate": stale_rate,
+                    "no_data_rate": no_data_rate,
+                    "reason": sprint2_reason,
                 },
                 "totals": {
                     "value_recovered_brl": value_recovered_brl,

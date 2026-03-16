@@ -176,6 +176,16 @@ export interface CopilotValueLedgerDailyResponse {
   store_id: string
   days: number
   method_version_current?: string
+  sprint2_acceptance?: {
+    decision: "GO" | "NO-GO"
+    coverage_min: number
+    stale_rate_max: number
+    no_data_rate_max: number
+    coverage_rate: number
+    stale_rate: number
+    no_data_rate: number
+    reason: string
+  }
   pipeline_health?: {
     status: "healthy" | "stale" | "no_data"
     freshness_seconds: number | null

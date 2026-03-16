@@ -82,11 +82,15 @@ Resposta:
 
 Query params:
 - `days` (default `30`, max `180`)
+- `coverage_min` (default `80`)
+- `stale_rate_max` (default `20`)
+- `no_data_rate_max` (default `20`)
 
 Resposta:
 - `method_version_current` (versão atual do método de cálculo em uso)
 - `store_id: "all"`
 - `pipeline_health` (status `healthy|stale|no_data`, frescor, `last_updated_at`, `slo_target_seconds`, `slo_breached` e cobertura de lojas)
+- `sprint2_acceptance` (decisão `GO|NO-GO` com thresholds + taxas de `coverage/stale/no_data`)
 - `totals` consolidados da rede (tenant atual, inclui `completion_rate`, `recovery_rate`, `value_net_gap_brl`)
 - `breakdown_by_store` (top lojas por risco no período, com `store_id`, `store_name`, `completion_rate`, `recovery_rate`, `value_net_gap_brl`)
 - `items` com série diária consolidada
