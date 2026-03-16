@@ -1,6 +1,7 @@
 import { useMemo, useState } from "react"
 import { Link } from "react-router-dom"
 import { useQuery } from "@tanstack/react-query"
+import toast from "react-hot-toast"
 import {
   storesService,
   type NetworkDashboard,
@@ -9,6 +10,8 @@ import {
 } from "../../services/stores"
 import { useAlertsEvents } from "../../queries/alerts.queries"
 import { meService, type MeAccount, type MeStatus } from "../../services/me"
+import { alertsService, type ActionDispatchResponse } from "../../services/alerts"
+import { copilotService } from "../../services/copilot"
 import type { DetectionEvent } from "../../services/alerts"
 import type { OperationalEvent, OperationalPillar } from "../../types/operations"
 
@@ -182,6 +185,7 @@ const networkStatusLabel = (
 
 const Operations = () => {
   const [quickFilter, setQuickFilter] = useState<QuickFilter>("all")
+  const [rolloutActionStoreId, setRolloutActionStoreId] = useState<string | null>(null)
 
   const { data: account } = useQuery<MeAccount | null>({
     queryKey: ["operations-account"],
@@ -386,6 +390,75 @@ const Operations = () => {
     )
   }
 
+  const handleRolloutCopilotAction = async (store: {
+    store_id: string
+    store_name?: string | null
+    health: "degraded" | "in_progress"
+    channel: "stable" | "canary"
+    target_version?: string | null
+    last_event?: string | null
+    last_status?: string | null
+    reason_code?: string | null
+  }) => {
+    const storeId = store.store_id
+    const storeName = store.store_name || "loja"
+    const insightId = `operations-rollout-${storeId}-${Date.now()}`
+    setRolloutActionStoreId(storeId)
+    let dispatchResponse: ActionDispatchResponse | null = null
+    try {
+      dispatchResponse = await alertsService.dispatchAction({
+        store_id: storeId,
+        insight_id: insightId,
+        action_type: "edge_rollout_intervention",
+        channel: "copilot",
+        source: "operations_rollout",
+        confidence_score: store.health === "degraded" ? 85 : 75,
+        context: {
+          origin: "operations_rollout",
+          rollout_health: store.health,
+          reason_code: store.reason_code || null,
+          last_event: store.last_event || null,
+          target_version: store.target_version || null,
+        },
+      })
+      try {
+        await copilotService.createActionOutcome(storeId, {
+          action_event_id: dispatchResponse.event_id ?? null,
+          insight_id: insightId,
+          action_type: "edge_rollout_intervention",
+          channel: "copilot",
+          source: "operations_rollout",
+          status: "dispatched",
+          confidence_score: store.health === "degraded" ? 85 : 75,
+          baseline: {
+            origin: "operations_rollout",
+            rollout_health: store.health,
+            reason_code: store.reason_code || null,
+          },
+        })
+      } catch {
+        // Non-blocking: dispatch already persisted.
+      }
+      toast.success(`Ação registrada para ${storeName}.`)
+    } catch (error) {
+      const payload = (error as { response?: { data?: Record<string, unknown> } })?.response?.data
+      const message =
+        (typeof payload?.message === "string" && payload.message) ||
+        (typeof payload?.detail === "string" && payload.detail) ||
+        "Não foi possível registrar a ação de rollout."
+      toast.error(message)
+      setRolloutActionStoreId(null)
+      return
+    }
+
+    openCopilot(
+      `Montar plano imediato para update da ${storeName}. Status: ${store.health}. Evento: ${
+        store.last_event || "sem evento"
+      }. Motivo: ${store.reason_code || "não informado"}. Versão alvo: ${store.target_version || "não informada"}.`
+    )
+    setRolloutActionStoreId(null)
+  }
+
   const recommendationOfDay =
     groupedEvents[0]?.suggestion ||
     "Operação estável até o momento. Use o Copiloto para revisar oportunidades por loja."
@@ -578,18 +651,11 @@ const Operations = () => {
                     </Link>
                     <button
                       type="button"
-                      onClick={() =>
-                        openCopilot(
-                          `Montar plano imediato para update da ${store.store_name || "loja"}. Status: ${
-                            store.health
-                          }. Evento: ${store.last_event || "sem evento"}. Motivo: ${
-                            store.reason_code || "não informado"
-                          }.`
-                        )
-                      }
-                      className="rounded-lg bg-blue-600 px-3 py-1.5 text-xs font-semibold text-white hover:bg-blue-700"
+                      onClick={() => void handleRolloutCopilotAction(store)}
+                      disabled={rolloutActionStoreId === store.store_id}
+                      className="rounded-lg bg-blue-600 px-3 py-1.5 text-xs font-semibold text-white hover:bg-blue-700 disabled:cursor-not-allowed disabled:opacity-70"
                     >
-                      Acionar Copiloto
+                      {rolloutActionStoreId === store.store_id ? "Acionando..." : "Acionar Copiloto"}
                     </button>
                     <Link
                       to={`/app/operations/stores/${store.store_id}`}
