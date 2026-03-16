@@ -34,6 +34,10 @@ Registrar decisões e eventos do dia.
   - Dashboard e Reports receberam o mesmo bloco de validação S4 para manter narrativa executiva consistente.
   - Contrato técnico de auto-update atualizado para incluir o endpoint de validação S4 e payload de resposta.
   - Comando `edge_s4_validation_pack` foi alinhado à mesma lógica de classificação da API (`healthy|failed|rolled_back|incomplete`) e passou a expor taxas no resumo.
+  - Blueprint técnico de automação n8n criado:
+    - `docs/N8N_SINGLE_SOURCE_OF_ACTION_BLUEPRINT.md`
+    - fluxo ponta a ponta `event_router -> action_execution -> outcome_callback -> digest`;
+    - expressões n8n e exemplo de Code Node Python para monetização conservadora.
 - Bloqueios:
   - Validacao operacional em loja remota ainda pendente para fechamento definitivo do gate de campo.
 - Decisões:
