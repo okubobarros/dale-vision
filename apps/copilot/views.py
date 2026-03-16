@@ -416,14 +416,22 @@ class CopilotActionOutcomeView(APIView):
             realized=Sum("impact_realized_brl"),
             confidence_avg=Avg("confidence_score"),
         )
+        actions_dispatched = int(summary.get("dispatched") or 0)
+        actions_completed = int(summary.get("completed") or 0)
+        impact_expected_brl = float(summary.get("expected") or 0)
+        impact_realized_brl = float(summary.get("realized") or 0)
+        completion_rate = round((actions_completed / actions_dispatched) * 100, 1) if actions_dispatched > 0 else 0.0
+        recovery_rate = round((impact_realized_brl / impact_expected_brl) * 100, 1) if impact_expected_brl > 0 else 0.0
         return Response(
             {
                 "store_id": str(store_id),
                 "summary": {
-                    "actions_dispatched": int(summary.get("dispatched") or 0),
-                    "actions_completed": int(summary.get("completed") or 0),
-                    "impact_expected_brl": float(summary.get("expected") or 0),
-                    "impact_realized_brl": float(summary.get("realized") or 0),
+                    "actions_dispatched": actions_dispatched,
+                    "actions_completed": actions_completed,
+                    "impact_expected_brl": impact_expected_brl,
+                    "impact_realized_brl": impact_realized_brl,
+                    "completion_rate": completion_rate,
+                    "recovery_rate": recovery_rate,
                     "confidence_score_avg": float(summary.get("confidence_avg") or 0),
                 },
                 "items": CopilotActionOutcomeSerializer(items, many=True).data,
@@ -552,6 +560,12 @@ class CopilotValueLedgerDailyView(APIView):
             actions_completed=Sum("actions_completed"),
             confidence_avg=Avg("confidence_score_avg"),
         )
+        value_recovered_brl = float(totals.get("value_recovered") or 0)
+        value_at_risk_brl = float(totals.get("value_at_risk") or 0)
+        actions_dispatched = int(totals.get("actions_dispatched") or 0)
+        actions_completed = int(totals.get("actions_completed") or 0)
+        completion_rate = round((actions_completed / actions_dispatched) * 100, 1) if actions_dispatched > 0 else 0.0
+        recovery_rate = round((value_recovered_brl / value_at_risk_brl) * 100, 1) if value_at_risk_brl > 0 else 0.0
         return Response(
             {
                 "store_id": str(store_id),
@@ -567,10 +581,12 @@ class CopilotValueLedgerDailyView(APIView):
                     "recommended_action": recommended_action,
                 },
                 "totals": {
-                    "value_recovered_brl": float(totals.get("value_recovered") or 0),
-                    "value_at_risk_brl": float(totals.get("value_at_risk") or 0),
-                    "actions_dispatched": int(totals.get("actions_dispatched") or 0),
-                    "actions_completed": int(totals.get("actions_completed") or 0),
+                    "value_recovered_brl": value_recovered_brl,
+                    "value_at_risk_brl": value_at_risk_brl,
+                    "actions_dispatched": actions_dispatched,
+                    "actions_completed": actions_completed,
+                    "completion_rate": completion_rate,
+                    "recovery_rate": recovery_rate,
                     "confidence_score_avg": float(totals.get("confidence_avg") or 0),
                 },
                 "items": ValueLedgerDailySerializer(rows, many=True).data,
@@ -595,6 +611,8 @@ class CopilotNetworkActionOutcomeView(APIView):
                         "actions_completed": 0,
                         "impact_expected_brl": 0.0,
                         "impact_realized_brl": 0.0,
+                        "completion_rate": 0.0,
+                        "recovery_rate": 0.0,
                         "confidence_score_avg": 0.0,
                     },
                     "breakdown_by_store": [],
@@ -622,6 +640,12 @@ class CopilotNetworkActionOutcomeView(APIView):
             realized=Sum("impact_realized_brl"),
             confidence_avg=Avg("confidence_score"),
         )
+        actions_dispatched = int(summary.get("dispatched") or 0)
+        actions_completed = int(summary.get("completed") or 0)
+        impact_expected_brl = float(summary.get("expected") or 0)
+        impact_realized_brl = float(summary.get("realized") or 0)
+        completion_rate = round((actions_completed / actions_dispatched) * 100, 1) if actions_dispatched > 0 else 0.0
+        recovery_rate = round((impact_realized_brl / impact_expected_brl) * 100, 1) if impact_expected_brl > 0 else 0.0
         breakdown_rows = list(
             qs.values("store_id")
             .annotate(
@@ -647,10 +671,12 @@ class CopilotNetworkActionOutcomeView(APIView):
             {
                 "store_id": "all",
                 "summary": {
-                    "actions_dispatched": int(summary.get("dispatched") or 0),
-                    "actions_completed": int(summary.get("completed") or 0),
-                    "impact_expected_brl": float(summary.get("expected") or 0),
-                    "impact_realized_brl": float(summary.get("realized") or 0),
+                    "actions_dispatched": actions_dispatched,
+                    "actions_completed": actions_completed,
+                    "impact_expected_brl": impact_expected_brl,
+                    "impact_realized_brl": impact_realized_brl,
+                    "completion_rate": completion_rate,
+                    "recovery_rate": recovery_rate,
                     "confidence_score_avg": float(summary.get("confidence_avg") or 0),
                 },
                 "breakdown_by_store": [
@@ -698,6 +724,8 @@ class CopilotNetworkValueLedgerDailyView(APIView):
                         "value_at_risk_brl": 0.0,
                         "actions_dispatched": 0,
                         "actions_completed": 0,
+                        "completion_rate": 0.0,
+                        "recovery_rate": 0.0,
                         "confidence_score_avg": 0.0,
                     },
                     "breakdown_by_store": [],
@@ -719,6 +747,12 @@ class CopilotNetworkValueLedgerDailyView(APIView):
             actions_completed=Sum("actions_completed"),
             confidence_avg=Avg("confidence_score_avg"),
         )
+        value_recovered_brl = float(totals.get("value_recovered") or 0)
+        value_at_risk_brl = float(totals.get("value_at_risk") or 0)
+        actions_dispatched = int(totals.get("actions_dispatched") or 0)
+        actions_completed = int(totals.get("actions_completed") or 0)
+        completion_rate = round((actions_completed / actions_dispatched) * 100, 1) if actions_dispatched > 0 else 0.0
+        recovery_rate = round((value_recovered_brl / value_at_risk_brl) * 100, 1) if value_at_risk_brl > 0 else 0.0
         slo_target_seconds = 900
         if latest_row and latest_row.updated_at:
             freshness_seconds = max(0, int((timezone.now() - latest_row.updated_at).total_seconds()))
@@ -763,10 +797,12 @@ class CopilotNetworkValueLedgerDailyView(APIView):
                     "recommended_action": recommended_action,
                 },
                 "totals": {
-                    "value_recovered_brl": float(totals.get("value_recovered") or 0),
-                    "value_at_risk_brl": float(totals.get("value_at_risk") or 0),
-                    "actions_dispatched": int(totals.get("actions_dispatched") or 0),
-                    "actions_completed": int(totals.get("actions_completed") or 0),
+                    "value_recovered_brl": value_recovered_brl,
+                    "value_at_risk_brl": value_at_risk_brl,
+                    "actions_dispatched": actions_dispatched,
+                    "actions_completed": actions_completed,
+                    "completion_rate": completion_rate,
+                    "recovery_rate": recovery_rate,
                     "confidence_score_avg": float(totals.get("confidence_avg") or 0),
                 },
                 "breakdown_by_store": [

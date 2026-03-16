@@ -669,6 +669,10 @@ const Reports = () => {
           <p className="text-[11px] text-slate-500 mt-2">
             Confiança média {Math.round(ledgerTotals?.confidence_score_avg ?? 0)}/100
           </p>
+          <p className="text-[11px] text-slate-500 mt-1">
+            Conclusão {(ledgerTotals?.completion_rate ?? 0).toFixed(1)}% · Recuperação{" "}
+            {(ledgerTotals?.recovery_rate ?? 0).toFixed(1)}%
+          </p>
         </article>
       </section>
 

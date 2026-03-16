@@ -135,6 +135,8 @@ export interface CopilotActionOutcomeSummary {
   actions_completed: number
   impact_expected_brl: number
   impact_realized_brl: number
+  completion_rate?: number
+  recovery_rate?: number
   confidence_score_avg: number
 }
 
@@ -186,6 +188,8 @@ export interface CopilotValueLedgerDailyResponse {
     value_at_risk_brl: number
     actions_dispatched: number
     actions_completed: number
+    completion_rate?: number
+    recovery_rate?: number
     confidence_score_avg: number
   }
   breakdown_by_store?: Array<{

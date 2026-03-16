@@ -54,6 +54,8 @@ class CopilotValueLedgerDailyViewTests(SimpleTestCase):
         self.assertIn("pipeline_health", response.data)
         self.assertEqual(response.data["pipeline_health"]["status"], "healthy")
         self.assertEqual(response.data["method_version_current"], "value_ledger_v1_2026-03-15")
+        self.assertIn("completion_rate", response.data["totals"])
+        self.assertIn("recovery_rate", response.data["totals"])
 
     @patch("apps.copilot.views.ValueLedgerDailySerializer")
     @patch("apps.copilot.views.ValueLedgerDaily.objects.filter")
@@ -93,3 +95,5 @@ class CopilotValueLedgerDailyViewTests(SimpleTestCase):
         self.assertEqual(response.status_code, 200)
         self.assertIn("pipeline_health", response.data)
         self.assertEqual(response.data["pipeline_health"]["status"], "no_data")
+        self.assertEqual(response.data["totals"].get("completion_rate"), 0.0)
+        self.assertEqual(response.data["totals"].get("recovery_rate"), 0.0)

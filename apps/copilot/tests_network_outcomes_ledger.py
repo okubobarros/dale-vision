@@ -45,6 +45,8 @@ class CopilotNetworkActionOutcomeViewTests(SimpleTestCase):
         self.assertEqual(response.data["store_id"], "all")
         self.assertEqual(response.data["summary"]["actions_dispatched"], 5)
         self.assertEqual(response.data["summary"]["actions_completed"], 3)
+        self.assertIn("completion_rate", response.data["summary"])
+        self.assertIn("recovery_rate", response.data["summary"])
         self.assertIn("breakdown_by_store", response.data)
         if response.data["breakdown_by_store"]:
             self.assertIn("store_name", response.data["breakdown_by_store"][0])
@@ -63,6 +65,8 @@ class CopilotNetworkActionOutcomeViewTests(SimpleTestCase):
         self.assertEqual(response.status_code, 200)
         self.assertEqual(response.data["store_id"], "all")
         self.assertEqual(response.data["summary"]["actions_dispatched"], 0)
+        self.assertEqual(response.data["summary"].get("completion_rate"), 0.0)
+        self.assertEqual(response.data["summary"].get("recovery_rate"), 0.0)
         self.assertEqual(response.data["breakdown_by_store"], [])
         self.assertEqual(response.data["items"], [])
 
@@ -110,6 +114,8 @@ class CopilotNetworkValueLedgerDailyViewTests(SimpleTestCase):
         self.assertIn("method_version_current", response.data)
         self.assertIn("pipeline_health", response.data)
         self.assertEqual(response.data["totals"]["actions_dispatched"], 14)
+        self.assertIn("completion_rate", response.data["totals"])
+        self.assertIn("recovery_rate", response.data["totals"])
         self.assertIn("breakdown_by_store", response.data)
         if response.data["breakdown_by_store"]:
             self.assertIn("store_name", response.data["breakdown_by_store"][0])
@@ -129,4 +135,6 @@ class CopilotNetworkValueLedgerDailyViewTests(SimpleTestCase):
         self.assertEqual(response.data["store_id"], "all")
         self.assertIn("pipeline_health", response.data)
         self.assertEqual(response.data["pipeline_health"]["status"], "no_data")
+        self.assertEqual(response.data["totals"].get("completion_rate"), 0.0)
+        self.assertEqual(response.data["totals"].get("recovery_rate"), 0.0)
         self.assertEqual(response.data["items"], [])
