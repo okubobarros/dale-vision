@@ -447,6 +447,11 @@ Entrada no roadmap:
 - Sprint 3: canary + rollback automatico.
 - Sprint 4: rollout em lote com observabilidade de frota.
 
+Referencias de execucao:
+- `docs/contracts/CONTRACT_EDGE_AUTO_UPDATE_V1.md`
+- `70_ops/S4_AutoUpdate_Execution_Plan.md`
+- `40_edge_agent/Edge_AutoUpdate_Backup.md`
+
 ---
 
 ## 12) Matriz por tipo de negocio (metric packs)
