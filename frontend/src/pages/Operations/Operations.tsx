@@ -6,6 +6,7 @@ import {
   storesService,
   type NetworkDashboard,
   type NetworkEdgeUpdateRolloutSummaryResponse,
+  type NetworkEdgeUpdateValidationSummaryResponse,
   type StoreSummary,
 } from "../../services/stores"
 import { useAlertsEvents } from "../../queries/alerts.queries"
@@ -224,6 +225,16 @@ const Operations = () => {
       storesService.getNetworkEdgeUpdateRolloutSummary(
         rolloutChannelFilter === "all" ? undefined : rolloutChannelFilter
       ),
+    staleTime: 30000,
+    retry: false,
+  })
+  const { data: networkValidationSummary } = useQuery<NetworkEdgeUpdateValidationSummaryResponse>({
+    queryKey: ["operations-network-edge-validation-summary", rolloutChannelFilter],
+    queryFn: () =>
+      storesService.getNetworkEdgeUpdateValidationSummary({
+        channel: rolloutChannelFilter === "all" ? undefined : rolloutChannelFilter,
+        hours: 72,
+      }),
     staleTime: 30000,
     retry: false,
   })
@@ -502,6 +513,11 @@ const Operations = () => {
       ? "border-amber-200 bg-amber-50 text-amber-700"
       : "border-slate-200 bg-slate-50 text-slate-700"
   const rolloutMetrics = networkRolloutSummary?.rollout_metrics
+  const validationDecision = networkValidationSummary?.summary?.decision || "NO-GO"
+  const validationDecisionClass =
+    validationDecision === "GO"
+      ? "border-emerald-200 bg-emerald-50 text-emerald-700"
+      : "border-rose-200 bg-rose-50 text-rose-700"
   const topOperationalRisk =
     groupedEvents[0]
       ? formatGroupedTitle(groupedEvents[0])
@@ -678,6 +694,20 @@ const Operations = () => {
         <p className="mt-3 text-xs text-gray-600">
           {networkRolloutSummary?.rollout_health?.recommended_action || "Sem recomendação ativa de rollout."}
         </p>
+        <div className="mt-2 flex flex-wrap items-center gap-2 text-[11px]">
+          <span className={`rounded-full border px-2 py-0.5 font-semibold ${validationDecisionClass}`}>
+            Validação S4: {validationDecision}
+          </span>
+          <span className="rounded-full border border-slate-200 bg-slate-50 px-2 py-0.5 text-slate-600">
+            Canary: {networkValidationSummary?.checklist?.canary_ready ? "ok" : "pendente"}
+          </span>
+          <span className="rounded-full border border-slate-200 bg-slate-50 px-2 py-0.5 text-slate-600">
+            Rollback: {networkValidationSummary?.checklist?.rollback_ready ? "ok" : "pendente"}
+          </span>
+          <span className="rounded-full border border-slate-200 bg-slate-50 px-2 py-0.5 text-slate-600">
+            Telemetria: {networkValidationSummary?.checklist?.telemetry_ready ? "ok" : "pendente"}
+          </span>
+        </div>
         <div className="mt-3 grid grid-cols-1 sm:grid-cols-3 gap-3">
           <article className="rounded-xl border border-emerald-200 bg-emerald-50 p-3">
             <p className="text-xs font-semibold uppercase tracking-wide text-emerald-700">Taxa de sucesso</p>

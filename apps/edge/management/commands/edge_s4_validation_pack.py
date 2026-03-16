@@ -12,19 +12,23 @@ from django.utils import timezone
 from apps.edge.models import EdgeUpdateEvent
 
 
-SUCCESS_FLOW = [
-    "edge_update_started",
-    "edge_update_downloaded",
-    "edge_update_verified",
-    "edge_update_activated",
-    "edge_update_healthy",
-]
+TERMINAL_ATTEMPT_STATUSES = {"healthy", "failed", "rolled_back"}
 
 
 def _iso(dt):
     if not dt:
         return None
     return dt.isoformat()
+
+
+def _classify_attempt(status_set: set[str], event_set: set[str]) -> str:
+    if "failed" in status_set or "edge_update_failed" in event_set:
+        return "failed"
+    if "rolled_back" in status_set or "edge_update_rolled_back" in event_set:
+        return "rolled_back"
+    if "healthy" in status_set or "edge_update_healthy" in event_set:
+        return "healthy"
+    return "incomplete"
 
 
 class Command(BaseCommand):
@@ -101,6 +105,8 @@ class Command(BaseCommand):
         healthy_attempts = 0
         failed_attempts = 0
         rollback_attempts = 0
+        incomplete_attempts = 0
+        terminal_durations: list[int] = []
 
         for store_key, attempts in grouped.items():
             store_attempts = []
@@ -118,25 +124,30 @@ class Command(BaseCommand):
                     {str(item.get("reason_code")) for item in events if item.get("reason_code")}
                 )
 
-                is_healthy = all(name in event_set for name in SUCCESS_FLOW) and "failed" not in status_set
-                is_failed = "failed" in status_set or "edge_update_failed" in event_set
-                has_rollback = "rolled_back" in status_set or "edge_update_rolled_back" in event_set
+                final_status = _classify_attempt(status_set, event_set)
+                is_healthy = final_status == "healthy"
+                is_failed = final_status == "failed"
+                has_rollback = final_status == "rolled_back"
 
                 if is_healthy:
                     healthy_attempts += 1
                     store_has_healthy = True
-                if is_failed:
+                elif is_failed:
                     failed_attempts += 1
                     store_has_failure = True
-                if has_rollback:
+                elif has_rollback:
                     rollback_attempts += 1
                     store_has_rollback = True
+                else:
+                    incomplete_attempts += 1
 
                 first_ts = events[0].get("timestamp")
                 last_ts = events[-1].get("timestamp")
                 duration_seconds = None
                 if first_ts and last_ts:
                     duration_seconds = max(0, int((last_ts - first_ts).total_seconds()))
+                    if final_status in TERMINAL_ATTEMPT_STATUSES:
+                        terminal_durations.append(duration_seconds)
 
                 item = {
                     "store_id": store_key,
@@ -149,6 +160,7 @@ class Command(BaseCommand):
                     "last_event_at": _iso(last_ts),
                     "duration_seconds": duration_seconds,
                     "event_count": len(events),
+                    "final_status": final_status,
                     "is_healthy_flow": is_healthy,
                     "is_failed_flow": is_failed,
                     "has_rollback_event": has_rollback,
@@ -180,6 +192,12 @@ class Command(BaseCommand):
         telemetry_ready = total_attempts > 0
         go = canary_ready and rollback_ready and telemetry_ready
         decision = "GO" if go else "NO-GO"
+        success_rate_pct = round((healthy_attempts / total_attempts) * 100, 2) if total_attempts else 0.0
+        failure_rate_pct = round((failed_attempts / total_attempts) * 100, 2) if total_attempts else 0.0
+        rollback_rate_pct = round((rollback_attempts / total_attempts) * 100, 2) if total_attempts else 0.0
+        avg_duration_seconds = (
+            round(sum(terminal_durations) / len(terminal_durations), 2) if terminal_durations else None
+        )
 
         payload = {
             "generated_at": now.isoformat(),
@@ -197,6 +215,11 @@ class Command(BaseCommand):
                 "healthy_attempts": healthy_attempts,
                 "failed_attempts": failed_attempts,
                 "rollback_attempts": rollback_attempts,
+                "incomplete_attempts": incomplete_attempts,
+                "success_rate_pct": success_rate_pct,
+                "failure_rate_pct": failure_rate_pct,
+                "rollback_rate_pct": rollback_rate_pct,
+                "avg_duration_seconds": avg_duration_seconds,
                 "decision": decision,
             },
             "stores": stores_summary,
@@ -235,6 +258,11 @@ class Command(BaseCommand):
             f"- healthy_attempts: `{healthy_attempts}`",
             f"- failed_attempts: `{failed_attempts}`",
             f"- rollback_attempts: `{rollback_attempts}`",
+            f"- incomplete_attempts: `{incomplete_attempts}`",
+            f"- success_rate_pct: `{success_rate_pct}`",
+            f"- failure_rate_pct: `{failure_rate_pct}`",
+            f"- rollback_rate_pct: `{rollback_rate_pct}`",
+            f"- avg_duration_seconds: `{avg_duration_seconds if avg_duration_seconds is not None else '-'}`",
             "",
             "## Resumo por loja",
             "| store_id | attempts | healthy | failed | rollback |",
@@ -250,8 +278,8 @@ class Command(BaseCommand):
             [
                 "",
                 "## Timeline por tentativa",
-                "| store_id | attempt | channel | to_version | healthy_flow | failed_flow | rollback | duration_s | reason_codes |",
-                "|---|---:|---|---|---|---|---|---:|---|",
+                "| store_id | attempt | channel | to_version | final_status | healthy_flow | failed_flow | rollback | duration_s | reason_codes |",
+                "|---|---:|---|---|---|---|---|---|---:|---|",
             ]
         )
 
@@ -261,7 +289,8 @@ class Command(BaseCommand):
         ):
             lines.append(
                 f"| {item['store_id']} | {item['attempt']} | {item['channel'] or '-'} | "
-                f"{item['to_version'] or '-'} | {'yes' if item['is_healthy_flow'] else 'no'} | "
+                f"{item['to_version'] or '-'} | {item['final_status']} | "
+                f"{'yes' if item['is_healthy_flow'] else 'no'} | "
                 f"{'yes' if item['is_failed_flow'] else 'no'} | "
                 f"{'yes' if item['has_rollback_event'] else 'no'} | "
                 f"{item['duration_seconds'] if item['duration_seconds'] is not None else '-'} | "

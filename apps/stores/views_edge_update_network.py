@@ -1,4 +1,4 @@
-from datetime import datetime, timezone as dt_timezone
+from datetime import datetime, timedelta, timezone as dt_timezone
 
 from django.utils import timezone
 from rest_framework import status
@@ -117,6 +117,77 @@ def _build_attempt_metrics(event_rows: list[EdgeUpdateEvent], allowed_store_ids:
         "rollback_rate_pct": rollback_rate,
         "avg_duration_seconds": avg_duration_seconds,
     }
+
+
+def _build_store_attempt_summary(
+    event_rows: list[EdgeUpdateEvent],
+    allowed_store_ids: set[str] | None = None,
+) -> tuple[list[dict], dict]:
+    attempts: dict[tuple[str, int, str, str], list[EdgeUpdateEvent]] = {}
+    for row in event_rows:
+        store_id = str(row.store_id)
+        if allowed_store_ids is not None and store_id not in allowed_store_ids:
+            continue
+        attempt_no = int(getattr(row, "attempt", None) or 1)
+        key = (
+            store_id,
+            attempt_no,
+            str(getattr(row, "to_version", None) or ""),
+            str(getattr(row, "agent_id", None) or ""),
+        )
+        attempts.setdefault(key, []).append(row)
+
+    by_store: dict[str, dict] = {}
+    for (store_id, _attempt_no, _to_version, _agent_id), events in attempts.items():
+        ordered = sorted(
+            events,
+            key=lambda ev: ev.timestamp or datetime.min.replace(tzinfo=dt_timezone.utc),
+        )
+        statuses = {str(getattr(ev, "status", "") or "") for ev in ordered}
+        event_names = {str(getattr(ev, "event", "") or "") for ev in ordered}
+        final_status = "incomplete"
+        if "failed" in statuses or "edge_update_failed" in event_names:
+            final_status = "failed"
+        elif "rolled_back" in statuses or "edge_update_rolled_back" in event_names:
+            final_status = "rolled_back"
+        elif "healthy" in statuses or "edge_update_healthy" in event_names:
+            final_status = "healthy"
+
+        bucket = by_store.setdefault(
+            store_id,
+            {
+                "store_id": store_id,
+                "attempts_total": 0,
+                "healthy_attempts": 0,
+                "failed_attempts": 0,
+                "rollback_attempts": 0,
+                "incomplete_attempts": 0,
+                "has_healthy_attempt": False,
+                "has_failure_attempt": False,
+                "has_rollback_attempt": False,
+            },
+        )
+        bucket["attempts_total"] += 1
+        if final_status == "healthy":
+            bucket["healthy_attempts"] += 1
+            bucket["has_healthy_attempt"] = True
+        elif final_status == "failed":
+            bucket["failed_attempts"] += 1
+            bucket["has_failure_attempt"] = True
+        elif final_status == "rolled_back":
+            bucket["rollback_attempts"] += 1
+            bucket["has_rollback_attempt"] = True
+        else:
+            bucket["incomplete_attempts"] += 1
+
+    stores_summary = sorted(by_store.values(), key=lambda row: row["store_id"])
+    totals = {
+        "stores_total": len(stores_summary),
+        "stores_with_healthy_attempt": sum(1 for item in stores_summary if item["has_healthy_attempt"]),
+        "stores_with_failure_attempt": sum(1 for item in stores_summary if item["has_failure_attempt"]),
+        "stores_with_rollback_attempt": sum(1 for item in stores_summary if item["has_rollback_attempt"]),
+    }
+    return stores_summary, totals
 
 
 class NetworkEdgeUpdateRolloutSummaryView(APIView):
@@ -314,6 +385,112 @@ class NetworkEdgeUpdateRolloutSummaryView(APIView):
                 },
                 "rollout_metrics": rollout_metrics,
                 "critical_stores": critical_stores[:15],
+                "generated_at": timezone.now().isoformat(),
+            },
+            status=status.HTTP_200_OK,
+        )
+
+
+class NetworkEdgeUpdateValidationSummaryView(APIView):
+    permission_classes = [IsAuthenticated]
+
+    def get(self, request):
+        channel_filter = str(request.query_params.get("channel") or "").strip().lower()
+        if channel_filter not in {"stable", "canary"}:
+            channel_filter = None
+
+        try:
+            hours = max(1, min(int(request.query_params.get("hours") or 72), 24 * 30))
+        except Exception:
+            hours = 72
+
+        org_ids = get_user_org_ids(request.user)
+        if not org_ids:
+            return Response(
+                {
+                    "scope": "network",
+                    "filters": {"channel": channel_filter or "all", "hours": hours},
+                    "summary": {
+                        "stores_total": 0,
+                        "stores_with_healthy_attempt": 0,
+                        "stores_with_failure_attempt": 0,
+                        "stores_with_rollback_attempt": 0,
+                        "attempts_total": 0,
+                        "healthy_attempts": 0,
+                        "failed_attempts": 0,
+                        "rollback_attempts": 0,
+                        "incomplete_attempts": 0,
+                        "success_rate_pct": 0.0,
+                        "failure_rate_pct": 0.0,
+                        "rollback_rate_pct": 0.0,
+                        "avg_duration_seconds": None,
+                        "decision": "NO-GO",
+                    },
+                    "checklist": {
+                        "canary_ready": False,
+                        "rollback_ready": False,
+                        "telemetry_ready": False,
+                    },
+                    "stores": [],
+                    "generated_at": timezone.now().isoformat(),
+                },
+                status=status.HTTP_200_OK,
+            )
+
+        store_ids = list(
+            Store.objects.filter(org_id__in=org_ids).values_list("id", flat=True)
+        )
+        store_ids_str = [str(item) for item in store_ids]
+        if channel_filter:
+            policy_store_ids = list(
+                EdgeUpdatePolicy.objects.filter(
+                    store_id__in=store_ids_str,
+                    active=True,
+                    channel=channel_filter,
+                ).values_list("store_id", flat=True)
+            )
+            store_ids_str = [str(item) for item in policy_store_ids]
+
+        cutoff = timezone.now() - timedelta(hours=hours)
+        event_rows = list(
+            EdgeUpdateEvent.objects.filter(store_id__in=store_ids_str, timestamp__gte=cutoff)
+            .order_by("store_id", "-timestamp")[:10000]
+        )
+        allowed_ids = set(store_ids_str)
+        rollout_metrics = _build_attempt_metrics(event_rows, allowed_store_ids=allowed_ids)
+        stores_summary, store_totals = _build_store_attempt_summary(event_rows, allowed_store_ids=allowed_ids)
+
+        canary_ready = store_totals["stores_with_healthy_attempt"] >= 1
+        rollback_ready = (
+            store_totals["stores_with_rollback_attempt"] >= 1
+            or store_totals["stores_with_failure_attempt"] >= 1
+        )
+        telemetry_ready = rollout_metrics["attempts_total"] > 0
+        decision = "GO" if (canary_ready and rollback_ready and telemetry_ready) else "NO-GO"
+
+        return Response(
+            {
+                "scope": "network",
+                "filters": {"channel": channel_filter or "all", "hours": hours},
+                "summary": {
+                    **store_totals,
+                    "attempts_total": rollout_metrics["attempts_total"],
+                    "healthy_attempts": rollout_metrics["attempts_successful"],
+                    "failed_attempts": rollout_metrics["attempts_failed"],
+                    "rollback_attempts": rollout_metrics["attempts_rolled_back"],
+                    "incomplete_attempts": rollout_metrics["attempts_incomplete"],
+                    "success_rate_pct": rollout_metrics["success_rate_pct"],
+                    "failure_rate_pct": rollout_metrics["failure_rate_pct"],
+                    "rollback_rate_pct": rollout_metrics["rollback_rate_pct"],
+                    "avg_duration_seconds": rollout_metrics["avg_duration_seconds"],
+                    "decision": decision,
+                },
+                "checklist": {
+                    "canary_ready": canary_ready,
+                    "rollback_ready": rollback_ready,
+                    "telemetry_ready": telemetry_ready,
+                },
+                "stores": stores_summary[:100],
                 "generated_at": timezone.now().isoformat(),
             },
             status=status.HTTP_200_OK,

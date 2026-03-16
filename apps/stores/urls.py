@@ -11,7 +11,10 @@ from .views_edge_update_management import (
     StoreEdgeUpdateRunbookOpenedView,
 )
 from .views_edge_update_attempts import StoreEdgeUpdateAttemptsView
-from .views_edge_update_network import NetworkEdgeUpdateRolloutSummaryView
+from .views_edge_update_network import (
+    NetworkEdgeUpdateRolloutSummaryView,
+    NetworkEdgeUpdateValidationSummaryView,
+)
 from .views_support import (
     StoreSupportRequestView,
     AdminSupportRequestListView,
@@ -33,6 +36,7 @@ urlpatterns = [
     path("stores/<uuid:store_id>/edge-update-runbook/", StoreEdgeUpdateRunbookView.as_view(), name="store-edge-update-runbook"),
     path("stores/<uuid:store_id>/edge-update-runbook/opened/", StoreEdgeUpdateRunbookOpenedView.as_view(), name="store-edge-update-runbook-opened"),
     path("stores/network/edge-update-rollout-summary/", NetworkEdgeUpdateRolloutSummaryView.as_view(), name="network-edge-update-rollout-summary"),
+    path("stores/network/edge-update-validation-summary/", NetworkEdgeUpdateValidationSummaryView.as_view(), name="network-edge-update-validation-summary"),
     path("stores/<uuid:store_id>/support/requests/", StoreSupportRequestView.as_view(), name="store-support-requests"),
     path("support/requests/", AdminSupportRequestListView.as_view(), name="admin-support-requests"),
     path("support/requests/<uuid:request_id>/grant/", AdminSupportRequestGrantView.as_view(), name="admin-support-request-grant"),

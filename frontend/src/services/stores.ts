@@ -504,6 +504,47 @@ export type NetworkEdgeUpdateRolloutSummaryResponse = {
   generated_at: string
 }
 
+export type NetworkEdgeUpdateValidationSummaryResponse = {
+  scope: "network"
+  filters: {
+    channel: "all" | "stable" | "canary"
+    hours: number
+  }
+  summary: {
+    stores_total: number
+    stores_with_healthy_attempt: number
+    stores_with_failure_attempt: number
+    stores_with_rollback_attempt: number
+    attempts_total: number
+    healthy_attempts: number
+    failed_attempts: number
+    rollback_attempts: number
+    incomplete_attempts: number
+    success_rate_pct: number
+    failure_rate_pct: number
+    rollback_rate_pct: number
+    avg_duration_seconds?: number | null
+    decision: "GO" | "NO-GO"
+  }
+  checklist: {
+    canary_ready: boolean
+    rollback_ready: boolean
+    telemetry_ready: boolean
+  }
+  stores: Array<{
+    store_id: string
+    attempts_total: number
+    healthy_attempts: number
+    failed_attempts: number
+    rollback_attempts: number
+    incomplete_attempts: number
+    has_healthy_attempt: boolean
+    has_failure_attempt: boolean
+    has_rollback_attempt: boolean
+  }>
+  generated_at: string
+}
+
 export type RotateEdgeTokenResult =
   | ({ supported: true } & StoreEdgeSetupPayload)
   | { supported: false };
@@ -1340,6 +1381,16 @@ export const storesService = {
       params: channel ? { channel } : undefined,
     })
     return response.data as NetworkEdgeUpdateRolloutSummaryResponse
+  },
+
+  async getNetworkEdgeUpdateValidationSummary(params?: {
+    channel?: "stable" | "canary"
+    hours?: number
+  }): Promise<NetworkEdgeUpdateValidationSummaryResponse> {
+    const response = await api.get("/v1/stores/network/edge-update-validation-summary/", {
+      params: params || undefined,
+    })
+    return response.data as NetworkEdgeUpdateValidationSummaryResponse
   },
 
   // Criar nova loja
