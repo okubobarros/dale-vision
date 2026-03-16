@@ -58,6 +58,7 @@ Query params:
 - `days` (default `30`, max `180`)
 
 Resposta:
+- `method_version_current` (versão atual do método de cálculo em uso)
 - `totals` da janela solicitada
 - `items` por dia (`ledger_date`)
 
@@ -81,6 +82,7 @@ Query params:
 - `days` (default `30`, max `180`)
 
 Resposta:
+- `method_version_current` (versão atual do método de cálculo em uso)
 - `store_id: "all"`
 - `totals` consolidados da rede (tenant atual)
 - `breakdown_by_store` (top lojas por risco no período, com `store_id` e `store_name`)

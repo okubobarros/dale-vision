@@ -611,6 +611,12 @@ const Reports = () => {
           <p className="text-[11px] text-slate-500 mt-2">
             {selectedStore ? "Período selecionado da loja" : "Período selecionado da rede"}
           </p>
+          <div className="mt-2 flex items-center gap-2">
+            <TrustBadge status="estimated" />
+            <span className="text-[11px] text-slate-500">
+              Método {ledgerQ.data?.method_version_current || "value_ledger_v1_2026-03-15"}
+            </span>
+          </div>
         </article>
         <article className="rounded-xl border border-slate-200 bg-white p-4 shadow-sm">
           <p className="text-xs uppercase tracking-[0.08em] text-slate-500">Ações Despachadas</p>

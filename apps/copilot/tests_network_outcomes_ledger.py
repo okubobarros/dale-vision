@@ -103,6 +103,7 @@ class CopilotNetworkValueLedgerDailyViewTests(SimpleTestCase):
         self.assertEqual(response.status_code, 200)
         self.assertEqual(response.data["store_id"], "all")
         self.assertEqual(response.data["days"], 7)
+        self.assertIn("method_version_current", response.data)
         self.assertEqual(response.data["totals"]["actions_dispatched"], 14)
         self.assertIn("breakdown_by_store", response.data)
         if response.data["breakdown_by_store"]:

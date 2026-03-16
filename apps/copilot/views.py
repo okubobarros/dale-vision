@@ -531,6 +531,7 @@ class CopilotValueLedgerDailyView(APIView):
             ValueLedgerDaily.objects.filter(store_id=store_id, ledger_date__gte=from_date)
             .order_by("-ledger_date")
         )
+        latest_row = rows.first()
         totals = rows.aggregate(
             value_recovered=Sum("value_recovered_brl"),
             value_at_risk=Sum("value_at_risk_brl"),
@@ -542,6 +543,7 @@ class CopilotValueLedgerDailyView(APIView):
             {
                 "store_id": str(store_id),
                 "days": days,
+                "method_version_current": getattr(latest_row, "method_version", "value_ledger_v1_2026-03-15"),
                 "totals": {
                     "value_recovered_brl": float(totals.get("value_recovered") or 0),
                     "value_at_risk_brl": float(totals.get("value_at_risk") or 0),
@@ -659,6 +661,7 @@ class CopilotNetworkValueLedgerDailyView(APIView):
                 {
                     "store_id": "all",
                     "days": days,
+                    "method_version_current": "value_ledger_v1_2026-03-15",
                     "totals": {
                         "value_recovered_brl": 0.0,
                         "value_at_risk_brl": 0.0,
@@ -675,6 +678,7 @@ class CopilotNetworkValueLedgerDailyView(APIView):
         rows = ValueLedgerDaily.objects.filter(ledger_date__gte=from_date).order_by("-ledger_date")
         if org_ids:
             rows = rows.filter(org_id__in=org_ids)
+        latest_row = rows.first()
         totals = rows.aggregate(
             value_recovered=Sum("value_recovered_brl"),
             value_at_risk=Sum("value_at_risk_brl"),
@@ -701,6 +705,7 @@ class CopilotNetworkValueLedgerDailyView(APIView):
             {
                 "store_id": "all",
                 "days": days,
+                "method_version_current": getattr(latest_row, "method_version", "value_ledger_v1_2026-03-15"),
                 "totals": {
                     "value_recovered_brl": float(totals.get("value_recovered") or 0),
                     "value_at_risk_brl": float(totals.get("value_at_risk") or 0),

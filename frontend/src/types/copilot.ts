@@ -171,6 +171,7 @@ export interface CopilotValueLedgerDailyItem {
 export interface CopilotValueLedgerDailyResponse {
   store_id: string
   days: number
+  method_version_current?: string
   totals: {
     value_recovered_brl: number
     value_at_risk_brl: number
