@@ -45,7 +45,7 @@ const Login = () => {
 
     try {
       await login({ username, password })
-      navigate("/app/dashboard")
+      navigate("/onboarding", { replace: true })
     } catch (err: unknown) {
       const error = err as {
         message?: string
