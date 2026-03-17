@@ -1,12 +1,15 @@
 import uuid
 import logging
+import os
 from datetime import timedelta
+from secrets import compare_digest
 
 from django.db import models, transaction
 from django.db.models import Avg, Count, Max, Sum
 from django.utils import timezone
+from django.conf import settings
 from rest_framework import status
-from rest_framework.permissions import IsAuthenticated
+from rest_framework.permissions import AllowAny, IsAuthenticated
 from rest_framework.response import Response
 from rest_framework.views import APIView
 
@@ -26,6 +29,7 @@ from .models import (
 )
 from .serializers import (
     CopilotActionOutcomeCreateSerializer,
+    CopilotActionOutcomeCallbackSerializer,
     CopilotActionOutcomeUpdateSerializer,
     CopilotActionOutcomeSerializer,
     CopilotChatCreateSerializer,
@@ -112,6 +116,20 @@ def _sync_value_ledger_from_outcome(outcome: ActionOutcome):
         ]
     )
     return row
+
+
+def _is_valid_n8n_service_token(request) -> bool:
+    expected = (
+        getattr(settings, "N8N_SERVICE_TOKEN", None)
+        or os.getenv("N8N_SERVICE_TOKEN")
+        or ""
+    ).strip()
+    provided = (
+        request.headers.get("X-N8N-SERVICE-TOKEN")
+        or request.headers.get("X-DALE-SERVICE-TOKEN")
+        or ""
+    ).strip()
+    return bool(expected and provided and compare_digest(expected, provided))
 
 
 class CopilotDashboardContextView(APIView):
@@ -412,25 +430,36 @@ class CopilotActionOutcomeView(APIView):
                     output_field=models.IntegerField(),
                 )
             ),
+            delivered=Sum(
+                models.Case(
+                    models.When(delivery_status__in=["sent", "delivered", "read"], then=1),
+                    default=0,
+                    output_field=models.IntegerField(),
+                )
+            ),
             expected=Sum("impact_expected_brl"),
             realized=Sum("impact_realized_brl"),
             confidence_avg=Avg("confidence_score"),
         )
         actions_dispatched = int(summary.get("dispatched") or 0)
         actions_completed = int(summary.get("completed") or 0)
+        actions_delivered = int(summary.get("delivered") or 0)
         impact_expected_brl = float(summary.get("expected") or 0)
         impact_realized_brl = float(summary.get("realized") or 0)
         completion_rate = round((actions_completed / actions_dispatched) * 100, 1) if actions_dispatched > 0 else 0.0
+        delivery_rate = round((actions_delivered / actions_dispatched) * 100, 1) if actions_dispatched > 0 else 0.0
         recovery_rate = round((impact_realized_brl / impact_expected_brl) * 100, 1) if impact_expected_brl > 0 else 0.0
         return Response(
             {
                 "store_id": str(store_id),
                 "summary": {
                     "actions_dispatched": actions_dispatched,
+                    "actions_delivered": actions_delivered,
                     "actions_completed": actions_completed,
                     "impact_expected_brl": impact_expected_brl,
                     "impact_realized_brl": impact_realized_brl,
                     "completion_rate": completion_rate,
+                    "delivery_rate": delivery_rate,
                     "recovery_rate": recovery_rate,
                     "confidence_score_avg": float(summary.get("confidence_avg") or 0),
                 },
@@ -502,6 +531,16 @@ class CopilotActionOutcomeDetailView(APIView):
             outcome.impact_realized_brl = float(data["impact_realized_brl"] or 0)
         if "confidence_score" in data:
             outcome.confidence_score = int(data["confidence_score"] or 0)
+        if "provider_message_id" in data:
+            outcome.provider_message_id = data.get("provider_message_id") or None
+        if "delivery_status" in data:
+            outcome.delivery_status = data.get("delivery_status") or None
+        if "delivery_error" in data:
+            outcome.delivery_error = data.get("delivery_error") or None
+        if "delivered_at" in data:
+            outcome.delivered_at = data.get("delivered_at")
+        if "failed_at" in data:
+            outcome.failed_at = data.get("failed_at")
 
         explicit_completed_at = data.get("completed_at")
         if explicit_completed_at is not None:
@@ -516,12 +555,97 @@ class CopilotActionOutcomeDetailView(APIView):
                 "outcome_json",
                 "impact_realized_brl",
                 "confidence_score",
+                "provider_message_id",
+                "delivery_status",
+                "delivery_error",
+                "delivered_at",
+                "failed_at",
                 "completed_at",
                 "updated_at",
             ]
         )
         _sync_value_ledger_from_outcome(outcome)
         return Response(CopilotActionOutcomeSerializer(outcome).data, status=status.HTTP_200_OK)
+
+
+class CopilotActionOutcomeCallbackView(APIView):
+    permission_classes = [AllowAny]
+
+    def post(self, request):
+        if not _is_valid_n8n_service_token(request):
+            return Response(
+                {"code": "FORBIDDEN", "message": "Token de serviço inválido."},
+                status=status.HTTP_403_FORBIDDEN,
+            )
+
+        serializer = CopilotActionOutcomeCallbackSerializer(data=request.data or {})
+        serializer.is_valid(raise_exception=True)
+        data = serializer.validated_data
+
+        event_id = data["event_id"]
+        outcome = ActionOutcome.objects.filter(action_event_id=event_id).order_by("-dispatched_at").first()
+        if not outcome:
+            return Response(
+                {"code": "ACTION_OUTCOME_NOT_FOUND", "message": "Outcome não encontrado para event_id informado."},
+                status=status.HTTP_404_NOT_FOUND,
+            )
+
+        now = timezone.now()
+        delivery_status = (data.get("delivery_status") or "").strip().lower() or None
+        provider_message_id = data.get("provider_message_id") or None
+        delivery_error = data.get("delivery_error") or None
+        callback_ts = data.get("ts")
+        channel = (data.get("channel") or "").strip() or None
+        action_dispatch_id = data.get("action_dispatch_id") or None
+
+        outcome.provider_message_id = provider_message_id or outcome.provider_message_id
+        outcome.delivery_status = delivery_status or outcome.delivery_status
+        outcome.delivery_error = delivery_error
+        if channel and not outcome.channel:
+            outcome.channel = channel
+
+        if delivery_status in {"delivered", "read", "sent"}:
+            outcome.delivered_at = callback_ts or now
+        if delivery_status in {"failed", "undelivered", "error"}:
+            outcome.failed_at = callback_ts or now
+            if outcome.status == "dispatched":
+                outcome.status = "failed"
+                if not outcome.completed_at:
+                    outcome.completed_at = callback_ts or now
+
+        meta = dict(outcome.outcome_json or {})
+        if action_dispatch_id:
+            meta["action_dispatch_id"] = action_dispatch_id
+        if channel:
+            meta["channel_callback"] = channel
+        meta["delivery_callback_ts"] = (callback_ts or now).isoformat()
+        outcome.outcome_json = meta
+        outcome.updated_at = now
+        outcome.save(
+            update_fields=[
+                "provider_message_id",
+                "delivery_status",
+                "delivery_error",
+                "delivered_at",
+                "failed_at",
+                "status",
+                "completed_at",
+                "channel",
+                "outcome_json",
+                "updated_at",
+            ]
+        )
+        _sync_value_ledger_from_outcome(outcome)
+        return Response(
+            {
+                "ok": True,
+                "event_id": str(event_id),
+                "outcome_id": str(outcome.id),
+                "status": outcome.status,
+                "delivery_status": outcome.delivery_status,
+            },
+            status=status.HTTP_200_OK,
+        )
 
 
 class CopilotValueLedgerDailyView(APIView):

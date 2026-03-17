@@ -118,6 +118,11 @@ class CopilotActionOutcomeSerializer(serializers.ModelSerializer):
             "impact_expected_brl",
             "impact_realized_brl",
             "confidence_score",
+            "provider_message_id",
+            "delivery_status",
+            "delivery_error",
+            "delivered_at",
+            "failed_at",
             "dispatched_at",
             "completed_at",
             "created_at",
@@ -154,6 +159,21 @@ class CopilotActionOutcomeUpdateSerializer(serializers.Serializer):
     impact_realized_brl = serializers.FloatField(required=False, min_value=0)
     confidence_score = serializers.IntegerField(required=False, min_value=0, max_value=100)
     completed_at = serializers.DateTimeField(required=False, allow_null=True)
+    provider_message_id = serializers.CharField(max_length=128, required=False, allow_blank=True, allow_null=True)
+    delivery_status = serializers.CharField(max_length=32, required=False, allow_blank=True, allow_null=True)
+    delivery_error = serializers.CharField(required=False, allow_blank=True, allow_null=True)
+    delivered_at = serializers.DateTimeField(required=False, allow_null=True)
+    failed_at = serializers.DateTimeField(required=False, allow_null=True)
+
+
+class CopilotActionOutcomeCallbackSerializer(serializers.Serializer):
+    event_id = serializers.UUIDField(required=True)
+    action_dispatch_id = serializers.CharField(max_length=128, required=False, allow_blank=True, allow_null=True)
+    provider_message_id = serializers.CharField(max_length=128, required=False, allow_blank=True, allow_null=True)
+    delivery_status = serializers.CharField(max_length=32, required=False, allow_blank=True, allow_null=True)
+    delivery_error = serializers.CharField(required=False, allow_blank=True, allow_null=True)
+    channel = serializers.CharField(max_length=32, required=False, allow_blank=True, allow_null=True)
+    ts = serializers.DateTimeField(required=False, allow_null=True)
 
 
 class ValueLedgerDailySerializer(serializers.ModelSerializer):

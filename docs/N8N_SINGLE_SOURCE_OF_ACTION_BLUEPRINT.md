@@ -51,10 +51,12 @@ Objetivo: executar delegacao e atualizar status de execução (completion_rate r
 
 Endpoint backend atual para update:
 - `PATCH /api/v1/copilot/stores/:store_id/actions/outcomes/:outcome_id/`
+- `POST /api/v1/copilot/actions/outcomes/callback/` (novo)
 
 Observacao pratica:
-- Hoje o n8n precisa saber `outcome_id` para patch.
-- Caminho recomendado de produto: criar endpoint backend dedicado `n8n outcome webhook` por `event_id` (sem acoplamento a `outcome_id` no n8n).
+- O callback por `event_id` ja esta disponivel.
+- Header de autenticacao: `X-N8N-SERVICE-TOKEN`.
+- Correlacao: `event_id` -> `ActionOutcome.action_event_id`.
 
 ## WF-3 Operational Status Triage
 Objetivo: converter status tecnico em ação operacional.
@@ -155,9 +157,9 @@ return out
 
 ## 6) Gap atual para fechar ciclo 100%
 
-1. Backend: endpoint dedicado para callback n8n de outcome por `event_id` (evita dependência de `outcome_id` no fluxo).
-2. Credencial de serviço para n8n -> backend (token de integração com escopo mínimo).
-3. Persistência de `provider_message_id` e status de entrega no `ActionOutcome`/metadata.
-4. Dashboard/Reports: exibir `dispatch -> delivered -> completed/failed` (não só `dispatched`).
+1. Frontend: exibir funil completo `dispatch -> delivered -> completed/failed` (agora backend ja expõe `actions_delivered` e `delivery_rate` no summary por loja).
+2. Endpoint de callback por `action_dispatch_id` nativo quando a entidade `action_dispatch` for criada no backend (hoje armazenado em metadata do outcome).
+3. Outcome evaluation automatizada (WF-5) e ledger granular por acao (`value_ledger_entry`).
+4. Human review e playbooks automatizados para casos ambiguos/criticos.
 
 Com esses 4 pontos, o fluxo vira realmente `single source of action` com completion_rate confiável de ponta a ponta.
