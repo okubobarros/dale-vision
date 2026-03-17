@@ -13,6 +13,7 @@ import {
   refreshSupabaseSession,
   saveSupabaseSession,
 } from "./authSession"
+import { storesService } from "./stores"
 
 // ============ DEFINIR OS TYPES PRIMEIRO ============
 
@@ -63,6 +64,8 @@ export const authService = {
       throw new Error("Sessão não encontrada")
     }
 
+    // Prevent cross-user stale onboarding/dashboard state from local caches.
+    storesService.clearCache()
     const saved = saveSupabaseSession(data.session, data.user, email)
     syncApiAuthHeader()
 
@@ -79,6 +82,7 @@ export const authService = {
       console.warn("Erro no logout do Supabase:", error)
     } finally {
       // Sempre limpa o localStorage
+      storesService.clearCache()
       clearAuthStorage()
       syncApiAuthHeader()
     }

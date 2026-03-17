@@ -862,6 +862,28 @@ const STORES_CACHE_KEYS = {
   edgeStatusPrefix: "dv_store_edge_status_cache_v1_",
 } as const
 
+const clearStoresCache = () => {
+  if (typeof window === "undefined") return
+  try {
+    localStorage.removeItem(STORES_CACHE_KEYS.summary)
+    localStorage.removeItem(STORES_CACHE_KEYS.minimal)
+    localStorage.removeItem(STORES_CACHE_KEYS.full)
+
+    for (let i = localStorage.length - 1; i >= 0; i -= 1) {
+      const key = localStorage.key(i)
+      if (!key) continue
+      if (
+        key.startsWith(STORES_CACHE_KEYS.dashboardPrefix) ||
+        key.startsWith(STORES_CACHE_KEYS.edgeStatusPrefix)
+      ) {
+        localStorage.removeItem(key)
+      }
+    }
+  } catch {
+    // ignore storage errors
+  }
+}
+
 type CachedPayload<T> = {
   ts: string
   data: T[]
@@ -1009,6 +1031,9 @@ const normalizeEdgeStatus = (
 });
 
 export const storesService = {
+  clearCache(): void {
+    clearStoresCache()
+  },
   getCachedStoresSummary(): StoreSummary[] | null {
     return readStoresCache<StoreSummary>(STORES_CACHE_KEYS.summary)
   },
@@ -1019,7 +1044,8 @@ export const storesService = {
     return readStoresCache<Store>(STORES_CACHE_KEYS.full)
   },
   // Listar lojas com payload mínimo (para telas rápidas)
-  async getStoresMinimal(): Promise<StoreMinimal[]> {
+  async getStoresMinimal(options?: { allowCachedFallback?: boolean }): Promise<StoreMinimal[]> {
+    const allowCachedFallback = options?.allowCachedFallback ?? true
     logDev("🔄 Buscando lojas (view=min)...")
     try {
       const response = await api.get("/v1/stores/", {
@@ -1040,7 +1066,7 @@ export const storesService = {
       return stores;
     } catch (error) {
       logDevError("❌ Erro ao buscar lojas (min):", error);
-      if (!isAuthError(error)) {
+      if (allowCachedFallback && !isAuthError(error)) {
         const cached = readStoresCache<StoreMinimal>(STORES_CACHE_KEYS.minimal)
         if (cached?.length) return cached
       }
