@@ -1038,7 +1038,8 @@ class EmployeeSerializerTests(SimpleTestCase):
             },
         ]
 
-        with patch("apps.stores.serializers.Store.objects.get", return_value=store):
+        with patch("apps.stores.serializers.Store.objects.only") as mock_only:
+            mock_only.return_value.get.return_value = store
             serializer = EmployeeSerializer(data=payload, many=True)
             self.assertTrue(serializer.is_valid(), serializer.errors)
             validated = serializer.validated_data

@@ -1,5 +1,6 @@
 # apps/stores/serializers.py
 from django.utils import timezone
+from django.db import DatabaseError
 from rest_framework import serializers
 from apps.core.models import Store, Employee
 
@@ -67,9 +68,15 @@ class EmployeeSerializer(serializers.ModelSerializer):
                 raise serializers.ValidationError({"store_id": "store_id não corresponde à store informada."})
             if store is None:
                 try:
-                    attrs["store"] = Store.objects.get(id=store_id)
+                    # Avoid selecting all Store columns during onboarding employee create;
+                    # this prevents unrelated schema drift from causing a 500 here.
+                    attrs["store"] = Store.objects.only("id", "org_id").get(id=store_id)
                 except Store.DoesNotExist:
                     raise serializers.ValidationError({"store_id": "Loja inválida."})
+                except DatabaseError:
+                    raise serializers.ValidationError(
+                        {"store_id": "Falha ao validar loja (schema de banco desatualizado)."}
+                    )
         return attrs
 
     def create(self, validated_data):
