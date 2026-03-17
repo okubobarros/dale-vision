@@ -1,8 +1,7 @@
 name: Copilot Sprint2 Acceptance Report
 
 on:
-  schedule:
-    - cron: "30 23 * * *"
+  # Pilot mode: manual-only to avoid unnecessary periodic load.
   workflow_dispatch:
     inputs:
       days:
@@ -12,7 +11,7 @@ on:
       max_stores:
         description: "Máximo de lojas por execução"
         required: false
-        default: "500"
+        default: "20"
       slo_target_seconds:
         description: "SLO alvo em segundos"
         required: false

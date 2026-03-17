@@ -1,9 +1,7 @@
 name: Export Metrics to Drive
 
 on:
-  schedule:
-    # 02:00 America/Sao_Paulo = 05:00 UTC
-    - cron: "0 5 * * *"
+  # Pilot mode: manual-only export.
   workflow_dispatch: {}
 
 jobs:
