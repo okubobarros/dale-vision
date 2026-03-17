@@ -1,5 +1,6 @@
--- Full bootstrap schema for test DB (matches Supabase current schema).
--- Note: this is for test DB only.
+-- Full bootstrap schema for test DB / recovery scenarios.
+-- WARNING: not a production source of truth.
+-- Source of truth: Django migrations + supabase/sql dated patches.
 
 CREATE EXTENSION IF NOT EXISTS "pgcrypto";
 CREATE EXTENSION IF NOT EXISTS "uuid-ossp";
@@ -87,9 +88,17 @@ CREATE TABLE IF NOT EXISTS public.stores (
   hours_sunday_holiday text,
   employees_count integer,
   cameras_count integer,
+  pos_integration_interest boolean DEFAULT false,
+  avg_hourly_labor_cost numeric,
   CONSTRAINT stores_pkey PRIMARY KEY (id),
   CONSTRAINT stores_org_id_fkey FOREIGN KEY (org_id) REFERENCES public.organizations(id)
 );
+
+ALTER TABLE IF EXISTS public.stores
+  ADD COLUMN IF NOT EXISTS pos_integration_interest boolean DEFAULT false;
+
+ALTER TABLE IF EXISTS public.stores
+  ADD COLUMN IF NOT EXISTS avg_hourly_labor_cost numeric;
 
 CREATE TABLE IF NOT EXISTS public.store_zones (
   id uuid NOT NULL DEFAULT uuid_generate_v4(),
@@ -504,6 +513,10 @@ CREATE TABLE IF NOT EXISTS public.knox_authtoken (
   expiry timestamp with time zone,
   CONSTRAINT knox_authtoken_pkey PRIMARY KEY (digest)
 );
+
+ALTER TABLE IF EXISTS public.knox_authtoken
+  ADD COLUMN IF NOT EXISTS token_key character varying(64);
+
 CREATE INDEX IF NOT EXISTS knox_authtoken_token_key_idx
   ON public.knox_authtoken (token_key);
 

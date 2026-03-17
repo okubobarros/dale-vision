@@ -13,10 +13,10 @@ BEGIN
     WHERE t.relname = 'knox_authtoken'
       AND n.nspname = 'public'
       AND c.contype = 'f'
-      AND pg_get_constraintdef(c.oid) LIKE '%(user_id)%auth_user%';
+      AND pg_get_constraintdef(c.oid) LIKE '%%(user_id)%%auth_user%%';
 
     IF constraint_name IS NOT NULL THEN
-        EXECUTE format('ALTER TABLE public.knox_authtoken DROP CONSTRAINT %I', constraint_name);
+        EXECUTE format('ALTER TABLE public.knox_authtoken DROP CONSTRAINT %%I', constraint_name);
     END IF;
 
     EXECUTE 'ALTER TABLE public.knox_authtoken ADD CONSTRAINT knox_authtoken_user_id_fkey '

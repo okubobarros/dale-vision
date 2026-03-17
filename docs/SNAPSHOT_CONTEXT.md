@@ -260,7 +260,7 @@ edge-agent/
   README_PILOT.md
 
 scripts/
-  add_camera_external_id.sql
+  supabase/sql/20260317_camera_external_id_unique_index.sql
   generate_context_snapshot.py
   project_snapshot.ps1
   snapshot_project.ps1
