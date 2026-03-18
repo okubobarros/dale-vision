@@ -21,9 +21,9 @@ export default function NotificationLogs() {
     data: stores,
     isLoading: storesLoading,
     error: storesError,
-  } = useQuery({
+  } = useQuery<StoreMinimal[]>({
     queryKey: ["stores"],
-    queryFn: storesService.getStoresMinimal,
+    queryFn: () => storesService.getStoresMinimal(),
   })
 
   const selectedStoreId = useMemo(() => {

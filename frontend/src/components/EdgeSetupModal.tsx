@@ -42,7 +42,7 @@ const POLL_INTERVAL_MS = 3000
 const POLL_MAX_DURATION_MS = 120000
 const HEARTBEAT_FRESHNESS_SECONDS = 120
 const DASHBOARD_BASE_URL = "https://app.dalevision.com/app/cameras"
-const DEFAULT_AUTO_UPDATE_ENABLED = 0
+const DEFAULT_AUTO_UPDATE_ENABLED = false
 const UPDATE_CHANNEL = "stable"
 const UPDATE_GITHUB_REPO = "daleship/dalevision-edge-agent"
 const UPDATE_INTERVAL_SECONDS = 21600
@@ -151,9 +151,7 @@ const EdgeSetupModal = ({ open, onClose, defaultStoreId }: EdgeSetupModalProps) 
   const [cloudBaseUrl, setCloudBaseUrl] = useState(DEFAULT_CLOUD_BASE_URL)
   const [loadingCreds, setLoadingCreds] = useState(false)
   const [envProfile, setEnvProfile] = useState<EdgeEnvProfile>("stabilization")
-  const [autoUpdateEnabled, setAutoUpdateEnabled] = useState<boolean>(
-    DEFAULT_AUTO_UPDATE_ENABLED === 1
-  )
+  const [autoUpdateEnabled, setAutoUpdateEnabled] = useState<boolean>(DEFAULT_AUTO_UPDATE_ENABLED)
   const [setupError, setSetupError] = useState<string | null>(null)
   const [rotatingToken, setRotatingToken] = useState(false)
   const [tokenRotated, setTokenRotated] = useState(false)
@@ -205,7 +203,7 @@ const EdgeSetupModal = ({ open, onClose, defaultStoreId }: EdgeSetupModalProps) 
 
   const { data: stores } = useQuery<StoreMinimal[]>({
     queryKey: ["stores"],
-    queryFn: storesService.getStoresMinimal,
+    queryFn: () => storesService.getStoresMinimal(),
     enabled: open,
     staleTime: 60000,
   })
@@ -227,7 +225,7 @@ const EdgeSetupModal = ({ open, onClose, defaultStoreId }: EdgeSetupModalProps) 
     setAgentId(DEFAULT_AGENT_ID)
     setCloudBaseUrl(DEFAULT_CLOUD_BASE_URL)
     setEnvProfile("stabilization")
-    setAutoUpdateEnabled(DEFAULT_AUTO_UPDATE_ENABLED === 1)
+    setAutoUpdateEnabled(DEFAULT_AUTO_UPDATE_ENABLED)
     setLoadingCreds(false)
     setSetupError(null)
     setRotatingToken(false)
@@ -757,7 +755,7 @@ const EdgeSetupModal = ({ open, onClose, defaultStoreId }: EdgeSetupModalProps) 
               className="w-full rounded-lg border border-gray-300 px-3 py-2 text-sm"
             >
               <option value="">Selecione uma loja</option>
-              {stores?.map((store) => (
+              {stores?.map((store: StoreMinimal) => (
                 <option key={store.id} value={store.id}>
                   {store.name}
                 </option>
