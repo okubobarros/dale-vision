@@ -1,6 +1,6 @@
 import { useEffect, useMemo, useState } from "react"
 import { useQuery } from "@tanstack/react-query"
-import { Link, useLocation } from "react-router-dom"
+import { Link, useLocation, useNavigate } from "react-router-dom"
 import toast from "react-hot-toast"
 import { useAuth } from "../../contexts/useAuth"
 import {
@@ -219,6 +219,7 @@ const ingestionEventFilterOptions: Array<{ value: IngestionEventTypeFilter; labe
 
 const Dashboard = () => {
   const { user, authReady, isAuthenticated } = useAuth()
+  const navigate = useNavigate()
   const location = useLocation()
   const initialParams = new URLSearchParams(location.search)
   const initialStoreFromQuery =
@@ -251,7 +252,7 @@ const Dashboard = () => {
         if (cachedSummary?.length) {
           return cachedSummary
         }
-        const minimal = await storesService.getStoresMinimal()
+        const minimal = await storesService.getStoresMinimal({ allowCachedFallback: false })
         return minimal.map((store) => ({
           id: store.id,
           name: store.name,
@@ -274,6 +275,13 @@ const Dashboard = () => {
     return selectedStoreOverride || ALL_STORES_VALUE
   }, [selectedStoreOverride])
   const isNetworkMode = selectedStore === ALL_STORES_VALUE
+
+  useEffect(() => {
+    if (!canFetchAuth || storesLoading || !stores) return
+    if (stores.length === 0) {
+      navigate("/onboarding", { replace: true })
+    }
+  }, [canFetchAuth, navigate, stores, storesLoading])
 
   const selectedStoreItem = useMemo(
     () => (stores ?? []).find((s) => s.id === selectedStore) ?? null,
