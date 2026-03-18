@@ -129,6 +129,16 @@ def _resolve_edge_ts(data: dict, payload: dict):
     return _parse_edge_ts(ts) or timezone.now()
 
 
+def _camera_name_for_write(*, incoming_name: str, external_id: str, existing_name: str) -> str:
+    candidate = (incoming_name or "").strip() or (external_id or "").strip() or "camera"
+    # Preserve human-readable names already in DB when incoming payload only has UUID-ish labels.
+    if _is_uuid(candidate):
+        current = (existing_name or "").strip()
+        if current and not _is_uuid(current):
+            return current
+    return candidate
+
+
 def _first_non_empty(*values):
     for value in values:
         if value is None:
@@ -711,7 +721,7 @@ class EdgeEventsIngestView(APIView):
                     if not isinstance(cam, dict):
                         continue
                     external_id = cam.get("external_id") or cam.get("camera_id")
-                    name = cam.get("name") or external_id or "camera"
+                    incoming_name = cam.get("name")
                     rtsp_url = cam.get("rtsp_url")
                     snapshot_url = cam.get("snapshot_url") or cam.get("snapshot_data_url")
                     if isinstance(snapshot_url, str):
@@ -721,7 +731,7 @@ class EdgeEventsIngestView(APIView):
                             logger.warning(
                                 "[EDGE] snapshot_url too large; dropped store=%s camera=%s",
                                 store_id,
-                                external_id or name,
+                                external_id or incoming_name or "camera",
                             )
                     else:
                         snapshot_url = None
@@ -742,10 +752,15 @@ class EdgeEventsIngestView(APIView):
                             enforce_trial_camera_limit(store_id, requested_active=True)
                         except PaywallError as exc:
                             return Response(exc.detail, status=exc.status_code)
+                        name_for_write = _camera_name_for_write(
+                            incoming_name=incoming_name,
+                            external_id=external_id,
+                            existing_name="",
+                        )
                         camera_obj = Camera.objects.create(
                             store_id=store_id,
                             external_id=external_id,
-                            name=name,
+                            name=name_for_write,
                             rtsp_url=rtsp_url,
                             last_snapshot_url=snapshot_url,
                             status="online",
@@ -755,9 +770,14 @@ class EdgeEventsIngestView(APIView):
                             updated_at=timezone.now(),
                         )
                     else:
+                        name_for_write = _camera_name_for_write(
+                            incoming_name=incoming_name,
+                            external_id=external_id,
+                            existing_name=getattr(camera_obj, "name", None),
+                        )
                         Camera.objects.filter(id=camera_obj.id).update(
                             external_id=external_id or camera_obj.external_id,
-                            name=name or camera_obj.name,
+                            name=name_for_write or camera_obj.name,
                             rtsp_url=rtsp_url or camera_obj.rtsp_url,
                             last_snapshot_url=snapshot_url or camera_obj.last_snapshot_url,
                             status="online",
@@ -767,7 +787,7 @@ class EdgeEventsIngestView(APIView):
                         )
 
                     camera_obj.external_id = external_id or camera_obj.external_id
-                    camera_obj.name = name or camera_obj.name
+                    camera_obj.name = name_for_write or camera_obj.name
                     camera_obj.last_snapshot_url = snapshot_url or camera_obj.last_snapshot_url
                     camera_obj.status = "online"
                     camera_obj.last_seen_at = ts_dt

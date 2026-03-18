@@ -25,6 +25,7 @@ from apps.edge.vision_metrics import (
 from apps.edge import vision_metrics
 from apps.edge.views import (
     _compute_receipt_id,
+    _camera_name_for_write,
     _normalize_ingest_event_name,
     _validate_retail_event_contract,
     EdgeEventsIngestView,
@@ -91,6 +92,24 @@ class EdgeIdempotencyKeyTests(SimpleTestCase):
             "data": {**base["data"], "ts": "2026-03-14T10:20:55Z"},
         }
         self.assertEqual(_compute_receipt_id(payload_a), _compute_receipt_id(payload_b))
+
+
+class EdgeCameraNameWriteTests(SimpleTestCase):
+    def test_preserves_existing_friendly_name_when_incoming_uuid(self):
+        name = _camera_name_for_write(
+            incoming_name="711b5804-3367-42f8-b5bc-8020d2af3b35",
+            external_id="711b5804-3367-42f8-b5bc-8020d2af3b35",
+            existing_name="Cam3 Salao",
+        )
+        self.assertEqual(name, "Cam3 Salao")
+
+    def test_uses_incoming_friendly_name(self):
+        name = _camera_name_for_write(
+            incoming_name="Cam3 Salao",
+            external_id="711b5804-3367-42f8-b5bc-8020d2af3b35",
+            existing_name="711b5804-3367-42f8-b5bc-8020d2af3b35",
+        )
+        self.assertEqual(name, "Cam3 Salao")
 
 
 class EdgeLegacyCameraEndpointsTests(SimpleTestCase):
