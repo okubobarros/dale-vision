@@ -28,6 +28,8 @@ from apps.edge.views import (
     _normalize_ingest_event_name,
     _validate_retail_event_contract,
     EdgeEventsIngestView,
+    EdgeCamerasView,
+    EdgeStoreCamerasView,
 )
 
 
@@ -71,6 +73,56 @@ class EdgeIdempotencyKeyTests(SimpleTestCase):
             "data": {**base["data"], "ts": "2026-03-14T10:20:55Z"},
         }
         self.assertEqual(_compute_receipt_id(payload_a), _compute_receipt_id(payload_b))
+
+
+class EdgeLegacyCameraEndpointsTests(SimpleTestCase):
+    def setUp(self):
+        self.factory = APIRequestFactory()
+
+    @patch("apps.edge.views._serialize_cameras_for_edge", return_value=[{"camera_id": "cam-1"}])
+    @patch("apps.edge.views.Camera")
+    @patch("apps.edge.views.authenticate_edge_token")
+    def test_edge_cameras_uses_token_store(
+        self,
+        auth_mock,
+        camera_mock,
+        serialize_mock,
+    ):
+        store_id = str(uuid.uuid4())
+        auth_mock.return_value = SimpleNamespace(ok=True, status_code=200, store_id=store_id)
+        camera_mock.objects.select_related.return_value.filter.return_value.order_by.return_value = []
+        request = self.factory.get("/api/edge/cameras/", HTTP_X_EDGE_TOKEN="valid")
+
+        response = EdgeCamerasView.as_view()(request)
+
+        self.assertEqual(response.status_code, 200)
+        self.assertEqual(response.data, [{"camera_id": "cam-1"}])
+        auth_mock.assert_called_once()
+        serialize_mock.assert_called_once()
+
+    @patch("apps.edge.views._serialize_cameras_for_edge", return_value=[{"camera_id": "cam-2"}])
+    @patch("apps.edge.views.Camera")
+    @patch("apps.edge.views.authenticate_edge_token")
+    def test_edge_store_cameras_validates_store_scope(
+        self,
+        auth_mock,
+        camera_mock,
+        serialize_mock,
+    ):
+        store_id = str(uuid.uuid4())
+        auth_mock.return_value = SimpleNamespace(ok=True, status_code=200, store_id=store_id)
+        camera_mock.objects.select_related.return_value.filter.return_value.order_by.return_value = []
+        request = self.factory.get(
+            f"/api/edge/stores/{store_id}/cameras/",
+            HTTP_X_EDGE_TOKEN="valid",
+        )
+
+        response = EdgeStoreCamerasView.as_view()(request, store_id=store_id)
+
+        self.assertEqual(response.status_code, 200)
+        self.assertEqual(response.data, [{"camera_id": "cam-2"}])
+        auth_mock.assert_called_once()
+        serialize_mock.assert_called_once()
 
     def test_compute_receipt_id_for_vision_events_changes_across_minutes(self):
         base = {

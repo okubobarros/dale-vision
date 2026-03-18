@@ -26,6 +26,7 @@ from apps.core.models import Camera, CameraHealthLog
 from apps.core.models import Store
 from apps.stores.services.user_uuid import ensure_user_uuid
 from apps.stores.services.user_orgs import get_user_org_ids
+from apps.stores.views import _serialize_cameras_for_edge
 from apps.stores.views_edge_status import classify_age, compute_store_edge_status_snapshot
 from apps.cameras.limits import enforce_trial_camera_limit
 from apps.cameras.services import rtsp_probe_with_hard_timeout
@@ -973,3 +974,59 @@ class EdgeCameraTestConnectionView(APIView):
             },
             status=status.HTTP_200_OK,
         )
+
+
+class EdgeCamerasView(APIView):
+    """
+    GET /api/edge/cameras/
+    Legacy compatibility endpoint for edge builds that fetch cameras by token store.
+    """
+
+    authentication_classes = []
+    permission_classes = [AllowAny]
+
+    def get(self, request):
+        auth_result = authenticate_edge_token(request)
+        if not auth_result.ok or not auth_result.store_id:
+            return Response(
+                {
+                    "code": auth_result.code or "edge_token_invalid",
+                    "detail": auth_result.detail or "Edge token inválido.",
+                },
+                status=auth_result.status_code or status.HTTP_401_UNAUTHORIZED,
+            )
+        cameras_qs = (
+            Camera.objects
+            .select_related("store")
+            .filter(store_id=auth_result.store_id, active=True)
+            .order_by("-updated_at")
+        )
+        return Response(_serialize_cameras_for_edge(cameras_qs), status=status.HTTP_200_OK)
+
+
+class EdgeStoreCamerasView(APIView):
+    """
+    GET /api/edge/stores/{store_id}/cameras/
+    Legacy compatibility endpoint for edge builds that call store-scoped path.
+    """
+
+    authentication_classes = []
+    permission_classes = [AllowAny]
+
+    def get(self, request, store_id):
+        auth_result = authenticate_edge_token(request, requested_store_id=str(store_id))
+        if not auth_result.ok:
+            return Response(
+                {
+                    "code": auth_result.code or "edge_token_invalid",
+                    "detail": auth_result.detail or "Edge token inválido.",
+                },
+                status=auth_result.status_code or status.HTTP_401_UNAUTHORIZED,
+            )
+        cameras_qs = (
+            Camera.objects
+            .select_related("store")
+            .filter(store_id=store_id, active=True)
+            .order_by("-updated_at")
+        )
+        return Response(_serialize_cameras_for_edge(cameras_qs), status=status.HTTP_200_OK)
