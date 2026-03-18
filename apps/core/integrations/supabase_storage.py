@@ -1,4 +1,5 @@
 import os
+import json
 from dataclasses import dataclass
 from typing import Optional
 
@@ -94,6 +95,21 @@ def upload_file(content: bytes, path: str, content_type: str) -> str:
         raise StorageUploadError("upload_failed") from exc
 
     if resp.status_code not in (200, 201):
+        detail = None
+        try:
+            payload = resp.json() if resp.content else {}
+            if isinstance(payload, dict):
+                detail = (
+                    payload.get("message")
+                    or payload.get("error")
+                    or payload.get("msg")
+                )
+            if not detail and payload:
+                detail = json.dumps(payload, ensure_ascii=False)
+        except Exception:
+            detail = (resp.text or "").strip()[:300]
+        if detail:
+            raise StorageUploadError(f"upload_failed:{resp.status_code}:{detail}")
         raise StorageUploadError(f"upload_failed:{resp.status_code}")
     return path
 

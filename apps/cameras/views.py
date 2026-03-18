@@ -1046,6 +1046,7 @@ class CameraViewSet(viewsets.ModelViewSet):
                 "SNAPSHOT_UPLOAD_FAILED",
                 "Falha ao enviar snapshot.",
                 status.HTTP_502_BAD_GATEWAY,
+                details={"reason": str(exc)[:300]},
                 deprecated_detail="Falha ao enviar snapshot.",
             )
         except supabase_storage.StorageNotConfigured:
