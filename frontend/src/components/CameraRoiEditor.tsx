@@ -159,6 +159,7 @@ const CameraRoiEditor = ({ open, camera, canEditRoi = false, onClose }: CameraRo
   const [removedShapeIds, setRemovedShapeIds] = useState<string[]>([])
   const [draftPoints, setDraftPoints] = useState<RoiPoint[]>([])
   const [isDrawing, setIsDrawing] = useState(false)
+  const [isStartingMonitoring, setIsStartingMonitoring] = useState(false)
   const [error, setError] = useState<string | null>(null)
   const [canvasSize, setCanvasSize] = useState<CanvasSize>({ width: 0, height: 0 })
   const [drawRect, setDrawRect] = useState<DrawRect | null>(null)
@@ -588,24 +589,39 @@ const CameraRoiEditor = ({ open, camera, canEditRoi = false, onClose }: CameraRo
     updateRoiMutation.mutate(buildRoiConfigPayload("draft"))
   }, [buildRoiConfigPayload, cameraId, canEditRoi, updateRoiMutation])
 
-  const handlePublish = useCallback(() => {
-    if (!cameraId || !canEditRoi) return
-    updateRoiMutation.mutate(buildRoiConfigPayload("published"))
-  }, [buildRoiConfigPayload, cameraId, canEditRoi, updateRoiMutation])
-
-  const handleStartMonitoring = useCallback(async () => {
+  const completeMonitoringStep = useCallback(async (roiVersion?: number | null, silent?: boolean) => {
     if (!cameraId || !camera?.store) return
     try {
+      setIsStartingMonitoring(true)
       await onboardingService.completeStep("monitoring_started", {
         store_id: camera.store,
         camera_id: cameraId,
-        roi_version: roiVersionLabel,
+        roi_version: roiVersion ?? roiVersionLabel,
       }, camera.store)
-      toast.success("Monitoramento iniciado")
+      queryClient.invalidateQueries({ queryKey: ["onboarding-next-step"] })
+      queryClient.invalidateQueries({ queryKey: ["onboarding-progress"] })
+      if (!silent) toast.success("Monitoramento iniciado")
     } catch {
-      toast.error("Falha ao iniciar monitoramento.")
+      if (!silent) toast.error("Falha ao iniciar monitoramento.")
+    } finally {
+      setIsStartingMonitoring(false)
     }
-  }, [camera, cameraId, roiVersionLabel])
+  }, [camera, cameraId, queryClient, roiVersionLabel])
+
+  const handlePublish = useCallback(async () => {
+    if (!cameraId || !canEditRoi) return
+    try {
+      const published = await updateRoiMutation.mutateAsync(buildRoiConfigPayload("published"))
+      await completeMonitoringStep(published?.version ?? null, true)
+      toast.success("ROI publicada e monitoramento iniciado")
+    } catch {
+      // updateRoiMutation onError already handles user-facing error.
+    }
+  }, [buildRoiConfigPayload, cameraId, canEditRoi, completeMonitoringStep, updateRoiMutation])
+
+  const handleStartMonitoring = useCallback(async () => {
+    await completeMonitoringStep(null, false)
+  }, [completeMonitoringStep])
 
   const displayUpdatedAt = useMemo(() => {
     if (!latestUpdatedAt) return "—"
@@ -684,9 +700,9 @@ const CameraRoiEditor = ({ open, camera, canEditRoi = false, onClose }: CameraRo
                   <button
                     type="button"
                     onClick={handlePublish}
-                    disabled={updateRoiMutation.isPending || effectiveShapes.length === 0}
+                    disabled={updateRoiMutation.isPending || isStartingMonitoring || effectiveShapes.length === 0}
                     className={`rounded-lg px-4 py-2 text-sm font-semibold text-white ${
-                      updateRoiMutation.isPending || effectiveShapes.length === 0
+                      updateRoiMutation.isPending || isStartingMonitoring || effectiveShapes.length === 0
                         ? "bg-gray-300 cursor-not-allowed"
                         : "bg-emerald-600 hover:bg-emerald-700"
                     }`}
@@ -703,9 +719,14 @@ const CameraRoiEditor = ({ open, camera, canEditRoi = false, onClose }: CameraRo
                 <button
                   type="button"
                   onClick={handleStartMonitoring}
-                  className="rounded-lg px-4 py-2 text-sm font-semibold text-white bg-indigo-600 hover:bg-indigo-700"
+                  disabled={isStartingMonitoring}
+                  className={`rounded-lg px-4 py-2 text-sm font-semibold text-white ${
+                    isStartingMonitoring
+                      ? "bg-gray-300 cursor-not-allowed"
+                      : "bg-indigo-600 hover:bg-indigo-700"
+                  }`}
                 >
-                  Iniciar monitoramento
+                  {isStartingMonitoring ? "Iniciando..." : "Iniciar monitoramento"}
                 </button>
               )}
               <button

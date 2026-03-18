@@ -1285,7 +1285,29 @@ export const storesService = {
         timeoutCategory: "critical",
         noRetry: true,
       });
-      return response.data;
+      const raw = response.data as
+        | {
+            total_stores?: number
+            active_stores?: number
+            total_visitors?: number
+            avg_conversion?: number
+            stores?: NetworkDashboard["stores"]
+            network?: {
+              total_stores?: number
+              active_stores?: number
+              total_visitors?: number
+              avg_conversion?: number
+            }
+          }
+        | undefined
+      const network = raw?.network ?? raw
+      return {
+        total_stores: Number(network?.total_stores ?? 0),
+        active_stores: Number(network?.active_stores ?? 0),
+        total_visitors: Number(network?.total_visitors ?? 0),
+        avg_conversion: Number(network?.avg_conversion ?? 0),
+        stores: Array.isArray(raw?.stores) ? raw.stores : [],
+      }
     } catch (error) {
       logDevError('❌ Erro ao buscar network dashboard:', error);
       throw error;

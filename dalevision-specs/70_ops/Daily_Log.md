@@ -94,7 +94,7 @@ Registrar decisões e eventos do dia.
   - Staff assist pode publicar ROI com metadados de assistência.
 - Próximos passos:
   - Validar bucket `camera-snapshots` no Supabase e permissões.
-  - Checar UX de “Aguardando validação” nas câmeras.
+  - ChecrAguardando validação” nas câmeras.
 
 ## 2026-02-23
 - Data: 2026-02-23

@@ -14,6 +14,7 @@ import {
 } from "../../services/cameras"
 import {
   onboardingService,
+  type OnboardingProgressResponse,
   type OnboardingNextStepResponse,
 } from "../../services/onboarding"
 import { supportService } from "../../services/support"
@@ -139,6 +140,14 @@ const Cameras = () => {
   const { data: onboardingNextStep } = useQuery<OnboardingNextStepResponse | null>({
     queryKey: ["onboarding-next-step", "cameras", selectedStore],
     queryFn: () => onboardingService.getNextStep(selectedStore),
+    enabled: Boolean(selectedStore && selectedStore !== "all"),
+    staleTime: 30000,
+    retry: false,
+  })
+
+  const { data: onboardingProgress } = useQuery<OnboardingProgressResponse | null>({
+    queryKey: ["onboarding-progress", "cameras", selectedStore],
+    queryFn: () => onboardingService.getProgress(selectedStore),
     enabled: Boolean(selectedStore && selectedStore !== "all"),
     staleTime: 30000,
     retry: false,
@@ -485,16 +494,18 @@ const Cameras = () => {
       const status = cam.camera_health?.status ?? cam.status
       return status === "online" || status === "degraded"
     })
+    const roiPublished = Boolean(onboardingProgress?.steps?.roi_published?.completed)
     const roiDone =
       hasCamera &&
-      (onboardingNextStep?.stage === "collecting_data" ||
+      (roiPublished ||
+        onboardingNextStep?.stage === "collecting_data" ||
         onboardingNextStep?.stage === "active")
     return [
       { label: "Adicionar câmera", done: hasCamera },
       { label: "Verificar status no Edge", done: healthOk },
       { label: "Desenhar ROI", done: roiDone },
     ]
-  }, [cameras, onboardingNextStep?.stage])
+  }, [cameras, onboardingNextStep?.stage, onboardingProgress?.steps?.roi_published?.completed])
 
   const handleTestConnection = useCallback(
     async (cameraId: string) => {

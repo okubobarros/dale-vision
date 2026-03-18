@@ -426,14 +426,34 @@ const Dashboard = () => {
   const canManageStore = selectedStoreRole
     ? ["owner", "admin", "manager"].includes(selectedStoreRole)
     : true
-  const storesOnlineCount = (stores ?? []).filter((store) => store.status === "active").length
-  const storesOfflineCount = (stores ?? []).filter(
-    (store) => store.status === "blocked" || store.status === "inactive"
-  ).length
+  const storesOnlineCount = useMemo(() => {
+    const networkRows = networkDashboard?.stores ?? []
+    const fromOperationalStatus = networkRows.filter((store) => {
+      const status = String(store.status || "").toLowerCase()
+      return status === "online" || status === "degraded"
+    }).length
+    if (fromOperationalStatus > 0) return fromOperationalStatus
+    return (stores ?? []).filter((store) =>
+      store.status === "active" || store.status === "trial"
+    ).length
+  }, [networkDashboard?.stores, stores])
+  const storesOfflineCount = useMemo(() => {
+    const networkRows = networkDashboard?.stores ?? []
+    const fromOperationalStatus = networkRows.filter((store) => {
+      const status = String(store.status || "").toLowerCase()
+      return status === "offline"
+    }).length
+    if (fromOperationalStatus > 0) return fromOperationalStatus
+    return (stores ?? []).filter(
+      (store) => store.status === "blocked" || store.status === "inactive"
+    ).length
+  }, [networkDashboard?.stores, stores])
   const filterDashboardByStoreStatus = (status: "active" | "blocked" | "inactive" | "trial") => {
     const firstMatch = (stores ?? []).find((store) =>
       status === "blocked"
         ? store.status === "blocked" || store.status === "inactive"
+        : status === "active"
+        ? store.status === "active" || store.status === "trial"
         : store.status === status
     )
     setSelectedStoreOverride(firstMatch?.id ?? ALL_STORES_VALUE)
