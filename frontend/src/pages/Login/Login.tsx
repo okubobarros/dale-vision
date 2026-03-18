@@ -5,6 +5,7 @@ import logo from "../../assets/logo.png"
 import { useAuth } from "../../contexts/useAuth"
 import { supabase } from "../../lib/supabase"
 import { getAuthCallbackUrl } from "../../lib/siteUrl"
+import { resolvePostLoginRoute } from "../../services/postLoginRoute"
 
 const Login = () => {
   const [username, setUsername] = useState("")
@@ -45,7 +46,8 @@ const Login = () => {
 
     try {
       await login({ username, password })
-      navigate("/onboarding", { replace: true })
+      const nextRoute = await resolvePostLoginRoute()
+      navigate(nextRoute, { replace: true })
     } catch (err: unknown) {
       const error = err as {
         message?: string

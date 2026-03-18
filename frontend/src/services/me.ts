@@ -24,6 +24,16 @@ export type MeAccount = {
   }>
 }
 
+export type SetupState = {
+  ok?: boolean
+  state?: "no_store" | "ready" | string
+  has_store?: boolean
+  has_edge?: boolean
+  store_count?: number
+  org_count?: number
+  primary_store_id?: string | null
+}
+
 const isTimeoutError = (error: unknown) => {
   if (!axios.isAxiosError(error)) return false
   return (
@@ -228,6 +238,23 @@ const buildCoverageFallback = (
 })
 
 export const meService = {
+  async getSetupState(): Promise<SetupState | null> {
+    try {
+      const response = await api.get("/me/setup-state/", {
+        timeoutCategory: "best-effort",
+        noRetry: true,
+      })
+      return response.data as SetupState
+    } catch (error) {
+      if (!isTimeoutError(error)) {
+        throw error
+      }
+      if (import.meta.env.DEV) {
+        console.warn("[me/setup-state] timeout - returning unknown")
+      }
+      return null
+    }
+  },
   async getStatus(): Promise<MeStatus | null> {
     try {
       const response = await api.get("/v1/me/status/", {

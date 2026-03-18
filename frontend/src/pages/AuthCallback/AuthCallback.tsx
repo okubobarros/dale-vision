@@ -4,6 +4,7 @@ import { supabase } from "../../lib/supabase"
 import { authService } from "../../services/auth"
 import { useAuth } from "../../contexts/useAuth"
 import { syncApiAuthHeader } from "../../services/api"
+import { resolvePostLoginRoute } from "../../services/postLoginRoute"
 
 type CallbackStatus = "loading" | "error" | "timeout"
 
@@ -119,7 +120,8 @@ const AuthCallback: React.FC = () => {
 
         if (active && !hasNavigatedRef.current) {
           hasNavigatedRef.current = true
-          navigate("/onboarding", { replace: true })
+          const nextRoute = await resolvePostLoginRoute()
+          navigate(nextRoute, { replace: true })
         }
       } catch (error) {
         const message = getErrorMessage(error, "Falha ao validar o login.")

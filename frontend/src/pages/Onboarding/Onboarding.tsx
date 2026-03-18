@@ -5,6 +5,7 @@ import { useNavigate } from "react-router-dom"
 import { useAuth } from "../../contexts/useAuth"
 import { storesService } from "../../services/stores"
 import { employeesService } from "../../services/employees"
+import { resolvePostLoginRoute } from "../../services/postLoginRoute"
 import OnboardingProgress from "./components/OnboardingProgress"
 import StoresSetup, { type StoreDraft } from "./components/StoresSetup"
 import EmployeesSetup, { type EmployeeDraft } from "./components/EmployeesSetup"
@@ -44,20 +45,20 @@ export default function Onboarding() {
   useEffect(() => {
     let active = true
     if (isLoading || !isAuthenticated || storeId || step !== 1) return
-    const checkStores = async () => {
+    const checkPostLoginRoute = async () => {
       try {
-        const existing = await storesService.getStoresMinimal({ allowCachedFallback: false })
+        const nextRoute = await resolvePostLoginRoute()
         if (!active) return
-        if (existing.length > 0) {
-          navigate("/app/dashboard?openEdgeSetup=1", { replace: true })
+        if (nextRoute !== "/onboarding") {
+          navigate(nextRoute, { replace: true })
         }
       } catch (error) {
         if (import.meta.env.DEV) {
-          console.warn("[Onboarding] store check skipped", error)
+          console.warn("[Onboarding] post-login route check skipped", error)
         }
       }
     }
-    void checkStores()
+    void checkPostLoginRoute()
     return () => {
       active = false
     }
