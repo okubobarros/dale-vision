@@ -105,7 +105,7 @@ export default function LgpdConsent({
           className="w-full sm:w-1/2 rounded-2xl bg-gradient-to-r from-blue-400 via-cyan-300 to-purple-500 py-3.5 font-semibold text-black
                      shadow-[0_18px_40px_rgba(59,130,246,0.16)] hover:opacity-95 transition disabled:opacity-60"
         >
-          {isSubmitting ? "Salvando..." : "Concluir e conectar câmeras →"}
+          {isSubmitting ? "Salvando..." : "Concluir e  ativar loja →"}
         </button>
       </div>
     </div>
