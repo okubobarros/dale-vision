@@ -1,0 +1,916 @@
+
+===== PAGE 1 =====
+DaleVision
+Documento Técnico de Produto (Arquitetura, Dados, IA, Escala)
+1. Visão Técnica
+O DaleVision é uma plataforma edge-first de inteligência operacional baseada em:
+Computer Vision (CV)
+Event Streaming (stream + batch)
+Analytics operacional (features/KPIs)
+Copiloto (regras + LLM)
+O sistema é orientado a eventos: vídeo → eventos → decisão → ação.
+2. Arquitetura Geral
+Camadas
+Edge (processamento local)
+Ingestão de Eventos (API idempotente)
+Pipeline de Dados (stream + batch)
+Backend Multi-tenant (serviços + RBAC)
+Analytics (features/KPIs)
+Copiloto (regras + LLM)
+Integrações (PDV, WhatsApp, Email)
+Fluxo
+Câmera/NVR → Edge → Eventos → Ingest API → Fila → Workers → DB → KPIs → Alertas/Copiloto
+3. Edge (Computer Vision)
+Responsabilidades
+Ingestão RTSP/NVR
+Inferência em tempo real
+Tracking multi-frame
+Geração de eventos estruturados
+• 
+• 
+• 
+• 
+1. 
+2. 
+3. 
+4. 
+5. 
+6. 
+7. 
+• 
+• 
+• 
+• 
+1
+===== PAGE 2 =====
+Stack
+OpenCV (decode/preprocess)
+YOLO/DETR (detecção)
+ByteTrack/DeepSORT (tracking)
+MoveNet/OpenPose (pose)
+ONNX/TensorRT (otimização)
+Capacidades
+Queue detection (clustering + tracking)
+Line crossing (fluxo)
+Occupancy (ROI)
+Dwell time (tracking temporal)
+Evitar biometria/identificação. Foco em comportamento agregado.
+4. Ontologia Operacional
+Entidades:
+person
+staff (heurístico por zona/tempo)
+zone (ROI)
+checkout (caixa)
+queue
+A ontologia versiona junto com modelo e ROI.
+5. Modelo de Eventos
+Contrato (exemplo)
+{
+  event_id,
+  org_id,
+  store_id,
+  camera_id,
+  type,
+  value,
+  confidence,
+  event_ts,
+  roi_id,
+  source: "edge",
+• 
+• 
+• 
+• 
+• 
+• 
+• 
+• 
+• 
+• 
+• 
+• 
+• 
+• 
+2
+===== PAGE 3 =====
+  schema_version
+}
+Tipos
+Operacionais: queue_length, queue_wait_time, occupancy, flow_in, flow_out, dwell_time
+Equipe: staff_idle, staff_absent, service_interaction
+Sistema: edge_online, camera_offline, heartbeat
+Negócio (integração): sales_total, transactions, avg_ticket
+6. Ingestão e Escala (Batch + Stream)
+Problemas
+picos de eventos
+duplicação
+latência
+Estratégia Híbrida
+Stream (tempo real leve)
+eventos críticos para alertas
+Batch (eficiência)
+buffer no edge (10–60s)
+envio comprimido
+Infra
+Ingest API (idempotente)
+Fila: Kafka/Redpanda (ou SQS/PubSub)
+Workers (consumer groups)
+Padrões
+Idempotency key = event_id
+Dedup no consumer
+Particionamento: (store_id, day)
+Backpressure por edge
+• 
+• 
+• 
+• 
+• 
+• 
+• 
+• 
+• 
+• 
+• 
+• 
+• 
+• 
+• 
+• 
+• 
+3
+===== PAGE 4 =====
+7. Desduplicação Multi-Câmera
+Problema
+Mesmo evento capturado por múltiplas câmeras.
+Solução
+Normalização (NTP + mapeamento ROI)
+Matching espaço-temporal (±2–5s)
+Re-ID leve (trajetória, velocidade, direção)
+Fusão → entity_id
+Saída
+evento consolidado por entidade
+Métricas
+duplicação <10%
+consistência >90%
+8. Armazenamento de Dados
+Tabelas
+vision_events_raw
+vision_features_1m
+store_kpis_daily
+Estratégias
+Particionamento por tempo
+Índices por store_id
+Retenção por camada (raw curto, KPI longo)
+9. Integração com PDV
+Objetivo
+Cruzar fluxo vs vendas.
+1. 
+2. 
+3. 
+4. 
+• 
+• 
+• 
+• 
+• 
+• 
+• 
+• 
+• 
+4
+===== PAGE 5 =====
+Métricas
+conversion_rate = transactions / flow_in
+avg_ticket
+Integração
+API (near real-time) ou ETL diário
+10. ROI Engine (Dinheiro em Risco)
+Fórmulas
+conversion_rate = transactions / flow_in
+lost_sales = max(0, queue_wait_time - threshold) * abandonment_rate * 
+avg_ticket
+idle_cost = idle_minutes * (custo_hora/60)
+money_at_risk = lost_sales + idle_cost
+Inputs
+CV: fila, fluxo, dwell
+PDV: vendas, ticket
+Parâmetros: thresholds, custo
+Outputs
+R$ em risco (tempo real)
+R$ recuperável (ação sugerida)
+11. Alertas e Execução
+Motor de Regras
+thresholds dinâmicos por loja/turno
+Canais
+WhatsApp
+Email
+Dashboard
+Exemplo
+"Fila acima do padrão → abrir caixa"
+• 
+• 
+• 
+• 
+• 
+• 
+• 
+• 
+• 
+• 
+• 
+• 
+• 
+• 
+• 
+• 
+5
+===== PAGE 6 =====
+12. Copiloto (IA)
+Camadas
+Regras (determinístico)
+LLM (explicação e recomendação)
+Funções
+contextualizar problema
+sugerir ação
+estimar impacto financeiro
+13. MLOps
+Versionamento
+modelo + ontologia + ROI
+Avaliação
+offline: precision/recall por cenário
+online: estabilidade, FP crítico
+Deploy
+canary por loja
+rollback automático
+Monitoramento
+drift (iluminação, layout)
+14. Labeling e QA
+Ferramentas
+CVAT / Label Studio
+Processo
+coleta
+anotação
+1. 
+2. 
+• 
+• 
+• 
+• 
+• 
+• 
+• 
+• 
+• 
+• 
+1. 
+2. 
+6
+===== PAGE 7 =====
+dupla anotação (amostra)
+validação (gold set)
+treino
+Métricas
+IAA (concordância)
+taxa de retrabalho
+15. Segurança e RBAC
+Multi-tenant
+isolamento por org_id/store_id
+Perfis
+Owner: acesso total
+Manager: por loja
+Auditor: leitura
+Controles
+RBAC em endpoints
+tokens por edge
+auditoria (logs)
+TLS + criptografia em repouso
+LGPD
+minimização
+retenção configurável
+sem identificação pessoal
+16. Catálogo de Eventos (Core)
+Evento Tecnologia Aceite QualidadeDificuldade
+queue_length detecção+tracking+cluster±1 pessoa >85% Média
+queue_wait_timetracking temporal ±10s >85% Média
+flow_in/out line crossing ≤10% erro>90% Baixa
+occupancy detecção+ROI ≤15% erroMAE baixoBaixa
+dwell_time tracking ≤15% erroestável Alta
+3. 
+4. 
+5. 
+• 
+• 
+• 
+• 
+• 
+• 
+• 
+• 
+• 
+• 
+• 
+• 
+• 
+7
+===== PAGE 8 =====
+Equipe
+Evento Tecnologia Aceite Dificuldade
+staff_idle tracking+pose≥80% Alta
+staff_absent ROI+tracking≥85% Alta
+service_interactionproximidade ≥80% Alta
+Sistema
+edge_online, camera_online/offline, heartbeat
+17. Loop Operacional (Dados → Ação →
+Resultado → ROI)
+17.1 Fluxo de Valor Completo
+Captura
+câmera/NVR gera vídeo
+Processamento (Edge)
+detecta evento (ex: fila = 5 pessoas)
+gera evento estruturado
+Ingestão
+evento chega no backend
+passa por deduplicação + validação
+Enriquecimento
+cruza com contexto (ROI, loja, horário)
+Decisão (Motor de Regras + ROI Engine)
+identifica problema (fila acima do threshold)
+calcula impacto financeiro
+Ação
+dispara alerta via WhatsApp / app / email
+1. 
+2. 
+3. 
+4. 
+5. 
+6. 
+7. 
+8. 
+9. 
+10. 
+11. 
+12. 
+13. 
+14. 
+15. 
+8
+===== PAGE 9 =====
+Exemplo: "Fila acima do padrão há 6 minutos. Abrir caixa pode recuperar R$ 280"
+Execução (Operação)
+gerente recebe alerta
+executa ação (abre caixa)
+Confirmação
+usuário pode marcar como resolvido (ack)
+sistema detecta melhoria automática (fila reduz)
+17.2 Como sabemos que foi resolvido
+Duas formas:
+1. Manual (explícita)
+usuário clica "resolvido"
+registra em alerts_log
+2. Automática (mais importante)
+sistema detecta:
+redução da fila
+aumento da conversão
+Critério: - evento voltou ao baseline esperado
+17.3 Mensuração de Resultado
+Operacional
+redução de fila (% e tempo)
+redução de ociosidade
+aumento de cobertura operacional
+Financeiro
+aumento de conversão
+aumento de vendas
+redução de perdas
+1. 
+2. 
+3. 
+4. 
+5. 
+6. 
+• 
+• 
+• 
+• 
+• 
+• 
+• 
+• 
+• 
+• 
+• 
+9
+===== PAGE 10 =====
+17.4 ROI Financeiro (como calcular)
+Antes
+fila média: 6 pessoas
+conversão: 12%
+Depois
+fila média: 3 pessoas
+conversão: 18%
+Cálculo
+Δ conversão = +6%
+receita incremental = flow_in * Δ conversão * ticket médio
+17.5 Produtividade
+tempo ocioso reduzido
+melhor alocação de equipe
+Fórmula:
+produtividade = output (vendas ou atendimento) / tempo de staff
+17.6 Qualidade de Serviço
+Indicadores:
+tempo médio de espera
+taxa de abandono
+tempo de atendimento
+17.7 Métrica chave (ligação produto → valor)
+% de alertas que geraram ação + melhoria mensurável
+17.8 Insight crítico
+O valor não está no evento. Está no ciclo fechado:
+Evento → Ação → Resultado → Dinheiro
+• 
+• 
+• 
+• 
+• 
+• 
+• 
+• 
+• 
+10
+===== PAGE 11 =====
+18. Mapa de Complexidade
+Baixa: flow, occupancy
+Média: queue_length, wait_time
+Alta: staff_idle, dwell
+Muito alta: comportamento (celular/postura)
+18. Roadmap Técnico
+Fase 1 (PMF)
+fila, fluxo, ocupação
+Fase 2
+produtividade, dwell
+Fase 3
+comportamento
+19. Considerações de Escala
+centenas → milhares de câmeras
+batch + stream obrigatório
+particionamento e retenção
+backpressure por edge e por tenant
+isolamento de picos por store_id/org_id
+20. Diagrama de Arquitetura (textual)
+[Câmeras IP / NVR]
+        │
+        ▼
+[Edge Agent]
+  - ingestão RTSP
+  - detecção / tracking / ROI
+  - buffer local
+  - geração de eventos
+        │
+        ├──────────────► [Canal Stream - eventos críticos]
+        │
+• 
+• 
+• 
+• 
+• 
+• 
+• 
+• 
+• 
+• 
+• 
+• 
+11
+===== PAGE 12 =====
+        └──────────────► [Canal Batch - pacotes 10s/30s/60s]
+                               │
+                               ▼
+                        [Ingest API Idempotente]
+                               │
+                               ▼
+                        [Message Broker / Queue]
+                    (Kafka / Redpanda / SQS / PubSub)
+                               │
+              ┌────────────────┼────────────────┐
+              ▼                ▼                ▼
+      [Dedup Worker]   [Feature Worker]   [Alert Worker]
+              │                │                │
+              ▼                ▼                ▼
+     [vision_events_raw] [vision_features_1m] [notifications]
+              │                │
+              └────────────┬───┘
+                           ▼
+                   [KPI / ROI Engine]
+                           │
+         ┌─────────────────┼─────────────────┐
+         ▼                 ▼                 ▼
+ [Dashboard/API]     [Copiloto LLM]   [WhatsApp/Email]
+Componentes principais
+Edge Agent
+executa inferência local
+mantém buffer offline
+envia heartbeats
+faz compressão de payload
+Ingest API
+valida schema_version
+aplica idempotência
+publica na fila
+Broker
+desacopla ingestão de processamento
+absorve picos
+permite reprocessamento
+Workers
+deduplicação
+agregação por janela
+cálculo de KPIs e ROI
+disparo de alertas
+• 
+• 
+• 
+• 
+• 
+• 
+• 
+• 
+• 
+• 
+• 
+• 
+• 
+• 
+12
+===== PAGE 13 =====
+Serving Layer
+APIs para dashboard, app mobile e copiloto
+leitura otimizada de features e KPIs
+21. Schema de Banco de Dados (detalhado)
+21.1 Tabela: vision_events_raw
+Objetivo: armazenar eventos brutos de visão computacional.
+CREATETABLEvision_events_raw(
+idBIGSERIALPRIMARYKEY,
+event_idUUIDNOTNULL,
+entity_idUUIDNULL,
+org_idUUIDNOTNULL,
+store_idUUIDNOTNULL,
+camera_idUUIDNOTNULL,
+roi_idUUIDNULL,
+event_typeVARCHAR(64) NOTNULL,
+event_valueNUMERICNULL,
+confidenceNUMERIC(5,4) NULL,
+event_tsTIMESTAMPTZNOTNULL,
+received_atTIMESTAMPTZNOTNULLDEFAULTnow(),
+sourceVARCHAR(32) NOTNULL,
+schema_versionVARCHAR(16) NOTNULL,
+payload_jsonJSONBNOTNULLDEFAULT'{}'::jsonb,
+dedup_hashVARCHAR(128) NULL,
+is_deduplicatedBOOLEANNOTNULLDEFAULTfalse,
+UNIQUE(event_id)
+);
+Índices recomendados
+CREATEINDEXidx_ver_store_tsONvision_events_raw(store_id, event_tsDESC);
+CREATEINDEXidx_ver_event_type_tsONvision_events_raw(event_type,
+event_tsDESC);
+CREATEINDEXidx_ver_org_store_type_tsONvision_events_raw(org_id,
+store_id, event_type, event_tsDESC);
+CREATEINDEXidx_ver_payload_ginONvision_events_rawUSINGGIN
+(payload_json);
+Particionamento
+por mês ou por dia, dependendo do volume
+chave principal de consulta: store_id + event_ts
+• 
+• 
+• 
+• 
+13
+===== PAGE 14 =====
+21.2 Tabela: vision_features_1m
+Objetivo: armazenar agregações por janela curta.
+CREATETABLEvision_features_1m(
+idBIGSERIALPRIMARYKEY,
+org_idUUIDNOTNULL,
+store_idUUIDNOTNULL,
+camera_idUUIDNULL,
+roi_idUUIDNULL,
+window_startTIMESTAMPTZNOTNULL,
+window_endTIMESTAMPTZNOTNULL,
+queue_length_avgNUMERICNULL,
+queue_wait_time_avgNUMERICNULL,
+occupancy_avgNUMERICNULL,
+flow_in_countINTEGERNULL,
+flow_out_countINTEGERNULL,
+dwell_time_avgNUMERICNULL,
+staff_idle_minutesNUMERICNULL,
+feature_quality_scoreNUMERIC(5,4) NULL,
+source_countINTEGERNOTNULLDEFAULT0,
+UNIQUE(store_id, camera_id, roi_id, window_start)
+);
+Índices recomendados
+CREATEINDEXidx_vf1_store_windowONvision_features_1m(store_id,
+window_startDESC);
+CREATEINDEXidx_vf1_org_store_windowONvision_features_1m(org_id,
+store_id, window_startDESC);
+21.3 Tabela: store_kpis_daily
+Objetivo: visão consolidada por loja/dia.
+CREATETABLEstore_kpis_daily(
+idBIGSERIALPRIMARYKEY,
+org_idUUIDNOTNULL,
+store_idUUIDNOTNULL,
+business_dateDATENOTNULL,
+flow_in_totalINTEGERNULL,
+flow_out_totalINTEGERNULL,
+transactions_totalINTEGERNULL,
+conversion_rateNUMERICNULL,
+avg_ticketNUMERICNULL,
+14
+===== PAGE 15 =====
+queue_wait_peakNUMERICNULL,
+queue_loss_estimatedNUMERICNULL,
+idle_cost_estimatedNUMERICNULL,
+money_at_riskNUMERICNULL,
+alerts_totalINTEGERNULL,
+useful_alert_rateNUMERICNULL,
+created_atTIMESTAMPTZNOTNULLDEFAULTnow(),
+UNIQUE(store_id, business_date)
+);
+21.4 Tabela: onboarding_progress
+Objetivo: acompanhar ativação técnica e de valor .
+CREATETABLEonboarding_progress(
+idBIGSERIALPRIMARYKEY,
+org_idUUIDNOTNULL,
+store_idUUIDNOTNULL,
+step_keyVARCHAR(64) NOTNULL,
+statusVARCHAR(32) NOTNULL,
+progress_percentNUMERICNULL,
+reason_codeVARCHAR(64) NULL,
+meta_jsonJSONBNOTNULLDEFAULT'{}'::jsonb,
+updated_atTIMESTAMPTZNOTNULLDEFAULTnow(),
+UNIQUE(store_id, step_key)
+);
+21.5 Tabela: alerts_log
+Objetivo: trilha de auditoria dos alertas.
+CREATETABLEalerts_log(
+idBIGSERIALPRIMARYKEY,
+alert_idUUIDNOTNULL,
+org_idUUIDNOTNULL,
+store_idUUIDNOTNULL,
+event_refUUIDNULL,
+alert_typeVARCHAR(64) NOTNULL,
+severityVARCHAR(32) NOTNULL,
+channelVARCHAR(32) NOTNULL,
+statusVARCHAR(32) NOTNULL,
+dispatched_atTIMESTAMPTZNULL,
+acknowledged_atTIMESTAMPTZNULL,
+resolved_atTIMESTAMPTZNULL,
+recipient_refVARCHAR(128) NULL,
+15
+===== PAGE 16 =====
+payload_jsonJSONBNOTNULLDEFAULT'{}'::jsonb,
+UNIQUE(alert_id)
+);
+22. Contratos de API (OpenAPI style simplificado)
+22.1 POST /api/v1/edge/events/batch
+Objetivo: receber pacotes de eventos do edge.
+Request
+{
+"edge_id": "uuid",
+"org_id": "uuid",
+"store_id": "uuid",
+"sent_at": "2026-03-17T18:00:00Z",
+"schema_version": "1.0",
+"events": [
+{
+"event_id": "uuid",
+"camera_id": "uuid",
+"roi_id": "uuid",
+"type": "queue_length",
+"value": 4,
+"confidence": 0.91,
+"event_ts": "2026-03-17T17:59:54Z",
+"payload": {"zone": "checkout_1"}
+}
+]
+}
+Response
+{
+"accepted": 120,
+"rejected": 0,
+"duplicate": 3,
+"request_id": "req_123",
+"status": "ok"
+}
+Regras
+autenticação por token do edge
+limite de payload por tamanho e quantidade
+• 
+• 
+16
+===== PAGE 17 =====
+resposta sempre com contadores de aceitação/dedup
+22.2 POST /api/v1/edge/heartbeat
+Objetivo: status técnico do edge.
+Request
+{
+"edge_id": "uuid",
+"org_id": "uuid",
+"store_id": "uuid",
+"timestamp": "2026-03-17T18:00:00Z",
+"version": "0.1.12",
+"cameras": [
+{"camera_id": "uuid", "status": "online", "fps": 12.5}
+],
+"system": {
+"cpu": 0.61,
+"memory": 0.58,
+"disk": 0.42,
+"uptime_seconds": 88210
+}
+}
+22.3 GET /api/v1/stores/{store_id}/kpis
+Objetivo: servir KPIs para dashboard/app.
+Query params
+date_from
+date_to
+granularity=minute|hour|day
+Response
+{
+"store_id": "uuid",
+"kpis": [
+{
+"window_start": "2026-03-17T17:00:00Z",
+"flow_in": 122,
+"transactions": 18,
+"conversion_rate": 0.1475,
+"money_at_risk": 280.40
+• 
+• 
+• 
+• 
+17
+===== PAGE 18 =====
+}
+]
+}
+22.4 POST /api/v1/alerts/{alert_id}/ack
+Objetivo: registrar aceite do alerta.
+Request
+{
+"actor_id": "uuid",
+"note": "Abrindo caixa adicional agora"
+}
+22.5 GET /api/v1/copilot/insights
+Objetivo: retornar insights priorizados.
+Response
+{
+"store_id": "uuid",
+"insights": [
+{
+"type": "queue_risk",
+"priority": "high",
+"message": "Fila acima do padrão há 8 minutos",
+"estimated_impact": 320.0,
+"recommended_action": "Abrir caixa 2"
+}
+]
+}
+23. Plano de Testes e SLOs
+23.1 Camadas de teste
+Edge
+teste de ingestão RTSP
+teste de FPS mínimo
+• 
+• 
+18
+===== PAGE 19 =====
+teste de reconexão de stream
+teste de buffer offline
+Backend
+teste de idempotência
+teste de deduplicação
+teste de ordenação temporal
+teste de particionamento
+Dados
+teste de agregação por janela
+teste de consistência KPIs vs raw
+teste de retenção
+Integrações
+teste de PDV (schema e atraso)
+teste de WhatsApp/email
+Copiloto
+teste de grounding
+teste de recomendação por regra
+teste de fallback sem LLM
+23.2 SLOs recomendados
+Ingestão
+99,9% dos lotes aceitos sem erro 5xx
+p95 do endpoint batch < 500 ms sem contar fila
+Heartbeat
+detecção de edge offline < 60 s
+detecção de câmera offline < 30 s
+Pipeline
+p95 do tempo evento → KPI < 120 s
+perda de eventos < 0,1%
+Dashboard
+p95 de leitura de KPIs < 300 ms
+Alertas
+p95 evento crítico → alerta disparado < 90 s
+• 
+• 
+• 
+• 
+• 
+• 
+• 
+• 
+• 
+• 
+• 
+• 
+• 
+• 
+• 
+• 
+• 
+• 
+• 
+• 
+• 
+• 
+19
+===== PAGE 20 =====
+23.3 Critérios de aceite por indicador
+queue_length
+erro médio absoluto ≤ 1 pessoa em cenários validados
+estabilidade: não oscilar sem mudança real
+flow_in / flow_out
+erro relativo ≤ 10% por hora
+robusto a iluminação padrão da loja
+occupancy
+erro relativo ≤ 15% por janela
+coerência entre câmeras adjacentes
+queue_wait_time
+erro ≤ 10 segundos em amostra anotada
+consistência entre janelas consecutivas
+conversion_rate
+diferença máxima aceitável definida por reconciliação PDV
+sem cálculo quando qualidade do fluxo estiver abaixo do threshold
+money_at_risk
+auditável: cada valor precisa ser rastreável aos inputs
+parâmetros de fórmula versionados
+24. Roadmap Técnico Expandido
+Sprint 1–2
+contrato de eventos
+batch ingest
+heartbeats
+vision_events_raw
+Sprint 3–4
+deduplicação
+features 1m
+queue_length / flow / occupancy
+• 
+• 
+• 
+• 
+• 
+• 
+• 
+• 
+• 
+• 
+• 
+• 
+• 
+• 
+• 
+• 
+• 
+• 
+• 
+20
+===== PAGE 21 =====
+Sprint 5–6
+ROI engine
+KPIs diários
+alertas WhatsApp/email
+Sprint 7–8
+RBAC
+auditoria
+integração PDV
+copiloto básico
+Sprint 9–12
+labeling pipeline
+drift monitoring
+canary / rollback
+dwell + produtividade
+25. Conclusão
+Arquitetura orientada a eventos + edge CV + pipeline híbrido + ROI engine + serving layer auditável.
+Qualidade dos eventos, robustez do pipeline e disciplina de dados determinam o valor do
+produto.
+• 
+• 
+• 
+• 
+• 
+• 
+• 
+• 
+• 
+• 
+• 
+21

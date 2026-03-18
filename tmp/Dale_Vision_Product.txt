@@ -1,0 +1,397 @@
+
+===== PAGE 1 =====
+DaleVision
+Documento de Produto (Nível Investidor + ICP + Mercado)
+1. Tese Central
+O DaleVision resolve um problema estrutural do varejo físico:
+Empresas multilojas operam no escuro e perdem dinheiro todos os dias sem saber onde.
+Nossa tese:
+Existe uma camada inexistente no varejo físico — a camada de inteligência operacional
+em tempo real.
+2. ICP (Ideal Customer Profile)
+Quem é
+Donos de 2 a 50 lojas
+Franqueados
+Diretores de operação
+Redes em crescimento
+Contexto real desse cliente
+Esse cliente:
+Não consegue visitar todas as lojas
+Depende de gerente local
+Descobre problemas tarde demais
+Tem dificuldade de padronizar operação
+Passa boa parte do tempo “apagando incêndio” ao invés de crescer o negócio
+Dores principais
+1. Perda invisível de receita
+filas não atendidas
+clientes indo embora
+baixa conversão
+• 
+• 
+• 
+• 
+• 
+• 
+• 
+• 
+• 
+• 
+• 
+• 
+1
+===== PAGE 2 =====
+2. Custo operacional ineficiente
+funcionários ociosos
+escala mal distribuída
+excesso ou falta de equipe
+3. Falta de controle
+não sabe o que acontece em cada loja
+depende de “achismo”
+baixa visibilidade em tempo real
+4. Falta de padrão
+cada loja opera diferente
+execução inconsistente
+5. Falta de tempo do dono
+preso na operação
+não consegue focar em crescimento, expansão ou estratégia
+Frase que resume o ICP
+"Eu pago por tudo que acontece nas lojas, mas não vejo o que acontece nelas."
+3. O Problema (quantificado)
+Impactos diretos:
+5% a 20% de perda de venda por fila
+10% a 30% de ociosidade de equipe
+falta de padronização reduz performance
+4. A Solução
+O DaleVision transforma câmeras em decisões operacionais.
+• 
+• 
+• 
+• 
+• 
+• 
+• 
+• 
+• 
+• 
+• 
+• 
+• 
+2
+===== PAGE 3 =====
+Como funciona (simples)
+Ver → Entender → Alertar → Sugerir → Agir
+Exemplo real
+fila detectada
+alerta enviado no celular
+ação sugerida
+gerente executa
+venda recuperada
+Gestão remota via celular (diferencial chave)
+O dono passa a operar a rede inteira diretamente do celular:
+recebe alertas em tempo real
+visualiza problemas por loja
+toma decisão imediata
+delega com 1 clique
+Proposta de valor
+mais vendas
+menos custo
+mais controle
+mais tempo livre para o dono focar no crescimento
+Registro e auditoria operacional
+Tudo que acontece fica registrado:
+eventos detectados
+alertas enviados
+ações tomadas
+Isso cria:
+histórico auditável
+padronização operacional
+base para melhoria contínua
+• 
+• 
+• 
+• 
+• 
+• 
+• 
+• 
+• 
+• 
+• 
+• 
+• 
+• 
+• 
+• 
+• 
+• 
+• 
+3
+===== PAGE 4 =====
+5. Produto (visão clara)
+O que o produto faz
+mede fluxo de clientes
+mede fila
+mede ocupação
+mede produtividade operacional
+O que o produto NÃO faz
+não identifica pessoas
+não usa reconhecimento facial
+não depende de hardware específico
+Diferencial
+Gestão por exceção + ação imediata
+6. Arquitetura (explicação para investidor)
+Fluxo
+Câmera → Edge → Eventos → Plataforma → Insights → Ação
+Tradução simples
+câmeras geram dados
+IA transforma em eventos
+sistema transforma em decisão
+7. Camada de Inteligência (Copiloto)
+O sistema não apenas mostra dados.
+Ele:
+explica o problema
+sugere ação
+estima impacto financeiro
+• 
+• 
+• 
+• 
+• 
+• 
+• 
+• 
+• 
+• 
+• 
+• 
+• 
+4
+===== PAGE 5 =====
+Exemplo
+"Fila acima do padrão. Abrir caixa agora pode recuperar R$ 320 em vendas."
+8. Mercado
+Tamanho do mercado (com referências e anos)
+Brasil
++1 milhão de lojas físicas no Brasil
+Fonte: IBGE – Pesquisa Anual do Comércio (2022)
+~200 mil empresas com múltiplas unidades
+Fonte: Sebrae (2022–2023, estimativas de redes e crescimento de franquias)
++180 mil unidades franqueadas
+Fonte: ABF – Relatório de Desempenho do Franchising (2023)
+Global
+Mercado global de Retail Analytics: US$ 8–10 bilhões
+Fonte: MarketsandMarkets (2023) / Grand View Research (2024)
+Crescimento anual (CAGR): ~15% a 20%
+Fonte: McKinsey Retail Reports (2023) / Deloitte Retail Outlook (2024)
+Tamanho de oportunidade (TAM / SAM / SOM)
+TAM (Total Addressable Market)
+Todas as lojas físicas com câmeras
+Brasil: 1M+ lojas
+Se ticket médio SaaS = R$150–R$300 / loja:
+→ TAM Brasil ≈ R$ 1,8B – R$ 3,6B / ano
+SAM (Serviceable Available Market)
+Redes com 2+ lojas
+Estimativa:
+• 
+• 
+• 
+• 
+• 
+• 
+• 
+• 
+5
+===== PAGE 6 =====
+→ ~200 mil lojas alvo no Brasil
+→ SAM ≈ R$ 360M – R$ 720M / ano
+SOM (Serviceable Obtainable Market)
+foco inicial: redes 2–50 lojas
+early adopters
+→ meta inicial: 1.000 lojas
+→ SOM inicial ≈ R$ 1,8M – R$ 3,6M ARR
+Tendências de mercado (com referências)
+1. Digitalização do varejo físico
+aumento de investimento em analytics e automação
+Fonte: McKinsey – The Future of Retail Operations (2023)
+2. Uso de dados em tempo real
+crescimento de soluções edge + IoT
+Fonte: Gartner Edge Computing Reports (2023)
+3. Pressão por eficiência operacional
+aumento de custo de mão de obra
+Fonte: Deloitte Retail Industry Outlook (2024)
+Insight estratégico
+Hoje:
+câmeras são custo
+Futuro:
+câmeras viram fonte de lucro
+• 
+• 
+• 
+• 
+• 
+• 
+• 
+6
+===== PAGE 7 =====
+9. Concorrência
+Players existentes
+soluções de segurança (não geram valor)
+analytics complexos (enterprise)
+Gap de mercado
+soluções simples para multilojas
+foco em ROI
+Posicionamento
+“Copiloto operacional para varejo físico”
+10. Modelo de Negócio
+Receita
+SaaS por loja
+planos por número de câmeras
+Exemplo de pricing
+Plano Pro:
+R$ 597 / mês
+até 3 lojas
+até 15 câmeras
+Tradução para o cliente
+~R$ 20 por dia
+Comparação de custo
+muito menor que 1 funcionário
+menor que custo de erro operacional diário
+• 
+• 
+• 
+• 
+• 
+• 
+• 
+• 
+• 
+• 
+• 
+• 
+7
+===== PAGE 8 =====
+ROI esperado
+Se o sistema evitar:
+1 venda perdida por dia ou
+30 minutos de ociosidade por dia
+→ já se paga
+Por que o cliente paga
+1. Recuperação de receita
+reduz perda por fila
+2. Redução de custo
+melhora escala de equipe
+3. Controle remoto
+dono gerencia sem estar presente
+4. Produtividade
+equipe mais eficiente
+5. Padronização
+todas as lojas operam melhor
+6. Tempo do dono
+sai da operação
+foca em crescimento
+11. Go-To-Market
+Estratégia inicial
+venda direta
+onboarding remoto
+Aha moment
+insight acionável em até 72h
+• 
+• 
+• 
+• 
+• 
+• 
+• 
+• 
+• 
+• 
+• 
+8
+===== PAGE 9 =====
+Conversão
+prova de ROI
+relatório automático
+12. Métricas (PMF)
+North Star
+% de lojas com decisão acionável por semana
+Métricas críticas
+tempo até primeiro insight
+taxa de alerta útil
+impacto em fila
+conversão trial → pago
+13. Roadmap
+0–10 clientes
+provar valor
+estabilizar onboarding
+10–100
+escalar sistema
+automação
+100+
+expansão de casos de uso
+inteligência avançada
+• 
+• 
+• 
+• 
+• 
+• 
+• 
+• 
+• 
+• 
+• 
+• 
+9
+===== PAGE 10 =====
+14. Moat (Defensibilidade)
+1. Dados proprietários
+dados operacionais reais
+2. Integração com operação
+ação em tempo real
+3. Edge + CV + Dados
+alta complexidade técnica
+4. Aprendizado contínuo
+melhoria com escala
+15. Time Necessário
+Core
+Product
+Computer Vision
+Backend/Data
+Edge
+Escala
+MLOps
+Data
+CS técnico
+16. Riscos
+Técnicos
+onboarding de câmeras
+qualidade de dados
+• 
+• 
+• 
+• 
+• 
+• 
+• 
+• 
+• 
+• 
+• 
+• 
+• 
+10
+===== PAGE 11 =====
+Operacionais
+adoção pelo cliente
+Regulatórios
+LGPD
+17. Tese Final
+O DaleVision cria uma nova categoria:
+Inteligência operacional para varejo físico
+Resumo em 1 frase
+Transformamos vídeo em decisões que aumentam receita e reduzem custo.
+DaleVision
+Ver . Entender . Agir . Lucrar .
+• 
+• 
+11
