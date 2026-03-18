@@ -37,6 +37,7 @@ const DEFAULT_CLOUD_BASE_URL = API_BASE_URL
 const DEFAULT_AGENT_ID = "edge-001"
 const HEARTBEAT_INTERVAL_SECONDS = 30
 const CAMERA_HEARTBEAT_INTERVAL_SECONDS = 30
+const CAMERA_HEALTH_INTERVAL_SECONDS = 30
 const POLL_INTERVAL_MS = 3000
 const POLL_MAX_DURATION_MS = 120000
 const HEARTBEAT_FRESHNESS_SECONDS = 120
@@ -347,6 +348,7 @@ const EdgeSetupModal = ({ open, onClose, defaultStoreId }: EdgeSetupModalProps) 
         `AGENT_ID=${agentId || DEFAULT_AGENT_ID}`,
         `HEARTBEAT_INTERVAL_SECONDS=${HEARTBEAT_INTERVAL_SECONDS}`,
         `CAMERA_HEARTBEAT_INTERVAL_SECONDS=${CAMERA_HEARTBEAT_INTERVAL_SECONDS}`,
+        `CAMERA_HEALTH_INTERVAL_SECONDS=${CAMERA_HEALTH_INTERVAL_SECONDS}`,
         `DALE_LOG_DIR=${DEFAULT_LOG_DIR}`,
         `CAMERA_SOURCE_MODE=${cameraSourceMode}`,
         `CAMERA_SYNC_ENABLED=${cameraSyncEnabled}`,
@@ -954,25 +956,27 @@ const EdgeSetupModal = ({ open, onClose, defaultStoreId }: EdgeSetupModalProps) 
                 rows={10}
                 className="w-full rounded-lg border border-gray-200 bg-white px-3 py-2 text-xs font-mono text-gray-700"
               />
-              <button
-                type="button"
-                onClick={handleCopyEnv}
-                disabled={!canCopyEnv}
-                className={`mt-3 ${primaryCtaClass} text-xs`}
-              >
-                {rotatingToken ? "Gerando token..." : "Copiar dados para .env"}
-              </button>
-              <div className="mt-2 flex flex-col sm:flex-row sm:items-center gap-2">
+              <div className="mt-3 flex flex-col gap-2 sm:flex-row sm:items-start sm:justify-between">
                 <button
                   type="button"
-                  onClick={handleRotateToken}
-                  disabled={rotatingToken || !storeId}
-                  className="inline-flex w-full sm:w-auto items-center justify-center rounded-lg border border-amber-300 bg-white px-3 py-2 text-xs font-semibold text-amber-800 hover:bg-amber-50 disabled:opacity-60"
+                  onClick={handleCopyEnv}
+                  disabled={!canCopyEnv}
+                  className={`${primaryCtaClass} text-xs`}
                 >
-                  {rotatingToken ? "Gerando..." : "Gerar novo token"}
+                  {rotatingToken ? "Gerando token..." : "Copiar dados para .env"}
                 </button>
-                <div className="text-xs text-amber-700">
-                  Use este botão se houver 401/403 no sync de câmeras.
+                <div className="sm:text-right">
+                  <button
+                    type="button"
+                    onClick={handleRotateToken}
+                    disabled={rotatingToken || !storeId}
+                    className="inline-flex w-full sm:w-auto items-center justify-center rounded-lg border border-amber-300 bg-white px-3 py-2 text-xs font-semibold text-amber-800 hover:bg-amber-50 disabled:opacity-60"
+                  >
+                    {rotatingToken ? "Gerando..." : "Gerar novo token"}
+                  </button>
+                  <div className="mt-1 text-xs text-amber-700">
+                    Use este botão se houver 401/403 no sync de câmeras.
+                  </div>
                 </div>
               </div>
               <div className="text-xs text-gray-500 mb-3 space-y-1">
