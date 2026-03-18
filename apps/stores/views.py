@@ -1385,34 +1385,21 @@ class StoreViewSet(viewsets.ModelViewSet):
                 deprecated_detail="Store not found",
             )
         if request.method == "GET":
-            edge_token = (request.headers.get("X-EDGE-TOKEN") or "").strip()
-            auth_header = (request.headers.get("Authorization") or "").strip()
-            bearer_token = ""
-            if auth_header.lower().startswith("bearer "):
-                bearer_token = auth_header.split(" ", 1)[1].strip()
-            edge_bearer_token = bool(bearer_token and bearer_token.count(".") < 2)
             cameras_qs = Camera.objects.select_related("store").filter(store_id=store.id).order_by("-updated_at")
-            if edge_token or edge_bearer_token:
-                edge_auth = authenticate_edge_token(request, requested_store_id=str(store.id))
-                if not edge_auth.ok:
-                    return _error_response(
-                        edge_auth.code or "FORBIDDEN",
-                        edge_auth.detail or "Edge token inválido para esta loja.",
-                        edge_auth.status_code or status.HTTP_401_UNAUTHORIZED,
-                        deprecated_detail=edge_auth.detail or "Edge token inválido para esta loja.",
-                    )
+            edge_auth = authenticate_edge_token(request, requested_store_id=str(store.id))
+            if edge_auth.ok:
                 # Source-of-truth for edge runtime: only active cameras should be synced.
                 cameras_qs = cameras_qs.filter(active=True)
                 # S1 contract: edge token receives operational payload (single source of truth for RTSP).
                 return Response(_serialize_cameras_for_edge(cameras_qs))
-            elif request.user and request.user.is_authenticated:
+            if request.user and request.user.is_authenticated:
                 require_store_role(request.user, str(store.id), ALLOWED_READ_ROLES)
             else:
                 return _error_response(
-                    "FORBIDDEN",
-                    "Edge token inválido para esta loja.",
-                    status.HTTP_401_UNAUTHORIZED,
-                    deprecated_detail="Edge token inválido para esta loja.",
+                    edge_auth.code or "FORBIDDEN",
+                    edge_auth.detail or "Edge token inválido para esta loja.",
+                    edge_auth.status_code or status.HTTP_401_UNAUTHORIZED,
+                    deprecated_detail=edge_auth.detail or "Edge token inválido para esta loja.",
                 )
             serializer = CameraSerializer(cameras_qs, many=True)
             return Response(serializer.data)
