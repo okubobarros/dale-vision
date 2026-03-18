@@ -1,4 +1,5 @@
 from datetime import datetime
+import json
 import logging
 import uuid
 from django.core.exceptions import FieldDoesNotExist, FieldError
@@ -142,12 +143,19 @@ def _get_last_event_receipt_heartbeat(store_id):
 
     ts_value = row[0]
     raw = row[1] or {}
-    data = raw.get("data") if isinstance(raw, dict) else {}
-    ts = _parse_edge_ts((data or {}).get("ts") or (raw or {}).get("ts"))
+    if isinstance(raw, str):
+        try:
+            raw = json.loads(raw)
+        except Exception:
+            raw = {}
+    if not isinstance(raw, dict):
+        raw = {}
+    data = raw.get("data") if isinstance(raw.get("data"), dict) else {}
+    ts = _parse_edge_ts(data.get("ts") or raw.get("ts"))
     if ts is None and isinstance(ts_value, datetime):
         ts = ts_value
-    agent_id = (data or {}).get("agent_id") or (raw or {}).get("agent_id")
-    version = (data or {}).get("version") or (raw or {}).get("version")
+    agent_id = data.get("agent_id") or raw.get("agent_id")
+    version = data.get("version") or raw.get("version")
     return (ts, agent_id, version)
 
 

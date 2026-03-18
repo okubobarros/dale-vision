@@ -1,4 +1,5 @@
 import uuid
+import json
 from types import SimpleNamespace
 from django.test import SimpleTestCase
 from django.http import Http404
@@ -648,6 +649,51 @@ class EdgeStatusNoCamerasTests(SimpleTestCase):
         self.assertEqual(payload.get("store_status_reason"), "no_heartbeat")
         self.assertEqual(payload.get("store_status"), "offline")
         self.assertIsNone(payload.get("last_heartbeat_at"))
+
+    @patch("apps.stores.views_edge_status.connection")
+    def test_receipt_heartbeat_parses_raw_json_string(self, connection_mock):
+        ts_value = timezone.now()
+        raw = json.dumps(
+            {
+                "data": {
+                    "ts": ts_value.isoformat(),
+                    "agent_id": "edge-1",
+                    "version": "1.0.0",
+                }
+            }
+        )
+        cursor = MagicMock()
+        cursor.fetchone.return_value = (ts_value, raw)
+        cursor_cm = MagicMock()
+        cursor_cm.__enter__.return_value = cursor
+        cursor_cm.__exit__.return_value = None
+        connection_mock.cursor.return_value = cursor_cm
+
+        parsed_ts, agent_id, version = views_edge_status._get_last_event_receipt_heartbeat(
+            str(uuid.uuid4())
+        )
+
+        self.assertIsNotNone(parsed_ts)
+        self.assertEqual(agent_id, "edge-1")
+        self.assertEqual(version, "1.0.0")
+
+    @patch("apps.stores.views_edge_status.connection")
+    def test_receipt_heartbeat_handles_invalid_raw_string(self, connection_mock):
+        ts_value = timezone.now()
+        cursor = MagicMock()
+        cursor.fetchone.return_value = (ts_value, "not-a-json-payload")
+        cursor_cm = MagicMock()
+        cursor_cm.__enter__.return_value = cursor
+        cursor_cm.__exit__.return_value = None
+        connection_mock.cursor.return_value = cursor_cm
+
+        parsed_ts, agent_id, version = views_edge_status._get_last_event_receipt_heartbeat(
+            str(uuid.uuid4())
+        )
+
+        self.assertIsNotNone(parsed_ts)
+        self.assertIsNone(agent_id)
+        self.assertIsNone(version)
 
     @patch("apps.stores.views_edge_status._get_latest_camera_health_map", side_effect=Exception("boom"))
     @patch("apps.stores.views_edge_status.Camera")
