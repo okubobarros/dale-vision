@@ -71,7 +71,7 @@ class StoreCamerasEndpointTests(SimpleTestCase):
 
     @patch("apps.stores.views._serialize_cameras_for_edge", return_value=[{"id": "cam-1"}])
     @patch("apps.stores.views.Camera")
-    @patch("apps.stores.views.validate_store_token", return_value=True)
+    @patch("apps.stores.views.authenticate_edge_token", return_value=SimpleNamespace(ok=True, status_code=200, code=None, detail=None))
     def test_get_cameras_allows_edge_token(
         self,
         _token_mock,
@@ -98,7 +98,7 @@ class StoreCamerasEndpointTests(SimpleTestCase):
 
     @patch("apps.stores.views._serialize_cameras_for_edge", return_value=[{"id": "cam-1"}])
     @patch("apps.stores.views.Camera")
-    @patch("apps.stores.views.validate_store_token", return_value=True)
+    @patch("apps.stores.views.authenticate_edge_token", return_value=SimpleNamespace(ok=True, status_code=200, code=None, detail=None))
     def test_get_cameras_edge_token_wins_over_invalid_bearer_jwt(
         self,
         _token_mock,
@@ -123,7 +123,7 @@ class StoreCamerasEndpointTests(SimpleTestCase):
         self.assertEqual(response.status_code, 200)
         self.assertEqual(response.data, [{"id": "cam-1"}])
 
-    @patch("apps.stores.views.validate_store_token", return_value=False)
+    @patch("apps.stores.views.authenticate_edge_token", return_value=SimpleNamespace(ok=False, status_code=401, code="edge_token_invalid", detail="Edge token inválido para esta loja."))
     def test_get_cameras_invalid_edge_token_returns_401(self, _token_mock):
         store = self._mock_store("11111111-1111-1111-1111-111111111111")
         view = StoreViewSet.as_view({"get": "cameras"}, **StoreViewSet.cameras.kwargs)
@@ -164,7 +164,7 @@ class StoreCamerasEndpointTests(SimpleTestCase):
     @patch("apps.stores.views._serialize_cameras_for_edge", return_value=[{"id": "cam-1"}])
     @patch("apps.stores.views.Camera")
     @patch("apps.stores.views.require_store_role")
-    @patch("apps.stores.views.validate_store_token", return_value=True)
+    @patch("apps.stores.views.authenticate_edge_token", return_value=SimpleNamespace(ok=True, status_code=200, code=None, detail=None))
     def test_get_cameras_edge_token_takes_precedence_over_user_auth(
         self,
         _token_mock,

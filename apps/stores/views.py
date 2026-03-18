@@ -20,7 +20,7 @@ from django.utils.dateparse import parse_datetime
 from apps.core.models import Store, OrgMember, Organization, Camera, Employee, DetectionEvent, Subscription
 from apps.edge.models import EdgeToken, StoreCalibrationRun
 from apps.copilot.models import OperationalWindowHourly
-from apps.edge.auth import validate_store_token, EdgeAwareJWTAuthentication
+from apps.edge.auth import validate_store_token, authenticate_edge_token, EdgeAwareJWTAuthentication
 from apps.cameras.limits import (
     enforce_trial_camera_limit,
     count_active_cameras,
@@ -1386,14 +1386,20 @@ class StoreViewSet(viewsets.ModelViewSet):
             )
         if request.method == "GET":
             edge_token = (request.headers.get("X-EDGE-TOKEN") or "").strip()
+            auth_header = (request.headers.get("Authorization") or "").strip()
+            bearer_token = ""
+            if auth_header.lower().startswith("bearer "):
+                bearer_token = auth_header.split(" ", 1)[1].strip()
+            edge_bearer_token = bool(bearer_token and bearer_token.count(".") < 2)
             cameras_qs = Camera.objects.select_related("store").filter(store_id=store.id).order_by("-updated_at")
-            if edge_token:
-                if not validate_store_token(request, str(store.id)):
+            if edge_token or edge_bearer_token:
+                edge_auth = authenticate_edge_token(request, requested_store_id=str(store.id))
+                if not edge_auth.ok:
                     return _error_response(
-                        "FORBIDDEN",
-                        "Edge token inválido para esta loja.",
-                        status.HTTP_401_UNAUTHORIZED,
-                        deprecated_detail="Edge token inválido para esta loja.",
+                        edge_auth.code or "FORBIDDEN",
+                        edge_auth.detail or "Edge token inválido para esta loja.",
+                        edge_auth.status_code or status.HTTP_401_UNAUTHORIZED,
+                        deprecated_detail=edge_auth.detail or "Edge token inválido para esta loja.",
                     )
                 # Source-of-truth for edge runtime: only active cameras should be synced.
                 cameras_qs = cameras_qs.filter(active=True)
