@@ -19,7 +19,13 @@
   - Syncs delete from `auth.users` to `public.user_id_map`, `public.org_members` and `public.auth_user`.
   - Enforces safe cascades for user mapping relationships.
   - Backs up and removes orphan rows from `org_members` before enforcing FK.
-  - Does **not** delete business data (`stores`, `cameras`, `employees`) automatically.
+  - Applies explicit org cleanup policy:
+    - Trigger calls `public.cleanup_orphan_organizations(false)` after user deletion.
+    - Deletes organizations with no members and no stores.
+    - Keeps organizations that still have stores (safe default).
+  - Includes manual mode:
+    - `SELECT * FROM public.cleanup_orphan_organizations(false)` (safe).
+    - `SELECT * FROM public.cleanup_orphan_organizations(true)` (aggressive, includes stores/dependencies).
 
 ### Test Bootstrap
 

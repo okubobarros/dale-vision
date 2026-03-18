@@ -8,10 +8,11 @@ import requests
 from django.conf import settings
 from django.contrib.auth.models import User
 from django.db import DatabaseError
+from django.core.exceptions import FieldError
 from django.utils import timezone
 from rest_framework.exceptions import APIException
 
-from apps.core.models import Organization, OrgMember
+from apps.core.models import Organization, OrgMember, Store, OnboardingProgress
 from apps.stores.services.user_uuid import upsert_user_id_map
 
 logger = logging.getLogger(__name__)
@@ -30,6 +31,41 @@ def consume_org_fallback_used() -> bool:
     value = _org_fallback_used.get()
     _org_fallback_used.set(False)
     return value
+
+
+def _ensure_no_store_onboarding_progress(org_id: str) -> None:
+    # Registro inicial para visibilidade de onboarding em orgs sem loja.
+    if Store.objects.filter(org_id=org_id).exists():
+        return
+
+    now = timezone.now()
+    defaults = {
+        "completed": False,
+        "completed_at": None,
+        "status": "in_progress",
+        "progress_percent": 0,
+        "meta": {"stage": "no_store", "store_id": None},
+        "created_at": now,
+        "updated_at": now,
+    }
+    try:
+        OnboardingProgress.objects.update_or_create(
+            org_id=org_id,
+            store_id=None,
+            step="no_store",
+            defaults=defaults,
+        )
+    except FieldError:
+        OnboardingProgress.objects.update_or_create(
+            org_id=org_id,
+            step="no_store",
+            defaults=defaults,
+        )
+    except Exception:
+        logger.exception(
+            "[SUPABASE] failed to upsert no_store onboarding progress org_id=%s",
+            str(org_id),
+        )
 
 class SupabaseConfigError(APIException):
     status_code = 500
@@ -150,7 +186,12 @@ def _get_or_create_user_from_supabase(email: str, supa_id: str, user_info: dict)
 def ensure_org_membership(user: User, *, user_uuid: Optional[str] = None) -> None:
     mapped_uuid = upsert_user_id_map(user, user_uuid=user_uuid)
     user_uuid = mapped_uuid
-    if OrgMember.objects.filter(user_id=user_uuid).exists():
+    existing_org_ids = list(
+        OrgMember.objects.filter(user_id=user_uuid).values_list("org_id", flat=True)
+    )
+    if existing_org_ids:
+        for org_id in existing_org_ids:
+            _ensure_no_store_onboarding_progress(str(org_id))
         return
 
     name = user.email.split("@")[0] if user.email else user.username or "Minha organização"
@@ -178,6 +219,7 @@ def ensure_org_membership(user: User, *, user_uuid: Optional[str] = None) -> Non
         role="owner",
         created_at=timezone.now(),
     )
+    _ensure_no_store_onboarding_progress(str(org.id))
     logger.info("[SUPABASE] org created org_id=%s user_uuid=%s", str(org.id), str(user_uuid))
 
 

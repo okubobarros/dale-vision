@@ -78,6 +78,71 @@ BEGIN
 END $$;
 
 -- 3) Trigger: when auth.users row is deleted, cleanup public mappings/user row.
+CREATE OR REPLACE FUNCTION public.cleanup_orphan_organizations(
+  p_delete_with_stores boolean DEFAULT false
+)
+RETURNS TABLE(org_id uuid, deleted boolean, reason text)
+LANGUAGE plpgsql
+SECURITY DEFINER
+SET search_path = public
+AS $$
+DECLARE
+  v_org record;
+  v_fk record;
+BEGIN
+  FOR v_org IN
+    SELECT o.id
+      FROM public.organizations o
+     WHERE NOT EXISTS (
+       SELECT 1
+         FROM public.org_members om
+        WHERE om.org_id = o.id
+     )
+  LOOP
+    IF EXISTS (
+      SELECT 1 FROM public.stores s WHERE s.org_id = v_org.id
+    ) AND NOT p_delete_with_stores THEN
+      org_id := v_org.id;
+      deleted := false;
+      reason := 'has_stores';
+      RETURN NEXT;
+      CONTINUE;
+    END IF;
+
+    -- Remove dependências com FK simples para organizations.
+    FOR v_fk IN
+      SELECT c.conrelid::regclass AS table_name, a.attname AS column_name
+        FROM pg_constraint c
+        JOIN pg_attribute a
+          ON a.attrelid = c.conrelid
+         AND a.attnum = c.conkey[1]
+       WHERE c.contype = 'f'
+         AND c.confrelid = 'public.organizations'::regclass
+         AND array_length(c.conkey, 1) = 1
+         AND c.conrelid <> 'public.organizations'::regclass
+         AND (
+           p_delete_with_stores
+           OR c.conrelid <> 'public.stores'::regclass
+         )
+    LOOP
+      EXECUTE format(
+        'DELETE FROM %s WHERE %I = $1',
+        v_fk.table_name,
+        v_fk.column_name
+      )
+      USING v_org.id;
+    END LOOP;
+
+    DELETE FROM public.organizations WHERE id = v_org.id;
+
+    org_id := v_org.id;
+    deleted := true;
+    reason := 'deleted';
+    RETURN NEXT;
+  END LOOP;
+END;
+$$;
+
 CREATE OR REPLACE FUNCTION public.handle_auth_user_deleted_cleanup()
 RETURNS trigger
 LANGUAGE plpgsql
@@ -118,6 +183,15 @@ BEGIN
     END;
   END IF;
 
+  -- Política explícita:
+  -- remove orgs sem membros e sem lojas, evitando "sujeira" após deleção de usuário.
+  BEGIN
+    PERFORM 1 FROM public.cleanup_orphan_organizations(false);
+  EXCEPTION
+    WHEN undefined_function THEN
+      NULL;
+  END;
+
   RETURN OLD;
 END;
 $$;
@@ -144,3 +218,7 @@ COMMIT;
 -- WHERE NOT EXISTS (
 --   SELECT 1 FROM public.user_id_map uim WHERE uim.user_uuid = om.user_id
 -- );
+--
+-- -- Execução manual da política de cleanup:
+-- SELECT * FROM public.cleanup_orphan_organizations(false); -- seguro (não apaga org com stores)
+-- SELECT * FROM public.cleanup_orphan_organizations(true);  -- agressivo (apaga org + stores/dependências)
