@@ -52,6 +52,17 @@ class EdgeAuthHeaderPrecedenceTests(SimpleTestCase):
         )
         self.assertEqual(_extract_store_token(req), "edge-token-from-bearer")
 
+    def test_authorization_token_scheme_is_supported(self):
+        req = self.factory.get(
+            "/api/edge/events/",
+            HTTP_AUTHORIZATION="Token edge-token-from-token-scheme",
+        )
+        self.assertEqual(_extract_store_token(req), "edge-token-from-token-scheme")
+
+    def test_query_param_edge_token_is_supported(self):
+        req = self.factory.get("/api/edge/events/?edge_token=edge-token-in-query")
+        self.assertEqual(_extract_store_token(req), "edge-token-in-query")
+
 
 class EdgeIdempotencyKeyTests(SimpleTestCase):
     def test_compute_receipt_id_for_vision_events_uses_minute_bucket(self):
