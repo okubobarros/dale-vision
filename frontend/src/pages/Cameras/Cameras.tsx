@@ -12,6 +12,10 @@ import {
   type Camera,
   type CreateCameraPayload,
 } from "../../services/cameras"
+import {
+  onboardingService,
+  type OnboardingNextStepResponse,
+} from "../../services/onboarding"
 import { supportService } from "../../services/support"
 import { formatReason, formatStatusLabel, formatTimestamp } from "../../utils/edgeReasons"
 import { useAuth } from "../../contexts/useAuth"
@@ -130,7 +134,15 @@ const Cameras = () => {
   const selectedStoreRole = selectedStoreItem?.role ?? null
   const baseCanManageStore =
     selectedStore !== "all" &&
-    (selectedStoreRole ? ["owner", "admin", "manager"].includes(selectedStoreRole) : true)
+      (selectedStoreRole ? ["owner", "admin", "manager"].includes(selectedStoreRole) : true)
+
+  const { data: onboardingNextStep } = useQuery<OnboardingNextStepResponse | null>({
+    queryKey: ["onboarding-next-step", "cameras", selectedStore],
+    queryFn: () => onboardingService.getNextStep(selectedStore),
+    enabled: Boolean(selectedStore && selectedStore !== "all"),
+    staleTime: 30000,
+    retry: false,
+  })
 
   const { data: edgeStatus } = useQuery<StoreEdgeStatus>({
     queryKey: ["store-edge-status", selectedStore],
@@ -473,13 +485,16 @@ const Cameras = () => {
       const status = cam.camera_health?.status ?? cam.status
       return status === "online" || status === "degraded"
     })
-    const roiDone = false
+    const roiDone =
+      hasCamera &&
+      (onboardingNextStep?.stage === "collecting_data" ||
+        onboardingNextStep?.stage === "active")
     return [
       { label: "Adicionar câmera", done: hasCamera },
       { label: "Verificar status no Edge", done: healthOk },
       { label: "Desenhar ROI", done: roiDone },
     ]
-  }, [cameras])
+  }, [cameras, onboardingNextStep?.stage])
 
   const handleTestConnection = useCallback(
     async (cameraId: string) => {
@@ -1059,12 +1074,13 @@ type CameraModalProps = {
       externalId: camera?.external_id ?? "",
       active: camera?.active ?? true,
     }))
-    const [showPassword, setShowPassword] = useState(false)
+  const [showPassword, setShowPassword] = useState(false)
   const [connectionType, setConnectionType] = useState<"ip_camera" | "nvr">(
     "ip_camera"
   )
   const [rtspUrl, setRtspUrl] = useState("")
   const [showRtsp, setShowRtsp] = useState(false)
+  const [localValidationError, setLocalValidationError] = useState<string | null>(null)
 
   const hasFieldError = useCallback(
     (field: string) => Boolean(createErrorFields[field]?.length),
@@ -1079,6 +1095,11 @@ type CameraModalProps = {
     typeof window !== "undefined" ? window.location.hostname : ""
   const showNetworkWarning =
     edgeOnline && isPrivateIp(form.ip) && !isPrivateHost(hostname)
+  const trimmedName = form.name.trim()
+  const trimmedIp = form.ip.trim()
+  const trimmedRtsp = rtspUrl.trim()
+  const missingConnectionInput = !camera && !trimmedIp && !trimmedRtsp
+  const saveDisabled = isSaving || !trimmedName || missingConnectionInput
 
   if (!open) return null
 
@@ -1108,7 +1129,10 @@ type CameraModalProps = {
               <label className="text-sm font-medium text-gray-700">Nome</label>
               <input
                 value={form.name}
-                onChange={(e) => setForm((prev) => ({ ...prev, name: e.target.value }))}
+                onChange={(e) => {
+                  setLocalValidationError(null)
+                  setForm((prev) => ({ ...prev, name: e.target.value }))
+                }}
                 placeholder="Ex: Entrada"
                 className={`mt-1 w-full rounded-lg border px-3 py-2 text-sm ${
                   hasFieldError("name")
@@ -1124,9 +1148,10 @@ type CameraModalProps = {
               <select
                 id="connection-type"
                 value={connectionType}
-                onChange={(e) =>
+                onChange={(e) => {
+                  setLocalValidationError(null)
                   setConnectionType(e.target.value as "ip_camera" | "nvr")
-                }
+                }}
                 className="mt-1 w-full rounded-lg border border-gray-200 px-3 py-2 text-sm"
               >
                 <option value="ip_camera">Câmera IP (RTSP direto)</option>
@@ -1137,7 +1162,10 @@ type CameraModalProps = {
               <label className="text-sm font-medium text-gray-700">IP</label>
               <input
                 value={form.ip}
-                onChange={(e) => setForm((prev) => ({ ...prev, ip: e.target.value }))}
+                onChange={(e) => {
+                  setLocalValidationError(null)
+                  setForm((prev) => ({ ...prev, ip: e.target.value }))
+                }}
                 placeholder="192.168.0.10"
                 className={`mt-1 w-full rounded-lg border px-3 py-2 text-sm ${
                   hasFieldError("ip")
@@ -1271,7 +1299,10 @@ type CameraModalProps = {
                 <label className="text-sm font-medium text-gray-700">RTSP URL</label>
                 <input
                   value={rtspUrl}
-                  onChange={(e) => setRtspUrl(e.target.value)}
+                  onChange={(e) => {
+                    setLocalValidationError(null)
+                    setRtspUrl(e.target.value)
+                  }}
                   placeholder="rtsp://usuario:senha@host/stream"
                   className={`mt-1 w-full rounded-lg border px-3 py-2 text-sm ${
                     hasFieldError("rtsp_url")
@@ -1361,6 +1392,11 @@ type CameraModalProps = {
           {testError && (
             <p className="mt-3 text-xs text-red-600">{testError}</p>
           )}
+          {localValidationError && (
+            <div className="mt-3 rounded-lg border border-red-200 bg-red-50 px-3 py-2 text-xs text-red-700">
+              {localValidationError}
+            </div>
+          )}
         </div>
 
         <div className="flex justify-end gap-2 px-6 pb-6 pt-4">
@@ -1385,13 +1421,35 @@ type CameraModalProps = {
           )}
           <button
             type="button"
-            disabled={isSaving || !form.name?.trim()}
+            disabled={saveDisabled}
             onClick={() => {
+              const cleanedName = form.name.trim()
               const cleanedIp = form.ip.trim()
               const cleanedUsername = form.username.trim()
               const cleanedPassword = form.password.trim()
               const cleanedBrand = form.brand.trim()
               const cleanedRtsp = rtspUrl.trim()
+              setLocalValidationError(null)
+
+              if (!cleanedName) {
+                setLocalValidationError("Informe um nome para a câmera.")
+                return
+              }
+
+              if (!camera && !cleanedIp && !cleanedRtsp) {
+                setLocalValidationError("Informe o IP da câmera/NVR ou preencha o RTSP manual.")
+                return
+              }
+
+              if (
+                connectionType === "nvr" &&
+                !cleanedRtsp &&
+                (!Number.isFinite(Number(form.channel)) || Number(form.channel) < 1)
+              ) {
+                setLocalValidationError("Informe um canal de NVR válido (maior que zero).")
+                return
+              }
+
               const inferredRtsp =
                 cleanedRtsp ||
                 buildRtspUrl({
@@ -1410,7 +1468,7 @@ type CameraModalProps = {
                   ? `ch${form.channel}-sub${form.subtype}`
                   : null)
               const payload: CreateCameraPayload = {
-                name: form.name,
+                name: cleanedName,
                 ip: cleanedIp || undefined,
                 brand: cleanedBrand || undefined,
                 external_id: inferredExternalId,
@@ -1426,7 +1484,7 @@ type CameraModalProps = {
               onSave(payload)
             }}
             className={`rounded-lg px-4 py-2 text-sm font-semibold text-white ${
-              isSaving || !form.name?.trim()
+              saveDisabled
                 ? "bg-gray-300 cursor-not-allowed"
                 : "bg-blue-600 hover:bg-blue-700"
             }`}

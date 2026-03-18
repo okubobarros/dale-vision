@@ -202,6 +202,13 @@ def _upsert_onboarding_progress(org_id: str, stage: str, store_id: str | None):
     try:
         OnboardingProgress.objects.update_or_create(
             org_id=org_id,
+            store_id=store_id,
+            step=stage,
+            defaults=defaults,
+        )
+    except FieldError:
+        OnboardingProgress.objects.update_or_create(
+            org_id=org_id,
             step=stage,
             defaults=defaults,
         )
@@ -258,11 +265,19 @@ class OnboardingStepCompleteView(APIView):
                     return Response({"detail": "Usuário sem org."}, status=status.HTTP_400_BAD_REQUEST)
                 service = OnboardingProgressService(str(org_ids[0]))
 
-            existing = OnboardingProgress.objects.filter(
-                org_id=service.org_id,
-                step=step,
-                completed=True,
-            ).first()
+            try:
+                existing = OnboardingProgress.objects.filter(
+                    org_id=service.org_id,
+                    store_id=service.store_id if service.store_id else None,
+                    step=step,
+                    completed=True,
+                ).first()
+            except FieldError:
+                existing = OnboardingProgress.objects.filter(
+                    org_id=service.org_id,
+                    step=step,
+                    completed=True,
+                ).first()
             if existing:
                 return Response(
                     {
@@ -364,7 +379,10 @@ class OnboardingNextStepView(APIView):
 
             stage_payload = _normalize_stage_payload(stage, str(store.id))
             try:
-                next_step_service = OnboardingProgressService(str(store.org_id))
+                next_step_service = OnboardingProgressService(
+                    str(store.org_id),
+                    store_id=str(store.id),
+                )
                 next_step = next_step_service.next_step()
             except Exception:
                 logger.exception(

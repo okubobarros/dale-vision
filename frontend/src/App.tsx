@@ -36,9 +36,6 @@ const NotificationLogs = lazy(() => import("./pages/NotificationLogs/Notificatio
 const Register = lazy(() => import("./pages/Register/Register"))
 const Onboarding = lazy(() => import("./pages/Onboarding/Onboarding"))
 
-// 🆕 Setup técnico (EDGE-first)
-const Setup = lazy(() => import("./pages/Setup/Setup"))
-
 const RouteFallback = () => (
   <div className="min-h-screen flex items-center justify-center text-sm text-gray-500">
     Carregando...
@@ -95,9 +92,6 @@ function App() {
         <Route path="alert-rules" element={<Navigate to="/app/alerts/rules" replace />} />
         <Route path="notification-logs" element={<Navigate to="/app/alerts/history" replace />} />
 
-        {/* 🧩 SETUP TÉCNICO */}
-        <Route path="setup" element={<Setup />} />
-
         <Route path="settings" element={<Settings />} />
         <Route path="profile" element={<ProfilePage />} />
         <Route path="report" element={<Navigate to="/app/reports" replace />} />
@@ -124,9 +118,6 @@ function App() {
       <Route path="/termos" element={<Navigate to="/terms" replace />} />
 
       {/* ✅ Redirects Onboarding */}
-
-      {/* ✅ Redirect Setup (opcional) */}
-      <Route path="/setup" element={<Navigate to="/app/setup" replace />} />
 
       {/* Fallback */}
       <Route path="*" element={<Navigate to="/" replace />} />

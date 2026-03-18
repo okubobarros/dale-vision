@@ -678,7 +678,10 @@ class CameraViewSet(viewsets.ModelViewSet):
             )
         if status_value == "published":
             try:
-                OnboardingProgressService(str(cam.store.org_id)).complete_step(
+                OnboardingProgressService(
+                    str(cam.store.org_id),
+                    store_id=str(cam.store_id),
+                ).complete_step(
                     "roi_published",
                     meta={
                         "store_id": str(cam.store_id),
@@ -793,7 +796,10 @@ class CameraViewSet(viewsets.ModelViewSet):
 
         if status_value in ("online", "degraded"):
             try:
-                OnboardingProgressService(str(cam.store.org_id)).complete_step(
+                OnboardingProgressService(
+                    str(cam.store.org_id),
+                    store_id=str(cam.store_id),
+                ).complete_step(
                     "camera_health_ok",
                     meta={
                         "store_id": str(cam.store_id),

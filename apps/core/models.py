@@ -386,6 +386,13 @@ class DemoLead(UnmanagedModel):
 class OnboardingProgress(UnmanagedModel):
     id = models.UUIDField(primary_key=True, default=uuid.uuid4)
     org = models.ForeignKey(Organization, on_delete=models.DO_NOTHING, db_column="org_id")
+    store = models.ForeignKey(
+        Store,
+        on_delete=models.DO_NOTHING,
+        db_column="store_id",
+        null=True,
+        blank=True,
+    )
     step = models.TextField()
     completed = models.BooleanField(default=False)
     completed_at = models.DateTimeField(null=True, blank=True)
@@ -397,7 +404,7 @@ class OnboardingProgress(UnmanagedModel):
 
     class Meta(UnmanagedModel.Meta):
         db_table = "onboarding_progress"
-        unique_together = (("org", "step"),)
+        unique_together = (("org", "store", "step"),)
 
 
 # -------------------------

@@ -590,7 +590,10 @@ class StoreEdgeStatusView(APIView):
                     payload["last_error"] = debug_error
         if payload.get("online") and store:
             try:
-                OnboardingProgressService(str(store.org_id)).complete_step(
+                OnboardingProgressService(
+                    str(store.org_id),
+                    store_id=str(store.id),
+                ).complete_step(
                     "edge_connected",
                     meta={"store_id": str(store.id), "last_seen_at": payload.get("last_heartbeat_at")},
                 )

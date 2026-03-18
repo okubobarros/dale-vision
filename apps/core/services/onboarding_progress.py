@@ -2,6 +2,7 @@ from __future__ import annotations
 
 from typing import Dict, List, Optional
 from django.utils import timezone
+from django.core.exceptions import FieldError
 
 from apps.core.models import OnboardingProgress, Store, OrgMember
 from apps.stores.services.user_uuid import ensure_user_uuid
@@ -43,12 +44,23 @@ def _user_has_org_access(user, org_id: str) -> bool:
 
 
 class OnboardingProgressService:
-    def __init__(self, org_id: str):
+    def __init__(self, org_id: str, store_id: Optional[str] = None):
         self.org_id = str(org_id)
+        self.store_id = str(store_id) if store_id else None
+
+    def _progress_queryset(self):
+        qs = OnboardingProgress.objects.filter(org_id=self.org_id)
+        if self.store_id:
+            try:
+                qs = qs.filter(store_id=self.store_id)
+            except FieldError:
+                # Backward compatibility while DB column store_id is not applied yet.
+                pass
+        return qs
 
     def get_progress(self) -> Dict[str, dict]:
         rows = (
-            OnboardingProgress.objects.filter(org_id=self.org_id)
+            self._progress_queryset()
             .values("step", "completed", "completed_at", "status", "progress_percent", "meta")
         )
         mapped = {row["step"]: row for row in rows}
@@ -75,18 +87,30 @@ class OnboardingProgressService:
     def complete_step(self, step: str, meta: Optional[dict] = None) -> dict:
         if step not in STEPS_ORDER:
             raise ValueError("step inválido")
+        merged_meta = _merge_meta({}, meta or {})
+        if self.store_id and "store_id" not in merged_meta:
+            merged_meta["store_id"] = self.store_id
         defaults = {
             "completed": True,
             "completed_at": _now(),
             "status": "completed",
-            "meta": meta or {},
+            "meta": merged_meta,
             "updated_at": _now(),
         }
-        row, _created = OnboardingProgress.objects.update_or_create(
-            org_id=self.org_id,
-            step=step,
-            defaults=defaults,
-        )
+        key_filters = {"org_id": self.org_id, "step": step}
+        if self.store_id:
+            key_filters["store_id"] = self.store_id
+        try:
+            row, _created = OnboardingProgress.objects.update_or_create(
+                **key_filters,
+                defaults=defaults,
+            )
+        except FieldError:
+            key_filters.pop("store_id", None)
+            row, _created = OnboardingProgress.objects.update_or_create(
+                **key_filters,
+                defaults=defaults,
+            )
         self._maybe_complete_first_insight()
         return {
             "step": row.step,
@@ -100,18 +124,30 @@ class OnboardingProgressService:
     def set_status(self, step: str, status: str, meta: Optional[dict] = None) -> dict:
         if step not in STEPS_ORDER:
             raise ValueError("step inválido")
-        existing = OnboardingProgress.objects.filter(org_id=self.org_id, step=step).first()
+        existing_qs = self._progress_queryset().filter(step=step)
+        existing = existing_qs.first()
         merged_meta = _merge_meta(existing.meta if existing else {}, meta)
+        if self.store_id and "store_id" not in merged_meta:
+            merged_meta["store_id"] = self.store_id
         defaults = {
             "status": status,
             "meta": merged_meta,
             "updated_at": _now(),
         }
-        row, _created = OnboardingProgress.objects.update_or_create(
-            org_id=self.org_id,
-            step=step,
-            defaults=defaults,
-        )
+        key_filters = {"org_id": self.org_id, "step": step}
+        if self.store_id:
+            key_filters["store_id"] = self.store_id
+        try:
+            row, _created = OnboardingProgress.objects.update_or_create(
+                **key_filters,
+                defaults=defaults,
+            )
+        except FieldError:
+            key_filters.pop("store_id", None)
+            row, _created = OnboardingProgress.objects.update_or_create(
+                **key_filters,
+                defaults=defaults,
+            )
         return {
             "step": row.step,
             "completed": row.completed,
@@ -126,23 +162,39 @@ class OnboardingProgressService:
         if progress["first_insight"]["completed"]:
             return
         if progress["camera_health_ok"]["completed"] and progress["roi_published"]["completed"]:
-            OnboardingProgress.objects.update_or_create(
-                org_id=self.org_id,
-                step="first_insight",
-                defaults={
-                    "completed": True,
-                    "completed_at": _now(),
-                    "status": "completed",
-                    "updated_at": _now(),
-                },
-            )
+            key_filters = {"org_id": self.org_id, "step": "first_insight"}
+            if self.store_id:
+                key_filters["store_id"] = self.store_id
+            try:
+                OnboardingProgress.objects.update_or_create(
+                    **key_filters,
+                    defaults={
+                        "completed": True,
+                        "completed_at": _now(),
+                        "status": "completed",
+                        "updated_at": _now(),
+                        "meta": {"store_id": self.store_id} if self.store_id else {},
+                    },
+                )
+            except FieldError:
+                key_filters.pop("store_id", None)
+                OnboardingProgress.objects.update_or_create(
+                    **key_filters,
+                    defaults={
+                        "completed": True,
+                        "completed_at": _now(),
+                        "status": "completed",
+                        "updated_at": _now(),
+                        "meta": {},
+                    },
+                )
 
 
 def get_service_for_store(store_id: str) -> Optional[OnboardingProgressService]:
     org_id = _get_org_id_for_store(store_id)
     if not org_id:
         return None
-    return OnboardingProgressService(org_id)
+    return OnboardingProgressService(org_id, store_id=store_id)
 
 
 def get_service_for_user_store(user, store_id: str) -> Optional[OnboardingProgressService]:
@@ -151,4 +203,4 @@ def get_service_for_user_store(user, store_id: str) -> Optional[OnboardingProgre
         return None
     if not _user_has_org_access(user, org_id):
         return None
-    return OnboardingProgressService(org_id)
+    return OnboardingProgressService(org_id, store_id=store_id)
