@@ -1,0 +1,54 @@
+name: Edge Event Minute Stats Retention
+
+on:
+  schedule:
+    - cron: "35 3 * * *"
+  workflow_dispatch:
+    inputs:
+      retention_days:
+        description: "Retention in days"
+        required: false
+        default: "7"
+      dry_run:
+        description: "Dry-run only (true/false)"
+        required: false
+        default: "false"
+
+concurrency:
+  group: edge-event-minute-stats-retention
+  cancel-in-progress: false
+
+jobs:
+  prune:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    env:
+      FORCE_JAVASCRIPT_ACTIONS_TO_NODE24: "true"
+      DJANGO_SECRET_KEY: ${{ secrets.DJANGO_SECRET_KEY }}
+      DEBUG: "0"
+      DATABASE_URL: ${{ secrets.DATABASE_URL }}
+      ALLOWED_HOSTS: ${{ secrets.ALLOWED_HOSTS || 'api.dalevision.com,.onrender.com' }}
+      EDGE_EVENT_MINUTE_RETENTION_DAYS: ${{ github.event.inputs.retention_days || vars.EDGE_EVENT_MINUTE_RETENTION_DAYS || '7' }}
+      EDGE_EVENT_MINUTE_RETENTION_DRY_RUN: ${{ github.event.inputs.dry_run || 'false' }}
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Setup Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+
+      - name: Install dependencies
+        run: |
+          python -m pip install --upgrade pip setuptools wheel
+          pip install -r requirements.prod.txt
+
+      - name: Prune edge_event_minute_stats
+        run: |
+          if [ "${EDGE_EVENT_MINUTE_RETENTION_DRY_RUN}" = "true" ]; then
+            python manage.py prune_edge_event_minute_stats --days "${EDGE_EVENT_MINUTE_RETENTION_DAYS}" --dry-run
+          else
+            python manage.py prune_edge_event_minute_stats --days "${EDGE_EVENT_MINUTE_RETENTION_DAYS}"
+          fi

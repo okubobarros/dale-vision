@@ -1358,7 +1358,10 @@ export const storesService = {
 
   async getEdgeSetup(storeId: string): Promise<StoreEdgeSetupPayload> {
     try {
-      const response = await api.get(`/v1/stores/${storeId}/edge-setup/`);
+      const response = await api.get(`/v1/stores/${storeId}/edge-setup/`, {
+        timeoutCategory: "long",
+        noRetry: true,
+      });
       return normalizeEdgeSetup(response.data, storeId);
     } catch (error) {
       logDevError('❌ Erro ao obter credenciais do edge:', error);
@@ -1372,7 +1375,10 @@ export const storesService = {
 
   async rotateEdgeToken(storeId: string): Promise<RotateEdgeTokenResult> {
     try {
-      const response = await api.post(`/v1/stores/${storeId}/edge-token/rotate/`);
+      const response = await api.post(`/v1/stores/${storeId}/edge-token/rotate/`, undefined, {
+        timeoutCategory: "long",
+        noRetry: true,
+      });
       return { supported: true, ...normalizeEdgeSetup(response.data, storeId) };
     } catch (error) {
       const apiError = error as ApiErrorLike;

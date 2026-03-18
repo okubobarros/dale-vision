@@ -1,5 +1,6 @@
 import logging
 import os
+import hashlib
 from typing import Optional, Tuple
 from uuid import uuid4
 from contextvars import ContextVar
@@ -9,6 +10,7 @@ from django.conf import settings
 from django.contrib.auth.models import User
 from django.db import DatabaseError
 from django.core.exceptions import FieldError
+from django.core.cache import cache
 from django.utils import timezone
 from rest_framework.exceptions import APIException
 
@@ -108,6 +110,19 @@ def _get_supabase_auth_timeout_seconds() -> float:
     return max(1.0, min(timeout, 15.0))
 
 
+def _get_supabase_auth_cache_seconds() -> int:
+    raw = (
+        getattr(settings, "SUPABASE_AUTH_CACHE_SECONDS", None)
+        or os.getenv("SUPABASE_AUTH_CACHE_SECONDS")
+        or "20"
+    )
+    try:
+        seconds = int(raw)
+    except (TypeError, ValueError):
+        seconds = 20
+    return max(0, min(seconds, 300))
+
+
 def _mask_token(token: str) -> str:
     token = token or ""
     if len(token) <= 12:
@@ -125,6 +140,15 @@ def _fetch_supabase_user(token: str) -> dict:
     if key:
         headers["apikey"] = key
 
+    cache_seconds = _get_supabase_auth_cache_seconds()
+    cache_key = None
+    if cache_seconds > 0:
+        token_hash = hashlib.sha256(token.encode("utf-8")).hexdigest()
+        cache_key = f"supabase:auth_user:{token_hash}"
+        cached = cache.get(cache_key)
+        if isinstance(cached, dict) and cached:
+            return cached
+
     timeout_seconds = _get_supabase_auth_timeout_seconds()
     timeout_tuple = (min(2.0, timeout_seconds), timeout_seconds)
     try:
@@ -139,8 +163,13 @@ def _fetch_supabase_user(token: str) -> dict:
 
     if resp.status_code != 200:
         logger.warning("[SUPABASE] auth user invalid status=%s", resp.status_code)
+        if cache_key:
+            cache.delete(cache_key)
         raise ValueError("Token inválido.")
-    return resp.json() or {}
+    payload = resp.json() or {}
+    if cache_key and cache_seconds > 0 and payload:
+        cache.set(cache_key, payload, cache_seconds)
+    return payload
 
 
 def _get_or_create_user_from_supabase(email: str, supa_id: str, user_info: dict) -> User:

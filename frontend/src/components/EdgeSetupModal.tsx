@@ -53,6 +53,7 @@ const VISION_SNAPSHOT_TIMEOUT_SECONDS = 10
 const DEFAULT_LOG_DIR = "C:\\ProgramData\\DaleVision\\logs"
 const TOKEN_ROTATED_INSTRUCTION =
   "Token do Edge rotacionado: atualize o .env no computador da loja com o novo EDGE_TOKEN e reinicie o agente."
+const AUTO_UPDATE_PREF_STORAGE_KEY = "dv_edge_setup_auto_update_pref"
 
 const getApiError = (err: unknown): ApiErrorLike => {
   if (err && typeof err === "object") {
@@ -142,6 +143,31 @@ const getAgeSeconds = (iso?: string | null) => {
   const date = new Date(iso)
   if (Number.isNaN(date.getTime())) return null
   return Math.max(0, Math.floor((Date.now() - date.getTime()) / 1000))
+}
+
+const readAutoUpdatePreference = (storeId?: string) => {
+  if (!storeId) return DEFAULT_AUTO_UPDATE_ENABLED
+  try {
+    const raw = localStorage.getItem(AUTO_UPDATE_PREF_STORAGE_KEY)
+    if (!raw) return DEFAULT_AUTO_UPDATE_ENABLED
+    const parsed = JSON.parse(raw) as Record<string, boolean>
+    const value = parsed[storeId]
+    return typeof value === "boolean" ? value : DEFAULT_AUTO_UPDATE_ENABLED
+  } catch {
+    return DEFAULT_AUTO_UPDATE_ENABLED
+  }
+}
+
+const writeAutoUpdatePreference = (storeId: string, enabled: boolean) => {
+  if (!storeId) return
+  try {
+    const raw = localStorage.getItem(AUTO_UPDATE_PREF_STORAGE_KEY)
+    const parsed = raw ? (JSON.parse(raw) as Record<string, boolean>) : {}
+    parsed[storeId] = enabled
+    localStorage.setItem(AUTO_UPDATE_PREF_STORAGE_KEY, JSON.stringify(parsed))
+  } catch {
+    // no-op
+  }
 }
 
 const EdgeSetupModal = ({ open, onClose, defaultStoreId }: EdgeSetupModalProps) => {
@@ -249,6 +275,11 @@ const EdgeSetupModal = ({ open, onClose, defaultStoreId }: EdgeSetupModalProps) 
   }, [open, defaultStoreId])
 
   useEffect(() => {
+    if (!open || !storeId) return
+    setAutoUpdateEnabled(readAutoUpdatePreference(storeId))
+  }, [open, storeId])
+
+  useEffect(() => {
     if (!open) return
     setDownloadConfirmed(false)
     setEnvCopied(false)
@@ -301,9 +332,15 @@ const EdgeSetupModal = ({ open, onClose, defaultStoreId }: EdgeSetupModalProps) 
       } catch (err) {
         const apiErr = getApiError(err)
         const formatted = formatApiError(err)
+        const msg = String(apiErr.message || "").toLowerCase()
+        const isTimeout = apiErr.code === "ECONNABORTED" || msg.includes("timeout")
         setEdgeToken("")
         setAgentId(DEFAULT_AGENT_ID)
         setCloudBaseUrl(DEFAULT_CLOUD_BASE_URL)
+        if (isTimeout) {
+          setSetupError("Tempo limite ao carregar EDGE_TOKEN. Tente novamente ou gere novo token.")
+          return
+        }
         if (!formatted.isJson && apiErr.response?.data) {
           if (import.meta.env.DEV) {
             console.warn("[EdgeSetup] HTML error body", apiErr.response.data)
@@ -937,7 +974,13 @@ const EdgeSetupModal = ({ open, onClose, defaultStoreId }: EdgeSetupModalProps) 
                   <input
                     type="checkbox"
                     checked={autoUpdateEnabled}
-                    onChange={(e) => setAutoUpdateEnabled(e.target.checked)}
+                    onChange={(e) => {
+                      const next = e.target.checked
+                      setAutoUpdateEnabled(next)
+                      if (storeId) {
+                        writeAutoUpdatePreference(storeId, next)
+                      }
+                    }}
                     className="h-4 w-4 rounded border-gray-300 text-blue-600 focus:ring-blue-500"
                   />
                 </label>
@@ -1007,7 +1050,7 @@ const EdgeSetupModal = ({ open, onClose, defaultStoreId }: EdgeSetupModalProps) 
               {loadingCreds && (
                 <div className="mt-2 text-xs text-gray-500">Aguarde as credenciais do Edge...</div>
               )}
-              {!loadingCreds && !edgeToken && (
+              {!loadingCreds && !edgeToken && !setupError && (
                 <div className="mt-2 text-xs text-amber-700">
                   EDGE_TOKEN ausente. Gere um novo token para continuar.
                 </div>
@@ -1029,14 +1072,14 @@ const EdgeSetupModal = ({ open, onClose, defaultStoreId }: EdgeSetupModalProps) 
               <div className="text-sm text-gray-700 font-semibold">4. Iniciar Agent</div>
                 <div className="mt-1 text-xs text-gray-500 space-y-1">
                   <div>
-                    Primeiro rode <span className="font-mono">02_TESTE_RAPIDO.bat</span> para validar a conexão.
+                    Primeiro rode <span className="font-mono">01_TESTE_RAPIDO.bat</span> para validar a conexão.
                   </div>
                   <div>
-                    Em seguida, rode <span className="font-mono">03_INSTALAR_AUTOSTART.bat</span> para produção
+                    Em seguida, rode <span className="font-mono">02_INSTALAR_AUTOSTART.bat</span> para produção
                     (executa em segundo plano e reinicia sozinho).
                   </div>
                   <div>
-                    Para confirmar, rode <span className="font-mono">04_VERIFICAR_STATUS.bat</span>.
+                    Para confirmar, rode <span className="font-mono">03_VERIFICAR_STATUS.bat</span>.
                   </div>
                   <div>
                     Se der erro ou você estiver remoto: clique em{" "}
