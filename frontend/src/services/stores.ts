@@ -1300,8 +1300,60 @@ export const storesService = {
     zone_id?: string
     roi_entity_id?: string
   }): Promise<NetworkVisionIngestionSummary> {
-    const response = await api.get("/v1/stores/network/vision/ingestion-summary/", { params })
-    return response.data as NetworkVisionIngestionSummary
+    try {
+      const response = await api.get("/v1/stores/network/vision/ingestion-summary/", {
+        params,
+        timeoutCategory: "best-effort",
+        noRetry: true,
+      })
+      return response.data as NetworkVisionIngestionSummary
+    } catch (error) {
+      logDevError("⚠️ Falha no network vision ingestion summary. Usando fallback.", error)
+      const nowIso = new Date().toISOString()
+      const windowHours = Number(params?.window_hours ?? 24)
+      const fromIso = new Date(Date.now() - windowHours * 60 * 60 * 1000).toISOString()
+      return {
+        from: fromIso,
+        to: nowIso,
+        filters: {
+          event_source: (params?.event_source ?? "all") as "vision" | "retail" | "all",
+          camera_id: params?.camera_id ?? null,
+          zone_id: params?.zone_id ?? null,
+          roi_entity_id: params?.roi_entity_id ?? null,
+          window_hours: windowHours,
+        },
+        network: {
+          total_stores: 0,
+          active_stores: 0,
+        },
+        vision_summary: {
+          by_event_type: {},
+          total: 0,
+          latest_event_at: null,
+        },
+        retail_summary: {
+          by_event_name: {},
+          total: 0,
+          latest_event_at: null,
+        },
+        operational_summary: {
+          events_total: 0,
+          latest_event_at: null,
+          pipeline_status: "no_signal",
+          recommended_action: "Aguardando sinal do backend.",
+          dedupe_model: "event_receipts_unique_event_id",
+          operational_window: {
+            status: "no_data",
+            latest_bucket_at: null,
+            freshness_seconds: null,
+            coverage_stores: 0,
+            coverage_rate: 0,
+            recommended_action: "Sem dados de janela operacional no momento.",
+            model: "operational_window_hourly",
+          },
+        },
+      }
+    }
   },
 
   async getEdgeSetup(storeId: string): Promise<StoreEdgeSetupPayload> {
