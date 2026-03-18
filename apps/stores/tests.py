@@ -3,6 +3,7 @@ from types import SimpleNamespace
 from django.test import SimpleTestCase
 from django.http import Http404
 from django.core.exceptions import PermissionDenied, ValidationError
+from django.db import DatabaseError
 from django.utils import timezone
 from unittest.mock import MagicMock, patch
 
@@ -13,6 +14,7 @@ from apps.stores.serializers import EmployeeSerializer
 from apps.stores import views_edge_status
 from apps.edge import views as edge_views
 from apps.edge.views import EdgeEventsIngestView
+from rest_framework import serializers as drf_serializers
 from rest_framework.test import APIRequestFactory, force_authenticate
 from rest_framework.response import Response
 
@@ -1071,3 +1073,46 @@ class EmployeeSerializerTests(SimpleTestCase):
         serializer.fields["store"].queryset = MagicMock(get=MagicMock(return_value=store))
         self.assertFalse(serializer.is_valid())
         self.assertIn("store_id", serializer.errors)
+
+    def test_create_falls_back_to_other_when_employee_role_enum_drifts(self):
+        serializer = EmployeeSerializer()
+        store = MagicMock()
+        employee_obj = MagicMock()
+        validated_data = {
+            "store": store,
+            "full_name": "A",
+            "email": "a@a.com",
+            "role": "manager",
+            "role_other": None,
+        }
+
+        with patch(
+            "rest_framework.serializers.ModelSerializer.create",
+            side_effect=[DatabaseError("invalid input value for enum employee_role"), employee_obj],
+        ) as mock_create:
+            created = serializer.create(validated_data)
+
+        self.assertIs(created, employee_obj)
+        second_call_data = mock_create.call_args_list[1].args[0]
+        self.assertEqual(second_call_data["role"], "other")
+        self.assertEqual(second_call_data["role_other"], "manager")
+
+    def test_create_returns_validation_error_when_db_unique_fails(self):
+        serializer = EmployeeSerializer()
+        store = MagicMock()
+        validated_data = {
+            "store": store,
+            "full_name": "A",
+            "email": "a@a.com",
+            "role": "other",
+            "role_other": None,
+        }
+
+        with patch(
+            "rest_framework.serializers.ModelSerializer.create",
+            side_effect=DatabaseError("duplicate key value violates unique constraint"),
+        ):
+            with self.assertRaises(drf_serializers.ValidationError) as ctx:
+                serializer.create(validated_data)
+
+        self.assertIn("email", ctx.exception.detail)

@@ -1533,7 +1533,10 @@ class StoreViewSet(viewsets.ModelViewSet):
                 deprecated_detail="Não foi possível cadastrar a câmera.",
             )
         try:
-            OnboardingProgressService(str(store.org_id)).complete_step(
+            OnboardingProgressService(
+                str(store.org_id),
+                store_id=str(store.id),
+            ).complete_step(
                 "camera_added",
                 meta={"store_id": str(store.id), "camera_id": str(camera.id)},
             )
@@ -3415,97 +3418,104 @@ class StoreViewSet(viewsets.ModelViewSet):
         latest_retail_dt = None
 
         if store_ids:
-            store_placeholders = ", ".join(["%s"] * len(store_ids))
-            with connection.cursor() as cursor:
-                if event_source in {"vision", "all"}:
-                    vision_filters = [
-                        f"store_id IN ({store_placeholders})",
-                        "ts >= %s",
-                        "ts < %s",
-                    ]
-                    vision_params = [*store_ids, start, end]
-                    if camera_id:
-                        vision_filters.append("camera_id = %s")
-                        vision_params.append(camera_id)
-                    if zone_id:
-                        vision_filters.append("zone_id = %s")
-                        vision_params.append(zone_id)
-                    if roi_entity_id:
-                        vision_filters.append("roi_entity_id = %s")
-                        vision_params.append(roi_entity_id)
-                    if event_type:
-                        vision_filters.append("event_type = %s")
-                        vision_params.append(event_type)
-                    vision_where = " AND ".join(vision_filters)
+            try:
+                store_placeholders = ", ".join(["%s"] * len(store_ids))
+                with connection.cursor() as cursor:
+                    if event_source in {"vision", "all"}:
+                        vision_filters = [
+                            f"store_id IN ({store_placeholders})",
+                            "ts >= %s",
+                            "ts < %s",
+                        ]
+                        vision_params = [*store_ids, start, end]
+                        if camera_id:
+                            vision_filters.append("camera_id = %s")
+                            vision_params.append(camera_id)
+                        if zone_id:
+                            vision_filters.append("zone_id = %s")
+                            vision_params.append(zone_id)
+                        if roi_entity_id:
+                            vision_filters.append("roi_entity_id = %s")
+                            vision_params.append(roi_entity_id)
+                        if event_type:
+                            vision_filters.append("event_type = %s")
+                            vision_params.append(event_type)
+                        vision_where = " AND ".join(vision_filters)
 
-                    cursor.execute(
-                        f"""
-                        SELECT event_type, COUNT(*)
-                        FROM public.vision_atomic_events
-                        WHERE {vision_where}
-                        GROUP BY 1
-                        ORDER BY 1 ASC
-                        """,
-                        vision_params,
-                    )
-                    for row in cursor.fetchall():
-                        vision_summary[str(row[0])] = int(row[1] or 0)
+                        cursor.execute(
+                            f"""
+                            SELECT event_type, COUNT(*)
+                            FROM public.vision_atomic_events
+                            WHERE {vision_where}
+                            GROUP BY 1
+                            ORDER BY 1 ASC
+                            """,
+                            vision_params,
+                        )
+                        for row in cursor.fetchall():
+                            vision_summary[str(row[0])] = int(row[1] or 0)
 
-                    cursor.execute(
-                        f"""
-                        SELECT MAX(ts) FROM public.vision_atomic_events
-                        WHERE {vision_where}
-                        """,
-                        vision_params,
-                    )
-                    latest_vision_row = cursor.fetchone()
-                    latest_vision_dt = latest_vision_row[0] if latest_vision_row else None
+                        cursor.execute(
+                            f"""
+                            SELECT MAX(ts) FROM public.vision_atomic_events
+                            WHERE {vision_where}
+                            """,
+                            vision_params,
+                        )
+                        latest_vision_row = cursor.fetchone()
+                        latest_vision_dt = latest_vision_row[0] if latest_vision_row else None
 
-                if event_source in {"retail", "all"}:
-                    retail_filters = [
-                        "event_name LIKE 'retail_%'",
-                        "ts >= %s",
-                        "ts < %s",
-                        f"(raw->'data'->>'store_id') IN ({store_placeholders})",
-                    ]
-                    retail_params = [start, end, *store_ids]
-                    if camera_id:
-                        retail_filters.append("(raw->'data'->>'camera_id') = %s")
-                        retail_params.append(camera_id)
-                    if zone_id:
-                        retail_filters.append("(raw->'data'->>'zone_id') = %s")
-                        retail_params.append(zone_id)
-                    if roi_entity_id:
-                        retail_filters.append("(raw->'data'->>'roi_entity_id') = %s")
-                        retail_params.append(roi_entity_id)
-                    if event_type:
-                        normalized_retail = event_type if event_type.startswith("retail_") else f"retail_{event_type}"
-                        retail_filters.append("event_name = %s")
-                        retail_params.append(normalized_retail)
-                    retail_where = " AND ".join(retail_filters)
+                    if event_source in {"retail", "all"}:
+                        retail_filters = [
+                            "event_name LIKE 'retail_%'",
+                            "ts >= %s",
+                            "ts < %s",
+                            f"(raw->'data'->>'store_id') IN ({store_placeholders})",
+                        ]
+                        retail_params = [start, end, *store_ids]
+                        if camera_id:
+                            retail_filters.append("(raw->'data'->>'camera_id') = %s")
+                            retail_params.append(camera_id)
+                        if zone_id:
+                            retail_filters.append("(raw->'data'->>'zone_id') = %s")
+                            retail_params.append(zone_id)
+                        if roi_entity_id:
+                            retail_filters.append("(raw->'data'->>'roi_entity_id') = %s")
+                            retail_params.append(roi_entity_id)
+                        if event_type:
+                            normalized_retail = event_type if event_type.startswith("retail_") else f"retail_{event_type}"
+                            retail_filters.append("event_name = %s")
+                            retail_params.append(normalized_retail)
+                        retail_where = " AND ".join(retail_filters)
 
-                    cursor.execute(
-                        f"""
-                        SELECT event_name, COUNT(*)
-                        FROM public.event_receipts
-                        WHERE {retail_where}
-                        GROUP BY 1
-                        ORDER BY 1 ASC
-                        """,
-                        retail_params,
-                    )
-                    for row in cursor.fetchall():
-                        retail_summary[str(row[0])] = int(row[1] or 0)
+                        cursor.execute(
+                            f"""
+                            SELECT event_name, COUNT(*)
+                            FROM public.event_receipts
+                            WHERE {retail_where}
+                            GROUP BY 1
+                            ORDER BY 1 ASC
+                            """,
+                            retail_params,
+                        )
+                        for row in cursor.fetchall():
+                            retail_summary[str(row[0])] = int(row[1] or 0)
 
-                    cursor.execute(
-                        f"""
-                        SELECT MAX(ts) FROM public.event_receipts
-                        WHERE {retail_where}
-                        """,
-                        retail_params,
-                    )
-                    latest_retail_row = cursor.fetchone()
-                    latest_retail_dt = latest_retail_row[0] if latest_retail_row else None
+                        cursor.execute(
+                            f"""
+                            SELECT MAX(ts) FROM public.event_receipts
+                            WHERE {retail_where}
+                            """,
+                            retail_params,
+                        )
+                        latest_retail_row = cursor.fetchone()
+                        latest_retail_dt = latest_retail_row[0] if latest_retail_row else None
+            except (ProgrammingError, OperationalError, DatabaseError) as exc:
+                logger.warning(
+                    "[stores.network_vision_ingestion_summary] degraded fallback org_ids=%s error=%s",
+                    get_user_org_ids(request.user),
+                    str(exc),
+                )
 
         def _as_aware(dt):
             if not dt:
@@ -3522,11 +3532,30 @@ class StoreViewSet(viewsets.ModelViewSet):
         events_total = vision_total + retail_total
         pipeline_status = "no_signal"
         recommended_action = "Verificar edge/cameras e validar envio da rede."
-        operational_window_health = _compute_operational_window_health(
-            store_ids,
-            end,
-            stale_minutes=15,
-        )
+        try:
+            operational_window_health = _compute_operational_window_health(
+                store_ids,
+                end,
+                stale_minutes=15,
+            )
+        except (ProgrammingError, OperationalError, DatabaseError) as exc:
+            logger.warning(
+                "[stores.network_vision_ingestion_summary] operational_window unavailable org_ids=%s error=%s",
+                get_user_org_ids(request.user),
+                str(exc),
+            )
+            operational_window_health = {
+                "window_minutes": 15,
+                "stores_total": total_stores,
+                "stores_reporting": 0,
+                "stores_stale": total_stores,
+                "stores_missing": 0,
+                "coverage_pct": 0.0,
+                "reporting_store_ids": [],
+                "stale_store_ids": [],
+                "missing_store_ids": [],
+                "as_of": end.isoformat(),
+            }
         if events_total > 0:
             stale_threshold = end - timedelta(minutes=30)
             latest_dt = max(latest_candidates) if latest_candidates else None

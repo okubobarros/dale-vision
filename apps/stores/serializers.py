@@ -82,7 +82,30 @@ class EmployeeSerializer(serializers.ModelSerializer):
     def create(self, validated_data):
         validated_data.setdefault("created_at", timezone.now())
         validated_data.setdefault("active", True)
-        return super().create(validated_data)
+        try:
+            return super().create(validated_data)
+        except DatabaseError as exc:
+            message = str(exc).lower()
+
+            # Handle enum drift between app role choices and DB enum values.
+            if "employee_role" in message and validated_data.get("role") != "other":
+                normalized_data = dict(validated_data)
+                original_role = normalized_data.get("role")
+                normalized_data["role"] = "other"
+                normalized_data["role_other"] = normalized_data.get("role_other") or original_role
+                try:
+                    return super().create(normalized_data)
+                except DatabaseError:
+                    pass
+
+            if "duplicate key" in message or "unique" in message:
+                raise serializers.ValidationError(
+                    {"email": "Este e-mail já está cadastrado nesta loja."}
+                )
+
+            raise serializers.ValidationError(
+                {"non_field_errors": ["Não foi possível salvar os funcionários agora."]}
+            )
 
     class Meta:
         model = Employee
