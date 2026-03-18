@@ -200,6 +200,17 @@ def _upsert_onboarding_progress(org_id: str, stage: str, store_id: str | None):
         "created_at": now,
     }
     try:
+        base_qs = OnboardingProgress.objects.filter(org_id=org_id)
+        if store_id:
+            base_qs = base_qs.filter(store_id=store_id)
+        else:
+            base_qs = base_qs.filter(store_id__isnull=True)
+        (
+            base_qs
+            .filter(step__in=list(STAGE_PROGRESS.keys()))
+            .exclude(step=stage)
+            .delete()
+        )
         OnboardingProgress.objects.update_or_create(
             org_id=org_id,
             store_id=store_id,
@@ -207,6 +218,11 @@ def _upsert_onboarding_progress(org_id: str, stage: str, store_id: str | None):
             defaults=defaults,
         )
     except FieldError:
+        (
+            OnboardingProgress.objects.filter(org_id=org_id, step__in=list(STAGE_PROGRESS.keys()))
+            .exclude(step=stage)
+            .delete()
+        )
         OnboardingProgress.objects.update_or_create(
             org_id=org_id,
             step=stage,

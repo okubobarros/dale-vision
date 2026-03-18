@@ -8,7 +8,7 @@ from contextvars import ContextVar
 import requests
 from django.conf import settings
 from django.contrib.auth.models import User
-from django.db import DatabaseError
+from django.db import DatabaseError, connection
 from django.core.exceptions import FieldError
 from django.core.cache import cache
 from django.utils import timezone
@@ -68,6 +68,69 @@ def _ensure_no_store_onboarding_progress(org_id: str) -> None:
             "[SUPABASE] failed to upsert no_store onboarding progress org_id=%s",
             str(org_id),
         )
+
+
+def _recover_org_memberships_by_owner_email(user_uuid: str, email: str) -> list[str]:
+    """
+    Recover membership after auth user recreation using legacy stores.owner_email.
+    Returns org_ids linked/recovered for this user.
+    """
+    normalized_email = (email or "").strip().lower()
+    if not normalized_email:
+        return []
+
+    try:
+        with connection.cursor() as cursor:
+            cursor.execute(
+                """
+                SELECT 1
+                FROM information_schema.columns
+                WHERE table_schema = 'public'
+                  AND table_name = 'stores'
+                  AND column_name = 'owner_email'
+                LIMIT 1
+                """
+            )
+            has_owner_email = cursor.fetchone() is not None
+            if not has_owner_email:
+                return []
+
+            cursor.execute(
+                """
+                SELECT DISTINCT org_id
+                FROM public.stores
+                WHERE owner_email IS NOT NULL
+                  AND lower(owner_email) = %s
+                """,
+                [normalized_email],
+            )
+            rows = cursor.fetchall() or []
+    except Exception:
+        logger.exception(
+            "[SUPABASE] failed owner_email recovery query email=%s",
+            normalized_email,
+        )
+        return []
+
+    recovered_org_ids: list[str] = []
+    for row in rows:
+        org_id = str(row[0]) if row and row[0] else None
+        if not org_id:
+            continue
+        try:
+            _, _created = OrgMember.objects.get_or_create(
+                org_id=org_id,
+                user_id=user_uuid,
+                defaults={"role": "owner", "created_at": timezone.now()},
+            )
+            recovered_org_ids.append(org_id)
+        except Exception:
+            logger.exception(
+                "[SUPABASE] failed to recover membership org_id=%s user_uuid=%s",
+                org_id,
+                user_uuid,
+            )
+    return recovered_org_ids
 
 class SupabaseConfigError(APIException):
     status_code = 500
@@ -221,6 +284,17 @@ def ensure_org_membership(user: User, *, user_uuid: Optional[str] = None) -> Non
     if existing_org_ids:
         for org_id in existing_org_ids:
             _ensure_no_store_onboarding_progress(str(org_id))
+        return
+
+    recovered_org_ids = _recover_org_memberships_by_owner_email(user_uuid, user.email or "")
+    if recovered_org_ids:
+        for org_id in recovered_org_ids:
+            _ensure_no_store_onboarding_progress(str(org_id))
+        logger.info(
+            "[SUPABASE] membership recovered from owner_email user_uuid=%s org_ids=%s",
+            user_uuid,
+            recovered_org_ids,
+        )
         return
 
     name = user.email.split("@")[0] if user.email else user.username or "Minha organização"
