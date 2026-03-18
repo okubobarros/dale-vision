@@ -1,6 +1,6 @@
 import { useEffect, useMemo, useState } from "react"
 import { useQuery } from "@tanstack/react-query"
-import { Link, useLocation, useNavigate } from "react-router-dom"
+import { Link, Navigate, useLocation, useNavigate } from "react-router-dom"
 import toast from "react-hot-toast"
 import { useAuth } from "../../contexts/useAuth"
 import {
@@ -485,8 +485,6 @@ const Dashboard = () => {
     canFetchAuth && !storesLoading && !isNetworkMode
   const {
     data: onboardingNextStep,
-    isLoading: onboardingNextStepLoading,
-    error: onboardingNextStepErrorRaw,
   } = useQuery<OnboardingNextStepResponse | null>({
     queryKey: ["onboarding-next-step", selectedStore],
     queryFn: () =>
@@ -497,10 +495,6 @@ const Dashboard = () => {
     staleTime: 30000,
     retry: false,
   })
-  const onboardingNextStepError =
-    onboardingNextStepErrorRaw instanceof Error
-      ? onboardingNextStepErrorRaw.message
-      : null
 
   useEffect(() => {
     const params = new URLSearchParams(location.search)
@@ -516,11 +510,6 @@ const Dashboard = () => {
   }, [location.pathname, location.search])
 
   const onboardingStage = onboardingNextStep?.stage || null
-  const nextStepCta = useMemo(() => {
-    if (!canManageStore) return null
-    if (!onboardingNextStep?.cta_url || !onboardingNextStep?.cta_label) return null
-    return { label: onboardingNextStep.cta_label, href: onboardingNextStep.cta_url }
-  }, [canManageStore, onboardingNextStep])
 
   const health = onboardingNextStep?.health
   const camerasTotal = health?.cameras_total ?? edgeStatus?.cameras_total ?? 0
@@ -1517,54 +1506,7 @@ const Dashboard = () => {
   }
 
   if (stores && stores.length === 0) {
-    if (onboardingNextStepLoading) {
-      return (
-        <div className="flex items-center justify-center h-64">
-          <div className="animate-spin rounded-full h-12 w-12 border-t-2 border-b-2 border-blue-500" />
-        </div>
-      )
-    }
-    if (onboardingNextStepError) {
-      return (
-        <div className="bg-red-50 border border-red-200 rounded-xl p-6 text-sm text-red-700">
-          Não foi possível carregar o onboarding. {onboardingNextStepError}
-        </div>
-      )
-    }
-    return (
-      <div className="text-center py-16 bg-gray-50 rounded-xl border border-gray-200">
-        <div className="inline-flex items-center justify-center w-16 h-16 bg-blue-100 rounded-full mb-6">
-          <svg
-            className="w-8 h-8 text-blue-600"
-            fill="none"
-            stroke="currentColor"
-            viewBox="0 0 24 24"
-          >
-            <path
-              strokeLinecap="round"
-              strokeLinejoin="round"
-              strokeWidth={1.5}
-              d="M19 21V5a2 2 0 00-2-2H7a2 2 0 00-2 2v16m14 0h2m-2 0h-5m-9 0H3m2 0h5M9 7h1m-1 4h1m4-4h1m-1 4h1m-5 10v-5a1 1 0 011-1h2a1 1 0 011 1v5m-4 0h4"
-            />
-          </svg>
-        </div>
-        <h3 className="text-xl font-semibold text-gray-900 mb-3">
-          {onboardingNextStep?.title || "Você ainda não cadastrou nenhuma loja."}
-        </h3>
-        <p className="text-gray-600 max-w-md mx-auto mb-8">
-          {onboardingNextStep?.description ||
-            "Cadastre a primeira loja para começar a leitura executiva da rede."}
-        </p>
-        {nextStepCta && (
-          <Link
-            to={nextStepCta.href}
-            className="bg-blue-500 hover:bg-blue-600 text-white px-6 py-3 rounded-lg font-medium inline-flex items-center"
-          >
-            Cadastrar primeira loja
-          </Link>
-        )}
-      </div>
-    )
+    return <Navigate to="/onboarding" replace />
   }
 
   if (isTrialBlocked) {
