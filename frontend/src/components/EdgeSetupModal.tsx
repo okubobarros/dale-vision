@@ -42,7 +42,7 @@ const POLL_INTERVAL_MS = 3000
 const POLL_MAX_DURATION_MS = 120000
 const HEARTBEAT_FRESHNESS_SECONDS = 120
 const DASHBOARD_BASE_URL = "https://app.dalevision.com/app/cameras"
-const AUTO_UPDATE_ENABLED = 0
+const DEFAULT_AUTO_UPDATE_ENABLED = 0
 const UPDATE_CHANNEL = "stable"
 const UPDATE_GITHUB_REPO = "daleship/dalevision-edge-agent"
 const UPDATE_INTERVAL_SECONDS = 21600
@@ -151,6 +151,9 @@ const EdgeSetupModal = ({ open, onClose, defaultStoreId }: EdgeSetupModalProps) 
   const [cloudBaseUrl, setCloudBaseUrl] = useState(DEFAULT_CLOUD_BASE_URL)
   const [loadingCreds, setLoadingCreds] = useState(false)
   const [envProfile, setEnvProfile] = useState<EdgeEnvProfile>("stabilization")
+  const [autoUpdateEnabled, setAutoUpdateEnabled] = useState<boolean>(
+    DEFAULT_AUTO_UPDATE_ENABLED === 1
+  )
   const [setupError, setSetupError] = useState<string | null>(null)
   const [rotatingToken, setRotatingToken] = useState(false)
   const [tokenRotated, setTokenRotated] = useState(false)
@@ -224,6 +227,7 @@ const EdgeSetupModal = ({ open, onClose, defaultStoreId }: EdgeSetupModalProps) 
     setAgentId(DEFAULT_AGENT_ID)
     setCloudBaseUrl(DEFAULT_CLOUD_BASE_URL)
     setEnvProfile("stabilization")
+    setAutoUpdateEnabled(DEFAULT_AUTO_UPDATE_ENABLED === 1)
     setLoadingCreds(false)
     setSetupError(null)
     setRotatingToken(false)
@@ -341,6 +345,7 @@ const EdgeSetupModal = ({ open, onClose, defaultStoreId }: EdgeSetupModalProps) 
       const localCamerasOnly = stabilization ? 1 : 0
       const remoteCameraSyncEnabled = stabilization ? 0 : 1
 
+      const autoUpdateValue = autoUpdateEnabled ? 1 : 0
       return [
         `CLOUD_BASE_URL=${resolvedCloudBaseUrl}`,
         `STORE_ID=${storeIdValue}`,
@@ -354,7 +359,7 @@ const EdgeSetupModal = ({ open, onClose, defaultStoreId }: EdgeSetupModalProps) 
         `CAMERA_SYNC_ENABLED=${cameraSyncEnabled}`,
         `CAMERA_SYNC_FATAL=0`,
         `DASHBOARD_URL=${buildDashboardUrl(storeIdValue)}`,
-        `AUTO_UPDATE_ENABLED=${AUTO_UPDATE_ENABLED}`,
+        `AUTO_UPDATE_ENABLED=${autoUpdateValue}`,
         `UPDATE_CHANNEL=${UPDATE_CHANNEL}`,
         `UPDATE_GITHUB_REPO=${UPDATE_GITHUB_REPO}`,
         `UPDATE_INTERVAL_SECONDS=${UPDATE_INTERVAL_SECONDS}`,
@@ -370,6 +375,7 @@ const EdgeSetupModal = ({ open, onClose, defaultStoreId }: EdgeSetupModalProps) 
         `STARTUP_TASK_ENABLED=0`,
         ``,
         `# Perfil selecionado: ${stabilization ? "Estabilização (heartbeat/autostart)" : "Backend gerenciado (câmeras no app)"}`,
+        `# Auto-update: ${autoUpdateEnabled ? "ativado" : "desativado"}`,
         `# Avançado (opcional)`,
         `# VISION_MODEL_PATH=yolov8n.pt`,
         `# VISION_FRAME_STRIDE=2`,
@@ -377,7 +383,7 @@ const EdgeSetupModal = ({ open, onClose, defaultStoreId }: EdgeSetupModalProps) 
         `# VISION_PROXY_ENABLED=1  (demo rapido: gera métricas básicas sem IA)`,
       ]
     },
-    [agentId, buildDashboardUrl, envProfile, resolvedCloudBaseUrl]
+    [agentId, autoUpdateEnabled, buildDashboardUrl, envProfile, resolvedCloudBaseUrl]
   )
 
   const envContent = useMemo(() => {
@@ -925,6 +931,20 @@ const EdgeSetupModal = ({ open, onClose, defaultStoreId }: EdgeSetupModalProps) 
                 </select>
                 <p className="mt-1 text-xs text-gray-500">
                   Use estabilização para validar sustentação do sinal. Depois troque para backend gerenciado.
+                </p>
+              </div>
+              <div className="mb-3 rounded-lg border border-gray-200 bg-white px-3 py-2">
+                <label className="flex items-center justify-between gap-3 cursor-pointer">
+                  <span className="text-xs font-semibold text-gray-700">Auto-update do agente</span>
+                  <input
+                    type="checkbox"
+                    checked={autoUpdateEnabled}
+                    onChange={(e) => setAutoUpdateEnabled(e.target.checked)}
+                    className="h-4 w-4 rounded border-gray-300 text-blue-600 focus:ring-blue-500"
+                  />
+                </label>
+                <p className="mt-1 text-xs text-gray-500">
+                  Quando ativo, o .env sai com <span className="font-mono">AUTO_UPDATE_ENABLED=1</span> e o instalador cria a task de update.
                 </p>
               </div>
               <div className="text-xs text-gray-500 mb-3 space-y-1">
