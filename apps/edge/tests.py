@@ -63,6 +63,13 @@ class EdgeAuthHeaderPrecedenceTests(SimpleTestCase):
         req = self.factory.get("/api/edge/events/?edge_token=edge-token-in-query")
         self.assertEqual(_extract_store_token(req), "edge-token-in-query")
 
+    def test_x_store_token_header_is_supported(self):
+        req = self.factory.get(
+            "/api/edge/events/",
+            HTTP_X_STORE_TOKEN="edge-token-from-store-header",
+        )
+        self.assertEqual(_extract_store_token(req), "edge-token-from-store-header")
+
 
 class EdgeIdempotencyKeyTests(SimpleTestCase):
     def test_compute_receipt_id_for_vision_events_uses_minute_bucket(self):

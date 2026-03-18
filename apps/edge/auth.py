@@ -26,6 +26,8 @@ def _extract_store_token(request) -> Optional[str]:
         (request.headers.get("X-EDGE-TOKEN") or "").strip()
         or (request.headers.get("X_EDGE_TOKEN") or "").strip()
         or (request.META.get("HTTP_X_EDGE_TOKEN") or "").strip()
+        or (request.headers.get("X-STORE-TOKEN") or "").strip()
+        or (request.META.get("HTTP_X_STORE_TOKEN") or "").strip()
     )
     if edge_token:
         return edge_token
@@ -89,7 +91,10 @@ def authenticate_edge_token(request, requested_store_id: Optional[str] = None) -
         active=True,
     ).first()
     if not edge_token:
-        logger.warning("[EDGE-AUTH] invalid token token=%s", _mask_token(token))
+        auth_header = request.headers.get("Authorization") or ""
+        is_probably_user_jwt = auth_header.lower().startswith("bearer ") and token.count(".") >= 2
+        if not is_probably_user_jwt:
+            logger.warning("[EDGE-AUTH] invalid token token=%s", _mask_token(token))
         return EdgeTokenAuthResult(
             ok=False,
             status_code=401,
