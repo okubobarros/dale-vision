@@ -88,6 +88,9 @@ const Cameras = () => {
   const [showUpgradeCta, setShowUpgradeCta] = useState(false)
   const [connectionHelpOpen, setConnectionHelpOpen] = useState(false)
   const [roiCamera, setRoiCamera] = useState<Camera | null>(null)
+  const [localPublishedRoiCameraIds, setLocalPublishedRoiCameraIds] = useState<Set<string>>(
+    () => new Set()
+  )
   const [testingCameraId, setTestingCameraId] = useState<string | null>(null)
   const [testMessage, setTestMessage] = useState<string | null>(null)
   const [testError, setTestError] = useState<string | null>(null)
@@ -554,6 +557,7 @@ const Cameras = () => {
       hasCamera &&
       (roiPublished ||
         monitoringStarted ||
+        localPublishedRoiCameraIds.size > 0 ||
         onboardingNextStep?.stage === "collecting_data" ||
         onboardingNextStep?.stage === "active")
     const canDrawRoi = hasCamera && (healthOk || edgeOnline)
@@ -569,6 +573,7 @@ const Cameras = () => {
   }, [
     cameras,
     edgeOnline,
+    localPublishedRoiCameraIds,
     onboardingNextStep?.stage,
     onboardingProgress?.steps?.roi_published?.completed,
     onboardingProgress?.steps?.monitoring_started?.completed,
@@ -1104,6 +1109,13 @@ const Cameras = () => {
         open={Boolean(roiCamera)}
         camera={roiCamera}
         canEditRoi={canEditRoi}
+        onRoiPublished={(cameraId) => {
+          setLocalPublishedRoiCameraIds((prev) => {
+            const next = new Set(prev)
+            next.add(cameraId)
+            return next
+          })
+        }}
         onClose={() => setRoiCamera(null)}
       />
 

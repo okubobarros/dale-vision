@@ -47,6 +47,7 @@ type CameraRoiEditorProps = {
   open: boolean
   camera: Camera | null
   canEditRoi?: boolean
+  onRoiPublished?: (cameraId: string) => void
   onClose: () => void
 }
 
@@ -148,7 +149,13 @@ const extractShapesFromConfig = (configJson: unknown): RoiShape[] => {
   return []
 }
 
-const CameraRoiEditor = ({ open, camera, canEditRoi = false, onClose }: CameraRoiEditorProps) => {
+const CameraRoiEditor = ({
+  open,
+  camera,
+  canEditRoi = false,
+  onRoiPublished,
+  onClose,
+}: CameraRoiEditorProps) => {
   const canvasRef = useRef<HTMLCanvasElement | null>(null)
   const queryClient = useQueryClient()
   const [mode, setMode] = useState<"rect" | "poly" | "line">("rect")
@@ -601,10 +608,32 @@ const CameraRoiEditor = ({ open, camera, canEditRoi = false, onClose }: CameraRo
       queryClient.invalidateQueries({ queryKey: ["onboarding-next-step"] })
       queryClient.invalidateQueries({ queryKey: ["onboarding-progress"] })
       if (!silent) toast.success("Monitoramento iniciado")
+      return true
     } catch {
       if (!silent) toast.error("Falha ao iniciar monitoramento.")
+      return false
     } finally {
       setIsStartingMonitoring(false)
+    }
+  }, [camera, cameraId, queryClient, roiVersionLabel])
+
+  const completeRoiPublishedStep = useCallback(async (roiVersion?: number | null) => {
+    if (!cameraId || !camera?.store) return false
+    try {
+      await onboardingService.completeStep(
+        "roi_published",
+        {
+          store_id: camera.store,
+          camera_id: cameraId,
+          roi_version: roiVersion ?? roiVersionLabel,
+        },
+        camera.store
+      )
+      queryClient.invalidateQueries({ queryKey: ["onboarding-next-step"] })
+      queryClient.invalidateQueries({ queryKey: ["onboarding-progress"] })
+      return true
+    } catch {
+      return false
     }
   }, [camera, cameraId, queryClient, roiVersionLabel])
 
@@ -612,12 +641,30 @@ const CameraRoiEditor = ({ open, camera, canEditRoi = false, onClose }: CameraRo
     if (!cameraId || !canEditRoi) return
     try {
       const published = await updateRoiMutation.mutateAsync(buildRoiConfigPayload("published"))
-      await completeMonitoringStep(published?.version ?? null, true)
-      toast.success("ROI publicada e monitoramento iniciado")
+      const roiStepOk = await completeRoiPublishedStep(published?.version ?? null)
+      const monitoringOk = await completeMonitoringStep(published?.version ?? null, true)
+      if (cameraId) {
+        onRoiPublished?.(cameraId)
+      }
+      if (roiStepOk && monitoringOk) {
+        toast.success("ROI publicada e monitoramento iniciado")
+      } else if (roiStepOk) {
+        toast.success("ROI publicada. Monitoramento pendente.")
+      } else {
+        toast.success("ROI publicada. Sincronização de onboarding pendente.")
+      }
     } catch {
       // updateRoiMutation onError already handles user-facing error.
     }
-  }, [buildRoiConfigPayload, cameraId, canEditRoi, completeMonitoringStep, updateRoiMutation])
+  }, [
+    buildRoiConfigPayload,
+    cameraId,
+    canEditRoi,
+    completeMonitoringStep,
+    completeRoiPublishedStep,
+    onRoiPublished,
+    updateRoiMutation,
+  ])
 
   const displayUpdatedAt = useMemo(() => {
     if (!latestUpdatedAt) return "—"
@@ -659,10 +706,10 @@ const CameraRoiEditor = ({ open, camera, canEditRoi = false, onClose }: CameraRo
   if (!open || !camera) return null
 
   return (
-    <div className="fixed inset-0 z-50 flex items-center justify-center px-4">
+    <div className="fixed inset-0 z-50 flex items-center justify-center p-3 md:p-4">
       <div className="absolute inset-0 bg-black/40" onClick={handleClose} />
-      <div className="relative w-full max-w-6xl rounded-2xl bg-white p-6 shadow-xl">
-          <div className="flex flex-col lg:flex-row lg:items-center lg:justify-between gap-3">
+      <div className="relative flex h-[94vh] w-full max-w-[1400px] flex-col overflow-hidden rounded-2xl bg-white p-4 shadow-xl md:p-6">
+          <div className="z-10 flex flex-col gap-3 bg-white pb-3 lg:flex-row lg:items-center lg:justify-between">
             <div>
               <h3 className="text-lg font-semibold text-gray-800">
                 ROI Editor · {camera.name}
@@ -721,8 +768,8 @@ const CameraRoiEditor = ({ open, camera, canEditRoi = false, onClose }: CameraRo
             </div>
           </div>
 
-        <div className="mt-6 grid grid-cols-1 lg:grid-cols-[2fr,1fr] gap-5">
-          <div className="rounded-xl border border-gray-200 bg-gray-50 p-3">
+        <div className="mt-3 grid min-h-0 flex-1 grid-cols-1 gap-4 overflow-hidden lg:grid-cols-[2fr,1fr] lg:gap-5">
+          <div className="min-h-0 rounded-xl border border-gray-200 bg-gray-50 p-3">
             {roiLoading ? (
               <div className="text-sm text-gray-500">Carregando ROI...</div>
             ) : (
@@ -731,7 +778,7 @@ const CameraRoiEditor = ({ open, camera, canEditRoi = false, onClose }: CameraRo
                 onPointerDown={handlePointerDown}
                 onPointerMove={handlePointerMove}
                 onPointerUp={handlePointerUp}
-                className={`w-full rounded-lg border border-gray-200 bg-white ${
+                className={`h-[56vh] w-full rounded-lg border border-gray-200 bg-white md:h-[62vh] lg:h-full ${
                   !canEditRoi || !imageSrc
                     ? "cursor-not-allowed opacity-80"
                     : isDrawing
@@ -742,7 +789,7 @@ const CameraRoiEditor = ({ open, camera, canEditRoi = false, onClose }: CameraRo
             )}
           </div>
 
-          <div className="space-y-4">
+          <div className="min-h-0 space-y-4 overflow-y-auto pr-1">
             <div className="rounded-xl border border-gray-200 p-4 space-y-3">
               <div>
                 <label className="text-xs font-semibold text-gray-600">
