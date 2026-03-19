@@ -235,3 +235,16 @@ Sem esses 3 pilares, o produto segue operacional, mas ainda não atinge o nível
 - [ ] Corrigir preenchimento de `metric_type` e `roi_entity_id` em `conversion_metrics` no pipeline legado (compat).
 - [ ] Passar a atualizar `event_receipts.processed_at` ao final de toda projeção aplicada (incluindo legados).
 - [ ] Definir SLO do loop Copilot (`outcomes_24h > 0` e `ledger_coverage_rate >= 90%`) com alerta automático.
+
+### 10.6 Execução da etapa 2 (2026-03-19 20:35 BRT)
+- Hardening aplicado em `apps/edge/vision_metrics.py`:
+  - fallback de `roi_entity_id` para `zone_id` no path legado (`queue_state`/`checkout_proxy` e upsert genérico).
+  - busca de linha existente em `conversion_metrics` agora prioriza chave completa (`store_id, ts_bucket, camera_id, metric_type, roi_entity_id`).
+  - fallback controlado para linhas legadas com identidade incompleta (`metric_type/roi` nulos), evitando criar novos nulos.
+- Comando novo criado:
+  - `python manage.py backfill_conversion_metric_identity --dry-run --limit 100`
+  - `python manage.py backfill_conversion_metric_identity --limit 100`
+- Resultado medido (amostra aplicada no banco atual):
+  - antes: `metric_type_null=1613`, `roi_null=812`
+  - depois: `metric_type_null=1551`, `roi_null=780`
+  - observação: ingestão seguia ativa durante a medição (`total` variou na janela).

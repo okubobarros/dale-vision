@@ -299,7 +299,7 @@ def _upsert_conversion_metrics(
     metric_type = str(conversion.get("metric_type") or "").strip() or None
     if not metric_type:
         raise ProjectionContractError("conversion_metrics requires metric_type")
-    roi_entity_id = str(conversion.get("roi_entity_id") or "").strip() or None
+    roi_entity_id = str(conversion.get("roi_entity_id") or conversion.get("zone_id") or "").strip() or None
     with connection.cursor() as cursor:
         cursor.execute(
             """
@@ -523,7 +523,7 @@ def apply_vision_queue_state(payload: Dict[str, Any]) -> None:
     camera_id = str(data.get("camera_id") or "").strip() or None
     camera_role = str(data.get("camera_role") or "balcao").strip().lower() or "balcao"
     zone_id = str(data.get("zone_id") or "").strip() or None
-    roi_entity_id = str(data.get("roi_entity_id") or "").strip() or None
+    roi_entity_id = str(data.get("roi_entity_id") or data.get("zone_id") or "").strip() or None
     ownership = str(data.get("ownership") or "primary").strip().lower() or "primary"
     metric_type = str(data.get("metric_type") or "").strip()
     if not metric_type:
@@ -557,10 +557,28 @@ def apply_vision_queue_state(payload: Dict[str, Any]) -> None:
             WHERE store_id = %s
               AND ts_bucket = %s
               AND camera_id IS NOT DISTINCT FROM %s
+              AND metric_type IS NOT DISTINCT FROM %s
+              AND roi_entity_id IS NOT DISTINCT FROM %s
+            LIMIT 1
             """,
-            [store_id, ts_bucket, camera_id],
+            [store_id, ts_bucket, camera_id, metric_type, roi_entity_id],
         )
         existing = cursor.fetchone()
+        if not existing:
+            cursor.execute(
+                """
+                SELECT id
+                FROM public.conversion_metrics
+                WHERE store_id = %s
+                  AND ts_bucket = %s
+                  AND camera_id IS NOT DISTINCT FROM %s
+                  AND (metric_type IS NULL OR metric_type = '' OR roi_entity_id IS NULL OR roi_entity_id = '')
+                ORDER BY id DESC
+                LIMIT 1
+                """,
+                [store_id, ts_bucket, camera_id],
+            )
+            existing = cursor.fetchone()
         queue_avg_seconds = int(round(queue_length_avg * bucket_seconds))
         if existing:
             cursor.execute(
@@ -629,7 +647,7 @@ def apply_vision_checkout_proxy(payload: Dict[str, Any]) -> None:
     camera_id = str(data.get("camera_id") or "").strip() or None
     camera_role = str(data.get("camera_role") or "balcao").strip().lower() or "balcao"
     zone_id = str(data.get("zone_id") or "").strip() or None
-    roi_entity_id = str(data.get("roi_entity_id") or "").strip() or None
+    roi_entity_id = str(data.get("roi_entity_id") or data.get("zone_id") or "").strip() or None
     ownership = str(data.get("ownership") or "primary").strip().lower() or "primary"
     metric_type = str(data.get("metric_type") or "").strip()
     if not metric_type:
@@ -660,10 +678,28 @@ def apply_vision_checkout_proxy(payload: Dict[str, Any]) -> None:
             WHERE store_id = %s
               AND ts_bucket = %s
               AND camera_id IS NOT DISTINCT FROM %s
+              AND metric_type IS NOT DISTINCT FROM %s
+              AND roi_entity_id IS NOT DISTINCT FROM %s
+            LIMIT 1
             """,
-            [store_id, ts_bucket, camera_id],
+            [store_id, ts_bucket, camera_id, metric_type, roi_entity_id],
         )
         existing = cursor.fetchone()
+        if not existing:
+            cursor.execute(
+                """
+                SELECT id
+                FROM public.conversion_metrics
+                WHERE store_id = %s
+                  AND ts_bucket = %s
+                  AND camera_id IS NOT DISTINCT FROM %s
+                  AND (metric_type IS NULL OR metric_type = '' OR roi_entity_id IS NULL OR roi_entity_id = '')
+                ORDER BY id DESC
+                LIMIT 1
+                """,
+                [store_id, ts_bucket, camera_id],
+            )
+            existing = cursor.fetchone()
         if existing:
             cursor.execute(
                 """

@@ -1167,6 +1167,7 @@ class VisionMetricsContractTests(TestCase):
         cursor.fetchone.side_effect = [
             (3.5, 2),
             None,
+            None,
         ]
         cursor_cm = MagicMock()
         cursor_cm.__enter__.return_value = cursor
@@ -1175,8 +1176,8 @@ class VisionMetricsContractTests(TestCase):
         with patch("apps.edge.vision_metrics.connection.cursor", return_value=cursor_cm):
             apply_vision_queue_state(payload)
 
-        self.assertEqual(cursor.execute.call_count, 3)
-        insert_sql, insert_params = cursor.execute.call_args_list[2][0]
+        self.assertEqual(cursor.execute.call_count, 4)
+        insert_sql, insert_params = cursor.execute.call_args_list[3][0]
         self.assertIn("INSERT INTO public.conversion_metrics", insert_sql)
         self.assertEqual(insert_params[0], "store-1")
         self.assertEqual(insert_params[1], "cam-cashier-1")
@@ -1243,6 +1244,7 @@ class VisionMetricsContractTests(TestCase):
         cursor.fetchone.side_effect = [
             (2,),
             None,
+            None,
         ]
         cursor_cm = MagicMock()
         cursor_cm.__enter__.return_value = cursor
@@ -1251,8 +1253,8 @@ class VisionMetricsContractTests(TestCase):
         with patch("apps.edge.vision_metrics.connection.cursor", return_value=cursor_cm):
             apply_vision_checkout_proxy(payload)
 
-        self.assertEqual(cursor.execute.call_count, 3)
-        insert_sql, insert_params = cursor.execute.call_args_list[2][0]
+        self.assertEqual(cursor.execute.call_count, 4)
+        insert_sql, insert_params = cursor.execute.call_args_list[3][0]
         self.assertIn("INSERT INTO public.conversion_metrics", insert_sql)
         self.assertEqual(insert_params[0], "store-1")
         self.assertEqual(insert_params[1], "cam-cashier-1")
