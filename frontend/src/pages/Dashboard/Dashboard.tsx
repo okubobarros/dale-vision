@@ -1479,16 +1479,6 @@ const Dashboard = () => {
       parseMaybeNumber((event.metadata as { revenue_risk_brl?: unknown } | undefined)?.revenue_risk_brl) ??
       Math.max(0, Math.round(revenueAtRiskDay * 0.12)),
   }))
-  const topRiskStoreItems = bottomStores.map((store) => ({
-    id: store.id,
-    name: store.name,
-    metric: store.conversion !== null ? `Conversão ${store.conversion.toFixed(1)}%` : `Eficiência ${store.efficiency ?? 0}%`,
-  }))
-  const topBestStoreItems = topStores.map((store) => ({
-    id: store.id,
-    name: store.name,
-    metric: store.conversion !== null ? `Conversão ${store.conversion.toFixed(1)}%` : `Eficiência ${store.efficiency ?? 0}%`,
-  }))
   const queueAvgMinutes =
     typeof computedQueueSeconds === "number" ? computedQueueSeconds / 60 : null
   const showPosIntegrationCta = !computedConversionRate || computedConversionRate <= 0
@@ -1878,8 +1868,6 @@ const Dashboard = () => {
             conversionAvgPct={computedConversionRate}
             queueAvgMin={queueAvgMinutes}
             staffEfficiencyPct={computedHealthScore}
-            topRiskStores={topRiskStoreItems}
-            topBestStores={topBestStoreItems}
             recentEvents={recentEventItems}
             copilotHighlight={copilotHighlight}
             showPosIntegrationCta={showPosIntegrationCta}

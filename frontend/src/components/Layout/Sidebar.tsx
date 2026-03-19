@@ -1,4 +1,5 @@
 import { NavLink, useLocation } from "react-router-dom"
+import { useEffect, useState } from "react"
 import {
   HomeIcon,
   BuildingStorefrontIcon,
@@ -6,6 +7,7 @@ import {
   Cog6ToothIcon,
   DocumentTextIcon,
   ShieldCheckIcon,
+  Bars3Icon,
 } from "@heroicons/react/24/outline"
 import { useAuth } from "../../contexts/useAuth"
 
@@ -13,6 +15,14 @@ const Sidebar = () => {
   const location = useLocation()
   const { user } = useAuth()
   const isInternalAdmin = Boolean(user?.is_staff || user?.is_superuser)
+  const [collapsed, setCollapsed] = useState<boolean>(() => {
+    if (typeof window === "undefined") return false
+    return localStorage.getItem("dv-sidebar-collapsed") === "1"
+  })
+
+  useEffect(() => {
+    localStorage.setItem("dv-sidebar-collapsed", collapsed ? "1" : "0")
+  }, [collapsed])
 
   // Considera aberto se estiver em qualquer rota de alertas
   const isAlertsOpen = location.pathname.startsWith("/app/alerts")
@@ -52,8 +62,18 @@ const Sidebar = () => {
   }
 
   return (
-    <aside className="hidden md:block w-64 bg-white border-r min-h-[calc(100vh-73px)]">
-      <nav className="mt-8 px-4">
+    <aside className={`hidden md:block bg-white border-r min-h-[calc(100vh-73px)] transition-all ${collapsed ? "w-20" : "w-64"}`}>
+      <div className="px-3 pt-4">
+        <button
+          type="button"
+          onClick={() => setCollapsed((prev) => !prev)}
+          className="inline-flex items-center justify-center rounded-lg border border-gray-200 p-2 text-gray-600 hover:bg-gray-50"
+          aria-label={collapsed ? "Expandir menu" : "Recolher menu"}
+        >
+          <Bars3Icon className="h-5 w-5" />
+        </button>
+      </div>
+      <nav className="mt-4 px-3">
         <ul className="space-y-2">
           {navigation.map((item) => (
             <li
@@ -63,7 +83,7 @@ const Sidebar = () => {
               <NavLink
                 to={item.href}
                 className={({ isActive }) =>
-                  `flex items-center px-4 py-3 rounded-lg transition-colors ${
+                  `flex items-center ${collapsed ? "justify-center px-2" : "px-4"} py-3 rounded-lg transition-colors ${
                     isActive ||
                     (item.name === "Alertas" && isAlertsOpen) ||
                     (item.name === "Operações" && isOperationsOpen)
@@ -71,13 +91,14 @@ const Sidebar = () => {
                       : "text-gray-700 hover:bg-gray-50"
                   }`
                 }
+                title={collapsed ? item.name : undefined}
               >
-                <item.icon className="h-5 w-5 mr-3" />
-                <span className="font-medium">{item.name}</span>
+                <item.icon className={`h-5 w-5 ${collapsed ? "" : "mr-3"}`} />
+                {!collapsed && <span className="font-medium">{item.name}</span>}
               </NavLink>
 
               {/* Submenu (abre no hover) */}
-              {item.children && (
+              {item.children && !collapsed && (
                 <ul
                   className="
                     absolute left-full top-0 ml-1 w-40
