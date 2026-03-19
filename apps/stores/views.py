@@ -3437,11 +3437,6 @@ class StoreViewSet(viewsets.ModelViewSet):
     @action(detail=False, methods=["get"], url_path="network/vision/ingestion-summary")
     def network_vision_ingestion_summary(self, request):
         self._require_subscription_for_org_ids(get_user_org_ids(request.user), "network_vision_ingestion_summary")
-        stores = list(self.get_queryset())
-        store_ids = [str(store.id) for store in stores if getattr(store, "id", None)]
-        total_stores = len(stores)
-        active_stores = len([s for s in stores if getattr(s, "status", None) in ("active", "trial")])
-
         window_hours_raw = request.query_params.get("window_hours") or "24"
         try:
             window_hours = max(1, min(168, int(window_hours_raw)))
@@ -3458,162 +3453,8 @@ class StoreViewSet(viewsets.ModelViewSet):
         zone_id = (request.query_params.get("zone_id") or "").strip() or None
         roi_entity_id = (request.query_params.get("roi_entity_id") or "").strip() or None
 
-        vision_summary = {}
-        retail_summary = {}
-        latest_vision_dt = None
-        latest_retail_dt = None
-
-        if store_ids:
-            try:
-                store_placeholders = ", ".join(["%s"] * len(store_ids))
-                with connection.cursor() as cursor:
-                    if event_source in {"vision", "all"}:
-                        vision_filters = [
-                            f"store_id IN ({store_placeholders})",
-                            "ts >= %s",
-                            "ts < %s",
-                        ]
-                        vision_params = [*store_ids, start, end]
-                        if camera_id:
-                            vision_filters.append("camera_id = %s")
-                            vision_params.append(camera_id)
-                        if zone_id:
-                            vision_filters.append("zone_id = %s")
-                            vision_params.append(zone_id)
-                        if roi_entity_id:
-                            vision_filters.append("roi_entity_id = %s")
-                            vision_params.append(roi_entity_id)
-                        if event_type:
-                            vision_filters.append("event_type = %s")
-                            vision_params.append(event_type)
-                        vision_where = " AND ".join(vision_filters)
-
-                        cursor.execute(
-                            f"""
-                            SELECT event_type, COUNT(*)
-                            FROM public.vision_atomic_events
-                            WHERE {vision_where}
-                            GROUP BY 1
-                            ORDER BY 1 ASC
-                            """,
-                            vision_params,
-                        )
-                        for row in cursor.fetchall():
-                            vision_summary[str(row[0])] = int(row[1] or 0)
-
-                        cursor.execute(
-                            f"""
-                            SELECT MAX(ts) FROM public.vision_atomic_events
-                            WHERE {vision_where}
-                            """,
-                            vision_params,
-                        )
-                        latest_vision_row = cursor.fetchone()
-                        latest_vision_dt = latest_vision_row[0] if latest_vision_row else None
-
-                    if event_source in {"retail", "all"}:
-                        retail_filters = [
-                            "event_name LIKE 'retail_%'",
-                            "ts >= %s",
-                            "ts < %s",
-                            f"(raw->'data'->>'store_id') IN ({store_placeholders})",
-                        ]
-                        retail_params = [start, end, *store_ids]
-                        if camera_id:
-                            retail_filters.append("(raw->'data'->>'camera_id') = %s")
-                            retail_params.append(camera_id)
-                        if zone_id:
-                            retail_filters.append("(raw->'data'->>'zone_id') = %s")
-                            retail_params.append(zone_id)
-                        if roi_entity_id:
-                            retail_filters.append("(raw->'data'->>'roi_entity_id') = %s")
-                            retail_params.append(roi_entity_id)
-                        if event_type:
-                            normalized_retail = event_type if event_type.startswith("retail_") else f"retail_{event_type}"
-                            retail_filters.append("event_name = %s")
-                            retail_params.append(normalized_retail)
-                        retail_where = " AND ".join(retail_filters)
-
-                        cursor.execute(
-                            f"""
-                            SELECT event_name, COUNT(*)
-                            FROM public.event_receipts
-                            WHERE {retail_where}
-                            GROUP BY 1
-                            ORDER BY 1 ASC
-                            """,
-                            retail_params,
-                        )
-                        for row in cursor.fetchall():
-                            retail_summary[str(row[0])] = int(row[1] or 0)
-
-                        cursor.execute(
-                            f"""
-                            SELECT MAX(ts) FROM public.event_receipts
-                            WHERE {retail_where}
-                            """,
-                            retail_params,
-                        )
-                        latest_retail_row = cursor.fetchone()
-                        latest_retail_dt = latest_retail_row[0] if latest_retail_row else None
-            except (ProgrammingError, OperationalError, DatabaseError) as exc:
-                logger.warning(
-                    "[stores.network_vision_ingestion_summary] degraded fallback org_ids=%s error=%s",
-                    get_user_org_ids(request.user),
-                    str(exc),
-                )
-
-        def _as_aware(dt):
-            if not dt:
-                return None
-            if timezone.is_naive(dt):
-                return timezone.make_aware(dt, timezone.get_current_timezone())
-            return dt
-
-        latest_candidates = [candidate for candidate in (_as_aware(latest_vision_dt), _as_aware(latest_retail_dt)) if candidate]
-        latest_event_at = max(latest_candidates).isoformat() if latest_candidates else None
-
-        vision_total = int(sum(vision_summary.values()))
-        retail_total = int(sum(retail_summary.values()))
-        events_total = vision_total + retail_total
-        pipeline_status = "no_signal"
-        recommended_action = "Verificar edge/cameras e validar envio da rede."
-        try:
-            operational_window_health = _compute_operational_window_health(
-                store_ids,
-                end,
-                stale_minutes=15,
-            )
-        except (ProgrammingError, OperationalError, DatabaseError) as exc:
-            logger.warning(
-                "[stores.network_vision_ingestion_summary] operational_window unavailable org_ids=%s error=%s",
-                get_user_org_ids(request.user),
-                str(exc),
-            )
-            operational_window_health = {
-                "window_minutes": 15,
-                "stores_total": total_stores,
-                "stores_reporting": 0,
-                "stores_stale": total_stores,
-                "stores_missing": 0,
-                "coverage_pct": 0.0,
-                "reporting_store_ids": [],
-                "stale_store_ids": [],
-                "missing_store_ids": [],
-                "as_of": end.isoformat(),
-            }
-        if events_total > 0:
-            stale_threshold = end - timedelta(minutes=30)
-            latest_dt = max(latest_candidates) if latest_candidates else None
-            if latest_dt and latest_dt >= stale_threshold:
-                pipeline_status = "healthy"
-                recommended_action = "Pipeline da rede estavel. Seguir monitoramento."
-            else:
-                pipeline_status = "stale"
-                recommended_action = "Sinal da rede desatualizado. Verificar conectividade por loja."
-
-        return Response(
-            {
+        def _fallback_payload(total_stores=0, active_stores=0):
+            return {
                 "from": start.isoformat(),
                 "to": end.isoformat(),
                 "filters": {
@@ -3629,25 +3470,224 @@ class StoreViewSet(viewsets.ModelViewSet):
                     "active_stores": active_stores,
                 },
                 "vision_summary": {
-                    "by_event_type": vision_summary,
-                    "total": vision_total,
-                    "latest_event_at": latest_vision_dt.isoformat() if latest_vision_dt else None,
+                    "by_event_type": {},
+                    "total": 0,
+                    "latest_event_at": None,
                 },
                 "retail_summary": {
-                    "by_event_name": retail_summary,
-                    "total": retail_total,
-                    "latest_event_at": latest_retail_dt.isoformat() if latest_retail_dt else None,
+                    "by_event_name": {},
+                    "total": 0,
+                    "latest_event_at": None,
                 },
                 "operational_summary": {
-                    "events_total": events_total,
-                    "latest_event_at": latest_event_at,
-                    "pipeline_status": pipeline_status,
-                    "recommended_action": recommended_action,
+                    "events_total": 0,
+                    "latest_event_at": None,
+                    "pipeline_status": "no_signal",
+                    "recommended_action": "Aguardando sinal do backend.",
                     "dedupe_model": "event_receipts_unique_event_id",
-                    "operational_window": operational_window_health,
+                    "operational_window": {
+                        "status": "no_data",
+                        "latest_bucket_at": None,
+                        "freshness_seconds": None,
+                        "coverage_stores": 0,
+                        "coverage_rate": 0,
+                        "recommended_action": "Sem dados de janela operacional no momento.",
+                        "model": "operational_window_hourly_v1",
+                    },
                 },
             }
-        )
+
+        try:
+            stores = list(self.get_queryset())
+            store_ids = [str(store.id) for store in stores if getattr(store, "id", None)]
+            total_stores = len(stores)
+            active_stores = len([s for s in stores if getattr(s, "status", None) in ("active", "trial")])
+
+            vision_summary = {}
+            retail_summary = {}
+            latest_vision_dt = None
+            latest_retail_dt = None
+
+            if store_ids:
+                try:
+                    store_placeholders = ", ".join(["%s"] * len(store_ids))
+                    with connection.cursor() as cursor:
+                        if event_source in {"vision", "all"}:
+                            vision_filters = [
+                                f"store_id IN ({store_placeholders})",
+                                "ts >= %s",
+                                "ts < %s",
+                            ]
+                            vision_params = [*store_ids, start, end]
+                            if camera_id:
+                                vision_filters.append("camera_id = %s")
+                                vision_params.append(camera_id)
+                            if zone_id:
+                                vision_filters.append("zone_id = %s")
+                                vision_params.append(zone_id)
+                            if roi_entity_id:
+                                vision_filters.append("roi_entity_id = %s")
+                                vision_params.append(roi_entity_id)
+                            if event_type:
+                                vision_filters.append("event_type = %s")
+                                vision_params.append(event_type)
+                            vision_where = " AND ".join(vision_filters)
+
+                            cursor.execute(
+                                f"""
+                                SELECT event_type, COUNT(*)
+                                FROM public.vision_atomic_events
+                                WHERE {vision_where}
+                                GROUP BY 1
+                                ORDER BY 1 ASC
+                                """,
+                                vision_params,
+                            )
+                            for row in cursor.fetchall():
+                                vision_summary[str(row[0])] = int(row[1] or 0)
+
+                            cursor.execute(
+                                f"""
+                                SELECT MAX(ts) FROM public.vision_atomic_events
+                                WHERE {vision_where}
+                                """,
+                                vision_params,
+                            )
+                            latest_vision_row = cursor.fetchone()
+                            latest_vision_dt = latest_vision_row[0] if latest_vision_row else None
+
+                        if event_source in {"retail", "all"}:
+                            retail_filters = [
+                                "event_name LIKE 'retail_%'",
+                                "ts >= %s",
+                                "ts < %s",
+                                f"(raw->'data'->>'store_id') IN ({store_placeholders})",
+                            ]
+                            retail_params = [start, end, *store_ids]
+                            if camera_id:
+                                retail_filters.append("(raw->'data'->>'camera_id') = %s")
+                                retail_params.append(camera_id)
+                            if zone_id:
+                                retail_filters.append("(raw->'data'->>'zone_id') = %s")
+                                retail_params.append(zone_id)
+                            if roi_entity_id:
+                                retail_filters.append("(raw->'data'->>'roi_entity_id') = %s")
+                                retail_params.append(roi_entity_id)
+                            if event_type:
+                                normalized_retail = event_type if event_type.startswith("retail_") else f"retail_{event_type}"
+                                retail_filters.append("event_name = %s")
+                                retail_params.append(normalized_retail)
+                            retail_where = " AND ".join(retail_filters)
+
+                            cursor.execute(
+                                f"""
+                                SELECT event_name, COUNT(*)
+                                FROM public.event_receipts
+                                WHERE {retail_where}
+                                GROUP BY 1
+                                ORDER BY 1 ASC
+                                """,
+                                retail_params,
+                            )
+                            for row in cursor.fetchall():
+                                retail_summary[str(row[0])] = int(row[1] or 0)
+
+                            cursor.execute(
+                                f"""
+                                SELECT MAX(ts) FROM public.event_receipts
+                                WHERE {retail_where}
+                                """,
+                                retail_params,
+                            )
+                            latest_retail_row = cursor.fetchone()
+                            latest_retail_dt = latest_retail_row[0] if latest_retail_row else None
+                except (ProgrammingError, OperationalError, DatabaseError) as exc:
+                    logger.warning(
+                        "[stores.network_vision_ingestion_summary] degraded fallback org_ids=%s error=%s",
+                        get_user_org_ids(request.user),
+                        str(exc),
+                    )
+
+            def _as_aware(dt):
+                if not dt:
+                    return None
+                if timezone.is_naive(dt):
+                    return timezone.make_aware(dt, timezone.get_current_timezone())
+                return dt
+
+            latest_candidates = [candidate for candidate in (_as_aware(latest_vision_dt), _as_aware(latest_retail_dt)) if candidate]
+            latest_event_at = max(latest_candidates).isoformat() if latest_candidates else None
+
+            vision_total = int(sum(vision_summary.values()))
+            retail_total = int(sum(retail_summary.values()))
+            events_total = vision_total + retail_total
+            pipeline_status = "no_signal"
+            recommended_action = "Verificar edge/cameras e validar envio da rede."
+            try:
+                operational_window_health = _compute_operational_window_health(
+                    store_ids,
+                    end,
+                    stale_minutes=15,
+                )
+            except (ProgrammingError, OperationalError, DatabaseError) as exc:
+                logger.warning(
+                    "[stores.network_vision_ingestion_summary] operational_window unavailable org_ids=%s error=%s",
+                    get_user_org_ids(request.user),
+                    str(exc),
+                )
+                operational_window_health = _fallback_payload(total_stores=total_stores, active_stores=active_stores)["operational_summary"]["operational_window"]
+            if events_total > 0:
+                stale_threshold = end - timedelta(minutes=30)
+                latest_dt = max(latest_candidates) if latest_candidates else None
+                if latest_dt and latest_dt >= stale_threshold:
+                    pipeline_status = "healthy"
+                    recommended_action = "Pipeline da rede estavel. Seguir monitoramento."
+                else:
+                    pipeline_status = "stale"
+                    recommended_action = "Sinal da rede desatualizado. Verificar conectividade por loja."
+
+            return Response(
+                {
+                    "from": start.isoformat(),
+                    "to": end.isoformat(),
+                    "filters": {
+                        "event_source": event_source,
+                        "event_type": event_type,
+                        "camera_id": camera_id,
+                        "zone_id": zone_id,
+                        "roi_entity_id": roi_entity_id,
+                        "window_hours": window_hours,
+                    },
+                    "network": {
+                        "total_stores": total_stores,
+                        "active_stores": active_stores,
+                    },
+                    "vision_summary": {
+                        "by_event_type": vision_summary,
+                        "total": vision_total,
+                        "latest_event_at": latest_vision_dt.isoformat() if latest_vision_dt else None,
+                    },
+                    "retail_summary": {
+                        "by_event_name": retail_summary,
+                        "total": retail_total,
+                        "latest_event_at": latest_retail_dt.isoformat() if latest_retail_dt else None,
+                    },
+                    "operational_summary": {
+                        "events_total": events_total,
+                        "latest_event_at": latest_event_at,
+                        "pipeline_status": pipeline_status,
+                        "recommended_action": recommended_action,
+                        "dedupe_model": "event_receipts_unique_event_id",
+                        "operational_window": operational_window_health,
+                    },
+                }
+            )
+        except Exception:
+            logger.exception(
+                "[stores.network_vision_ingestion_summary] unexpected error org_ids=%s",
+                get_user_org_ids(request.user),
+            )
+            return Response(_fallback_payload())
 
 
 class EmployeeViewSet(viewsets.ModelViewSet):
