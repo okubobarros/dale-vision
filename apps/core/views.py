@@ -4,6 +4,7 @@ from rest_framework import viewsets, status
 from rest_framework.response import Response
 from rest_framework.permissions import AllowAny, IsAuthenticated
 from rest_framework.exceptions import PermissionDenied
+from rest_framework.views import APIView
 from apps.core.integrations import supabase_storage
 from apps.core import models
 from .serializers import DemoLeadSerializer
@@ -52,3 +53,21 @@ class StorageStatusView(viewsets.ViewSet):
             raise PermissionDenied("Sem permissão.")
         status_payload = supabase_storage.get_config_status()
         return Response(status_payload, status=status.HTTP_200_OK)
+
+
+class SalesProgressView(APIView):
+    permission_classes = [IsAuthenticated]
+
+    def get(self, request):
+        # Endpoint intentionally stable for environments where sales integration
+        # is not configured yet, preventing frontend 404 regressions.
+        return Response(
+            {
+                "state": "not_configured",
+                "current_revenue": 0,
+                "target_revenue": 1000000,
+                "currency": "BRL",
+                "last_sync_at": None,
+            },
+            status=status.HTTP_200_OK,
+        )

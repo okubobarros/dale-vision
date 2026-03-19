@@ -48,3 +48,22 @@
 - `--smoke 60` virou gate operacional: sucesso so com `heartbeat_ok=True` e `camera_health_posted == total_cameras`.
 - Fonte de log confiavel para suporte remoto continua sendo `logs\agent.log` da pasta extraída.
 - Sempre rotacionar `EDGE_TOKEN` quando houver exposicao em canais de suporte/chat.
+
+## Licoes de Campo (2026-03-18)
+- **Autostart robusto de loja**: `ONLOGON` isolado nao atende operacao sem usuario logado; usar `ONSTART` com `SYSTEM` e manter `ONLOGON` como redundancia.
+- **Path absoluto sempre**: executar scripts/updates a partir da pasta do agente ou com caminho absoluto; `System32` causa falso erro de arquivo inexistente.
+- **Quoting no schtasks**: nao usar `&&` dentro de `/TR`; chamar direto `run_agent.cmd` ou wrapper validado.
+- **Modelo de visao**: `VISION_MODEL_PATH` deve ser valor puro (`yolov8n.pt`), sem markdown/link.
+- **Snapshot**:
+  - `GET /snapshot/` com `404` antes de upload pode ser esperado.
+  - Erro critico e `POST /snapshot/upload/` falhar (`5xx` no app, `upload_failed:400` no backend/storage).
+- **Identidade de camera**: `CAMERAS_JSON[].id` precisa casar com UUID real da camera no backend; divergencia gera `camera_not_found` no health e `ROI 404`.
+- **Validacao de metricas em producao**: confirmar sequencia `event_receipts` (ingestao) -> `vision_atomic_events` (normalizacao) -> `traffic_metrics` e `conversion_metrics` (projecao).
+- **Auto-update**: `DaleVisionEdgeAgentUpdate` criada nao garante funcionalidade; evidenciar `update.log` e retorno sem `UPD999/404` antes de considerar pronto.
+- **Tokens distintos, erros distintos**:
+  - `401 Token inválido` em `/api/v1/me/status/` e `/api/v1/stores/` indica problema de sessao JWT do usuario no app.
+  - `403` com `X-EDGE-TOKEN` em endpoint de cameras indica problema de permissao/rota para token de edge.
+  - Acao: diagnosticar JWT e EDGE_TOKEN separadamente, sem misturar causas.
+- **Dashboard sem atualizar**:
+  - Se `/me/status` ou `/stores` falham com `401`, os cards agregados podem zerar ou ficar stale.
+  - Se `/api/v1/sales/progress/` retorna `404`, ha mismatch de versao frontend/backend (chamada para rota nao deployada/nao existente).

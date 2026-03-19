@@ -267,3 +267,36 @@ Registrar decisões e eventos do dia.
   - Validar em loja: snapshot + ROI + métricas fluindo para analytics.
   - Conferir logs do Edge em `logs/agent.log` após instalação.
   - Executar checklist de loja atualizado antes de visita presencial.
+
+## 2026-03-18
+- Data: 2026-03-18
+- Highlights:
+  - Operacao estabilizada na loja com `3/3` cameras online, heartbeat `201`, camera health `201` e snapshots persistindo no bucket Supabase.
+  - Fluxo ROI via app voltou a funcionar ponta a ponta: snapshot, edicao/publicacao e consumo no edge.
+  - Tarefas de inicializacao foram ajustadas para ambiente real de loja: `ONSTART` (SYSTEM) + `ONLOGON`.
+  - Validacao de metricas concluida em banco: `edge_heartbeat`, `camera_health`, `vision_metrics_v1`, `vision_queue_state_v1`, `vision_zone_occupancy_v1` e projecoes em `traffic_metrics`/`conversion_metrics`.
+- Erros observados:
+  - `403` em `GET /api/v1/stores/{store_id}/cameras/` quando usado com `X-EDGE-TOKEN` (enquanto `/api/edge/cameras` respondia `200`).
+  - `400 camera_not_found` em health quando `.env` tinha IDs de camera divergentes do cadastro real.
+  - `404` em `/snapshot/` (esperado antes de upload), com `502` em `/snapshot/upload/` por falha de upload no storage (erro interno `upload_failed:400`).
+  - `402 PAYWALL_TRIAL_LIMIT` em parte dos heartbeats durante janela de teste.
+  - Falha de auto-update: `update.ps1` retornando `UPD999` com `404` remoto.
+  - Erro operacional de shell por path relativo em `C:\Windows\System32` (script nao encontrado) e comandos `schtasks` com quoting incorreto.
+  - Execucao com `VISION_MODEL_PATH` invalido (`[yolov8n.pt](http://yolov8n.pt/)`) gerando `yolo failed`.
+  - Frontend com sessao invalida: `GET /api/v1/me/status/` e `GET /api/v1/stores/` retornando `401 {"detail":"Token inválido."}`.
+  - Frontend chamando rota nao disponivel no backend atual: `GET /api/v1/sales/progress/` retornando `404 Not Found` (HTML).
+- Aprendizados:
+  - Em suporte remoto, sempre executar scripts com caminho absoluto e pasta correta do agente extraido.
+  - Para loja sem operador logado, autostart apenas `Interativo` nao e suficiente; precisa trigger de boot (`ONSTART`) com conta `SYSTEM`.
+  - IDs em `CAMERAS_JSON` devem ser os UUIDs reais do backend para evitar `camera_not_found` e ROI 404.
+  - Snapshot 404 no GET inicial nao e incidente; incidente e falha no POST upload/storage.
+  - Validacao de deploy do edge deve fechar com trilha em tres camadas: `event_receipts` -> `vision_atomic_events` -> `traffic_metrics`/`conversion_metrics`.
+  - Dashboard sem atualizar pode ocorrer por duas causas combinadas: JWT invalido (401 em endpoints base) e chamada de rota inexistente (404 em `sales/progress`).
+  - `DaleVisionEdgeAgentStartup` e task de inicializacao do agente no boot do Windows; ela nao reinicia o computador.
+- Decisões:
+  - Manter rollout com `CAMERA_SOURCE_MODE=local_only` e `CAMERA_SYNC_ENABLED=0` ate fechar hardening de sync remoto.
+  - Tratar auto-update como pendencia separada de confiabilidade (nao bloquear operacao base de monitoramento).
+- Próximos passos:
+  - Corrigir endpoint/manifesto do `update.ps1` para remover `404` e fechar teste de update remoto.
+  - Revalidar checklist de reboot sem login na maquina da loja e anexar evidencias (task + heartbeat + camera_health).
+  - Consolidar runbook final de go-live de loja com comandos aprovados de diagnostico rapido.

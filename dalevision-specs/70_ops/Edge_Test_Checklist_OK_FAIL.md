@@ -34,17 +34,21 @@
 
 ## T+5 Autostart
 - 03_INSTALAR_AUTOSTART.bat (OK/FAIL)
-- Task criada e ativa (OK/FAIL)
+- Task `DaleVisionEdgeAgent` criada e ativa (OK/FAIL)
+- Task `DaleVisionEdgeAgentStartup` criada e ativa (OK/FAIL)
 - Task To Run aponta para pasta extraida (OK/FAIL)
-- Run As User = usuario local (OK/FAIL)
-- Task agendada ONLOGON (OK/FAIL)
+- `DaleVisionEdgeAgent`: ONLOGON / usuario local (OK/FAIL)
+- `DaleVisionEdgeAgentStartup`: ONSTART / `SYSTEM` (OK/FAIL)
 - `schtasks /Query /TN DaleVisionEdgeAgent /V /FO LIST` validado (OK/FAIL)
+- `schtasks /Query /TN DaleVisionEdgeAgentStartup /V /FO LIST` validado (OK/FAIL)
 
 ## T+8 App
 - Store online no dashboard (OK/FAIL)
 - last_comm_at recente (OK/FAIL)
 - Cameras online/degraded (OK/FAIL)
 - Snapshot visivel no dashboard (OK/FAIL)
+- Sem `401 Token inválido` em `/api/v1/me/status/` e `/api/v1/stores/` (OK/FAIL)
+- Sem `404` em `/api/v1/sales/progress/` (OK/FAIL)
 
 ## T+10 Substream
 - 1 camera com subtype=1 OK (OK/FAIL)
@@ -62,6 +66,7 @@
 - Reabrir app apos 2-3 min (OK/FAIL)
 - Store continua online (OK/FAIL)
 - Autostart recria agente após reboot (OK/FAIL)
+- Heartbeat volta em ate 60s apos boot sem login de usuario (OK/FAIL)
 
 ## Observacoes
 - 

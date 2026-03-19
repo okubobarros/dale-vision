@@ -34,7 +34,17 @@ Validar Edge Agent + camera_health contínuo + status no app.
 3. store offline no app
    - Reabrir dashboard
    - Conferir last_comm_at no edge-status
+4. `401 Token inválido` em `/api/v1/me/status/` ou `/api/v1/stores/`
+   - Sessao do usuario no app expirou/invalida; refazer login e validar refresh token.
+5. `404` em `/api/v1/sales/progress/`
+   - Rota nao existente no backend ativo; registrar mismatch de versao frontend/backend.
+6. Snapshot upload com `502`
+   - Verificar backend/storage (`upload_failed:400`) e variaveis Supabase no Render.
+7. `camera_not_found` no health
+   - Ajustar `CAMERAS_JSON` para UUIDs reais das cameras cadastradas no app.
 
 ## Saída da loja
 1. Fechar tudo e aguardar 2-3 minutos
 2. Reabrir app.dalevision.com e confirmar loja online
+3. Confirmar task de boot:
+   - `DaleVisionEdgeAgentStartup` deve iniciar agente no boot do Windows (nao reinicia o computador).

@@ -1,0 +1,63 @@
+# Resumo Executivo de Campo — 2026-03-18
+
+## Status Geral
+- **Resultado**: operacao de monitoramento estabilizada em ambiente real de loja.
+- **Loja**: Davvero Villa Lobos (`ab20f272-c844-495b-bbeb-3d00f1945e07`).
+- **Cameras**: `3/3` online com latencia baixa e snapshots persistidos em Supabase.
+- **Edge**: heartbeat recorrente (`201`) e camera health recorrente (`201`).
+
+## O Que Funcionou
+- Fluxo ROI via app (snapshot -> editar/publicar -> consumo no edge).
+- Persistencia de snapshots em bucket `camera-snapshots`.
+- Pipeline de eventos de visao:
+  - ingestao em `event_receipts`,
+  - normalizacao em `vision_atomic_events`,
+  - projecoes em `traffic_metrics` e `conversion_metrics`.
+- Task de boot validada para continuidade sem login humano:
+  - `DaleVisionEdgeAgentStartup` (`ONSTART`, conta `SYSTEM`).
+
+## Principais Incidentes do Dia
+- **Auth app (401)**:
+  - `GET /api/v1/me/status/` -> `401 Token inválido`.
+  - `GET /api/v1/stores/` -> `401 Token inválido`.
+  - Impacto: dashboard sem atualizar cards e contadores.
+- **Endpoint ausente (404)**:
+  - `GET /api/v1/sales/progress/` -> `404 Not Found` (HTML de rota inexistente).
+  - Impacto: widget de progresso/comercial sem dados.
+- **Snapshot upload**:
+  - `GET /snapshot/` inicial com `404` (sem snapshot ainda) e `POST /snapshot/upload/` retornando `502` quando storage falhou (`upload_failed:400` interno).
+- **Config de camera**:
+  - `.env` com IDs de camera incorretos causou `camera_not_found` e ROI 404.
+- **Auto-update**:
+  - `update.ps1` com `UPD999` por `404` remoto (manifest/URL de update).
+
+## Causa-Raiz Consolidada
+- **Mismatch de autenticacao e versao** entre frontend e backend:
+  - JWT expirado/invalido no cliente -> `401` em endpoints protegidos.
+  - chamada para rota nao existente no backend atual (`/sales/progress`) -> `404`.
+- **Configuracao operacional incompleta**:
+  - IDs de camera divergentes do cadastro backend.
+  - autoupdate ainda sem endpoint válido para manifesto do canal.
+
+## Decisões Executivas
+- Manter operacao do edge em modo estavel:
+  - `CAMERA_SOURCE_MODE=local_only`
+  - `CAMERA_SYNC_ENABLED=0`
+  - `VISION_LOCAL_CAMERAS_ONLY=1`
+- Auto-update fica **temporariamente fora do critério de go-live** ate remover `404`.
+- Padrao de resiliencia em loja:
+  - `ONSTART + SYSTEM` para boot,
+  - `ONLOGON` como redundancia.
+
+## Plano de Ação Imediato (D+1)
+1. Corrigir contrato de auth no app (renovar sessao antes de chamar `/me/status` e `/stores`).
+2. Alinhar rota de progresso (frontend x backend): implementar endpoint ou remover chamada.
+3. Fechar correção de update manifesto (`update.ps1`) e validar `update.log` sem `UPD999`.
+4. Publicar checklist final de implantação em loja com evidência pós-reboot sem login.
+
+## Critério de GO para máquina da loja
+- `3/3` cameras online por >= 30 min.
+- Heartbeat e camera health sem lacunas > 60s.
+- Snapshot upload funcionando.
+- Dashboard carregando sem `401`/`404` críticos.
+- Boot sem login inicia agente automaticamente (task startup em `SYSTEM`).

@@ -110,8 +110,23 @@ export const authService = {
     const localUser = getStoredUser<User>()
     const localToken = getAccessToken()
     if (localUser && localToken) {
+      // Do not trust a cached JWT blindly: ensure Supabase still has a valid session.
+      const bootstrapped = await bootstrapSupabaseSession()
+      if (bootstrapped?.token) {
+        syncApiAuthHeader()
+        return { user: bootstrapped.user, token: bootstrapped.token }
+      }
+
+      const refreshed = await refreshSupabaseSession()
+      if (refreshed?.token) {
+        syncApiAuthHeader()
+        return { user: refreshed.user, token: refreshed.token }
+      }
+
+      storesService.clearCache()
+      clearAuthStorage()
       syncApiAuthHeader()
-      return { user: localUser, token: localToken }
+      return { user: null, token: null }
     }
 
     const refreshed = await refreshSupabaseSession()
