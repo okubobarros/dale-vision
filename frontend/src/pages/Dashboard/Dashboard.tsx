@@ -876,6 +876,7 @@ const Dashboard = () => {
   const shouldShowTrialArtifacts = dashboardExperience.dashboardType === "trial"
   const shouldShowPaidSetupArtifacts = dashboardExperience.dashboardType === "paid_setup"
   const shouldShowExecutiveArtifacts = dashboardExperience.dashboardType === "paid_executive"
+  const showPrincipalDashboard = shouldShowExecutiveArtifacts && hasOperationalData
   const openCopilot = (prompt?: string) => {
     window.dispatchEvent(
       new CustomEvent("dv-open-copilot", prompt ? { detail: { prompt } } : undefined)
@@ -1686,33 +1687,37 @@ const Dashboard = () => {
         <div className="xl:col-span-2 flex flex-col gap-4">
           <div className="min-w-0">
             <h1 className="text-2xl sm:text-3xl font-bold text-gray-800">
-              Dashboard da rede
+              {showPrincipalDashboard ? "Painel executivo" : "Dashboard da rede"}
             </h1>
-            <p className="text-gray-600 mt-1 text-sm sm:text-base">
-              {greeting}, {user?.first_name || user?.username}! {efficiencySubtitle}
-            </p>
-            <div className="mt-3 flex flex-wrap gap-2">
-              <button
-                type="button"
-                onClick={() => filterDashboardByStoreStatus("active")}
-                className="rounded-full border border-emerald-200 bg-emerald-50 px-3 py-1 text-xs font-semibold text-emerald-700"
-              >
-                🟢 {storesOnlineCount} lojas online
-              </button>
-              <button
-                type="button"
-                onClick={() => filterDashboardByStoreStatus("blocked")}
-                className="rounded-full border border-rose-200 bg-rose-50 px-3 py-1 text-xs font-semibold text-rose-700"
-              >
-                🔴 {storesOfflineCount} lojas offline
-              </button>
-              <span className="rounded-full border border-amber-200 bg-amber-50 px-3 py-1 text-xs font-semibold text-amber-700">
-                ⚠️ {alertsActiveCount} alertas ativos
-              </span>
-              <span className="rounded-full border border-slate-200 bg-slate-50 px-3 py-1 text-xs font-semibold text-slate-700">
-                🏬 {totalStoresCount} lojas cadastradas
-              </span>
-            </div>
+            {!showPrincipalDashboard && (
+              <>
+              <p className="text-gray-600 mt-1 text-sm sm:text-base">
+                {greeting}, {user?.first_name || user?.username}! {efficiencySubtitle}
+              </p>
+              <div className="mt-3 flex flex-wrap gap-2">
+                <button
+                  type="button"
+                  onClick={() => filterDashboardByStoreStatus("active")}
+                  className="rounded-full border border-emerald-200 bg-emerald-50 px-3 py-1 text-xs font-semibold text-emerald-700"
+                >
+                  🟢 {storesOnlineCount} lojas online
+                </button>
+                <button
+                  type="button"
+                  onClick={() => filterDashboardByStoreStatus("blocked")}
+                  className="rounded-full border border-rose-200 bg-rose-50 px-3 py-1 text-xs font-semibold text-rose-700"
+                >
+                  🔴 {storesOfflineCount} lojas offline
+                </button>
+                <span className="rounded-full border border-amber-200 bg-amber-50 px-3 py-1 text-xs font-semibold text-amber-700">
+                  ⚠️ {alertsActiveCount} alertas ativos
+                </span>
+                <span className="rounded-full border border-slate-200 bg-slate-50 px-3 py-1 text-xs font-semibold text-slate-700">
+                  🏬 {totalStoresCount} lojas cadastradas
+                </span>
+              </div>
+              </>
+            )}
 
             {selectedStoreItem && selectedStore !== ALL_STORES_VALUE && (
               <div className="mt-2 flex flex-wrap items-center gap-2">
@@ -1784,6 +1789,7 @@ const Dashboard = () => {
             </div>
           )}
         </div>
+        {!showPrincipalDashboard && (
         <div className="rounded-xl border border-gray-200 bg-white p-4 shadow-sm">
           {isNetworkMode ? (
             <div>
@@ -1848,10 +1854,11 @@ const Dashboard = () => {
             </div>
           )}
         </div>
+        )}
       </div>
 
       <section className="space-y-4 sm:space-y-6">
-        {isNetworkMode ? (
+        {showPrincipalDashboard ? null : isNetworkMode ? (
           <>
             <section className="grid grid-cols-1 lg:grid-cols-3 gap-3">
               {wealthCards.map((card) => (
@@ -2561,7 +2568,7 @@ const Dashboard = () => {
       </section>
 
       <div className="space-y-4 sm:space-y-6">
-          {isTrialCeoMode && (
+          {isTrialCeoMode && !showPrincipalDashboard && (
             <div className="space-y-4 sm:space-y-6">
               <div className="bg-white rounded-xl shadow-sm border border-gray-100 p-4 sm:p-6">
                 <div className="flex items-center justify-between gap-3 mb-4">
@@ -2699,7 +2706,7 @@ const Dashboard = () => {
             </div>
           )}
 
-          {!isTrialCeoMode && (
+          {!isTrialCeoMode && !showPrincipalDashboard && (
             <>
               {!isNetworkMode && (
                 <AlertsSection
@@ -2736,7 +2743,7 @@ const Dashboard = () => {
               )}
             </>
           )}
-          {isTrialCeoMode && (
+          {isTrialCeoMode && !showPrincipalDashboard && (
             <AlertsSection
               storeSelected={Boolean(selectedStore && selectedStore !== ALL_STORES_VALUE)}
               storeName={selectedStoreItem?.name ?? null}

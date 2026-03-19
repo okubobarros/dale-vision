@@ -99,8 +99,7 @@ export function PaidExecutiveDashboardView({
       <section className="rounded-2xl border border-gray-200 bg-white p-4 sm:p-6">
         <div className="flex flex-col gap-3 lg:flex-row lg:items-end lg:justify-between">
           <div>
-            <p className="text-xs uppercase tracking-[0.16em] text-gray-500">Dashboard principal</p>
-            <h3 className="mt-1 text-xl font-bold text-gray-900">Olá, gestor</h3>
+            <h3 className="text-xl font-bold text-gray-900">Resumo financeiro e operacional</h3>
             <p className="mt-1 text-sm text-gray-600">
               {now.toLocaleDateString("pt-BR", {
                 weekday: "long",
@@ -154,7 +153,7 @@ export function PaidExecutiveDashboardView({
                   {todayRevenueDeltaPct.toFixed(1)}% vs mesmo período de ontem
                 </p>
                 <p className="mt-1 text-xs text-gray-500">
-                  Vendas consolidadas de {currentStoreLabel.toLowerCase()} ({periodLabel})
+                  Vendas consolidadas de {currentStoreLabel} ({periodLabel})
                 </p>
               </div>
               <div className="rounded-full border border-gray-200 bg-gray-50 px-2.5 py-1 text-xs text-gray-600">
@@ -181,7 +180,7 @@ export function PaidExecutiveDashboardView({
             <article className="rounded-xl border border-rose-200 bg-rose-50 p-3">
               <p className="text-xs font-medium text-rose-700">Receita em risco</p>
               <p className="mt-2 text-2xl font-bold text-rose-900">{formatCurrency(revenueAtRiskBRL)}</p>
-              <p className="mt-1 text-xs text-rose-700">Impacto estimado por filas e cobertura</p>
+              <p className="mt-1 text-xs text-rose-700">Fila e cobertura</p>
             </article>
             <article className="rounded-xl border border-blue-200 bg-blue-50 p-3">
               <p className="text-xs font-medium text-blue-700">Conversão média</p>
@@ -189,7 +188,7 @@ export function PaidExecutiveDashboardView({
                 {conversionAvgPct !== null ? `${conversionAvgPct.toFixed(1)}%` : "—"}
               </p>
               <p className="mt-1 text-xs text-blue-700">
-                {conversionAvgPct !== null ? "↑ tendência estável" : "Sem PDV integrado"}
+                {conversionAvgPct !== null ? "Meta diária" : "Sem PDV"}
               </p>
             </article>
             <article className="rounded-xl border border-amber-200 bg-amber-50 p-3">
@@ -197,14 +196,14 @@ export function PaidExecutiveDashboardView({
               <p className="mt-2 text-2xl font-bold text-amber-900">
                 {queueAvgMin !== null ? `${Math.max(1, Math.round(queueAvgMin))} min` : "—"}
               </p>
-              <p className="mt-1 text-xs text-amber-700">Tempo médio de espera</p>
+              <p className="mt-1 text-xs text-amber-700">Espera no caixa</p>
             </article>
             <article className="rounded-xl border border-emerald-200 bg-emerald-50 p-3">
               <p className="text-xs font-medium text-emerald-700">Eficiência de staff</p>
               <p className="mt-2 text-2xl font-bold text-emerald-900">
                 {staffEfficiencyPct !== null ? `${Math.round(staffEfficiencyPct)}%` : "—"}
               </p>
-              <p className="mt-1 text-xs text-emerald-700">Tempo produtivo estimado</p>
+              <p className="mt-1 text-xs text-emerald-700">Produtividade</p>
             </article>
           </div>
 
@@ -232,7 +231,7 @@ export function PaidExecutiveDashboardView({
 
         <div className="space-y-5">
           <aside className="rounded-2xl border border-blue-200 bg-gradient-to-br from-blue-50 via-white to-indigo-50 p-4 sm:p-6">
-            <p className="text-xs font-semibold uppercase tracking-[0.12em] text-blue-700">Copiloto</p>
+            <p className="text-xs font-semibold uppercase tracking-[0.12em] text-blue-700">Copiloto Financeiro</p>
             <p className="mt-2 text-sm font-semibold text-gray-900">{copilotHighlight.message}</p>
             <div className="mt-3 flex gap-2">
               <Link
@@ -308,7 +307,7 @@ export function PaidExecutiveDashboardView({
                 </article>
               ))}
               {recentEvents.length === 0 && (
-                <p className="text-sm text-gray-500">Sem alertas recentes no momento.</p>
+                <p className="text-sm text-gray-500">Sem alertas recentes.</p>
               )}
             </div>
           </section>
