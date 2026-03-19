@@ -261,6 +261,7 @@ const Dashboard = () => {
   const [networkPeriod, setNetworkPeriod] = useState<NetworkPeriod>("7d")
   const [networkIngestionEventType, setNetworkIngestionEventType] = useState<IngestionEventTypeFilter>("")
   const [rolloutChannelFilter, setRolloutChannelFilter] = useState<RolloutChannelFilter>("all")
+  const [salesGoalMonth, setSalesGoalMonth] = useState(() => new Date().toISOString().slice(0, 7))
 
   const canFetchAuth = authReady && isAuthenticated
 
@@ -295,8 +296,8 @@ const Dashboard = () => {
   })
 
   const { data: revenueProgress } = useQuery<RevenueProgressData>({
-    queryKey: ["revenue-progress", selectedStoreOverride],
-    queryFn: () => salesService.getRevenueProgress(),
+    queryKey: ["revenue-progress", selectedStoreOverride, salesGoalMonth],
+    queryFn: () => salesService.getRevenueProgress(salesGoalMonth),
     staleTime: 60000,
     retry: false,
     enabled: canFetchAuth,
@@ -307,6 +308,7 @@ const Dashboard = () => {
       await Promise.all([
         queryClient.invalidateQueries({ queryKey: ["revenue-progress"] }),
         queryClient.invalidateQueries({ queryKey: ["revenue-progress", selectedStoreOverride] }),
+        queryClient.invalidateQueries({ queryKey: ["revenue-progress", selectedStoreOverride, salesGoalMonth] }),
       ])
       toast.success("Meta mensal salva com sucesso.")
     },
@@ -314,6 +316,22 @@ const Dashboard = () => {
       const message =
         (error as { response?: { data?: { detail?: string } } })?.response?.data?.detail ||
         "Não foi possível salvar a meta mensal."
+      toast.error(message)
+    },
+  })
+  const savePdvInterestMutation = useMutation({
+    mutationFn: storesService.registerPdvInterest,
+    onSuccess: async () => {
+      await Promise.all([
+        queryClient.invalidateQueries({ queryKey: ["stores"] }),
+        queryClient.invalidateQueries({ queryKey: ["stores-summary"] }),
+      ])
+      toast.success("Interesse de integração PDV registrado.")
+    },
+    onError: (error: unknown) => {
+      const message =
+        (error as { response?: { data?: { detail?: string } } })?.response?.data?.detail ||
+        "Não foi possível registrar interesse de integração PDV."
       toast.error(message)
     },
   })
@@ -1925,14 +1943,30 @@ const Dashboard = () => {
               state: revenueProgress?.state ?? "not_configured",
               targetRevenue: revenueProgress?.target_revenue ?? 0,
               currentRevenue: revenueProgress?.current_revenue ?? 0,
+              month: revenueProgress?.month ?? salesGoalMonth,
+              daysMode: revenueProgress?.days_mode ?? "calendar",
             }}
-            onSaveSalesGoal={(targetRevenue, month) =>
-              saveRevenueGoalMutation.mutateAsync({
+            onSaveSalesGoalConfig={(targetRevenue, month, daysMode) => {
+              setSalesGoalMonth(month)
+              return saveRevenueGoalMutation.mutateAsync({
                 target_revenue: targetRevenue,
                 month,
+                days_mode: daysMode,
               }).then(() => undefined)
-            }
+            }}
             isSavingSalesGoal={saveRevenueGoalMutation.isPending}
+            onRegisterPdvInterest={(payload) =>
+              savePdvInterestMutation
+                .mutateAsync(payload)
+                .then(async () => {
+                  await storesService.updateStore(payload.store_id, {
+                    pos_system: payload.pdv_system,
+                    pos_integration_interest: true,
+                  })
+                })
+                .then(() => undefined)
+            }
+            isSavingPdvInterest={savePdvInterestMutation.isPending}
             calculationRationale={calculationRationale}
           />
         ) : isNetworkMode ? (

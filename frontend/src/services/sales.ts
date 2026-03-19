@@ -11,11 +11,13 @@ export interface RevenueProgressData {
   last_sync_at?: string | null
   month?: string
   source?: string
+  days_mode?: "calendar" | "business"
 }
 
 export interface SaveRevenueGoalPayload {
   target_revenue: number
   month?: string
+  days_mode?: "calendar" | "business"
 }
 
 const DEFAULT_TARGET = 0
@@ -49,6 +51,10 @@ export const salesService = {
         last_sync_at: data?.last_sync_at ?? null,
         month: typeof data?.month === "string" ? data.month : undefined,
         source: typeof data?.source === "string" ? data.source : undefined,
+        days_mode:
+          data?.days_mode === "business" || data?.days_mode === "calendar"
+            ? data.days_mode
+            : "calendar",
       }
     } catch (error) {
       if (axios.isAxiosError(error)) {
@@ -79,6 +85,10 @@ export const salesService = {
       last_sync_at: data?.last_sync_at ?? null,
       month: typeof data?.month === "string" ? data.month : undefined,
       source: typeof data?.source === "string" ? data.source : undefined,
+      days_mode:
+        data?.days_mode === "business" || data?.days_mode === "calendar"
+          ? data.days_mode
+          : "calendar",
     }
   },
 }

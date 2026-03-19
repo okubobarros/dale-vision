@@ -86,6 +86,7 @@ class SalesProgressView(APIView):
             "state": "not_configured",
             "current_revenue": 0,
             "target_revenue": target_revenue,
+            "days_mode": goal.days_mode if goal else "calendar",
             "currency": goal.currency if goal else "BRL",
             "last_sync_at": last_sync_at,
             "month": month,
@@ -124,16 +125,67 @@ class SalesProgressView(APIView):
                 status=status.HTTP_400_BAD_REQUEST,
             )
 
+        days_mode = str(request.data.get("days_mode") or "calendar").strip().lower()
+        if days_mode not in {"calendar", "business"}:
+            return Response(
+                {"detail": "days_mode deve ser calendar|business."},
+                status=status.HTTP_400_BAD_REQUEST,
+            )
+
         goal, _ = models.UserSalesGoal.objects.get_or_create(
             user=request.user,
             month=month,
             defaults={
                 "target_revenue": target_value,
+                "days_mode": days_mode,
                 "currency": "BRL",
             },
         )
         goal.target_revenue = target_value
+        goal.days_mode = days_mode
         goal.updated_at = timezone.now()
-        goal.save(update_fields=["target_revenue", "updated_at"])
+        goal.save(update_fields=["target_revenue", "days_mode", "updated_at"])
 
         return Response(self._build_payload(request, month), status=status.HTTP_200_OK)
+
+
+class PdvIntegrationInterestView(APIView):
+    permission_classes = [IsAuthenticated]
+
+    def post(self, request):
+        store_id = str(request.data.get("store_id") or "").strip()
+        pdv_system = str(request.data.get("pdv_system") or "").strip()
+        contact_email = str(request.data.get("contact_email") or "").strip()
+        contact_phone = str(request.data.get("contact_phone") or "").strip()
+
+        if not store_id or not pdv_system or not contact_email:
+            return Response(
+                {"detail": "store_id, pdv_system e contact_email são obrigatórios."},
+                status=status.HTTP_400_BAD_REQUEST,
+            )
+
+        store = models.Store.objects.filter(id=store_id).first()
+        if not store:
+            return Response({"detail": "Loja não encontrada."}, status=status.HTTP_404_NOT_FOUND)
+
+        record = models.PdvIntegrationInterest.objects.create(
+            user=request.user,
+            store=store,
+            pdv_system=pdv_system,
+            contact_email=contact_email,
+            contact_phone=contact_phone or None,
+            status="requested",
+        )
+
+        return Response(
+            {
+                "id": str(record.id),
+                "status": record.status,
+                "store_id": str(store.id),
+                "pdv_system": record.pdv_system,
+                "contact_email": record.contact_email,
+                "contact_phone": record.contact_phone,
+                "created_at": record.created_at.isoformat(),
+            },
+            status=status.HTTP_201_CREATED,
+        )

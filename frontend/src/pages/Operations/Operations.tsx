@@ -158,6 +158,39 @@ const suggestionByPillar = (pillar: OperationalPillar) => {
   }
 }
 
+const playbookByPillar = (
+  pillar: OperationalPillar,
+  severity: "critical" | "warning" | "info"
+) => {
+  const immediatePrefix = severity === "critical" ? "Agora" : "Próximo ciclo"
+  switch (pillar) {
+    case "sales":
+      return [
+        `${immediatePrefix}: abrir cobertura extra de caixa por 30-60min`,
+        "Revisar fila em tempo real e realocar staff para frente de loja",
+        "Validar impacto em conversão após intervenção",
+      ]
+    case "productivity":
+      return [
+        `${immediatePrefix}: ajustar escala no pico atual`,
+        "Rebalancear tarefas entre atendimento e retaguarda",
+        "Medir redução de ociosidade e fila na próxima hora",
+      ]
+    case "people_behavior":
+      return [
+        `${immediatePrefix}: acionar gerente responsável da unidade`,
+        "Aplicar checklist de conduta e presença em área crítica",
+        "Registrar evidências e status de resolução",
+      ]
+    default:
+      return [
+        `${immediatePrefix}: restaurar disponibilidade do edge/câmeras`,
+        "Executar playbook técnico da loja no módulo de detalhes",
+        "Confirmar retorno de telemetria e normalização de alertas",
+      ]
+  }
+}
+
 const categoryLabel = (event: DetectionEvent, pillar: OperationalPillar) => {
   const type = (event.type || "").toLowerCase()
   if (type === "queue_long") return "Fila acima do esperado"
@@ -418,7 +451,7 @@ const Operations = () => {
   }) => {
     const storeId = store.store_id
     const storeName = store.store_name || "loja"
-    const insightId = `operations-rollout-${storeId}-${Date.now()}`
+    const insightId = `operations-rollout-${storeId}`
     setRolloutActionStoreId(storeId)
     let dispatchResponse: ActionDispatchResponse | null = null
     try {
@@ -933,6 +966,18 @@ const Operations = () => {
                   <h3 className="mt-2 text-sm font-semibold text-slate-900">{formatGroupedTitle(event)}</h3>
                   <p className="mt-1 text-xs text-slate-600">{event.store_name} · {event.category_label}</p>
                   <p className="mt-2 text-xs text-gray-600">{event.suggestion}</p>
+                  <div className="mt-2 rounded-lg border border-slate-200 bg-white p-2.5">
+                    <p className="text-[11px] font-semibold uppercase tracking-wide text-slate-500">
+                      Playbook de ação
+                    </p>
+                    <ul className="mt-1 space-y-1">
+                      {playbookByPillar(event.pillar, event.severity).map((step) => (
+                        <li key={step} className="text-xs text-slate-700">
+                          • {step}
+                        </li>
+                      ))}
+                    </ul>
+                  </div>
                   <div className="mt-3 flex flex-wrap gap-2">
                     <Link
                       to={`/app/alerts?store_id=${encodeURIComponent(event.store_id)}`}

@@ -81,6 +81,23 @@ export type CreateStorePayload = StoreWriteFields & {
 };
 export type UpdateStorePayload = Partial<StoreWriteFields & { name: string }>;
 
+export type RegisterPdvInterestPayload = {
+  store_id: string
+  pdv_system: string
+  contact_email: string
+  contact_phone?: string
+}
+
+export type RegisterPdvInterestResponse = {
+  id: string
+  status: string
+  store_id: string
+  pdv_system: string
+  contact_email: string
+  contact_phone?: string | null
+  created_at: string
+}
+
 export interface StoreMetrics {
   total_cameras: number;
   active_cameras: number;
@@ -1595,5 +1612,15 @@ export const storesService = {
   // Deletar loja
   async deleteStore(storeId: string): Promise<void> {
     await api.delete(`/v1/stores/${storeId}/`);
-  }
+  },
+
+  async registerPdvInterest(
+    payload: RegisterPdvInterestPayload
+  ): Promise<RegisterPdvInterestResponse> {
+    const response = await api.post("/v1/integration/pdv/interest/", payload, {
+      timeoutCategory: "best-effort",
+      noRetry: true,
+    })
+    return response.data as RegisterPdvInterestResponse
+  },
 };

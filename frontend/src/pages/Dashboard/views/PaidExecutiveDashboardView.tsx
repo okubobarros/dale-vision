@@ -1,6 +1,6 @@
 import { Link } from "react-router-dom"
 import { useEffect, useMemo, useState } from "react"
-import type { StoreSummary } from "../../../services/stores"
+import type { RegisterPdvInterestPayload, StoreSummary } from "../../../services/stores"
 import { useAuth } from "../../../contexts/useAuth"
 
 interface PaidExecutiveDashboardViewProps {
@@ -29,9 +29,17 @@ interface PaidExecutiveDashboardViewProps {
     state: "connected" | "not_configured" | "syncing"
     targetRevenue: number
     currentRevenue: number
+    month?: string
+    daysMode?: "calendar" | "business"
   }
-  onSaveSalesGoal: (targetRevenue: number, month: string) => Promise<void>
+  onSaveSalesGoalConfig: (
+    targetRevenue: number,
+    month: string,
+    daysMode: "calendar" | "business"
+  ) => Promise<void>
   isSavingSalesGoal: boolean
+  onRegisterPdvInterest: (payload: RegisterPdvInterestPayload) => Promise<void>
+  isSavingPdvInterest: boolean
   calculationRationale: string[]
 }
 
@@ -75,16 +83,27 @@ export function PaidExecutiveDashboardView({
   copilotHighlight,
   showPosIntegrationCta,
   salesGoal,
-  onSaveSalesGoal,
+  onSaveSalesGoalConfig,
   isSavingSalesGoal,
+  onRegisterPdvInterest,
+  isSavingPdvInterest,
   calculationRationale,
 }: PaidExecutiveDashboardViewProps) {
   const { user } = useAuth()
   const [period, setPeriod] = useState<"today" | "yesterday" | "7d" | "month" | "custom">("today")
   const [comparison, setComparison] = useState<"yesterday" | "prev_period" | "none">("yesterday")
   const [now, setNow] = useState(() => new Date())
-  const [goalMonth] = useState(() => new Date().toISOString().slice(0, 7))
+  const [goalMonth, setGoalMonth] = useState(() => salesGoal.month || new Date().toISOString().slice(0, 7))
+  const [goalDaysMode, setGoalDaysMode] = useState<"calendar" | "business">(salesGoal.daysMode || "calendar")
   const [goalInput, setGoalInput] = useState<string>("")
+  const [goalModalOpen, setGoalModalOpen] = useState(false)
+  const [pdvModalOpen, setPdvModalOpen] = useState(false)
+  const [pdvSubmitted, setPdvSubmitted] = useState(false)
+  const [pdvStoreId, setPdvStoreId] = useState<string>(selectedStoreId === STORE_ALL ? stores[0]?.id || "" : selectedStoreId)
+  const [pdvSystem, setPdvSystem] = useState<string>("")
+  const [pdvOther, setPdvOther] = useState<string>("")
+  const [pdvEmail, setPdvEmail] = useState<string>(user?.email || "")
+  const [pdvPhone, setPdvPhone] = useState<string>("")
 
   useEffect(() => {
     const timer = window.setInterval(() => setNow(new Date()), 60000)
@@ -129,7 +148,19 @@ export function PaidExecutiveDashboardView({
     if (!year || !month) return 30
     return new Date(year, month, 0).getDate()
   }, [goalMonth])
-  const dailyGoal = monthlyGoal > 0 ? monthlyGoal / Math.max(daysInMonth, 1) : 0
+  const businessDaysInMonth = useMemo(() => {
+    const [year, month] = goalMonth.split("-").map(Number)
+    if (!year || !month) return 22
+    let count = 0
+    const totalDays = new Date(year, month, 0).getDate()
+    for (let day = 1; day <= totalDays; day += 1) {
+      const weekday = new Date(year, month - 1, day).getDay()
+      if (weekday !== 0 && weekday !== 6) count += 1
+    }
+    return count
+  }, [goalMonth])
+  const goalDaysBase = (salesGoal.daysMode || "calendar") === "business" ? businessDaysInMonth : daysInMonth
+  const dailyGoal = monthlyGoal > 0 ? monthlyGoal / Math.max(goalDaysBase, 1) : 0
   const dailyProgressPct = dailyGoal > 0 ? Math.min(200, Math.round((todayRevenueBRL / dailyGoal) * 100)) : 0
   const metaDeltaPct = dailyGoal > 0 ? Math.round(((todayRevenueBRL - dailyGoal) / dailyGoal) * 100) : 0
   const criticalEvents = recentEvents.filter((event) => event.severity === "critical").length
@@ -142,8 +173,25 @@ export function PaidExecutiveDashboardView({
   const handleSaveGoal = async () => {
     const next = Number(goalInput)
     if (!Number.isFinite(next) || next <= 0) return
-    await onSaveSalesGoal(Math.round(next), goalMonth)
+    await onSaveSalesGoalConfig(Math.round(next), goalMonth, goalDaysMode)
     setGoalInput("")
+    setGoalModalOpen(false)
+  }
+
+  const handleSavePdvInterest = async () => {
+    const fallbackStoreId =
+      selectedStoreId !== STORE_ALL ? selectedStoreId : stores[0]?.id || ""
+    const storeId = pdvStoreId || fallbackStoreId
+    const system = pdvSystem === "other" ? pdvOther.trim() : pdvSystem
+    if (!storeId || !system || !pdvEmail.trim()) return
+    await onRegisterPdvInterest({
+      store_id: storeId,
+      pdv_system: system,
+      contact_email: pdvEmail.trim(),
+      contact_phone: pdvPhone.trim() || undefined,
+    })
+    setPdvSubmitted(true)
+    setPdvModalOpen(false)
   }
 
   return (
@@ -437,7 +485,21 @@ export function PaidExecutiveDashboardView({
           </section>
 
           <section className="rounded-2xl border border-gray-200 bg-white p-4 sm:p-6">
-            <h4 className="text-sm font-semibold text-gray-900">Meta do Mês</h4>
+            <div className="flex items-center justify-between gap-2">
+              <h4 className="text-sm font-semibold text-gray-900">Meta do Mês</h4>
+              <button
+                type="button"
+                onClick={() => {
+                  setGoalInput(monthlyGoal > 0 ? String(Math.round(monthlyGoal)) : "")
+                  setGoalMonth(salesGoal.month || new Date().toISOString().slice(0, 7))
+                  setGoalDaysMode(salesGoal.daysMode || "calendar")
+                  setGoalModalOpen(true)
+                }}
+                className="rounded-lg border border-slate-200 bg-white px-3 py-1.5 text-xs font-semibold text-slate-700 hover:bg-slate-50"
+              >
+                Configurar meta
+              </button>
+            </div>
             <div className="mt-3 rounded-lg border border-slate-200 bg-slate-50 p-3">
               <p className="text-xs text-slate-600">Mês de referência</p>
               <p className="text-sm font-medium text-slate-900">{goalMonth}</p>
@@ -445,29 +507,14 @@ export function PaidExecutiveDashboardView({
               <p className="text-lg font-semibold text-slate-900">
                 {monthlyGoal > 0 ? formatCurrency(monthlyGoal) : "—"}
               </p>
+              <p className="mt-1 text-xs text-slate-600">
+                Base diária: {(salesGoal.daysMode || "calendar") === "business" ? "dias úteis" : "dias corridos"}
+              </p>
               {salesGoal.state !== "connected" && (
                 <p className="mt-2 text-xs text-amber-700">
                   A integração de vendas ainda não está conectada. Meta e receita podem estar incompletas.
                 </p>
               )}
-              <div className="mt-3 flex gap-2">
-                <input
-                  type="number"
-                  min={0}
-                  value={goalInput}
-                  onChange={(event) => setGoalInput(event.target.value)}
-                  placeholder="Nova meta mensal (R$)"
-                  className="w-full rounded-lg border border-gray-300 px-3 py-2 text-sm text-gray-700 focus:border-blue-500 focus:outline-none"
-                />
-                <button
-                  type="button"
-                  onClick={handleSaveGoal}
-                  disabled={isSavingSalesGoal}
-                  className="rounded-lg bg-slate-900 px-3 py-2 text-xs font-semibold text-white hover:bg-slate-800 disabled:cursor-not-allowed disabled:opacity-60"
-                >
-                  {isSavingSalesGoal ? "Salvando..." : "Salvar"}
-                </button>
-              </div>
             </div>
             <div className="mt-3 rounded-lg border border-slate-200 bg-slate-50 p-3">
               <p className="text-xs text-slate-600">Meta diária</p>
@@ -498,16 +545,187 @@ export function PaidExecutiveDashboardView({
               <p className="mt-1 text-sm text-amber-800">
                 Conecte seu PDV e veja a conversão real. Estimativa de ganho: {formatCurrency(Math.max(500, Math.round(revenueAtRiskBRL * 0.25)))}/dia.
               </p>
-              <Link
-                to="/app/settings"
+              <button
+                type="button"
+                onClick={() => {
+                  setPdvStoreId(selectedStoreId !== STORE_ALL ? selectedStoreId : stores[0]?.id || "")
+                  setPdvEmail(user?.email || "")
+                  setPdvModalOpen(true)
+                }}
                 className="mt-3 inline-flex items-center rounded-lg bg-amber-500 px-3 py-2 text-xs font-semibold text-white hover:bg-amber-600"
               >
                 Integrar agora
-              </Link>
+              </button>
+              {pdvSubmitted && (
+                <p className="mt-2 text-xs font-semibold text-emerald-700">
+                  Interesse registrado. Nosso time entrará em contato.
+                </p>
+              )}
             </section>
           )}
         </div>
       </section>
+
+      {goalModalOpen && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-slate-900/50 px-4">
+          <div className="w-full max-w-lg rounded-2xl border border-slate-200 bg-white p-5 shadow-xl">
+            <div className="flex items-center justify-between gap-2">
+              <h3 className="text-base font-semibold text-slate-900">Configurar Meta Mensal</h3>
+              <button
+                type="button"
+                onClick={() => setGoalModalOpen(false)}
+                className="rounded-lg border border-slate-200 px-2 py-1 text-xs font-semibold text-slate-600 hover:bg-slate-50"
+              >
+                Fechar
+              </button>
+            </div>
+            <div className="mt-4 space-y-3">
+              <div>
+                <label className="text-xs font-semibold text-slate-700">Mês</label>
+                <input
+                  type="month"
+                  value={goalMonth}
+                  onChange={(event) => setGoalMonth(event.target.value)}
+                  className="mt-1 w-full rounded-lg border border-gray-300 px-3 py-2 text-sm text-gray-700 focus:border-blue-500 focus:outline-none"
+                />
+              </div>
+              <div>
+                <label className="text-xs font-semibold text-slate-700">Meta mensal (R$)</label>
+                <input
+                  type="number"
+                  min={0}
+                  value={goalInput}
+                  onChange={(event) => setGoalInput(event.target.value)}
+                  placeholder="Ex.: 50000"
+                  className="mt-1 w-full rounded-lg border border-gray-300 px-3 py-2 text-sm text-gray-700 focus:border-blue-500 focus:outline-none"
+                />
+              </div>
+              <div>
+                <label className="text-xs font-semibold text-slate-700">Base de cálculo diária</label>
+                <select
+                  value={goalDaysMode}
+                  onChange={(event) => setGoalDaysMode(event.target.value as "calendar" | "business")}
+                  className="mt-1 w-full rounded-lg border border-gray-300 bg-white px-3 py-2 text-sm text-gray-700 focus:border-blue-500 focus:outline-none"
+                >
+                  <option value="calendar">Todos os dias do mês</option>
+                  <option value="business">Apenas dias úteis</option>
+                </select>
+              </div>
+            </div>
+            <div className="mt-4 flex justify-end gap-2">
+              <button
+                type="button"
+                onClick={() => setGoalModalOpen(false)}
+                className="rounded-lg border border-slate-200 px-3 py-2 text-xs font-semibold text-slate-700 hover:bg-slate-50"
+              >
+                Cancelar
+              </button>
+              <button
+                type="button"
+                onClick={() => void handleSaveGoal()}
+                disabled={isSavingSalesGoal}
+                className="rounded-lg bg-slate-900 px-3 py-2 text-xs font-semibold text-white hover:bg-slate-800 disabled:cursor-not-allowed disabled:opacity-60"
+              >
+                {isSavingSalesGoal ? "Salvando..." : "Salvar meta"}
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {pdvModalOpen && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-slate-900/50 px-4">
+          <div className="w-full max-w-lg rounded-2xl border border-slate-200 bg-white p-5 shadow-xl">
+            <div className="flex items-center justify-between gap-2">
+              <h3 className="text-base font-semibold text-slate-900">Interesse de Integração PDV</h3>
+              <button
+                type="button"
+                onClick={() => setPdvModalOpen(false)}
+                className="rounded-lg border border-slate-200 px-2 py-1 text-xs font-semibold text-slate-600 hover:bg-slate-50"
+              >
+                Fechar
+              </button>
+            </div>
+            <div className="mt-4 space-y-3">
+              <div>
+                <label className="text-xs font-semibold text-slate-700">Loja</label>
+                <select
+                  value={pdvStoreId || (selectedStoreId !== STORE_ALL ? selectedStoreId : stores[0]?.id || "")}
+                  onChange={(event) => setPdvStoreId(event.target.value)}
+                  className="mt-1 w-full rounded-lg border border-gray-300 bg-white px-3 py-2 text-sm text-gray-700 focus:border-blue-500 focus:outline-none"
+                >
+                  {stores.map((store) => (
+                    <option key={store.id} value={store.id}>
+                      {store.name}
+                    </option>
+                  ))}
+                </select>
+              </div>
+              <div>
+                <label className="text-xs font-semibold text-slate-700">Sistema PDV</label>
+                <select
+                  value={pdvSystem}
+                  onChange={(event) => setPdvSystem(event.target.value)}
+                  className="mt-1 w-full rounded-lg border border-gray-300 bg-white px-3 py-2 text-sm text-gray-700 focus:border-blue-500 focus:outline-none"
+                >
+                  <option value="">Selecione</option>
+                  <option value="linx">Linx</option>
+                  <option value="bling">Bling</option>
+                  <option value="tiny">Tiny</option>
+                  <option value="totvs">TOTVS</option>
+                  <option value="other">Outro</option>
+                </select>
+              </div>
+              {pdvSystem === "other" && (
+                <div>
+                  <label className="text-xs font-semibold text-slate-700">Qual sistema?</label>
+                  <input
+                    type="text"
+                    value={pdvOther}
+                    onChange={(event) => setPdvOther(event.target.value)}
+                    className="mt-1 w-full rounded-lg border border-gray-300 px-3 py-2 text-sm text-gray-700 focus:border-blue-500 focus:outline-none"
+                  />
+                </div>
+              )}
+              <div>
+                <label className="text-xs font-semibold text-slate-700">E-mail de contato</label>
+                <input
+                  type="email"
+                  value={pdvEmail}
+                  onChange={(event) => setPdvEmail(event.target.value)}
+                  className="mt-1 w-full rounded-lg border border-gray-300 px-3 py-2 text-sm text-gray-700 focus:border-blue-500 focus:outline-none"
+                />
+              </div>
+              <div>
+                <label className="text-xs font-semibold text-slate-700">Telefone (opcional)</label>
+                <input
+                  type="tel"
+                  value={pdvPhone}
+                  onChange={(event) => setPdvPhone(event.target.value)}
+                  className="mt-1 w-full rounded-lg border border-gray-300 px-3 py-2 text-sm text-gray-700 focus:border-blue-500 focus:outline-none"
+                />
+              </div>
+            </div>
+            <div className="mt-4 flex justify-end gap-2">
+              <button
+                type="button"
+                onClick={() => setPdvModalOpen(false)}
+                className="rounded-lg border border-slate-200 px-3 py-2 text-xs font-semibold text-slate-700 hover:bg-slate-50"
+              >
+                Cancelar
+              </button>
+              <button
+                type="button"
+                onClick={() => void handleSavePdvInterest()}
+                disabled={isSavingPdvInterest}
+                className="rounded-lg bg-amber-500 px-3 py-2 text-xs font-semibold text-white hover:bg-amber-600 disabled:cursor-not-allowed disabled:opacity-60"
+              >
+                {isSavingPdvInterest ? "Registrando..." : "Registrar interesse"}
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
     </div>
   )
 }

@@ -16,6 +16,7 @@ class SalesProgressViewTests(APITestCase):
         self.assertEqual(response.status_code, 200)
         self.assertEqual(response.data["state"], "not_configured")
         self.assertEqual(float(response.data["target_revenue"]), 0.0)
+        self.assertEqual(response.data["days_mode"], "calendar")
 
     def test_post_sales_progress_persists_goal_and_returns_payload(self):
         response = self.client.post(
@@ -23,12 +24,14 @@ class SalesProgressViewTests(APITestCase):
             {
                 "month": "2026-03",
                 "target_revenue": 50000,
+                "days_mode": "business",
             },
             format="json",
         )
         self.assertEqual(response.status_code, 200)
         self.assertEqual(response.data["month"], "2026-03")
         self.assertEqual(float(response.data["target_revenue"]), 50000.0)
+        self.assertEqual(response.data["days_mode"], "business")
 
         get_response = self.client.get("/api/v1/sales/progress/?month=2026-03")
         self.assertEqual(get_response.status_code, 200)

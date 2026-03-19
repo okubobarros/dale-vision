@@ -2,7 +2,7 @@ from django.urls import path
 from .views_onboarding import OnboardingProgressView, OnboardingStepCompleteView, OnboardingNextStepView
 from apps.accounts.views import MeStatusView, AdminControlTowerSummaryView
 from .views_report import ReportSummaryView, ReportExportView, ReportImpactView, ProductivityCoverageView
-from .views import StorageStatusView, SalesProgressView
+from .views import StorageStatusView, SalesProgressView, PdvIntegrationInterestView
 
 urlpatterns = [
     path("onboarding/progress/", OnboardingProgressView.as_view(), name="onboarding-progress"),
@@ -14,6 +14,7 @@ urlpatterns = [
     path("report/impact/", ReportImpactView.as_view(), name="report-impact"),
     path("report/export/", ReportExportView.as_view(), name="report-export"),
     path("sales/progress/", SalesProgressView.as_view(), name="sales-progress"),
+    path("integration/pdv/interest/", PdvIntegrationInterestView.as_view(), name="pdv-integration-interest"),
     path("productivity/coverage", ProductivityCoverageView.as_view(), name="productivity-coverage-noslash"),
     path("productivity/coverage/", ProductivityCoverageView.as_view(), name="productivity-coverage"),
     path("system/storage-status/", StorageStatusView.as_view({"get": "list"}), name="storage-status"),

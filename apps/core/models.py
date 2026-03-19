@@ -601,6 +601,7 @@ class UserSalesGoal(models.Model):
     )
     month = models.CharField(max_length=7)  # YYYY-MM
     target_revenue = models.DecimalField(max_digits=14, decimal_places=2, default=0)
+    days_mode = models.CharField(max_length=16, default="calendar")
     currency = models.CharField(max_length=3, default="BRL")
     created_at = models.DateTimeField(default=timezone.now)
     updated_at = models.DateTimeField(default=timezone.now)
@@ -613,4 +614,34 @@ class UserSalesGoal(models.Model):
         ]
         indexes = [
             models.Index(fields=["user", "month"], name="user_sales_goal_user_month_idx"),
+        ]
+
+
+class PdvIntegrationInterest(models.Model):
+    id = models.UUIDField(primary_key=True, default=uuid.uuid4, editable=False)
+    user = models.ForeignKey(
+        settings.AUTH_USER_MODEL,
+        on_delete=models.CASCADE,
+        db_column="user_id",
+        related_name="pdv_integration_interests",
+    )
+    store = models.ForeignKey(
+        "Store",
+        on_delete=models.DO_NOTHING,
+        db_column="store_id",
+        related_name="pdv_integration_interests",
+    )
+    pdv_system = models.CharField(max_length=64)
+    contact_email = models.EmailField()
+    contact_phone = models.CharField(max_length=32, null=True, blank=True)
+    status = models.CharField(max_length=20, default="requested")
+    created_at = models.DateTimeField(default=timezone.now)
+    updated_at = models.DateTimeField(default=timezone.now)
+
+    class Meta:
+        db_table = "pdv_integration_interests"
+        managed = True
+        indexes = [
+            models.Index(fields=["store", "created_at"], name="pdv_interest_store_created_idx"),
+            models.Index(fields=["user", "status"], name="pdv_interest_user_status_idx"),
         ]
