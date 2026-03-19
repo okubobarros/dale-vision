@@ -32,6 +32,7 @@ import {
 import { copilotService } from "../../services/copilot"
 import type { CopilotValueLedgerDailyResponse } from "../../types/copilot"
 import { meService } from "../../services/me"
+import { salesService, type RevenueProgressData } from "../../services/sales"
 import { getDashboardExperience } from "./dashboardExperience"
 import { TrialDashboardView } from "./views/TrialDashboardView"
 import { PaidSetupDashboardView } from "./views/PaidSetupDashboardView"
@@ -109,6 +110,27 @@ const formatCurrencyBRL = (value: number) =>
     currency: "BRL",
     maximumFractionDigits: 0,
   })
+
+const estimateRevenueGapFromOperations = ({
+  avgQueueSeconds,
+  avgVisitorsPerHour,
+  avgTicketBRL,
+}: {
+  avgQueueSeconds: number
+  avgVisitorsPerHour: number
+  avgTicketBRL: number
+}) => {
+  const boundedQueue = Math.max(0, avgQueueSeconds)
+  const queueAbandonRate = Math.max(0, Math.min(0.35, (boundedQueue - 180) / 1200))
+  const lostCustomers = Math.max(0, Math.round(Math.max(0, avgVisitorsPerHour) * queueAbandonRate * 8))
+  const revenueGap = Math.max(0, Math.round(lostCustomers * Math.max(0, avgTicketBRL)))
+
+  return {
+    queueAbandonRate,
+    lostCustomers,
+    revenueGap,
+  }
+}
 
 const parseMaybeNumber = (value: unknown): number | null => {
   if (typeof value === "number" && Number.isFinite(value)) return value
@@ -269,6 +291,14 @@ const Dashboard = () => {
     staleTime: 60000,
     enabled: canFetchAuth,
     retry: false,
+  })
+
+  const { data: revenueProgress } = useQuery<RevenueProgressData>({
+    queryKey: ["revenue-progress", selectedStoreOverride],
+    queryFn: salesService.getRevenueProgress,
+    staleTime: 60000,
+    retry: false,
+    enabled: canFetchAuth,
   })
 
   const selectedStore = useMemo(() => {
@@ -593,8 +623,8 @@ const Dashboard = () => {
     setEvidenceOpen(false)
   }
 
-  const ceoFlow = ceoDashboard?.series?.flow_by_hour ?? []
-  const ceoIdle = ceoDashboard?.series?.idle_index_by_hour ?? []
+  const ceoFlow = useMemo(() => ceoDashboard?.series?.flow_by_hour ?? [], [ceoDashboard?.series?.flow_by_hour])
+  const ceoIdle = useMemo(() => ceoDashboard?.series?.idle_index_by_hour ?? [], [ceoDashboard?.series?.idle_index_by_hour])
   const ceoGovernance = ceoDashboard?.meta?.metric_governance ?? {}
   const maxFootfall = ceoFlow.length
     ? Math.max(...ceoFlow.map((item) => item.footfall), 1)
@@ -1213,12 +1243,15 @@ const Dashboard = () => {
       : summaryTotals?.total_visitors
       ? summaryTotals.total_visitors / (24 * 7)
       : 0
-  const estimatedAbandonRate = Math.max(0, Math.min(0.35, (avgQueueSecondsForRoi - 180) / 1200))
-  const estimatedLostCustomers = Math.round(avgVisitorsPerHour * estimatedAbandonRate * 8)
-  const estimatedTicket = 85
-  const estimatedRevenueGapComputed = Math.max(0, estimatedLostCustomers * estimatedTicket)
+  const estimatedAverageTicketBRL =
+    parseMaybeNumber((dashboard?.metrics as { avg_cart_value?: unknown } | undefined)?.avg_cart_value) ?? 85
+  const estimatedRevenueGapDerived = estimateRevenueGapFromOperations({
+    avgQueueSeconds: avgQueueSecondsForRoi,
+    avgVisitorsPerHour,
+    avgTicketBRL: estimatedAverageTicketBRL,
+  })
   const estimatedRevenueGap =
-    dashboard?.executive?.estimated_revenue_gap_brl ?? estimatedRevenueGapComputed
+    dashboard?.executive?.estimated_revenue_gap_brl ?? estimatedRevenueGapDerived.revenueGap
   const criticalAlertsOpen =
     dashboard?.executive?.critical_alerts_open ??
     activeEvents.filter((e) => String(e.severity).toLowerCase() === "critical").length
@@ -1413,18 +1446,12 @@ const Dashboard = () => {
   )
   const averageTicketBRL =
     parseMaybeNumber((dashboard?.metrics as { avg_cart_value?: unknown } | undefined)?.avg_cart_value) ??
-    85
+    0
   const hourlyRevenueSeries = useMemo(() => {
     const trafficSeries = metricsSummary?.series?.traffic ?? []
-    const fallbackHours = ["09h", "11h", "13h", "15h", "17h", "19h"]
-    if (trafficSeries.length === 0) {
-      const base = Math.max(300, Math.round(estimatedRevenueGap / 4))
-      return fallbackHours.map((label, index) => ({
-        label,
-        value: Math.max(120, Math.round(base * (0.62 + index * 0.14))),
-      }))
-    }
-    const conversion = Math.max(0.06, (computedConversionRate ?? 14) / 100)
+    if (trafficSeries.length === 0) return []
+    const conversion = (computedConversionRate ?? ceoDashboard?.kpis?.avg_conversion_rate ?? 0) / 100
+    if (conversion <= 0 || averageTicketBRL <= 0) return []
     return trafficSeries.slice(-8).map((bucket) => {
       const label = formatTimeSafe(bucket.ts_bucket).replace(":", "h")
       const value = Math.round((bucket.footfall || 0) * conversion * averageTicketBRL)
@@ -1433,38 +1460,36 @@ const Dashboard = () => {
         value: Math.max(0, value),
       }
     })
-  }, [averageTicketBRL, computedConversionRate, estimatedRevenueGap, metricsSummary?.series?.traffic])
+  }, [averageTicketBRL, ceoDashboard?.kpis?.avg_conversion_rate, computedConversionRate, metricsSummary?.series?.traffic])
   const todayRevenueBRL = useMemo(() => {
+    const revenueFromIntegration = revenueProgress?.current_revenue ?? 0
+    if (revenueFromIntegration > 0) return revenueFromIntegration
     const total = hourlyRevenueSeries.reduce((acc, item) => acc + item.value, 0)
     if (total > 0) return total
-    return Math.max(3888, Math.round(estimatedRevenueGap * 1.4))
-  }, [estimatedRevenueGap, hourlyRevenueSeries])
-  const todayRevenueDeltaPct = useMemo(() => {
-    const severityPressure = activeEvents.filter((event) => String(event.severity).toLowerCase() === "critical").length
-    return Number(Math.max(-30, Math.min(22, 12 - severityPressure * 4)).toFixed(1))
-  }, [activeEvents])
+    return 0
+  }, [hourlyRevenueSeries, revenueProgress?.current_revenue])
+  const todayRevenueDeltaPct = null
   const flowSeries = useMemo(() => {
     const trafficSeries = metricsSummary?.series?.traffic ?? []
-    if (trafficSeries.length === 0) {
-      return [
-        { label: "09h", value: 38 },
-        { label: "11h", value: 61 },
-        { label: "13h", value: 77 },
-        { label: "15h", value: 69 },
-        { label: "17h", value: 58 },
-        { label: "19h", value: 44 },
-      ]
+    if (trafficSeries.length > 0) {
+      return trafficSeries.slice(-8).map((bucket) => ({
+        label: formatTimeSafe(bucket.ts_bucket).replace(":", "h"),
+        value: bucket.footfall || 0,
+      }))
     }
-    return trafficSeries.slice(-8).map((bucket) => ({
-      label: formatTimeSafe(bucket.ts_bucket).replace(":", "h"),
-      value: bucket.footfall || 0,
-    }))
-  }, [metricsSummary?.series?.traffic])
+    if (ceoFlow.length > 0) {
+      return ceoFlow.slice(-8).map((bucket) => ({
+        label: formatTimeSafe(bucket.ts_bucket).replace(":", "h"),
+        value: bucket.footfall || 0,
+      }))
+    }
+    return []
+  }, [ceoFlow, metricsSummary?.series?.traffic])
   const copilotStoreName =
     storeNameById.get(copilotRecommendationNow.storeId) ||
     networkDashboard?.stores?.find((store) => store.id === copilotRecommendationNow.storeId)?.name ||
     "loja prioritária"
-  const copilotRecoveryValue = Math.max(120, Math.round(revenueAtRiskDay * 0.26))
+  const copilotRecoveryValue = Math.max(0, Math.round(revenueAtRiskDay * 0.26))
   const copilotHighlight = {
     message: `Hoje, ${formatCurrencyBRL(revenueAtRiskDay)} em risco por filas. Abrir caixa em ${copilotStoreName} pode recuperar ${formatCurrencyBRL(copilotRecoveryValue)}.`,
     actionLabel: "Ver ação",
@@ -1477,11 +1502,18 @@ const Dashboard = () => {
     occurredAt: event.occurred_at || event.created_at || null,
     riskBRL:
       parseMaybeNumber((event.metadata as { revenue_risk_brl?: unknown } | undefined)?.revenue_risk_brl) ??
-      Math.max(0, Math.round(revenueAtRiskDay * 0.12)),
+      0,
   }))
   const queueAvgMinutes =
     typeof computedQueueSeconds === "number" ? computedQueueSeconds / 60 : null
-  const showPosIntegrationCta = !computedConversionRate || computedConversionRate <= 0
+  const showPosIntegrationCta =
+    revenueProgress?.state !== "connected" && (!computedConversionRate || computedConversionRate <= 0)
+  const calculationRationale = [
+    "Risco de receita (estimado): visitantes/hora × taxa de abandono por fila × 8h × ticket médio.",
+    "Taxa de abandono por fila: clamp((fila_segundos - 180) / 1200, entre 0 e 35%).",
+    "Meta diária: meta mensal / número de dias do mês.",
+    "Receita do dia: prioridade para integração de vendas; sem integração, usa soma da série horária derivada.",
+  ]
   const projectedFlowNextHours = useMemo(() => {
     const baseFlow = Math.max(0, Math.round((computedVisitorFlow ?? 0) / 10))
     const criticalCount = activeEvents.filter(
@@ -1872,6 +1904,12 @@ const Dashboard = () => {
             recentEvents={recentEventItems}
             copilotHighlight={copilotHighlight}
             showPosIntegrationCta={showPosIntegrationCta}
+            salesGoal={{
+              state: revenueProgress?.state ?? "not_configured",
+              targetRevenue: revenueProgress?.target_revenue ?? 0,
+              currentRevenue: revenueProgress?.current_revenue ?? 0,
+            }}
+            calculationRationale={calculationRationale}
           />
         ) : isNetworkMode ? (
           <>

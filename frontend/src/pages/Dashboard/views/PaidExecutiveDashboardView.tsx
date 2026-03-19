@@ -10,7 +10,7 @@ interface PaidExecutiveDashboardViewProps {
   selectedStoreId: string
   onSelectStore: (storeId: string) => void
   todayRevenueBRL: number
-  todayRevenueDeltaPct: number
+  todayRevenueDeltaPct: number | null
   revenueSeries: Array<{ label: string; value: number }>
   flowSeries: Array<{ label: string; value: number }>
   revenueAtRiskBRL: number
@@ -25,6 +25,12 @@ interface PaidExecutiveDashboardViewProps {
     actionHref: string
   }
   showPosIntegrationCta: boolean
+  salesGoal: {
+    state: "connected" | "not_configured" | "syncing"
+    targetRevenue: number
+    currentRevenue: number
+  }
+  calculationRationale: string[]
 }
 
 const STORE_ALL = "all"
@@ -66,30 +72,21 @@ export function PaidExecutiveDashboardView({
   recentEvents,
   copilotHighlight,
   showPosIntegrationCta,
+  salesGoal,
+  calculationRationale,
 }: PaidExecutiveDashboardViewProps) {
   const { user } = useAuth()
   const [period, setPeriod] = useState<"today" | "yesterday" | "7d" | "month" | "custom">("today")
   const [comparison, setComparison] = useState<"yesterday" | "prev_period" | "none">("yesterday")
   const [now, setNow] = useState(() => new Date())
-  const [goalMonth, setGoalMonth] = useState(() => new Date().toISOString().slice(0, 7))
-  const [goalInput, setGoalInput] = useState<string>("")
+  const [goalMonth] = useState(() => new Date().toISOString().slice(0, 7))
 
   useEffect(() => {
     const timer = window.setInterval(() => setNow(new Date()), 60000)
     return () => window.clearInterval(timer)
   }, [])
 
-  const goalStorageKey = useMemo(
-    () => `dv_month_goal_${selectedStoreId || STORE_ALL}_${goalMonth}`,
-    [goalMonth, selectedStoreId]
-  )
-
-  const savedGoal = (() => {
-    if (typeof window === "undefined") return 0
-    const raw = localStorage.getItem(goalStorageKey)
-    const parsed = raw ? Number(raw) : 0
-    return Number.isFinite(parsed) && parsed > 0 ? parsed : 0
-  })()
+  const monthlyGoal = Math.max(0, salesGoal.targetRevenue || 0)
 
   const formatCurrency = (value: number) =>
     value.toLocaleString("pt-BR", {
@@ -114,7 +111,12 @@ export function PaidExecutiveDashboardView({
     selectedStoreId === STORE_ALL
       ? "Todas as lojas"
       : stores.find((store) => store.id === selectedStoreId)?.name || "Loja selecionada"
-  const deltaTone = todayRevenueDeltaPct >= 0 ? "text-emerald-700" : "text-rose-700"
+  const deltaTone =
+    todayRevenueDeltaPct === null
+      ? "text-gray-500"
+      : todayRevenueDeltaPct >= 0
+      ? "text-emerald-700"
+      : "text-rose-700"
   const healthyStores = stores.filter((store) => getStoreState(store) === "online").length
 
   const daysInMonth = useMemo(() => {
@@ -122,7 +124,7 @@ export function PaidExecutiveDashboardView({
     if (!year || !month) return 30
     return new Date(year, month, 0).getDate()
   }, [goalMonth])
-  const dailyGoal = savedGoal > 0 ? savedGoal / Math.max(daysInMonth, 1) : 0
+  const dailyGoal = monthlyGoal > 0 ? monthlyGoal / Math.max(daysInMonth, 1) : 0
   const dailyProgressPct = dailyGoal > 0 ? Math.min(200, Math.round((todayRevenueBRL / dailyGoal) * 100)) : 0
   const metaDeltaPct = dailyGoal > 0 ? Math.round(((todayRevenueBRL - dailyGoal) / dailyGoal) * 100) : 0
   const criticalEvents = recentEvents.filter((event) => event.severity === "critical").length
@@ -131,13 +133,6 @@ export function PaidExecutiveDashboardView({
     label: point.label,
     value: Math.max(0, Math.round(point.value)),
   }))
-
-  const handleSaveGoal = () => {
-    const next = Number(goalInput)
-    if (!Number.isFinite(next) || next <= 0) return
-    localStorage.setItem(goalStorageKey, String(Math.round(next)))
-    setGoalInput("")
-  }
 
   return (
     <div className="space-y-5">
@@ -236,10 +231,14 @@ export function PaidExecutiveDashboardView({
         >
           <p className="text-xs font-semibold uppercase tracking-wide text-gray-500">Receita Bruta</p>
           <p className="mt-2 text-2xl font-bold text-gray-900">{formatCurrency(todayRevenueBRL)}</p>
-          <p className={`mt-1 text-xs font-semibold ${deltaTone}`}>
-            {todayRevenueDeltaPct >= 0 ? "+" : ""}
-            {todayRevenueDeltaPct.toFixed(1)}% vs {comparison === "yesterday" ? "ontem" : "período anterior"}
-          </p>
+          {todayRevenueDeltaPct !== null ? (
+            <p className={`mt-1 text-xs font-semibold ${deltaTone}`}>
+              {todayRevenueDeltaPct >= 0 ? "+" : ""}
+              {todayRevenueDeltaPct.toFixed(1)}% vs {comparison === "yesterday" ? "ontem" : "período anterior"}
+            </p>
+          ) : (
+            <p className="mt-1 text-xs text-gray-500">Sem base consolidada para comparação no período.</p>
+          )}
         </button>
         <button
           type="button"
@@ -249,9 +248,9 @@ export function PaidExecutiveDashboardView({
           <p className="text-xs font-semibold uppercase tracking-wide text-gray-500">Meta Realizada</p>
           <p className="mt-2 text-2xl font-bold text-gray-900">{dailyGoal > 0 ? `${dailyProgressPct}%` : "—"}</p>
           <p className="mt-1 text-xs text-gray-600">
-            {savedGoal > 0 ? `${formatCurrency(dailyGoal)} meta diária` : "Defina meta mensal"}
+            {monthlyGoal > 0 ? `${formatCurrency(dailyGoal)} meta diária` : "Meta mensal não configurada"}
           </p>
-          {savedGoal > 0 && (
+          {monthlyGoal > 0 && (
             <div className="mt-2 h-1.5 w-full rounded-full bg-gray-100">
               <div
                 className={`h-1.5 rounded-full ${dailyProgressPct >= 100 ? "bg-emerald-500" : "bg-blue-500"}`}
@@ -427,30 +426,18 @@ export function PaidExecutiveDashboardView({
 
           <section className="rounded-2xl border border-gray-200 bg-white p-4 sm:p-6">
             <h4 className="text-sm font-semibold text-gray-900">Meta do Mês</h4>
-            <div className="mt-3 grid grid-cols-1 gap-2">
-              <input
-                type="month"
-                value={goalMonth}
-                onChange={(event) => setGoalMonth(event.target.value)}
-                className="rounded-lg border border-gray-300 px-3 py-2 text-sm text-gray-700 focus:border-blue-500 focus:outline-none"
-              />
-              <div className="flex gap-2">
-                <input
-                  type="number"
-                  min={0}
-                  value={goalInput}
-                  onChange={(event) => setGoalInput(event.target.value)}
-                  placeholder="Meta mensal (R$)"
-                  className="w-full rounded-lg border border-gray-300 px-3 py-2 text-sm text-gray-700 focus:border-blue-500 focus:outline-none"
-                />
-                <button
-                  type="button"
-                  onClick={handleSaveGoal}
-                  className="rounded-lg bg-slate-900 px-3 py-2 text-xs font-semibold text-white hover:bg-slate-800"
-                >
-                  Salvar
-                </button>
-              </div>
+            <div className="mt-3 rounded-lg border border-slate-200 bg-slate-50 p-3">
+              <p className="text-xs text-slate-600">Mês de referência</p>
+              <p className="text-sm font-medium text-slate-900">{goalMonth}</p>
+              <p className="mt-2 text-xs text-slate-600">Meta mensal (fonte: backend)</p>
+              <p className="text-lg font-semibold text-slate-900">
+                {monthlyGoal > 0 ? formatCurrency(monthlyGoal) : "—"}
+              </p>
+              {salesGoal.state !== "connected" && (
+                <p className="mt-2 text-xs text-amber-700">
+                  A integração de vendas ainda não está conectada. Meta e receita podem estar incompletas.
+                </p>
+              )}
             </div>
             <div className="mt-3 rounded-lg border border-slate-200 bg-slate-50 p-3">
               <p className="text-xs text-slate-600">Meta diária</p>
@@ -461,6 +448,19 @@ export function PaidExecutiveDashboardView({
               </p>
             </div>
           </section>
+
+          {calculationRationale.length > 0 && (
+            <section className="rounded-2xl border border-slate-200 bg-slate-50 p-4 sm:p-6">
+              <h4 className="text-sm font-semibold text-slate-900">Racional dos cálculos</h4>
+              <ul className="mt-2 space-y-1">
+                {calculationRationale.map((item) => (
+                  <li key={item} className="text-xs text-slate-700">
+                    • {item}
+                  </li>
+                ))}
+              </ul>
+            </section>
+          )}
 
           {showPosIntegrationCta && (
             <section className="rounded-2xl border border-amber-200 bg-amber-50 p-4 sm:p-6">
