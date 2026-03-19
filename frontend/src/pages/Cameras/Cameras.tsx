@@ -39,6 +39,7 @@ const isPrivateHost = (host: string) => isPrivateIp(host) || host === "localhost
 const EDGE_HEARTBEAT_FRESH_SECONDS = 120
 const TEST_COOLDOWN_MS = 8000
 const CAMERA_SYNC_RECENT_SECONDS = 300
+const ROI_PUBLISH_CACHE_PREFIX = "dv_roi_published_cameras_v1_"
 
 const formatAgeLabel = (seconds?: number | null) => {
   if (seconds === null || seconds === undefined || Number.isNaN(seconds)) return null
@@ -287,6 +288,52 @@ const Cameras = () => {
 
   const canManageStore = baseCanManageStore || hasActiveSupportGrant
   const canEditRoi = canManageStore || Boolean(user?.is_staff || user?.is_superuser)
+
+  useEffect(() => {
+    if (!selectedStore || selectedStore === "all" || typeof window === "undefined") {
+      setLocalPublishedRoiCameraIds(new Set())
+      return
+    }
+    try {
+      const raw = window.localStorage.getItem(`${ROI_PUBLISH_CACHE_PREFIX}${selectedStore}`)
+      if (!raw) {
+        setLocalPublishedRoiCameraIds(new Set())
+        return
+      }
+      const parsed = JSON.parse(raw) as unknown
+      if (!Array.isArray(parsed)) {
+        setLocalPublishedRoiCameraIds(new Set())
+        return
+      }
+      const ids = parsed
+        .filter((value): value is string => typeof value === "string" && value.length > 0)
+      setLocalPublishedRoiCameraIds(new Set(ids))
+    } catch {
+      setLocalPublishedRoiCameraIds(new Set())
+    }
+  }, [selectedStore])
+
+  const markLocalRoiPublished = useCallback(
+    (cameraId: string) => {
+      if (!selectedStore || selectedStore === "all") return
+      setLocalPublishedRoiCameraIds((current) => {
+        const next = new Set(current)
+        next.add(cameraId)
+        if (typeof window !== "undefined") {
+          try {
+            window.localStorage.setItem(
+              `${ROI_PUBLISH_CACHE_PREFIX}${selectedStore}`,
+              JSON.stringify(Array.from(next))
+            )
+          } catch {
+            // ignore localStorage errors
+          }
+        }
+        return next
+      })
+    },
+    [selectedStore]
+  )
 
   useEffect(() => {
     if (!initialOpenRoi || !initialZoneId) return
@@ -1109,13 +1156,7 @@ const Cameras = () => {
         open={Boolean(roiCamera)}
         camera={roiCamera}
         canEditRoi={canEditRoi}
-        onRoiPublished={(cameraId) => {
-          setLocalPublishedRoiCameraIds((prev) => {
-            const next = new Set(prev)
-            next.add(cameraId)
-            return next
-          })
-        }}
+        onRoiPublished={markLocalRoiPublished}
         onClose={() => setRoiCamera(null)}
       />
 

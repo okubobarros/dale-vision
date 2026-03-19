@@ -14,7 +14,8 @@ import { refreshSupabaseSession } from "./authSession"
 const DEFAULT_TIMEOUT_MS = 10000
 const CRITICAL_TIMEOUT_MS = 12000
 const LONG_TIMEOUT_MS = 45000
-const BEST_EFFORT_TIMEOUT_MS = 3000
+const BEST_EFFORT_TIMEOUT_MS = 6000
+const WAKEUP_TOAST_COOLDOWN_MS = 60000
 const RETRY_BACKOFF_MS = [800]
 const TRIAL_EXPIRED_CODE = "TRIAL_EXPIRED"
 const SUBSCRIPTION_REQUIRED_CODE = "SUBSCRIPTION_REQUIRED"
@@ -148,7 +149,13 @@ const shouldSuppressTimeoutToast = (url?: string) => {
   )
 }
 
+let lastWakeupToastAt = 0
+
 const showTimeoutRetryToast = (config?: RetriableConfig) => {
+  const now = Date.now()
+  if (now - lastWakeupToastAt < WAKEUP_TOAST_COOLDOWN_MS) return
+  lastWakeupToastAt = now
+
   const id = "api-timeout-retry"
   toast.custom(
     (t) =>

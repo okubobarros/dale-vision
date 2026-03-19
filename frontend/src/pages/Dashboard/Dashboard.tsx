@@ -266,6 +266,7 @@ const Dashboard = () => {
     },
     staleTime: 60000,
     enabled: canFetchAuth,
+    retry: false,
   })
 
   const selectedStore = useMemo(() => {
