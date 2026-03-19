@@ -1868,6 +1868,7 @@ const Dashboard = () => {
             conversionAvgPct={computedConversionRate}
             queueAvgMin={queueAvgMinutes}
             staffEfficiencyPct={computedHealthScore}
+            healthScorePct={computedHealthScore}
             recentEvents={recentEventItems}
             copilotHighlight={copilotHighlight}
             showPosIntegrationCta={showPosIntegrationCta}
