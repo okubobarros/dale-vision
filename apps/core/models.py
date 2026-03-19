@@ -589,3 +589,28 @@ class StoreManager(UnmanagedModel):
     class Meta:
         db_table = "store_managers"
         managed = False
+
+
+class UserSalesGoal(models.Model):
+    id = models.UUIDField(primary_key=True, default=uuid.uuid4, editable=False)
+    user = models.ForeignKey(
+        settings.AUTH_USER_MODEL,
+        on_delete=models.CASCADE,
+        db_column="user_id",
+        related_name="sales_goals",
+    )
+    month = models.CharField(max_length=7)  # YYYY-MM
+    target_revenue = models.DecimalField(max_digits=14, decimal_places=2, default=0)
+    currency = models.CharField(max_length=3, default="BRL")
+    created_at = models.DateTimeField(default=timezone.now)
+    updated_at = models.DateTimeField(default=timezone.now)
+
+    class Meta:
+        db_table = "user_sales_goals"
+        managed = True
+        constraints = [
+            models.UniqueConstraint(fields=["user", "month"], name="uniq_user_sales_goal_month"),
+        ]
+        indexes = [
+            models.Index(fields=["user", "month"], name="user_sales_goal_user_month_idx"),
+        ]

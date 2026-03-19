@@ -1,5 +1,6 @@
 import requests
 from django.conf import settings
+from django.utils import timezone
 from rest_framework import viewsets, status
 from rest_framework.response import Response
 from rest_framework.permissions import AllowAny, IsAuthenticated
@@ -58,16 +59,81 @@ class StorageStatusView(viewsets.ViewSet):
 class SalesProgressView(APIView):
     permission_classes = [IsAuthenticated]
 
-    def get(self, request):
-        # Endpoint intentionally stable for environments where sales integration
-        # is not configured yet, preventing frontend 404 regressions.
-        return Response(
-            {
-                "state": "not_configured",
-                "current_revenue": 0,
-                "target_revenue": 1000000,
-                "currency": "BRL",
-                "last_sync_at": None,
-            },
-            status=status.HTTP_200_OK,
+    @staticmethod
+    def _resolve_month(raw_month):
+        if not raw_month:
+            return timezone.localdate().strftime("%Y-%m")
+        month = str(raw_month).strip()
+        if len(month) != 7 or month[4] != "-":
+            return None
+        year_part = month[:4]
+        month_part = month[5:]
+        if not (year_part.isdigit() and month_part.isdigit()):
+            return None
+        if int(month_part) < 1 or int(month_part) > 12:
+            return None
+        return month
+
+    def _build_payload(self, request, month):
+        goal = (
+            models.UserSalesGoal.objects.filter(user=request.user, month=month)
+            .order_by("-updated_at")
+            .first()
         )
+        target_revenue = float(goal.target_revenue) if goal else 0
+        last_sync_at = goal.updated_at.isoformat() if goal else None
+        return {
+            "state": "not_configured",
+            "current_revenue": 0,
+            "target_revenue": target_revenue,
+            "currency": goal.currency if goal else "BRL",
+            "last_sync_at": last_sync_at,
+            "month": month,
+            "source": "user_goal",
+        }
+
+    def get(self, request):
+        month = self._resolve_month(request.query_params.get("month"))
+        if not month:
+            return Response(
+                {"detail": "Parâmetro month inválido. Use o formato YYYY-MM."},
+                status=status.HTTP_400_BAD_REQUEST,
+            )
+        return Response(self._build_payload(request, month), status=status.HTTP_200_OK)
+
+    def post(self, request):
+        month = self._resolve_month(request.data.get("month"))
+        if not month:
+            return Response(
+                {"detail": "Parâmetro month inválido. Use o formato YYYY-MM."},
+                status=status.HTTP_400_BAD_REQUEST,
+            )
+
+        target_revenue = request.data.get("target_revenue")
+        try:
+            target_value = float(target_revenue)
+        except (TypeError, ValueError):
+            return Response(
+                {"detail": "target_revenue deve ser numérico."},
+                status=status.HTTP_400_BAD_REQUEST,
+            )
+
+        if target_value <= 0:
+            return Response(
+                {"detail": "target_revenue deve ser maior que zero."},
+                status=status.HTTP_400_BAD_REQUEST,
+            )
+
+        goal, _ = models.UserSalesGoal.objects.get_or_create(
+            user=request.user,
+            month=month,
+            defaults={
+                "target_revenue": target_value,
+                "currency": "BRL",
+            },
+        )
+        goal.target_revenue = target_value
+        goal.updated_at = timezone.now()
+        goal.save(update_fields=["target_revenue", "updated_at"])
+
+        return Response(self._build_payload(request, month), status=status.HTTP_200_OK)

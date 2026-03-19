@@ -14,7 +14,7 @@ const Header = ({ onOpenAgent }: HeaderProps) => {
   const navigate = useNavigate()
   const { data: revenueProgress } = useQuery({
     queryKey: ["revenue-progress"],
-    queryFn: salesService.getRevenueProgress,
+    queryFn: () => salesService.getRevenueProgress(),
     staleTime: 60000,
     retry: false,
   })

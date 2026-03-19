@@ -30,6 +30,8 @@ interface PaidExecutiveDashboardViewProps {
     targetRevenue: number
     currentRevenue: number
   }
+  onSaveSalesGoal: (targetRevenue: number, month: string) => Promise<void>
+  isSavingSalesGoal: boolean
   calculationRationale: string[]
 }
 
@@ -73,6 +75,8 @@ export function PaidExecutiveDashboardView({
   copilotHighlight,
   showPosIntegrationCta,
   salesGoal,
+  onSaveSalesGoal,
+  isSavingSalesGoal,
   calculationRationale,
 }: PaidExecutiveDashboardViewProps) {
   const { user } = useAuth()
@@ -80,6 +84,7 @@ export function PaidExecutiveDashboardView({
   const [comparison, setComparison] = useState<"yesterday" | "prev_period" | "none">("yesterday")
   const [now, setNow] = useState(() => new Date())
   const [goalMonth] = useState(() => new Date().toISOString().slice(0, 7))
+  const [goalInput, setGoalInput] = useState<string>("")
 
   useEffect(() => {
     const timer = window.setInterval(() => setNow(new Date()), 60000)
@@ -133,6 +138,13 @@ export function PaidExecutiveDashboardView({
     label: point.label,
     value: Math.max(0, Math.round(point.value)),
   }))
+
+  const handleSaveGoal = async () => {
+    const next = Number(goalInput)
+    if (!Number.isFinite(next) || next <= 0) return
+    await onSaveSalesGoal(Math.round(next), goalMonth)
+    setGoalInput("")
+  }
 
   return (
     <div className="space-y-5">
@@ -438,6 +450,24 @@ export function PaidExecutiveDashboardView({
                   A integração de vendas ainda não está conectada. Meta e receita podem estar incompletas.
                 </p>
               )}
+              <div className="mt-3 flex gap-2">
+                <input
+                  type="number"
+                  min={0}
+                  value={goalInput}
+                  onChange={(event) => setGoalInput(event.target.value)}
+                  placeholder="Nova meta mensal (R$)"
+                  className="w-full rounded-lg border border-gray-300 px-3 py-2 text-sm text-gray-700 focus:border-blue-500 focus:outline-none"
+                />
+                <button
+                  type="button"
+                  onClick={handleSaveGoal}
+                  disabled={isSavingSalesGoal}
+                  className="rounded-lg bg-slate-900 px-3 py-2 text-xs font-semibold text-white hover:bg-slate-800 disabled:cursor-not-allowed disabled:opacity-60"
+                >
+                  {isSavingSalesGoal ? "Salvando..." : "Salvar"}
+                </button>
+              </div>
             </div>
             <div className="mt-3 rounded-lg border border-slate-200 bg-slate-50 p-3">
               <p className="text-xs text-slate-600">Meta diária</p>

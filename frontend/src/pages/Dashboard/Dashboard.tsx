@@ -1,5 +1,5 @@
 import { useEffect, useMemo, useState } from "react"
-import { useQuery } from "@tanstack/react-query"
+import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query"
 import { Link, Navigate, useLocation, useNavigate } from "react-router-dom"
 import toast from "react-hot-toast"
 import { useAuth } from "../../contexts/useAuth"
@@ -241,6 +241,7 @@ const ingestionEventFilterOptions: Array<{ value: IngestionEventTypeFilter; labe
 
 const Dashboard = () => {
   const { user, authReady, isAuthenticated } = useAuth()
+  const queryClient = useQueryClient()
   const navigate = useNavigate()
   const location = useLocation()
   const initialParams = new URLSearchParams(location.search)
@@ -295,10 +296,26 @@ const Dashboard = () => {
 
   const { data: revenueProgress } = useQuery<RevenueProgressData>({
     queryKey: ["revenue-progress", selectedStoreOverride],
-    queryFn: salesService.getRevenueProgress,
+    queryFn: () => salesService.getRevenueProgress(),
     staleTime: 60000,
     retry: false,
     enabled: canFetchAuth,
+  })
+  const saveRevenueGoalMutation = useMutation({
+    mutationFn: salesService.saveRevenueGoal,
+    onSuccess: async () => {
+      await Promise.all([
+        queryClient.invalidateQueries({ queryKey: ["revenue-progress"] }),
+        queryClient.invalidateQueries({ queryKey: ["revenue-progress", selectedStoreOverride] }),
+      ])
+      toast.success("Meta mensal salva com sucesso.")
+    },
+    onError: (error: unknown) => {
+      const message =
+        (error as { response?: { data?: { detail?: string } } })?.response?.data?.detail ||
+        "Não foi possível salvar a meta mensal."
+      toast.error(message)
+    },
   })
 
   const selectedStore = useMemo(() => {
@@ -1909,6 +1926,13 @@ const Dashboard = () => {
               targetRevenue: revenueProgress?.target_revenue ?? 0,
               currentRevenue: revenueProgress?.current_revenue ?? 0,
             }}
+            onSaveSalesGoal={(targetRevenue, month) =>
+              saveRevenueGoalMutation.mutateAsync({
+                target_revenue: targetRevenue,
+                month,
+              }).then(() => undefined)
+            }
+            isSavingSalesGoal={saveRevenueGoalMutation.isPending}
             calculationRationale={calculationRationale}
           />
         ) : isNetworkMode ? (
