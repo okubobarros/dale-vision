@@ -300,3 +300,22 @@ Registrar decisões e eventos do dia.
   - Corrigir endpoint/manifesto do `update.ps1` para remover `404` e fechar teste de update remoto.
   - Revalidar checklist de reboot sem login na maquina da loja e anexar evidencias (task + heartbeat + camera_health).
   - Consolidar runbook final de go-live de loja com comandos aprovados de diagnostico rapido.
+
+## 2026-03-19
+- Data: 2026-03-19
+- Highlights:
+  - ROI Editor ajustado para remover ambiguidade operacional: acao unica de ativacao via `Publicar e iniciar`.
+  - Botao redundante `Iniciar monitoramento` removido para evitar dupla acao no mesmo estado.
+  - Mensagem/semantica alinhada com o contrato esperado: publicar ROI ja conclui passo `monitoring_started`.
+  - Edge Setup Wizard ajustado para escala: perfil default agora e `backend_managed` (API-first), com `CAMERAS_JSON=[]` e `STARTUP_TASK_ENABLED=1` no `.env` desse perfil.
+  - Hardening aplicado no endpoint `GET /api/v1/stores/{store_id}/cameras/`: se houver `X-EDGE-TOKEN` explícito e inválido, a API retorna erro de edge e não faz fallback silencioso para sessão JWT de usuário.
+  - Edge Setup Wizard reforçado para escala: perfil `stabilization/local_only` agora exige ativação explícita de contingência; fluxo padrão permanece backend-managed.
+- Decisões:
+  - Fluxo oficial de ROI passa a ser: `Salvar rascunho` -> `Publicar e iniciar` (sem CTA separado de start).
+  - `CAMERAS_JSON` permanece como fallback de contingencia, nao como caminho default de produto.
+- Próximos passos:
+  - Implementar trilha backend-managed para cameras (source of truth no backend + sync no edge por API).
+  - Adicionar validacoes de ROI por metrica (entry/exit, queue, occupancy) para reduzir KPI zerado por configuracao incorreta.
+  - Publicar playbook de calibracao CV com baseline de FN/FP e rotina de comparacao por video gravado.
+  - Referência de execução publicada em `70_ops/Plano_Early_Users_10_2026-03-19.md`.
+  - Validar em loja com token edge inválido proposital para confirmar erro explícito (sem mascarar via JWT de navegador).

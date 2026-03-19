@@ -18,7 +18,7 @@ from django.utils import timezone
 from django.conf import settings
 from django.utils.dateparse import parse_datetime
 from apps.core.models import Store, OrgMember, Organization, Camera, Employee, DetectionEvent, Subscription
-from apps.edge.models import EdgeToken, StoreCalibrationRun
+from apps.edge.models import EdgeToken, StoreCalibrationRun, EdgeEventMinuteStats
 from apps.copilot.models import OperationalWindowHourly
 from apps.edge.auth import validate_store_token, authenticate_edge_token, EdgeAwareJWTAuthentication
 from apps.cameras.limits import (
@@ -345,6 +345,25 @@ def _validate_edge_token_for_store(store_id: str, provided: str) -> bool:
         return True
     return False
 
+
+def _has_explicit_edge_token(request) -> bool:
+    header_token = (
+        (request.headers.get("X-EDGE-TOKEN") if hasattr(request, "headers") else None)
+        or (request.headers.get("X_EDGE_TOKEN") if hasattr(request, "headers") else None)
+        or request.META.get("HTTP_X_EDGE_TOKEN")
+        or (request.headers.get("X-STORE-TOKEN") if hasattr(request, "headers") else None)
+        or request.META.get("HTTP_X_STORE_TOKEN")
+        or ""
+    )
+    if str(header_token).strip():
+        return True
+    query_token = (
+        (request.query_params.get("edge_token") if hasattr(request, "query_params") else None)
+        or (request.GET.get("edge_token") if hasattr(request, "GET") else None)
+        or ""
+    )
+    return bool(str(query_token).strip())
+
 def _get_active_edge_token(store_id):
     return (
         EdgeToken.objects.filter(store_id=store_id, active=True)
@@ -380,6 +399,29 @@ def _edge_token_meta(token_obj):
         "token_created_at": token_obj.created_at.isoformat() if token_obj.created_at else None,
         "token_last_used_at": token_obj.last_used_at.isoformat() if token_obj.last_used_at else None,
     }
+
+
+def _bump_edge_camera_sync_pull(store_id: str):
+    minute_bucket = timezone.now().replace(second=0, microsecond=0)
+    try:
+        row, created = EdgeEventMinuteStats.objects.get_or_create(
+            store_id=store_id,
+            event_name="edge_camera_sync_pull",
+            minute_bucket=minute_bucket,
+            defaults={
+                "count": 1,
+                "last_event_at": timezone.now(),
+                "created_at": timezone.now(),
+                "updated_at": timezone.now(),
+            },
+        )
+        if not created:
+            row.count = int(row.count or 0) + 1
+            row.last_event_at = timezone.now()
+            row.updated_at = timezone.now()
+            row.save(update_fields=["count", "last_event_at", "updated_at"])
+    except Exception:
+        logger.exception("[STORE] failed to bump edge_camera_sync_pull store_id=%s", store_id)
 
 
 def _resolve_cloud_base_url(request=None) -> str:
@@ -1386,12 +1428,23 @@ class StoreViewSet(viewsets.ModelViewSet):
             )
         if request.method == "GET":
             cameras_qs = Camera.objects.select_related("store").filter(store_id=store.id).order_by("-updated_at")
+            edge_token_present = _has_explicit_edge_token(request)
             edge_auth = authenticate_edge_token(request, requested_store_id=str(store.id))
             if edge_auth.ok:
                 # Source-of-truth for edge runtime: only active cameras should be synced.
                 cameras_qs = cameras_qs.filter(active=True)
                 # S1 contract: edge token receives operational payload (single source of truth for RTSP).
+                _bump_edge_camera_sync_pull(str(store.id))
                 return Response(_serialize_cameras_for_edge(cameras_qs))
+            # If caller explicitly sent edge token, do not silently fallback to user session.
+            # This avoids masking edge auth issues during field operations.
+            if edge_token_present:
+                return _error_response(
+                    edge_auth.code or "FORBIDDEN",
+                    edge_auth.detail or "Edge token inválido para esta loja.",
+                    edge_auth.status_code or status.HTTP_401_UNAUTHORIZED,
+                    deprecated_detail=edge_auth.detail or "Edge token inválido para esta loja.",
+                )
             if request.user and request.user.is_authenticated:
                 require_store_role(request.user, str(store.id), ALLOWED_READ_ROLES)
             else:

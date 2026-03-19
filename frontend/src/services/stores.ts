@@ -300,6 +300,9 @@ export interface StoreEdgeStatus {
   store_status?: string;
   store_status_age_seconds?: number | null;
   store_status_reason?: string | null;
+  camera_source_mode_detected?: "api_first" | "local_only_or_unknown" | "unknown" | null;
+  camera_sync_last_pull_at?: string | null;
+  camera_sync_age_seconds?: number | null;
   last_heartbeat: string | null;
   last_heartbeat_at?: string | null;
   last_comm_at?: string | null;
@@ -1011,6 +1014,9 @@ const normalizeEdgeStatus = (
   store_status: data?.store_status,
   store_status_age_seconds: data?.store_status_age_seconds ?? null,
   store_status_reason: data?.store_status_reason ?? null,
+  camera_source_mode_detected: data?.camera_source_mode_detected ?? null,
+  camera_sync_last_pull_at: data?.camera_sync_last_pull_at ?? null,
+  camera_sync_age_seconds: data?.camera_sync_age_seconds ?? null,
   last_heartbeat: data?.last_heartbeat ?? null,
   last_heartbeat_at: data?.last_heartbeat_at ?? null,
   last_comm_at: data?.last_comm_at ?? null,

@@ -38,6 +38,18 @@ const isPrivateIp = (ip: string) => {
 const isPrivateHost = (host: string) => isPrivateIp(host) || host === "localhost"
 const EDGE_HEARTBEAT_FRESH_SECONDS = 120
 const TEST_COOLDOWN_MS = 8000
+const CAMERA_SYNC_RECENT_SECONDS = 300
+
+const formatAgeLabel = (seconds?: number | null) => {
+  if (seconds === null || seconds === undefined || Number.isNaN(seconds)) return null
+  if (seconds < 60) return "agora"
+  if (seconds < 3600) {
+    const minutes = Math.max(1, Math.floor(seconds / 60))
+    return `${minutes} min`
+  }
+  const hours = Math.max(1, Math.floor(seconds / 3600))
+  return `${hours} h`
+}
 
 const FIELD_LABELS: Record<string, string> = {
   name: "Nome",
@@ -189,6 +201,46 @@ const Cameras = () => {
     (edgeStatus?.connectivity_age_seconds !== null &&
       edgeStatus?.connectivity_age_seconds !== undefined &&
       edgeStatus.connectivity_age_seconds <= EDGE_HEARTBEAT_FRESH_SECONDS)
+
+  const cameraSourceSummary = useMemo(() => {
+    const mode = edgeStatus?.camera_source_mode_detected ?? "unknown"
+    const ageLabel = formatAgeLabel(edgeStatus?.camera_sync_age_seconds)
+    if (mode === "api_first") {
+      if (ageLabel) {
+        return {
+          text: `Fonte das câmeras: backend sincronizado (último sync ${ageLabel} atrás).`,
+          className: "text-emerald-700",
+        }
+      }
+      return {
+        text: "Fonte das câmeras: backend sincronizado.",
+        className: "text-emerald-700",
+      }
+    }
+    if (mode === "local_only_or_unknown") {
+      if (
+        edgeStatus?.camera_sync_age_seconds !== null &&
+        edgeStatus?.camera_sync_age_seconds !== undefined &&
+        edgeStatus.camera_sync_age_seconds <= CAMERA_SYNC_RECENT_SECONDS
+      ) {
+        return {
+          text: "Fonte das câmeras: backend sincronizado (instável).",
+          className: "text-amber-700",
+        }
+      }
+      return {
+        text: "Fonte das câmeras: contingência local (.env / CAMERAS_JSON).",
+        className: "text-amber-700",
+      }
+    }
+    return {
+      text: "Fonte das câmeras: aguardando detecção.",
+      className: "text-gray-500",
+    }
+  }, [
+    edgeStatus?.camera_source_mode_detected,
+    edgeStatus?.camera_sync_age_seconds,
+  ])
 
   const edgeCameraMap = useMemo(() => {
     const map = new Map<string, NonNullable<StoreEdgeStatus["cameras"]>[number]>()
@@ -504,13 +556,19 @@ const Cameras = () => {
         monitoringStarted ||
         onboardingNextStep?.stage === "collecting_data" ||
         onboardingNextStep?.stage === "active")
+    const canDrawRoi = hasCamera && (healthOk || edgeOnline)
+    type StepState = "done" | "next" | "pending"
+    const cameraState: StepState = hasCamera ? "done" : "next"
+    const edgeState: StepState = healthOk ? "done" : hasCamera ? "next" : "pending"
+    const roiState: StepState = roiDone ? "done" : canDrawRoi ? "next" : "pending"
     return [
-      { label: "Adicionar câmera", done: hasCamera },
-      { label: "Verificar status no Edge", done: healthOk },
-      { label: "Desenhar ROI", done: roiDone },
+      { label: "Adicionar câmera", state: cameraState },
+      { label: "Verificar status no Edge", state: edgeState },
+      { label: "Desenhar ROI", state: roiState },
     ]
   }, [
     cameras,
+    edgeOnline,
     onboardingNextStep?.stage,
     onboardingProgress?.steps?.roi_published?.completed,
     onboardingProgress?.steps?.monitoring_started?.completed,
@@ -666,6 +724,9 @@ const Cameras = () => {
                       ? "Agente online"
                       : "Agente offline — abra o Edge Agent para retomar o monitoramento."}
                   </p>
+                  <p className={`text-xs mt-1 ${cameraSourceSummary.className}`}>
+                    {cameraSourceSummary.text}
+                  </p>
                 </div>
                 {!edgeOnline && (
                   <button
@@ -708,8 +769,10 @@ const Cameras = () => {
                   <span
                     key={step.label}
                     className={`px-3 py-1 text-xs rounded-full font-semibold ${
-                      step.done
+                      step.state === "done"
                         ? "bg-green-100 text-green-700"
+                        : step.state === "next"
+                        ? "bg-blue-100 text-blue-700"
                         : "bg-gray-100 text-gray-600"
                     }`}
                   >
@@ -717,6 +780,11 @@ const Cameras = () => {
                   </span>
                 ))}
               </div>
+              {stepStates.some((step) => step.label === "Desenhar ROI" && step.state === "next") && (
+                <p className="text-xs text-blue-700">
+                  Próximo passo: abra o ROI de uma câmera e publique a versão.
+                </p>
+              )}
             </div>
           )}
 

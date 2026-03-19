@@ -619,10 +619,6 @@ const CameraRoiEditor = ({ open, camera, canEditRoi = false, onClose }: CameraRo
     }
   }, [buildRoiConfigPayload, cameraId, canEditRoi, completeMonitoringStep, updateRoiMutation])
 
-  const handleStartMonitoring = useCallback(async () => {
-    await completeMonitoringStep(null, false)
-  }, [completeMonitoringStep])
-
   const displayUpdatedAt = useMemo(() => {
     if (!latestUpdatedAt) return "—"
     try {
@@ -707,27 +703,13 @@ const CameraRoiEditor = ({ open, camera, canEditRoi = false, onClose }: CameraRo
                         : "bg-emerald-600 hover:bg-emerald-700"
                     }`}
                   >
-                    Publicar versão
+                    Publicar e iniciar
                   </button>
                 </>
               ) : (
                 <div className="rounded-lg border border-amber-100 bg-amber-50 px-3 py-2 text-xs text-amber-800">
                   Somente leitura. Peça acesso de admin/manager para editar ROI.
                 </div>
-              )}
-              {roiStatus === "published" && (
-                <button
-                  type="button"
-                  onClick={handleStartMonitoring}
-                  disabled={isStartingMonitoring}
-                  className={`rounded-lg px-4 py-2 text-sm font-semibold text-white ${
-                    isStartingMonitoring
-                      ? "bg-gray-300 cursor-not-allowed"
-                      : "bg-indigo-600 hover:bg-indigo-700"
-                  }`}
-                >
-                  {isStartingMonitoring ? "Iniciando..." : "Iniciar monitoramento"}
-                </button>
               )}
               <button
                 type="button"

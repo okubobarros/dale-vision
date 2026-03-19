@@ -22,6 +22,7 @@
 ## Edge token
 - Endpoint de lista de câmeras precisa aceitar `X-EDGE-TOKEN`.
 - Se retornar 403, o worker de visão não processa e só o heartbeat funciona.
+- Em rota de câmera por store, `X-EDGE-TOKEN` explícito inválido deve falhar com erro de edge (401/403) e não pode fazer fallback para JWT de usuário autenticado no navegador.
 
 ## Snapshot / ROI
 - Snapshot 404 antes de upload é comportamento esperado.

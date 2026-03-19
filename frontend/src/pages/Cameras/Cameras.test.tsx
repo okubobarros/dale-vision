@@ -6,6 +6,7 @@ import { renderWithProviders } from "../../test/test-utils"
 
 vi.mock("../../services/stores", () => ({
   storesService: {
+    clearCache: vi.fn(),
     getStores: vi.fn().mockResolvedValue([
       {
         id: "store-1",
@@ -277,6 +278,46 @@ describe("Cameras create camera", () => {
       expect(camerasService.getStoreCameras).toHaveBeenCalledTimes(2)
     })
     expect(await screen.findByText(/Status do Edge: Online/i)).toBeInTheDocument()
+  })
+
+  it("shows local contingency source label when backend sync is not detected", async () => {
+    const { storesService } = await import("../../services/stores")
+    vi.mocked(storesService.getStoreEdgeStatus).mockResolvedValueOnce({
+      online: true,
+      cameras_total: 1,
+      cameras: [],
+      store_status: "online",
+      camera_source_mode_detected: "local_only_or_unknown",
+      camera_sync_age_seconds: 900,
+    })
+
+    renderWithProviders(<Cameras />)
+
+    expect(
+      await screen.findByText(/Fonte das câmeras: contingência local/i)
+    ).toBeInTheDocument()
+  })
+
+  it("shows ROI as next step when edge is online and camera exists", async () => {
+    const { storesService } = await import("../../services/stores")
+    const { camerasService } = await import("../../services/cameras")
+    vi.mocked(storesService.getStoreEdgeStatus).mockResolvedValueOnce({
+      online: true,
+      cameras_total: 1,
+      cameras: [],
+      store_status: "online",
+      camera_source_mode_detected: "api_first",
+      camera_sync_age_seconds: 40,
+    })
+    vi.mocked(camerasService.getStoreCameras).mockResolvedValueOnce([
+      { id: "cam-1", store: "store-1", name: "Entrada", status: "offline" },
+    ])
+
+    renderWithProviders(<Cameras />)
+
+    expect(
+      await screen.findByText(/Próximo passo: abra o ROI de uma câmera e publique a versão\./i)
+    ).toBeInTheDocument()
   })
 
   it("hides ROI button for viewer role when not staff", async () => {

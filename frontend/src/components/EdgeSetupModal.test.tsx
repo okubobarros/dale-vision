@@ -70,7 +70,7 @@ describe("EdgeSetupModal step 2", () => {
     expect(copyButton).toBeDisabled()
   })
 
-  it("renders env content with stabilization profile by default", async () => {
+  it("renders env content with backend managed profile by default", async () => {
     renderWithProviders(
       <EdgeSetupModal open={true} onClose={() => {}} defaultStoreId="store-1" />
     )
@@ -85,9 +85,10 @@ describe("EdgeSetupModal step 2", () => {
       "AGENT_ID=edge-001",
       "HEARTBEAT_INTERVAL_SECONDS=30",
       "CAMERA_HEARTBEAT_INTERVAL_SECONDS=30",
+      "CAMERA_HEALTH_INTERVAL_SECONDS=30",
       "DALE_LOG_DIR=C:\\ProgramData\\DaleVision\\logs",
-      "CAMERA_SOURCE_MODE=local_only",
-      "CAMERA_SYNC_ENABLED=0",
+      "CAMERA_SOURCE_MODE=api_first",
+      "CAMERA_SYNC_ENABLED=1",
       "CAMERA_SYNC_FATAL=0",
       "DASHBOARD_URL=https://app.dalevision.com/app/cameras?store_id=store-1&onboarding=true",
       "AUTO_UPDATE_ENABLED=0",
@@ -96,14 +97,14 @@ describe("EdgeSetupModal step 2", () => {
       "UPDATE_INTERVAL_SECONDS=21600",
       "EDGE_HTTP_TIMEOUT_SECONDS=30",
       "EDGE_ROI_TIMEOUT_SECONDS=20",
-      "VISION_ENABLED=0",
+      "VISION_ENABLED=1",
       "VISION_POLL_SECONDS=10",
       "VISION_SNAPSHOT_TIMEOUT_SECONDS=10",
       "VISION_MODEL_PATH=yolov8n.pt",
-      "VISION_LOCAL_CAMERAS_ONLY=1",
-      "VISION_REMOTE_CAMERA_SYNC_ENABLED=0",
+      "VISION_LOCAL_CAMERAS_ONLY=0",
+      "VISION_REMOTE_CAMERA_SYNC_ENABLED=1",
       "CAMERAS_JSON=[]",
-      "STARTUP_TASK_ENABLED=0",
+      "STARTUP_TASK_ENABLED=1",
     ]
 
     expect(lines.slice(0, expectedPrefix.length)).toEqual(expectedPrefix)
@@ -128,7 +129,28 @@ describe("EdgeSetupModal step 2", () => {
     expect(lines).toContain("VISION_LOCAL_CAMERAS_ONLY=0")
     expect(lines).toContain("VISION_REMOTE_CAMERA_SYNC_ENABLED=1")
     expect(lines).toContain("CAMERAS_JSON=[]")
-    expect(lines).toContain("STARTUP_TASK_ENABLED=0")
+    expect(lines).toContain("STARTUP_TASK_ENABLED=1")
+  })
+
+  it("only enables stabilization profile after contingency toggle", async () => {
+    renderWithProviders(
+      <EdgeSetupModal open={true} onClose={() => {}} defaultStoreId="store-1" />
+    )
+    const user = userEvent.setup()
+    const profileSelect = (await screen.findByLabelText(
+      /Perfil de configuração do agente/i
+    )) as HTMLSelectElement
+
+    expect(profileSelect.value).toBe("backend_managed")
+    await user.selectOptions(profileSelect, "stabilization")
+    expect(profileSelect.value).toBe("backend_managed")
+
+    const contingencyToggle = screen.getByLabelText(
+      /Ativar modo contingência local \(temporário\)/i
+    )
+    await user.click(contingencyToggle)
+    await user.selectOptions(profileSelect, "stabilization")
+    expect(profileSelect.value).toBe("stabilization")
   })
 
   it("shows download confirmed inside step 2 when clicking CTA", async () => {

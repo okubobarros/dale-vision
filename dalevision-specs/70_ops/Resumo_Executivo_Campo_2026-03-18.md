@@ -61,3 +61,13 @@
 - Snapshot upload funcionando.
 - Dashboard carregando sem `401`/`404` críticos.
 - Boot sem login inicia agente automaticamente (task startup em `SYSTEM`).
+
+## Atualização de Execução — 2026-03-19
+- ROI Editor agora opera com acao unica de ativacao:
+  - `Publicar e iniciar` (remove necessidade de clicar `Iniciar monitoramento`).
+- Objetivo do ajuste:
+  - eliminar ambiguidade de UX em campo e reduzir erro operacional de "publiquei mas nao iniciou".
+- Proxima frente em execucao:
+  - Edge Setup Wizard com default `backend_managed` e `.env` de producao com `STARTUP_TASK_ENABLED=1` nesse perfil.
+  - Modo `stabilization/local_only` mantido apenas como contingencia guiada (ativacao manual explicita no wizard).
+  - migrar caminho padrao de cadastro/sync de cameras para backend-managed e reduzir dependencia de `CAMERAS_JSON` manual.

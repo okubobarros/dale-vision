@@ -137,6 +137,27 @@ class StoreCamerasEndpointTests(SimpleTestCase):
 
         self.assertEqual(response.status_code, 401)
 
+    @patch("apps.stores.views.require_store_role")
+    @patch("apps.stores.views.authenticate_edge_token", return_value=SimpleNamespace(ok=False, status_code=401, code="edge_token_invalid", detail="Edge token inválido para esta loja."))
+    def test_get_cameras_explicit_invalid_edge_token_does_not_fallback_to_user_session(
+        self,
+        _token_mock,
+        require_role_mock,
+    ):
+        store = self._mock_store("11111111-1111-1111-1111-111111111111")
+        view = StoreViewSet.as_view({"get": "cameras"}, **StoreViewSet.cameras.kwargs)
+        request = self.factory.get(
+            f"/api/v1/stores/{store.id}/cameras/",
+            HTTP_X_EDGE_TOKEN="invalid-edge-token",
+        )
+        force_authenticate(request, user=self.user)
+
+        with patch.object(StoreViewSet, "get_object", return_value=store):
+            response = view(request, pk=store.id)
+
+        self.assertEqual(response.status_code, 401)
+        require_role_mock.assert_not_called()
+
     @patch("apps.stores.views.CameraSerializer")
     @patch("apps.stores.views.Camera")
     @patch("apps.stores.views.require_store_role")
@@ -568,7 +589,7 @@ class EdgeStatusNoCamerasTests(SimpleTestCase):
     @patch("apps.stores.views_edge_status._get_last_heartbeat", return_value=None)
     @patch("apps.stores.views_edge_status.Camera")
     @patch("apps.stores.views_edge_status.Store")
-    @patch("apps.stores.views_edge_status._get_last_event_receipt_heartbeat")
+    @patch("apps.stores.views_edge_status._get_last_event_receipt_heartbeat", return_value=(None, None, None))
     def test_no_cameras_recent_edge_heartbeat(
         self,
         last_edge_receipt_mock,
@@ -580,10 +601,8 @@ class EdgeStatusNoCamerasTests(SimpleTestCase):
         store_mock.objects.filter.return_value.first.return_value = self._mock_store(store_id)
         camera_mock.objects.filter.return_value.order_by.return_value = []
 
-        ts = (timezone.now() - timezone.timedelta(seconds=30)).isoformat()
-        receipt = MagicMock()
-        receipt.payload = {"data": {"ts": ts, "agent_id": "agent-1", "version": "1.2.3"}}
-        last_edge_receipt_mock.return_value = receipt
+        ts = timezone.now() - timezone.timedelta(seconds=30)
+        last_edge_receipt_mock.return_value = (ts, "agent-1", "1.2.3")
 
         payload, _reason = views_edge_status.compute_store_edge_status_snapshot(store_id)
 
@@ -599,7 +618,7 @@ class EdgeStatusNoCamerasTests(SimpleTestCase):
     @patch("apps.stores.views_edge_status._get_last_heartbeat", return_value=None)
     @patch("apps.stores.views_edge_status.Camera")
     @patch("apps.stores.views_edge_status.Store")
-    @patch("apps.stores.views_edge_status._get_last_event_receipt_heartbeat")
+    @patch("apps.stores.views_edge_status._get_last_event_receipt_heartbeat", return_value=(None, None, None))
     def test_no_cameras_old_edge_heartbeat_offline(
         self,
         last_edge_receipt_mock,
@@ -611,13 +630,8 @@ class EdgeStatusNoCamerasTests(SimpleTestCase):
         store_mock.objects.filter.return_value.first.return_value = self._mock_store(store_id)
         camera_mock.objects.filter.return_value.order_by.return_value = []
 
-        ts = (
-            timezone.now()
-            - timezone.timedelta(seconds=views_edge_status.DEGRADED_SEC + 10)
-        ).isoformat()
-        receipt = MagicMock()
-        receipt.payload = {"data": {"ts": ts, "agent_id": "agent-2", "version": "2.0.0"}}
-        last_edge_receipt_mock.return_value = receipt
+        ts = timezone.now() - timezone.timedelta(seconds=views_edge_status.DEGRADED_SEC + 10)
+        last_edge_receipt_mock.return_value = (ts, "agent-2", "2.0.0")
 
         payload, _reason = views_edge_status.compute_store_edge_status_snapshot(store_id)
 
@@ -641,7 +655,7 @@ class EdgeStatusNoCamerasTests(SimpleTestCase):
         store_id = str(uuid.uuid4())
         store_mock.objects.filter.return_value.first.return_value = self._mock_store(store_id)
         camera_mock.objects.filter.return_value.order_by.return_value = []
-        last_edge_receipt_mock.return_value = None
+        last_edge_receipt_mock.return_value = (None, None, None)
 
         payload, _reason = views_edge_status.compute_store_edge_status_snapshot(store_id)
 

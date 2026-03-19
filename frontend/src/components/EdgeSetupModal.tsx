@@ -54,6 +54,7 @@ const DEFAULT_LOG_DIR = "C:\\ProgramData\\DaleVision\\logs"
 const TOKEN_ROTATED_INSTRUCTION =
   "Token do Edge rotacionado: atualize o .env no computador da loja com o novo EDGE_TOKEN e reinicie o agente."
 const AUTO_UPDATE_PREF_STORAGE_KEY = "dv_edge_setup_auto_update_pref"
+const DEFAULT_ENV_PROFILE: EdgeEnvProfile = "backend_managed"
 
 const getApiError = (err: unknown): ApiErrorLike => {
   if (err && typeof err === "object") {
@@ -176,7 +177,8 @@ const EdgeSetupModal = ({ open, onClose, defaultStoreId }: EdgeSetupModalProps) 
   const [agentId, setAgentId] = useState(DEFAULT_AGENT_ID)
   const [cloudBaseUrl, setCloudBaseUrl] = useState(DEFAULT_CLOUD_BASE_URL)
   const [loadingCreds, setLoadingCreds] = useState(false)
-  const [envProfile, setEnvProfile] = useState<EdgeEnvProfile>("stabilization")
+  const [envProfile, setEnvProfile] = useState<EdgeEnvProfile>(DEFAULT_ENV_PROFILE)
+  const [allowContingencyMode, setAllowContingencyMode] = useState(false)
   const [autoUpdateEnabled, setAutoUpdateEnabled] = useState<boolean>(DEFAULT_AUTO_UPDATE_ENABLED)
   const [setupError, setSetupError] = useState<string | null>(null)
   const [rotatingToken, setRotatingToken] = useState(false)
@@ -250,7 +252,8 @@ const EdgeSetupModal = ({ open, onClose, defaultStoreId }: EdgeSetupModalProps) 
     setEdgeToken("")
     setAgentId(DEFAULT_AGENT_ID)
     setCloudBaseUrl(DEFAULT_CLOUD_BASE_URL)
-    setEnvProfile("stabilization")
+    setEnvProfile(DEFAULT_ENV_PROFILE)
+    setAllowContingencyMode(false)
     setAutoUpdateEnabled(DEFAULT_AUTO_UPDATE_ENABLED)
     setLoadingCreds(false)
     setSetupError(null)
@@ -380,6 +383,7 @@ const EdgeSetupModal = ({ open, onClose, defaultStoreId }: EdgeSetupModalProps) 
       const localCamerasOnly = stabilization ? 1 : 0
       const remoteCameraSyncEnabled = stabilization ? 0 : 1
 
+      const startupTaskEnabled = stabilization ? 0 : 1
       const autoUpdateValue = autoUpdateEnabled ? 1 : 0
       return [
         `CLOUD_BASE_URL=${resolvedCloudBaseUrl}`,
@@ -407,9 +411,10 @@ const EdgeSetupModal = ({ open, onClose, defaultStoreId }: EdgeSetupModalProps) 
         `VISION_LOCAL_CAMERAS_ONLY=${localCamerasOnly}`,
         `VISION_REMOTE_CAMERA_SYNC_ENABLED=${remoteCameraSyncEnabled}`,
         `CAMERAS_JSON=[]`,
-        `STARTUP_TASK_ENABLED=0`,
+        `STARTUP_TASK_ENABLED=${startupTaskEnabled}`,
         ``,
         `# Perfil selecionado: ${stabilization ? "Estabilização (heartbeat/autostart)" : "Backend gerenciado (câmeras no app)"}`,
+        `# Contingência local habilitada: ${stabilization ? "sim" : "não"}`,
         `# Auto-update: ${autoUpdateEnabled ? "ativado" : "desativado"}`,
         `# Avançado (opcional)`,
         `# VISION_MODEL_PATH=yolov8n.pt`,
@@ -959,17 +964,40 @@ const EdgeSetupModal = ({ open, onClose, defaultStoreId }: EdgeSetupModalProps) 
                 <label htmlFor="edge-env-profile" className="block text-xs font-semibold text-gray-600 mb-1">
                   Perfil de configuração do agente
                 </label>
+                <label className="mb-2 flex items-start gap-2 rounded-lg border border-amber-200 bg-amber-50 px-3 py-2 text-xs text-amber-800">
+                  <input
+                    type="checkbox"
+                    checked={allowContingencyMode}
+                    onChange={(e) => {
+                      const enabled = e.target.checked
+                      setAllowContingencyMode(enabled)
+                      if (!enabled) {
+                        setEnvProfile("backend_managed")
+                      }
+                    }}
+                    className="mt-0.5 h-4 w-4 rounded border-amber-300 text-amber-700 focus:ring-amber-500"
+                  />
+                  <span>
+                    Ativar modo contingência local (temporário). Use apenas para diagnóstico de campo.
+                  </span>
+                </label>
                 <select
                   id="edge-env-profile"
                   value={envProfile}
-                  onChange={(e) => setEnvProfile(e.target.value as EdgeEnvProfile)}
+                  onChange={(e) => {
+                    const next = e.target.value as EdgeEnvProfile
+                    if (next === "stabilization" && !allowContingencyMode) return
+                    setEnvProfile(next)
+                  }}
                   className="w-full rounded-lg border border-gray-300 bg-white px-3 py-2 text-xs"
                 >
-                  <option value="stabilization">Estabilização (somente heartbeat/autostart)</option>
-                  <option value="backend_managed">Backend gerenciado (câmeras no app)</option>
+                  <option value="backend_managed">Backend gerenciado (câmeras no app) — recomendado</option>
+                  <option value="stabilization" disabled={!allowContingencyMode}>
+                    Estabilização (somente heartbeat/autostart)
+                  </option>
                 </select>
                 <p className="mt-1 text-xs text-gray-500">
-                  Use estabilização para validar sustentação do sinal. Depois troque para backend gerenciado.
+                  Em produção use backend gerenciado. Estabilização é apenas contingência de diagnóstico.
                 </p>
               </div>
               <div className="mb-3 rounded-lg border border-gray-200 bg-white px-3 py-2">
@@ -1007,7 +1035,8 @@ const EdgeSetupModal = ({ open, onClose, defaultStoreId }: EdgeSetupModalProps) 
                 ) : (
                   <div>
                     Este perfil usa backend como fonte única para câmeras, mantendo{" "}
-                    <span className="font-mono">CAMERAS_JSON=[]</span>.
+                    <span className="font-mono">CAMERAS_JSON=[]</span> e{" "}
+                    <span className="font-mono">STARTUP_TASK_ENABLED=1</span>.
                   </div>
                 )}
                 <div>

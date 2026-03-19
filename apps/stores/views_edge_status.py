@@ -14,6 +14,7 @@ from rest_framework.response import Response
 from rest_framework.views import APIView
 
 from apps.core.models import Camera, CameraHealthLog, Store, OrgMember
+from apps.edge.models import EdgeEventMinuteStats
 from apps.cameras.permissions import get_user_role_for_store, ALLOWED_READ_ROLES
 from apps.core.services.onboarding_progress import OnboardingProgressService
 
@@ -21,6 +22,7 @@ ONLINE_SEC = 120
 DEGRADED_SEC = 300
 EDGE_ONLINE_THRESHOLD_SECONDS = 90
 CAMERA_HEALTH_RECENT_SECONDS = 120
+CAMERA_SYNC_RECENT_SECONDS = 300
 _CAMERA_ACTIVE_COLUMN_EXISTS = None
 logger = logging.getLogger(__name__)
 
@@ -76,6 +78,9 @@ def _empty_payload(store_id, reason: str, detail: str = None, ok: bool = False):
         "cameras": [],
         "last_metric_bucket": None,
         "last_error": None,
+        "camera_source_mode_detected": "unknown",
+        "camera_sync_last_pull_at": None,
+        "camera_sync_age_seconds": None,
     }
     if detail:
         payload["detail"] = detail
@@ -98,7 +103,30 @@ def _with_stable_contract(payload: dict) -> dict:
     payload["last_heartbeat_at"] = payload.get("last_heartbeat_at") or heartbeat
     payload.setdefault("agent_id", None)
     payload.setdefault("version", None)
+    payload.setdefault("camera_source_mode_detected", "unknown")
+    payload.setdefault("camera_sync_last_pull_at", None)
+    payload.setdefault("camera_sync_age_seconds", None)
     return payload
+
+
+def _get_last_camera_sync_pull(store_id):
+    try:
+        row = (
+            EdgeEventMinuteStats.objects.filter(
+                store_id=store_id,
+                event_name="edge_camera_sync_pull",
+            )
+            .order_by("-last_event_at", "-minute_bucket")
+            .first()
+        )
+    except DatabaseOperationForbidden:
+        return None
+    except Exception:
+        logger.exception("[EDGE_STATUS] camera sync pull lookup failed store_id=%s", store_id)
+        return None
+    if not row:
+        return None
+    return _as_datetime(getattr(row, "last_event_at", None) or getattr(row, "minute_bucket", None))
 
 
 def _parse_edge_ts(raw_ts):
@@ -160,7 +188,12 @@ def _get_last_event_receipt_heartbeat(store_id):
 
 
 def _get_edge_heartbeat_fallback(store_id):
-    return _get_last_event_receipt_heartbeat(store_id)
+    value = _get_last_event_receipt_heartbeat(store_id)
+    if isinstance(value, tuple) and len(value) == 3:
+        return value
+    if isinstance(value, datetime):
+        return (value, None, None)
+    return (None, None, None)
 
 
 def compute_store_edge_status_snapshot(store_id):
@@ -264,6 +297,18 @@ def compute_store_edge_status_snapshot(store_id):
         comm_status, comm_age_seconds, comm_reason = classify_age(last_comm_at)
         connectivity_status = comm_status
         connectivity_age_seconds = comm_age_seconds
+        camera_sync_last_pull_at = _get_last_camera_sync_pull(store_id)
+        camera_sync_age_seconds = (
+            int((now - camera_sync_last_pull_at).total_seconds())
+            if camera_sync_last_pull_at
+            else None
+        )
+        if camera_sync_age_seconds is not None and camera_sync_age_seconds <= CAMERA_SYNC_RECENT_SECONDS:
+            camera_source_mode_detected = "api_first"
+        elif cameras_total == 0:
+            camera_source_mode_detected = "unknown"
+        else:
+            camera_source_mode_detected = "local_only_or_unknown"
 
         if cameras_total == 0:
             store_status = "online_no_cameras" if comm_status in ("online", "degraded") else "offline"
@@ -335,6 +380,9 @@ def compute_store_edge_status_snapshot(store_id):
                 "cameras": [],
                 "last_metric_bucket": None,
                 "last_error": None,
+                "camera_source_mode_detected": "unknown",
+                "camera_sync_last_pull_at": None,
+                "camera_sync_age_seconds": None,
                 "detail": "unexpected_error",
                 "request_id": request_id,
                 "debug_error": debug_error,
@@ -363,6 +411,9 @@ def compute_store_edge_status_snapshot(store_id):
         "cameras": cameras_out,
         "last_metric_bucket": None,
         "last_error": last_error,
+        "camera_source_mode_detected": camera_source_mode_detected,
+        "camera_sync_last_pull_at": camera_sync_last_pull_at.isoformat() if camera_sync_last_pull_at else None,
+        "camera_sync_age_seconds": camera_sync_age_seconds,
     }
     if cameras_total == 0:
         payload["online"] = store_status in ("online_no_cameras", "online", "degraded")
