@@ -7,6 +7,7 @@ from collections import defaultdict
 
 from django.conf import settings
 from django.db import connection
+from django.db.utils import OperationalError, ProgrammingError
 from django.utils import timezone
 from django.http import HttpResponse
 from rest_framework.permissions import IsAuthenticated
@@ -626,6 +627,53 @@ def _build_report_payload(*, org_id: str, store_id: str | None, start, end):
         "incident_response": incident_response,
         "action_execution": action_execution,
     }
+    try:
+        with connection.cursor() as cursor:
+            cursor.execute(
+                """
+                SELECT business_date,
+                       flow_in_total,
+                       flow_out_total,
+                       transactions_total,
+                       conversion_rate,
+                       queue_wait_peak,
+                       queue_loss_estimated,
+                       idle_cost_estimated,
+                       money_at_risk,
+                       alerts_total,
+                       useful_alert_rate,
+                       method_version,
+                       updated_at
+                FROM public.store_kpis_daily
+                WHERE org_id = %s
+                  AND (%s IS NULL OR store_id = %s)
+                  AND business_date >= %s::date
+                  AND business_date < %s::date
+                ORDER BY business_date ASC
+                """,
+                [org_id, store_id, store_id, start.date(), end.date()],
+            )
+            rows = cursor.fetchall()
+        payload["kpis_daily_materialized"] = [
+            {
+                "business_date": row[0].isoformat() if row[0] else None,
+                "flow_in_total": int(row[1] or 0),
+                "flow_out_total": int(row[2] or 0),
+                "transactions_total": int(row[3] or 0),
+                "conversion_rate": float(row[4]) if row[4] is not None else None,
+                "queue_wait_peak": float(row[5]) if row[5] is not None else None,
+                "queue_loss_estimated": float(row[6]) if row[6] is not None else None,
+                "idle_cost_estimated": float(row[7]) if row[7] is not None else None,
+                "money_at_risk": float(row[8]) if row[8] is not None else None,
+                "alerts_total": int(row[9] or 0),
+                "useful_alert_rate": float(row[10]) if row[10] is not None else None,
+                "method_version": row[11],
+                "updated_at": row[12].isoformat() if row[12] else None,
+            }
+            for row in rows
+        ]
+    except (ProgrammingError, OperationalError):
+        payload["kpis_daily_materialized"] = []
     return payload
 
 
