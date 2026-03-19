@@ -563,6 +563,54 @@ def _build_report_payload(*, org_id: str, store_id: str | None, start, end):
                 "Leitura orientada a decisao de operacao, nao a auditoria contabil.",
             ],
         },
+        "metric_governance": {
+            "kpis": {
+                "total_visitors": {
+                    "metric_status": "official",
+                    "source_method": "traffic_metrics_footfall_sum",
+                    "ownership_mode": "single_camera_owner",
+                    "label": "Oficial",
+                },
+                "avg_dwell_seconds": {
+                    "metric_status": "estimated",
+                    "source_method": "traffic_metrics_dwell_avg",
+                    "ownership_mode": "single_camera_owner",
+                    "label": "Estimativa",
+                },
+                "avg_queue_seconds": {
+                    "metric_status": "official",
+                    "source_method": "conversion_metrics_queue_avg",
+                    "ownership_mode": "single_camera_owner",
+                    "label": "Oficial",
+                },
+                "avg_conversion_rate": {
+                    "metric_status": "proxy",
+                    "source_method": "checkout_events_over_footfall",
+                    "ownership_mode": "single_camera_owner",
+                    "label": "Proxy",
+                },
+                "total_alerts": {
+                    "metric_status": "official",
+                    "source_method": "detection_events_count",
+                    "ownership_mode": "single_camera_owner",
+                    "label": "Oficial",
+                },
+            },
+            "charts": {
+                "chart_footfall_by_day": {
+                    "metric_status": "official",
+                    "source_method": "traffic_metrics_day_aggregation",
+                    "ownership_mode": "single_camera_owner",
+                    "label": "Oficial",
+                },
+                "chart_footfall_by_hour": {
+                    "metric_status": "official",
+                    "source_method": "traffic_metrics_hour_aggregation",
+                    "ownership_mode": "single_camera_owner",
+                    "label": "Oficial",
+                },
+            },
+        },
         "kpis": {
             "total_visitors": totals["total_visitors"],
             "avg_dwell_seconds": totals["avg_dwell_seconds"],
@@ -719,6 +767,53 @@ def _build_report_impact_payload(*, org_id: str, store_id: str | None, start, en
             "Impacto financeiro baseado em aproximacao de custo por hora e taxa de abandono.",
             "Nao substitui apuracao financeira oficial.",
         ],
+    }
+    payload["metric_governance"] = {
+        **(payload.get("metric_governance") or {}),
+        "impact": {
+            "idle_seconds_total": {
+                "metric_status": "derived",
+                "source_method": "staff_active_vs_footfall_gap_model",
+                "ownership_mode": "single_camera_owner",
+                "label": "Derivada",
+            },
+            "queue_wait_seconds_total": {
+                "metric_status": "estimated",
+                "source_method": "queue_avg_seconds_x_footfall_proxy",
+                "ownership_mode": "single_camera_owner",
+                "label": "Estimativa",
+            },
+            "avg_hourly_labor_cost": {
+                "metric_status": "manual",
+                "source_method": "store_profile_or_default_cost",
+                "ownership_mode": "org_config",
+                "label": "Manual",
+            },
+            "queue_abandon_rate": {
+                "metric_status": "proxy",
+                "source_method": "segment_default_parameter",
+                "ownership_mode": "org_config",
+                "label": "Proxy",
+            },
+            "cost_idle": {
+                "metric_status": "derived",
+                "source_method": "idle_seconds_x_hourly_cost",
+                "ownership_mode": "single_camera_owner",
+                "label": "Derivada",
+            },
+            "cost_queue": {
+                "metric_status": "derived",
+                "source_method": "queue_seconds_x_cost_x_abandon_rate",
+                "ownership_mode": "single_camera_owner",
+                "label": "Derivada",
+            },
+            "potential_monthly_estimated": {
+                "metric_status": "estimated",
+                "source_method": "period_scaled_projection_30d",
+                "ownership_mode": "single_camera_owner",
+                "label": "Estimativa",
+            },
+        },
     }
     payload["segment"] = segment or "default"
     payload["features_blocked"] = [
