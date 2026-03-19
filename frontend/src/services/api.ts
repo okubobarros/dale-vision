@@ -142,6 +142,10 @@ const shouldSuppressTimeoutToast = (url?: string) => {
   return (
     /(^|\/)v1\/me\/status\/?$/.test(u) ||
     /(^|\/)v1\/stores\/?$/.test(u) ||
+    /(^|\/)v1\/stores\/[^/]+\/dashboard\/?$/.test(u) ||
+    /(^|\/)v1\/stores\/[^/]+\/metrics\/summary\/?$/.test(u) ||
+    /(^|\/)v1\/stores\/network_dashboard\/?$/.test(u) ||
+    /(^|\/)v1\/stores\/network\/vision\/ingestion-summary\/?$/.test(u) ||
     /(^|\/)v1\/sales\/progress\/?$/.test(u) ||
     /(^|\/)v1\/onboarding\/next-step\/?/.test(u) ||
     /(^|\/)v1\/onboarding\/progress\/?/.test(u) ||

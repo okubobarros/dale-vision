@@ -246,8 +246,10 @@ const Dashboard = () => {
     queryFn: async () => {
       try {
         return await storesService.getStoresSummary()
-      } catch (error) {
-        console.warn("⚠️ Falha ao buscar stores summary. Usando view=min.", error)
+      } catch {
+        if (import.meta.env.DEV) {
+          console.info("stores summary indisponível no momento, usando payload mínimo")
+        }
         const cachedSummary = storesService.getCachedStoresSummary()
         if (cachedSummary?.length) {
           return cachedSummary
@@ -876,7 +878,10 @@ const Dashboard = () => {
   const shouldShowTrialArtifacts = dashboardExperience.dashboardType === "trial"
   const shouldShowPaidSetupArtifacts = dashboardExperience.dashboardType === "paid_setup"
   const shouldShowExecutiveArtifacts = dashboardExperience.dashboardType === "paid_executive"
-  const showPrincipalDashboard = shouldShowExecutiveArtifacts
+  const showPrincipalDashboard =
+    shouldShowExecutiveArtifacts ||
+    isNetworkMode ||
+    selectedStore !== ALL_STORES_VALUE
   const openCopilot = (prompt?: string) => {
     window.dispatchEvent(
       new CustomEvent("dv-open-copilot", prompt ? { detail: { prompt } } : undefined)
@@ -1731,7 +1736,7 @@ const Dashboard = () => {
             )}
           </div>
 
-          {stores && stores.length > 0 && (
+          {!showPrincipalDashboard && stores && stores.length > 0 && (
             <div className="flex flex-col sm:flex-row sm:items-center gap-2 sm:gap-3">
               <label htmlFor="store-select" className="text-gray-700 font-semibold text-sm">
                 Filtros
@@ -2459,7 +2464,7 @@ const Dashboard = () => {
             </section>
           ) : null}
 
-          {shouldShowExecutiveArtifacts ? (
+          {showPrincipalDashboard ? (
             <PaidExecutiveDashboardView
               stores={stores ?? []}
               copilotPrompts={copilotPrompts}

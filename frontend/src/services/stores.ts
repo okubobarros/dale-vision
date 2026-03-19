@@ -1086,8 +1086,7 @@ export const storesService = {
     try {
       const response = await api.get("/v1/stores/", {
         params: { view: "summary" },
-        timeoutCategory: "best-effort",
-        noRetry: true,
+        timeoutCategory: "critical",
       });
       const payload = response.data;
       const stores = Array.isArray(payload)
