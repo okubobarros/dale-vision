@@ -10,6 +10,7 @@ from apps.core.models import StoreManager
 
 from django.utils import timezone
 from django.db.utils import DataError
+from django.test.testcases import DatabaseOperationForbidden
 from rest_framework import viewsets, permissions, status, serializers
 from rest_framework.decorators import action
 from rest_framework.exceptions import ValidationError
@@ -27,6 +28,7 @@ from apps.core.models import (
     JourneyEvent,
     OrgMember,
 )
+from apps.copilot.models import ActionOutcome, ValueLedgerDaily
 from backend.utils.entitlements import require_trial_active
 from apps.stores.services.user_uuid import ensure_user_uuid
 from apps.stores.services.user_orgs import get_user_org_ids
@@ -44,6 +46,126 @@ from .serializers import (
 from .services import send_event_to_n8n
 
 logger = logging.getLogger(__name__)
+
+
+def _sync_value_ledger_from_outcome(outcome: ActionOutcome):
+    ledger_date = timezone.localtime(outcome.dispatched_at).date() if outcome.dispatched_at else timezone.localdate()
+    defaults = {
+        "value_recovered_brl": 0,
+        "value_at_risk_brl": 0,
+        "actions_dispatched": 0,
+        "actions_completed": 0,
+        "confidence_score_avg": 0,
+        "method_version": "value_ledger_v1_2026-03-15",
+        "created_at": timezone.now(),
+        "updated_at": timezone.now(),
+    }
+    row, _ = ValueLedgerDaily.objects.get_or_create(
+        org_id=outcome.org_id,
+        store_id=outcome.store_id,
+        ledger_date=ledger_date,
+        defaults=defaults,
+    )
+
+    outcomes_qs = ActionOutcome.objects.filter(
+        org_id=outcome.org_id,
+        store_id=outcome.store_id,
+        dispatched_at__date=ledger_date,
+    )
+    agg = outcomes_qs.aggregate(
+        expected_total=models.Sum("impact_expected_brl"),
+        recovered_total=models.Sum("impact_realized_brl"),
+        actions_total=models.Count("id"),
+        actions_completed=models.Sum(
+            models.Case(
+                models.When(status="completed", then=1),
+                default=0,
+                output_field=models.IntegerField(),
+            )
+        ),
+        confidence_avg=models.Avg("confidence_score"),
+    )
+
+    row.value_at_risk_brl = float(agg.get("expected_total") or 0)
+    row.value_recovered_brl = float(agg.get("recovered_total") or 0)
+    row.actions_dispatched = int(agg.get("actions_total") or 0)
+    row.actions_completed = int(agg.get("actions_completed") or 0)
+    row.confidence_score_avg = float(agg.get("confidence_avg") or 0)
+    row.updated_at = timezone.now()
+    row.save(
+        update_fields=[
+            "value_at_risk_brl",
+            "value_recovered_brl",
+            "actions_dispatched",
+            "actions_completed",
+            "confidence_score_avg",
+            "updated_at",
+        ]
+    )
+    return row
+
+
+def _create_action_outcome_from_dispatch(
+    *,
+    org_id,
+    store_id,
+    action_event_id,
+    insight_id: str,
+    action_type: str,
+    channel: str,
+    source: str,
+    expected_impact_brl,
+    confidence_score,
+    context: dict | None,
+    n8n_result: dict | None,
+    now,
+):
+    n8n_result = n8n_result or {}
+    provider_message_id = None
+    try:
+        provider_message_id = (
+            n8n_result.get("data", {}).get("id")
+            if isinstance(n8n_result.get("data"), dict)
+            else None
+        )
+    except Exception:
+        provider_message_id = None
+    ok = bool(n8n_result.get("ok"))
+    status_value = "dispatched" if ok else "failed"
+    delivery_status = "queued" if ok else "failed"
+    delivery_error = None if ok else str(n8n_result)
+
+    try:
+        outcome = ActionOutcome.objects.create(
+            org_id=org_id,
+            store_id=store_id,
+            action_event_id=action_event_id,
+            insight_id=insight_id,
+            action_type=action_type or "whatsapp_delegation",
+            channel=channel or "whatsapp",
+            source=source or "copilot_decision_center",
+            status=status_value,
+            baseline_json=context or {},
+            outcome_json={
+                "n8n": n8n_result,
+                "dispatched_via": "alerts_dispatch",
+            },
+            impact_expected_brl=float(expected_impact_brl or 0),
+            impact_realized_brl=0,
+            confidence_score=int(confidence_score or 0),
+            provider_message_id=provider_message_id,
+            delivery_status=delivery_status,
+            delivery_error=delivery_error,
+            dispatched_at=now,
+            failed_at=now if not ok else None,
+            completed_at=now if not ok else None,
+            created_at=now,
+            updated_at=now,
+        )
+        _sync_value_ledger_from_outcome(outcome)
+        return outcome
+    except DatabaseOperationForbidden:
+        return None
 
 
 # =========================
@@ -583,6 +705,20 @@ class ActionDispatchView(APIView):
                 "request_user": getattr(request.user, "email", None),
             },
         )
+        outcome = _create_action_outcome_from_dispatch(
+            org_id=getattr(store, "org_id", None),
+            store_id=getattr(store, "id", None),
+            action_event_id=getattr(journey_event, "id", None),
+            insight_id=str(validated.get("insight_id")),
+            action_type=str(validated.get("action_type") or "whatsapp_delegation"),
+            channel=str(validated.get("channel") or "whatsapp"),
+            source=str(validated.get("source") or "copilot_decision_center"),
+            expected_impact_brl=validated.get("expected_impact_brl"),
+            confidence_score=validated.get("confidence_score") or 0,
+            context=validated.get("context") or {},
+            n8n_result=n8n_result,
+            now=now,
+        )
 
         status_code = status.HTTP_202_ACCEPTED if n8n_result.get("ok") else status.HTTP_502_BAD_GATEWAY
         return Response(
@@ -590,6 +726,7 @@ class ActionDispatchView(APIView):
                 "ok": bool(n8n_result.get("ok")),
                 "message": "Ação despachada para execução e acompanhamento.",
                 "event_id": str(journey_event.id),
+                "action_outcome_id": str(outcome.id) if outcome else None,
                 "n8n": n8n_result,
             },
             status=status_code,
@@ -1179,6 +1316,25 @@ class DetectionEventViewSet(viewsets.ModelViewSet):
                 "request_user": getattr(request.user, "email", None),
             },
         )
+        outcome = _create_action_outcome_from_dispatch(
+            org_id=event.org_id,
+            store_id=event.store_id,
+            action_event_id=action_dispatched_event.id,
+            insight_id=insight_id,
+            action_type="whatsapp_delegation",
+            channel="whatsapp",
+            source=source,
+            expected_impact_brl=expected_impact_brl,
+            confidence_score=confidence_score or 0,
+            context={
+                "event_id": str(event.id),
+                "employee_id": str(employee.id),
+                "destination": destination,
+                "note": note,
+            },
+            n8n_result=action_dispatched_n8n,
+            now=now,
+        )
 
         log_status = "queued" if n8n_result.get("ok") else "failed"
         provider_message_id = None
@@ -1221,6 +1377,7 @@ class DetectionEventViewSet(viewsets.ModelViewSet):
                 "action_dispatched": {
                     "event_id": str(action_dispatched_event.id),
                     "ok": bool(action_dispatched_n8n.get("ok")),
+                    "action_outcome_id": str(outcome.id) if outcome else None,
                 },
                 "n8n": n8n_result,
             },
