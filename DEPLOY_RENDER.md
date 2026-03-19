@@ -44,3 +44,26 @@ Smoke manual:
 
 Sem Render Jobs (plano Free):
 - usar GitHub Actions agendado (`.github/workflows/copilot_operational_window_tick.yml`)
+
+## Cron Job (Sprint 2 - rebuild diário do ledger)
+Para recompor `value_ledger_daily` (D-1) e gerar evidência de saúde:
+
+1. Criar um Render Cron Job apontando para o mesmo repo/branch do backend.
+2. Command:
+`bash bin/render_job_value_ledger_daily.sh`
+3. Schedule:
+`10 3 * * *`
+4. Variáveis opcionais:
+- `COPILOT_LEDGER_REBUILD_DATE` (default: ontem UTC)
+- `COPILOT_LEDGER_REBUILD_ORG_ID`
+- `COPILOT_LEDGER_REBUILD_STORE_ID`
+- `COPILOT_LEDGER_REBUILD_DELETE_ORPHANS=0|1`
+- `COPILOT_LEDGER_SNAPSHOT_DAYS=7`
+- `COPILOT_LEDGER_SNAPSHOT_MAX_STORES=500`
+- `COPILOT_LEDGER_SNAPSHOT_SLO_SECONDS=900`
+
+Smoke manual:
+`python manage.py rebuild_value_ledger_daily --date 2026-03-18`
+
+Sem Render Jobs (plano Free):
+- usar GitHub Actions agendado (`.github/workflows/copilot_value_ledger_rebuild_daily.yml`)
