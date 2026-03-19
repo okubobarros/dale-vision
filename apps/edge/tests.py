@@ -641,8 +641,10 @@ class EdgeRetailIngestUnitTests(SimpleTestCase):
     @patch("apps.edge.views.TokenAuthentication.authenticate", return_value=None)
     @patch("apps.edge.views.EdgeEventsIngestView._is_edge_request")
     @patch("apps.edge.views.insert_event_receipt_if_new")
+    @patch("apps.edge.views.mark_event_receipt_processed")
     def test_retail_event_ingest_rejects_invalid_contract_without_db(
         self,
+        mark_processed,
         insert_receipt,
         is_edge_request,
         _token_auth,
@@ -663,6 +665,40 @@ class EdgeRetailIngestUnitTests(SimpleTestCase):
         self.assertEqual(response.status_code, 400)
         self.assertEqual(response.data.get("reason"), "retail_event_contract_invalid")
         insert_receipt.assert_not_called()
+        mark_processed.assert_not_called()
+
+    @patch("apps.edge.views.TokenAuthentication.authenticate", return_value=None)
+    @patch("apps.edge.views.EdgeEventsIngestView._is_edge_request")
+    @patch("apps.edge.views.insert_event_receipt_if_new", return_value=False)
+    @patch("apps.edge.views.mark_event_receipt_processed")
+    @patch("apps.edge.views._touch_store_seen")
+    def test_retail_event_ingest_marks_processed_on_dedup(
+        self,
+        _touch_store_seen,
+        mark_processed,
+        insert_receipt,
+        is_edge_request,
+        _token_auth,
+    ):
+        store_id = "11111111-1111-1111-1111-111111111111"
+        is_edge_request.return_value = SimpleNamespace(ok=True, status_code=200, store_id=store_id, code=None, detail=None)
+        payload = {
+            "event_name": "retail.event.v1",
+            "data": {
+                "store_id": store_id,
+                "ts": "2026-03-15T10:32:00Z",
+                "event_type": "queue_length",
+                "value": 6,
+                "source": "edge",
+                "confidence": 0.92,
+            },
+        }
+        request = self.factory.post("/api/edge/events/", payload, format="json")
+        response = EdgeEventsIngestView.as_view()(request)
+        self.assertEqual(response.status_code, 200)
+        self.assertTrue(response.data.get("deduped"))
+        insert_receipt.assert_called_once()
+        mark_processed.assert_called_once()
 
 
 class EdgeSetupTokenTests(TestCase):

@@ -521,6 +521,7 @@ class EdgeEventsIngestView(APIView):
                 )
             except Exception:
                 pass
+            mark_event_receipt_processed(event_id=receipt_id)
             return Response(
                 {"ok": True, "receipt_id": receipt_id or None, "stored": True, "deduped": True},
                 status=status.HTTP_200_OK,

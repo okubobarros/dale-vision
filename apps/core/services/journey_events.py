@@ -43,8 +43,8 @@ def _insert_event_receipt(
     with connection.cursor() as cursor:
         cursor.execute(
             """
-            INSERT INTO public.event_receipts (event_id, event_name, event_version, ts, source, raw, meta)
-            VALUES (%s, %s, %s, now(), %s, %s::jsonb, %s::jsonb)
+            INSERT INTO public.event_receipts (event_id, event_name, event_version, ts, source, raw, meta, processed_at, attempt_count)
+            VALUES (%s, %s, %s, now(), %s, %s::jsonb, %s::jsonb, now(), 1)
             ON CONFLICT (event_id) DO NOTHING
             """,
             [

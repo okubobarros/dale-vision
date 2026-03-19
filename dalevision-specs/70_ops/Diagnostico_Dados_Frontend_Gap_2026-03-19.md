@@ -248,3 +248,15 @@ Sem esses 3 pilares, o produto segue operacional, mas ainda não atinge o nível
   - antes: `metric_type_null=1613`, `roi_null=812`
   - depois: `metric_type_null=1551`, `roi_null=780`
   - observação: ingestão seguia ativa durante a medição (`total` variou na janela).
+
+### 10.7 Execução da etapa 3 (2026-03-19 21:05 BRT)
+- Fechamento de `processed_at` no fluxo live:
+  - `apps/edge/views.py`: caminho de `dedupe` agora chama `mark_event_receipt_processed(event_id=receipt_id)` antes do retorno.
+  - `apps/edge/status_events.py`: eventos `backend` agora marcam `processed_at` quando webhook retorna `<300`; em falha HTTP/exception atualizam `last_error`.
+  - `apps/core/services/journey_events.py`: receipts criados por `log_journey_event` já entram com `processed_at=now()` e `attempt_count=1`.
+- Comando operacional criado para passivo histórico:
+  - `python manage.py backfill_event_receipts_processed_at --limit 20000 --grace-minutes 1`
+- Resultado medido no banco atual:
+  - antes: `processed_null=8652`, `processed_set=0`
+  - depois: `processed_null=10`, `processed_set=8648`
+  - `status`: `processed=8648`, `received=10` (janela recente dentro de grace).

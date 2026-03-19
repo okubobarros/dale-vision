@@ -8,6 +8,8 @@ import requests
 from django.conf import settings
 from django.db import connection
 
+from .vision_metrics import mark_event_receipt_failed, mark_event_receipt_processed
+
 logger = logging.getLogger(__name__)
 
 
@@ -188,8 +190,15 @@ def emit_enveloped_status_event(event_name: str, data: dict, meta: Optional[dict
         resp = requests.post(url, json=envelope, timeout=10)
         if resp.status_code >= 300:
             logger.warning("[STATUS_EVENTS] webhook failed %s %s", resp.status_code, resp.text[:300])
+            mark_event_receipt_failed(
+                event_id=event_id,
+                error_message=f"status_events_webhook_http_{resp.status_code}",
+            )
+            return
+        mark_event_receipt_processed(event_id=event_id)
     except Exception:
         logger.exception("[STATUS_EVENTS] webhook exception")
+        mark_event_receipt_failed(event_id=event_id, error_message="status_events_webhook_exception")
 
 
 def make_receipt_id(prefix: str, entity_id: str, prev: str, curr: str, occurred_at_iso: str) -> str:
