@@ -62,7 +62,8 @@ function App() {
       <Route path="/terms" element={<Terms />} />
 
       {/* Registro + onboarding (público por enquanto) */}
-      <Route path="/register" element={<Register />} />
+      <Route path="/activate" element={<Register />} />
+      <Route path="/register" element={<Navigate to="/activate" replace />} />
       <Route path="/onboarding" element={<Onboarding />} />
 
       {/* Rotas protegidas */}
