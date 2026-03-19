@@ -495,9 +495,13 @@ const Cameras = () => {
       return status === "online" || status === "degraded"
     })
     const roiPublished = Boolean(onboardingProgress?.steps?.roi_published?.completed)
+    const monitoringStarted = Boolean(
+      onboardingProgress?.steps?.monitoring_started?.completed
+    )
     const roiDone =
       hasCamera &&
       (roiPublished ||
+        monitoringStarted ||
         onboardingNextStep?.stage === "collecting_data" ||
         onboardingNextStep?.stage === "active")
     return [
@@ -505,7 +509,12 @@ const Cameras = () => {
       { label: "Verificar status no Edge", done: healthOk },
       { label: "Desenhar ROI", done: roiDone },
     ]
-  }, [cameras, onboardingNextStep?.stage, onboardingProgress?.steps?.roi_published?.completed])
+  }, [
+    cameras,
+    onboardingNextStep?.stage,
+    onboardingProgress?.steps?.roi_published?.completed,
+    onboardingProgress?.steps?.monitoring_started?.completed,
+  ])
 
   const handleTestConnection = useCallback(
     async (cameraId: string) => {

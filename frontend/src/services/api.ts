@@ -31,7 +31,10 @@ const isBestEffortPath = (url?: string) => {
   return (
     /(^|\/)accounts\/supabase\/?$/.test(u) ||
     /(^|\/)v1\/onboarding\/next-step\/?/.test(u) ||
-    /(^|\/)v1\/onboarding\/progress\/?/.test(u)
+    /(^|\/)v1\/onboarding\/progress\/?/.test(u) ||
+    /(^|\/)v1\/me\/status\/?$/.test(u) ||
+    /(^|\/)v1\/stores\/?$/.test(u) ||
+    /(^|\/)v1\/sales\/progress\/?$/.test(u)
   )
 }
 
@@ -131,6 +134,18 @@ const getAuthHeaderValue = (config: AxiosRequestConfig): string | null => {
     return typeof value === "string" ? value : null
   }
   return null
+}
+
+const shouldSuppressTimeoutToast = (url?: string) => {
+  const u = String(url || "")
+  return (
+    /(^|\/)v1\/me\/status\/?$/.test(u) ||
+    /(^|\/)v1\/stores\/?$/.test(u) ||
+    /(^|\/)v1\/sales\/progress\/?$/.test(u) ||
+    /(^|\/)v1\/onboarding\/next-step\/?/.test(u) ||
+    /(^|\/)v1\/onboarding\/progress\/?/.test(u) ||
+    /(^|\/)accounts\/supabase\/?$/.test(u)
+  )
 }
 
 const showTimeoutRetryToast = (config?: RetriableConfig) => {
@@ -313,7 +328,13 @@ api.interceptors.response.use(
       syncApiAuthHeader()
     }
 
-    if (isTimeout && isGet && config?.timeoutCategory !== "best-effort" && !config?.noRetry) {
+    if (
+      isTimeout &&
+      isGet &&
+      config?.timeoutCategory !== "best-effort" &&
+      !config?.noRetry &&
+      !shouldSuppressTimeoutToast(config?.url)
+    ) {
       showTimeoutRetryToast(config)
     }
 
