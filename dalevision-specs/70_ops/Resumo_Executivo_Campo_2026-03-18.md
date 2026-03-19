@@ -71,3 +71,19 @@
   - Edge Setup Wizard com default `backend_managed` e `.env` de producao com `STARTUP_TASK_ENABLED=1` nesse perfil.
   - Modo `stabilization/local_only` mantido apenas como contingencia guiada (ativacao manual explicita no wizard).
   - migrar caminho padrao de cadastro/sync de cameras para backend-managed e reduzir dependencia de `CAMERAS_JSON` manual.
+
+## Atualização Operacional — 2026-03-19 (madrugada)
+- **Autostart de boot (sem login):**
+  - no pacote testado, `startupTaskEnabled=False` e `STARTUP_TASK=DISABLED`;
+  - portanto, **neste setup atual não está garantido** iniciar no boot sem login.
+  - requisito para loja: task `DaleVisionEdgeAgentStartup` (`ONSTART`, `SYSTEM`) ativa.
+- **Auto-update: status atual = NO-GO**
+  - `update.ps1` com:
+    - `UPD006` (policy check `401 Unauthorized`);
+    - `UPD009` (fallback sem release GitHub válido).
+  - validação externa:
+    - `GET https://api.github.com/repos/daleship/dalevision-edge-agent/releases/latest` => `404 Not Found`.
+- **Ações para liberar amanhã cedo:**
+  1. corrigir autenticação/contrato do endpoint `update-policy` para eliminar `401`;
+  2. disponibilizar release/pacote válido para canal `stable` (ou remover fallback GitHub e operar só via policy);
+  3. rerodar checklist `70_ops/S4_AutoUpdate_Validation_Checklist_Notebook_Store.md` com evidência sem `UPD006/UPD009`.

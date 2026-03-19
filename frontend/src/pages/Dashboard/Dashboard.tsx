@@ -1405,6 +1405,87 @@ const Dashboard = () => {
         .slice(0, 6),
     [activeEvents]
   )
+  const averageTicketBRL =
+    parseMaybeNumber((dashboard?.metrics as { avg_cart_value?: unknown } | undefined)?.avg_cart_value) ??
+    85
+  const hourlyRevenueSeries = useMemo(() => {
+    const trafficSeries = metricsSummary?.series?.traffic ?? []
+    const fallbackHours = ["09h", "11h", "13h", "15h", "17h", "19h"]
+    if (trafficSeries.length === 0) {
+      const base = Math.max(300, Math.round(estimatedRevenueGap / 4))
+      return fallbackHours.map((label, index) => ({
+        label,
+        value: Math.max(120, Math.round(base * (0.62 + index * 0.14))),
+      }))
+    }
+    const conversion = Math.max(0.06, (computedConversionRate ?? 14) / 100)
+    return trafficSeries.slice(-8).map((bucket) => {
+      const label = formatTimeSafe(bucket.ts_bucket).replace(":", "h")
+      const value = Math.round((bucket.footfall || 0) * conversion * averageTicketBRL)
+      return {
+        label: label === "—" ? "—" : label,
+        value: Math.max(0, value),
+      }
+    })
+  }, [averageTicketBRL, computedConversionRate, estimatedRevenueGap, metricsSummary?.series?.traffic])
+  const todayRevenueBRL = useMemo(() => {
+    const total = hourlyRevenueSeries.reduce((acc, item) => acc + item.value, 0)
+    if (total > 0) return total
+    return Math.max(3888, Math.round(estimatedRevenueGap * 1.4))
+  }, [estimatedRevenueGap, hourlyRevenueSeries])
+  const todayRevenueDeltaPct = useMemo(() => {
+    const severityPressure = activeEvents.filter((event) => String(event.severity).toLowerCase() === "critical").length
+    return Number(Math.max(-30, Math.min(22, 12 - severityPressure * 4)).toFixed(1))
+  }, [activeEvents])
+  const flowSeries = useMemo(() => {
+    const trafficSeries = metricsSummary?.series?.traffic ?? []
+    if (trafficSeries.length === 0) {
+      return [
+        { label: "09h", value: 38 },
+        { label: "11h", value: 61 },
+        { label: "13h", value: 77 },
+        { label: "15h", value: 69 },
+        { label: "17h", value: 58 },
+        { label: "19h", value: 44 },
+      ]
+    }
+    return trafficSeries.slice(-8).map((bucket) => ({
+      label: formatTimeSafe(bucket.ts_bucket).replace(":", "h"),
+      value: bucket.footfall || 0,
+    }))
+  }, [metricsSummary?.series?.traffic])
+  const copilotStoreName =
+    storeNameById.get(copilotRecommendationNow.storeId) ||
+    networkDashboard?.stores?.find((store) => store.id === copilotRecommendationNow.storeId)?.name ||
+    "loja prioritária"
+  const copilotRecoveryValue = Math.max(120, Math.round(revenueAtRiskDay * 0.26))
+  const copilotHighlight = {
+    message: `Hoje, ${formatCurrencyBRL(revenueAtRiskDay)} em risco por filas. Abrir caixa em ${copilotStoreName} pode recuperar ${formatCurrencyBRL(copilotRecoveryValue)}.`,
+    actionLabel: "Ver ação",
+    actionHref: `/app/operations/stores/${copilotRecommendationNow.storeId}`,
+  }
+  const recentEventItems = timelineItems.slice(0, 5).map((event) => ({
+    id: event.id,
+    title: event.title || "Alerta operacional",
+    severity: String(event.severity || "warning").toLowerCase(),
+    occurredAt: event.occurred_at || event.created_at || null,
+    riskBRL:
+      parseMaybeNumber((event.metadata as { revenue_risk_brl?: unknown } | undefined)?.revenue_risk_brl) ??
+      Math.max(0, Math.round(revenueAtRiskDay * 0.12)),
+  }))
+  const topRiskStoreItems = bottomStores.map((store) => ({
+    id: store.id,
+    name: store.name,
+    metric: store.conversion !== null ? `Conversão ${store.conversion.toFixed(1)}%` : `Eficiência ${store.efficiency ?? 0}%`,
+  }))
+  const topBestStoreItems = topStores.map((store) => ({
+    id: store.id,
+    name: store.name,
+    metric: store.conversion !== null ? `Conversão ${store.conversion.toFixed(1)}%` : `Eficiência ${store.efficiency ?? 0}%`,
+  }))
+  const queueAvgMinutes =
+    typeof computedQueueSeconds === "number" ? computedQueueSeconds / 60 : null
+  const showPosIntegrationCta = !computedConversionRate || computedConversionRate <= 0
   const projectedFlowNextHours = useMemo(() => {
     const baseFlow = Math.max(0, Math.round((computedVisitorFlow ?? 0) / 10))
     const criticalCount = activeEvents.filter(
@@ -2407,10 +2488,25 @@ const Dashboard = () => {
               stores={stores ?? []}
               copilotPrompts={copilotPrompts}
               onOpenCopilot={openCopilot}
+              selectedStoreId={selectedStore}
+              onSelectStore={setSelectedStoreOverride}
+              todayRevenueBRL={todayRevenueBRL}
+              todayRevenueDeltaPct={todayRevenueDeltaPct}
+              revenueSeries={hourlyRevenueSeries}
+              flowSeries={flowSeries}
+              revenueAtRiskBRL={revenueAtRiskDay}
+              conversionAvgPct={computedConversionRate}
+              queueAvgMin={queueAvgMinutes}
+              staffEfficiencyPct={computedHealthScore}
+              topRiskStores={topRiskStoreItems}
+              topBestStores={topBestStoreItems}
+              recentEvents={recentEventItems}
+              copilotHighlight={copilotHighlight}
+              showPosIntegrationCta={showPosIntegrationCta}
             />
           ) : null}
 
-          {rankingRows.length > 0 ? (
+          {!(hasOperationalData && !isNetworkMode) && rankingRows.length > 0 ? (
             <section className="rounded-xl border border-gray-200 bg-white p-4 sm:p-6 shadow-sm">
               <div className="flex items-center justify-between gap-3">
                 <div>
@@ -2447,15 +2543,19 @@ const Dashboard = () => {
             </section>
           ) : null}
 
-          <div className="space-y-2">
-            <h2 className="text-[18px] font-semibold text-gray-900">
-              Resumo de métricas executivas
-            </h2>
-            <p className="text-sm text-gray-600">
-              Indicadores consolidados para apoiar decisão diária de gestão.
-            </p>
-          </div>
-          <DashboardKpiStrip items={kpiItems} />
+          {!(hasOperationalData && !isNetworkMode) && (
+            <>
+            <div className="space-y-2">
+              <h2 className="text-[18px] font-semibold text-gray-900">
+                Resumo de métricas executivas
+              </h2>
+              <p className="text-sm text-gray-600">
+                Indicadores consolidados para apoiar decisão diária de gestão.
+              </p>
+            </div>
+            <DashboardKpiStrip items={kpiItems} />
+            </>
+          )}
           </>
         )}
       </section>

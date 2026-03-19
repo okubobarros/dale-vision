@@ -172,6 +172,7 @@ Regra de decisao:
 5. Usar runbook de campo: `docs/OPS_S4_FIELD_VALIDATION_RUNBOOK.md`.
 6. Usar playbook de 30 minutos: `70_ops/S4_Field_Validation_30min_Playbook.md`.
 7. Seguir prioridades de codigo pre-field: `70_ops/S4_Code_Priorities_PreField.md`.
+8. Executar checklist operacional de update: `70_ops/S4_AutoUpdate_Validation_Checklist_Notebook_Store.md`.
 
 ## Roteiro pratico para validacao de campo (amanha)
 

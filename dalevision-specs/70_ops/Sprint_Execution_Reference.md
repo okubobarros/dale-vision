@@ -55,6 +55,8 @@ Leitura de sprint:
 - canal `stable/canary`;
 - eventos de update (`started`, `downloaded`, `activated`, `healthy`, `rolled_back`, `failed`).
 2. Publicar runbook de rollback remoto.
+3. Rodar checklist de validacao notebook+loja:
+- `70_ops/S4_AutoUpdate_Validation_Checklist_Notebook_Store.md`.
 
 Status atual (2026-03-16):
 - contrato backend em andamento com validacao tecnica de idempotencia no `update-report` e fingerprint de policy no `update-policy`;

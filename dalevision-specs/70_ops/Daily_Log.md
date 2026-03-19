@@ -310,12 +310,25 @@ Registrar decisões e eventos do dia.
   - Edge Setup Wizard ajustado para escala: perfil default agora e `backend_managed` (API-first), com `CAMERAS_JSON=[]` e `STARTUP_TASK_ENABLED=1` no `.env` desse perfil.
   - Hardening aplicado no endpoint `GET /api/v1/stores/{store_id}/cameras/`: se houver `X-EDGE-TOKEN` explícito e inválido, a API retorna erro de edge e não faz fallback silencioso para sessão JWT de usuário.
   - Edge Setup Wizard reforçado para escala: perfil `stabilization/local_only` agora exige ativação explícita de contingência; fluxo padrão permanece backend-managed.
+  - Validacao de auto-update em notebook (madrugada) executada com evidência:
+    - task `DaleVisionEdgeAgentUpdate` criada com sucesso via `02_INSTALAR_AUTOSTART.bat`;
+    - `update.ps1` retornou `UPD006` (`401 Unauthorized` no policy check) e `UPD009` (`404` no fallback GitHub release).
+  - Validacao de fallback GitHub confirmada:
+    - `GET https://api.github.com/repos/daleship/dalevision-edge-agent/releases/latest` retornou `404 Not Found`.
+  - Status de autostart no pacote validado:
+    - no log de instalacao, `startupTaskEnabled=False` e `STARTUP_TASK=DISABLED` (sem task `ONSTART` em `SYSTEM` nesse setup).
 - Decisões:
   - Fluxo oficial de ROI passa a ser: `Salvar rascunho` -> `Publicar e iniciar` (sem CTA separado de start).
   - `CAMERAS_JSON` permanece como fallback de contingencia, nao como caminho default de produto.
+  - Auto-update permanece `NO-GO` para campo ate remover os dois bloqueios: `401` no policy check e `404` no fallback de release.
 - Próximos passos:
   - Implementar trilha backend-managed para cameras (source of truth no backend + sync no edge por API).
   - Adicionar validacoes de ROI por metrica (entry/exit, queue, occupancy) para reduzir KPI zerado por configuracao incorreta.
   - Publicar playbook de calibracao CV com baseline de FN/FP e rotina de comparacao por video gravado.
   - Referência de execução publicada em `70_ops/Plano_Early_Users_10_2026-03-19.md`.
   - Validar em loja com token edge inválido proposital para confirmar erro explícito (sem mascarar via JWT de navegador).
+  - Amanhã cedo:
+    1. corrigir autenticacao de `update-policy` no `update.ps1`/backend para eliminar `UPD006 (401)`;
+    2. publicar release/endpoint válido para fallback (ou remover fallback GitHub) para eliminar `UPD009 (404)`;
+    3. repetir checklist `S4_AutoUpdate_Validation_Checklist_Notebook_Store.md`;
+    4. só após isso habilitar `AUTO_UPDATE_ENABLED=1` na máquina da loja.
