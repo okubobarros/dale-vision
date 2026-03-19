@@ -876,7 +876,7 @@ const Dashboard = () => {
   const shouldShowTrialArtifacts = dashboardExperience.dashboardType === "trial"
   const shouldShowPaidSetupArtifacts = dashboardExperience.dashboardType === "paid_setup"
   const shouldShowExecutiveArtifacts = dashboardExperience.dashboardType === "paid_executive"
-  const showPrincipalDashboard = shouldShowExecutiveArtifacts && hasOperationalData
+  const showPrincipalDashboard = shouldShowExecutiveArtifacts
   const openCopilot = (prompt?: string) => {
     window.dispatchEvent(
       new CustomEvent("dv-open-copilot", prompt ? { detail: { prompt } } : undefined)
@@ -2448,7 +2448,7 @@ const Dashboard = () => {
             )}
           </section>
 
-          {!hasOperationalData ? (
+          {!showPrincipalDashboard && !hasOperationalData ? (
             <section className="rounded-xl border border-indigo-200 bg-gradient-to-r from-indigo-50 to-blue-50 p-4 sm:p-6">
               <h3 className="text-base sm:text-lg font-semibold text-gray-900">Carregando Inteligência</h3>
               <p className="mt-1 text-sm text-gray-700">
@@ -2459,7 +2459,28 @@ const Dashboard = () => {
             </section>
           ) : null}
 
-          {!isNetworkMode && shouldShowTrialArtifacts && !hasOperationalData ? (
+          {shouldShowExecutiveArtifacts ? (
+            <PaidExecutiveDashboardView
+              stores={stores ?? []}
+              copilotPrompts={copilotPrompts}
+              onOpenCopilot={openCopilot}
+              selectedStoreId={selectedStore}
+              onSelectStore={setSelectedStoreOverride}
+              todayRevenueBRL={todayRevenueBRL}
+              todayRevenueDeltaPct={todayRevenueDeltaPct}
+              revenueSeries={hourlyRevenueSeries}
+              flowSeries={flowSeries}
+              revenueAtRiskBRL={revenueAtRiskDay}
+              conversionAvgPct={computedConversionRate}
+              queueAvgMin={queueAvgMinutes}
+              staffEfficiencyPct={computedHealthScore}
+              topRiskStores={topRiskStoreItems}
+              topBestStores={topBestStoreItems}
+              recentEvents={recentEventItems}
+              copilotHighlight={copilotHighlight}
+              showPosIntegrationCta={showPosIntegrationCta}
+            />
+          ) : !isNetworkMode && shouldShowTrialArtifacts && !hasOperationalData ? (
             <TrialDashboardView
               trialUiState={trialUiState}
               trialCollectedHours={trialCollectedHours}
@@ -2490,30 +2511,9 @@ const Dashboard = () => {
               onOpenSetup={() => setEdgeSetupOpen(true)}
               onOpenCopilot={openCopilot}
             />
-          ) : !isNetworkMode && hasOperationalData ? (
-            <PaidExecutiveDashboardView
-              stores={stores ?? []}
-              copilotPrompts={copilotPrompts}
-              onOpenCopilot={openCopilot}
-              selectedStoreId={selectedStore}
-              onSelectStore={setSelectedStoreOverride}
-              todayRevenueBRL={todayRevenueBRL}
-              todayRevenueDeltaPct={todayRevenueDeltaPct}
-              revenueSeries={hourlyRevenueSeries}
-              flowSeries={flowSeries}
-              revenueAtRiskBRL={revenueAtRiskDay}
-              conversionAvgPct={computedConversionRate}
-              queueAvgMin={queueAvgMinutes}
-              staffEfficiencyPct={computedHealthScore}
-              topRiskStores={topRiskStoreItems}
-              topBestStores={topBestStoreItems}
-              recentEvents={recentEventItems}
-              copilotHighlight={copilotHighlight}
-              showPosIntegrationCta={showPosIntegrationCta}
-            />
           ) : null}
 
-          {!(hasOperationalData && !isNetworkMode) && rankingRows.length > 0 ? (
+          {!showPrincipalDashboard && !(hasOperationalData && !isNetworkMode) && rankingRows.length > 0 ? (
             <section className="rounded-xl border border-gray-200 bg-white p-4 sm:p-6 shadow-sm">
               <div className="flex items-center justify-between gap-3">
                 <div>
@@ -2550,7 +2550,7 @@ const Dashboard = () => {
             </section>
           ) : null}
 
-          {!(hasOperationalData && !isNetworkMode) && (
+          {!showPrincipalDashboard && !(hasOperationalData && !isNetworkMode) && (
             <>
             <div className="space-y-2">
               <h2 className="text-[18px] font-semibold text-gray-900">
@@ -2568,7 +2568,7 @@ const Dashboard = () => {
       </section>
 
       <div className="space-y-4 sm:space-y-6">
-          {isTrialCeoMode && !showPrincipalDashboard && (
+          {isTrialCeoMode && (
             <div className="space-y-4 sm:space-y-6">
               <div className="bg-white rounded-xl shadow-sm border border-gray-100 p-4 sm:p-6">
                 <div className="flex items-center justify-between gap-3 mb-4">
@@ -2743,7 +2743,7 @@ const Dashboard = () => {
               )}
             </>
           )}
-          {isTrialCeoMode && !showPrincipalDashboard && (
+          {isTrialCeoMode && (
             <AlertsSection
               storeSelected={Boolean(selectedStore && selectedStore !== ALL_STORES_VALUE)}
               storeName={selectedStoreItem?.name ?? null}
