@@ -272,3 +272,34 @@ Sem esses 3 pilares, o produto segue operacional, mas ainda não atinge o nível
   - `status=healthy`
   - `pending_aged=30`
   - `max_pending=50`
+
+### 10.9 Execução da etapa 5 (2026-03-19 21:55 BRT)
+- Automação contínua para redução de nulos em `conversion_metrics` implementada:
+  - script Render: `bin/render_job_conversion_identity_health.sh`
+  - workflow GitHub: `.github/workflows/conversion_metrics_identity_health.yml` (hora em hora).
+- Health check com threshold de identidade:
+  - comando: `python manage.py conversion_metrics_identity_health --max-null-rate 65 --fail-on-breach`
+  - JSON de evidência com:
+    - `metric_type_null`
+    - `roi_entity_id_null`
+    - `any_identity_null`
+    - `null_rate_pct`
+    - top `metric_type`.
+- Estratégia de endurecimento definida:
+  - threshold inicial `65%` (baseline atual),
+  - redução progressiva para `40%`, `20%` e meta `<=5%`.
+
+### 10.10 Execução da etapa 6 (2026-03-19 22:20 BRT)
+- Nova automação para identidade de `conversion_metrics`:
+  - comando health: `conversion_metrics_identity_health`
+  - script Render: `bin/render_job_conversion_identity_health.sh`
+  - workflow GitHub: `.github/workflows/conversion_metrics_identity_health.yml` (hora em hora).
+- Threshold inicial configurado:
+  - `max_null_rate=65%` (baseline atual), com endurecimento por etapas.
+- Execução real desta rodada (manual):
+  - antes: `metric_type_null=1596`, `roi_null=803`, `any_null=1596`, `total=2574`
+  - backfill: 2 batches de 120 (`updated=240`)
+  - depois: `metric_type_null=1361`, `roi_null=686`, `any_null=1361`, `total=2581`
+  - redução efetiva:
+    - `metric_type_null`: -235
+    - `roi_null`: -117

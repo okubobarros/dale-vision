@@ -86,3 +86,23 @@ Smoke manual:
 
 Sem Render Jobs (plano Free):
 - usar GitHub Actions agendado (`.github/workflows/event_receipts_processing_health.yml`)
+
+## Cron Job (Qualidade de identidade em conversion_metrics)
+Para reduzir e monitorar nulos de `metric_type` e `roi_entity_id`:
+
+1. Criar um Render Cron Job no backend.
+2. Command:
+`bash bin/render_job_conversion_identity_health.sh`
+3. Schedule:
+`40 * * * *`
+4. Variáveis opcionais:
+- `CONVERSION_IDENTITY_BACKFILL_LIMIT=200`
+- `CONVERSION_IDENTITY_BACKFILL_BATCHES=2`
+- `CONVERSION_IDENTITY_MAX_NULL_RATE=65`
+- `CONVERSION_IDENTITY_STORE_ID` (opcional)
+
+Smoke manual:
+`python manage.py conversion_metrics_identity_health --max-null-rate 65`
+
+Sem Render Jobs (plano Free):
+- usar GitHub Actions agendado (`.github/workflows/conversion_metrics_identity_health.yml`)

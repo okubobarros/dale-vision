@@ -1,0 +1,89 @@
+name: Conversion Metrics Identity Health
+
+on:
+  schedule:
+    - cron: "40 * * * *"
+  workflow_dispatch:
+    inputs:
+      backfill_limit:
+        description: "Linhas por batch no backfill"
+        required: false
+        default: "200"
+      backfill_batches:
+        description: "Quantidade de batches por execução"
+        required: false
+        default: "2"
+      max_null_rate:
+        description: "Threshold máximo de nulos (%)"
+        required: false
+        default: "65"
+      store_id:
+        description: "UUID da loja (opcional)"
+        required: false
+        default: ""
+
+concurrency:
+  group: conversion-metrics-identity-health
+  cancel-in-progress: false
+
+jobs:
+  backfill-and-check:
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    env:
+      FORCE_JAVASCRIPT_ACTIONS_TO_NODE24: "true"
+      DJANGO_SECRET_KEY: ${{ secrets.DJANGO_SECRET_KEY }}
+      DEBUG: "0"
+      DATABASE_URL: ${{ secrets.DATABASE_URL }}
+      ALLOWED_HOSTS: ${{ secrets.ALLOWED_HOSTS || 'api.dalevision.com,.onrender.com' }}
+      BACKFILL_LIMIT: ${{ github.event.inputs.backfill_limit || vars.CONVERSION_IDENTITY_BACKFILL_LIMIT || '200' }}
+      BACKFILL_BATCHES: ${{ github.event.inputs.backfill_batches || vars.CONVERSION_IDENTITY_BACKFILL_BATCHES || '2' }}
+      MAX_NULL_RATE: ${{ github.event.inputs.max_null_rate || vars.CONVERSION_IDENTITY_MAX_NULL_RATE || '65' }}
+      STORE_ID: ${{ github.event.inputs.store_id || vars.CONVERSION_IDENTITY_STORE_ID || '' }}
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Setup Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+
+      - name: Install dependencies
+        run: |
+          python -m pip install --upgrade pip setuptools wheel
+          pip install -r requirements.prod.txt
+
+      - name: Backfill conversion identity
+        run: |
+          for i in $(seq 1 "${BACKFILL_BATCHES}"); do
+            if [ -n "${STORE_ID}" ]; then
+              python manage.py backfill_conversion_metric_identity --store-id "${STORE_ID}" --limit "${BACKFILL_LIMIT}"
+            else
+              python manage.py backfill_conversion_metric_identity --limit "${BACKFILL_LIMIT}"
+            fi
+          done
+
+      - name: Generate identity health snapshot
+        run: |
+          mkdir -p artifacts
+          if [ -n "${STORE_ID}" ]; then
+            python manage.py conversion_metrics_identity_health \
+              --store-id "${STORE_ID}" \
+              --max-null-rate "${MAX_NULL_RATE}" \
+              --json-output "artifacts/conversion_metrics_identity_health.json" \
+              --fail-on-breach
+          else
+            python manage.py conversion_metrics_identity_health \
+              --max-null-rate "${MAX_NULL_RATE}" \
+              --json-output "artifacts/conversion_metrics_identity_health.json" \
+              --fail-on-breach
+          fi
+
+      - name: Upload identity health artifact
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: conversion-metrics-identity-health
+          path: artifacts/conversion_metrics_identity_health.json
