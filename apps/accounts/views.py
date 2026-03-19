@@ -35,6 +35,7 @@ from apps.core.models import (
     NotificationLog,
     OnboardingProgress,
 )
+from apps.copilot.models import ActionOutcome, ValueLedgerDaily
 from apps.stores.services.user_uuid import upsert_user_id_map
 from apps.core.services.journey_events import log_journey_event
 from backend.utils.entitlements import (
@@ -628,6 +629,59 @@ class AdminControlTowerSummaryView(APIView):
             ),
         }
 
+        value_loop = {
+            "outcomes_24h": cls._safe_count(
+                "value_loop_outcomes_24h",
+                lambda: ActionOutcome.objects.filter(dispatched_at__gte=day_ago).count(),
+            ),
+            "outcomes_completed_24h": cls._safe_count(
+                "value_loop_outcomes_completed_24h",
+                lambda: ActionOutcome.objects.filter(dispatched_at__gte=day_ago, status="completed").count(),
+            ),
+            "ledger_rows_24h": cls._safe_count(
+                "value_loop_ledger_rows_24h",
+                lambda: ValueLedgerDaily.objects.filter(updated_at__gte=day_ago).count(),
+            ),
+            "stores_with_outcomes_24h": cls._safe_count(
+                "value_loop_stores_with_outcomes_24h",
+                lambda: ActionOutcome.objects.filter(dispatched_at__gte=day_ago)
+                .values("store_id")
+                .distinct()
+                .count(),
+            ),
+            "stores_with_ledger_update_24h": cls._safe_count(
+                "value_loop_stores_with_ledger_24h",
+                lambda: ValueLedgerDaily.objects.filter(updated_at__gte=day_ago)
+                .values("store_id")
+                .distinct()
+                .count(),
+            ),
+        }
+        try:
+            stores_outcomes = int(value_loop.get("stores_with_outcomes_24h") or 0)
+            stores_ledger = int(value_loop.get("stores_with_ledger_update_24h") or 0)
+            outcomes = int(value_loop.get("outcomes_24h") or 0)
+            outcomes_completed = int(value_loop.get("outcomes_completed_24h") or 0)
+            value_loop["ledger_coverage_rate"] = (
+                round((stores_ledger / stores_outcomes) * 100, 1) if stores_outcomes > 0 else 0.0
+            )
+            value_loop["outcome_completion_rate"] = (
+                round((outcomes_completed / outcomes) * 100, 1) if outcomes > 0 else 0.0
+            )
+            if outcomes == 0:
+                health = "no_data"
+            elif value_loop["ledger_coverage_rate"] >= 90 and value_loop["outcome_completion_rate"] >= 40:
+                health = "healthy"
+            elif value_loop["ledger_coverage_rate"] >= 60:
+                health = "partial"
+            else:
+                health = "degraded"
+            value_loop["health"] = health
+        except Exception:
+            value_loop["ledger_coverage_rate"] = None
+            value_loop["outcome_completion_rate"] = None
+            value_loop["health"] = "unknown"
+
         return {
             "generated_at": now.isoformat(),
             "users": users,
@@ -637,6 +691,7 @@ class AdminControlTowerSummaryView(APIView):
             "subscriptions": subscriptions,
             "incidents": incidents,
             "onboarding": onboarding,
+            "value_loop": value_loop,
         }
 
     def get(self, request):
