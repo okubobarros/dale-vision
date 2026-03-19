@@ -48,6 +48,16 @@ export type AdminControlTowerSummary = {
     in_progress: number | null
     not_started: number | null
   }
+  value_loop?: {
+    outcomes_24h: number | null
+    outcomes_completed_24h: number | null
+    ledger_rows_24h: number | null
+    stores_with_outcomes_24h: number | null
+    stores_with_ledger_update_24h: number | null
+    ledger_coverage_rate: number | null
+    outcome_completion_rate: number | null
+    health: "healthy" | "partial" | "degraded" | "no_data" | "unknown" | string
+  }
 }
 
 export const adminService = {
@@ -58,4 +68,3 @@ export const adminService = {
     return response.data as AdminControlTowerSummary
   },
 }
-

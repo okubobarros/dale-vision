@@ -12,6 +12,11 @@ const formatNumber = (value: number | null | undefined) => {
   return new Intl.NumberFormat("pt-BR").format(value)
 }
 
+const formatPercent = (value: number | null | undefined) => {
+  if (value === null || value === undefined || Number.isNaN(value)) return "—"
+  return `${new Intl.NumberFormat("pt-BR", { maximumFractionDigits: 1 }).format(value)}%`
+}
+
 const daysUntil = (iso?: string | null) => {
   if (!iso) return null
   const date = new Date(iso)
@@ -170,6 +175,16 @@ export default function AdminControlTower() {
               <Card title="Lojas sem sinal recente" value={formatNumber(summary?.incidents.stores_without_recent_signal)} />
               <Card title="Onboarding em progresso" value={formatNumber(summary?.onboarding.in_progress)} />
               <Card title="Câmeras offline" value={formatNumber(summary?.cameras.offline)} />
+            </div>
+          </section>
+
+          <section className="space-y-3">
+            <h2 className="text-sm font-semibold text-gray-800 uppercase tracking-wide">Loop de valor do Copilot (24h)</h2>
+            <div className="grid grid-cols-1 gap-3 md:grid-cols-4">
+              <Card title="Outcomes 24h" value={formatNumber(summary?.value_loop?.outcomes_24h)} />
+              <Card title="Outcomes concluídos" value={formatNumber(summary?.value_loop?.outcomes_completed_24h)} />
+              <Card title="Cobertura ledger" value={formatPercent(summary?.value_loop?.ledger_coverage_rate)} />
+              <Card title="Health loop" value={String(summary?.value_loop?.health ?? "—")} />
             </div>
           </section>
 

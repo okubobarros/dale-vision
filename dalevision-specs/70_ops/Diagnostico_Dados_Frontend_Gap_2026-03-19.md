@@ -190,3 +190,48 @@ Priorizar imediatamente:
 3) fechamento do loop de valor do Copilot (ação -> resultado -> dinheiro).
 
 Sem esses 3 pilares, o produto segue operacional, mas ainda não atinge o nível de confiabilidade estratégica esperado pelo documento técnico.
+
+## 10) Atualização desta etapa (2026-03-19 19:45 BRT)
+
+### 10.1 Snapshot validado em banco agora
+- `vision_atomic_events`: 1687 linhas (max `ts`: 2026-03-19 22:44:38Z).
+- `event_receipts`: 8271 linhas (max `received_at`: 2026-03-19 22:44:39Z).
+- `traffic_metrics`: 2409 linhas (max `ts_bucket`: 2026-03-19 22:44:30Z).
+- `conversion_metrics`: 2407 linhas (max `ts_bucket`: 2026-03-19 22:44:30Z).
+- `action_outcome`: 0 linhas.
+- `value_ledger_daily`: 0 linhas.
+- `stores`: 1 loja com sinal nas tabelas de visão/métricas nas últimas 24h.
+
+### 10.2 Gaps críticos observados nesta rodada
+1. `event_receipts` permanece sem fechamento operacional:
+- `processed_at` nulo em `8271/8271` (100%).
+
+2. `conversion_metrics` ainda tem quebra de contrato semântico:
+- `metric_type` nulo em `1585/2407` (~65.9%).
+- `roi_entity_id` nulo em `798/2407` (~33.2%).
+
+3. Loop de valor do Copilot segue sem evidência de produção:
+- sem outcomes registrados (`action_outcome=0`) e sem ledger diário (`value_ledger_daily=0`).
+
+### 10.3 Frontend: dados efetivamente consumidos (status)
+- Endpoint `/v1/me/admin/control-tower/summary/` agora já expõe `value_loop` no backend e o frontend passou a renderizar:
+  - outcomes 24h
+  - outcomes concluídos
+  - cobertura do ledger
+  - health do loop
+- Isso elimina um gap de observabilidade: antes o backend calculava health parcial e o front não mostrava.
+
+### 10.4 Entregas técnicas desta etapa
+- Comando operacional criado:
+  - `python manage.py rebuild_value_ledger_daily --date YYYY-MM-DD [--store-id ...] [--org-id ...] [--delete-orphans]`
+- Admin summary com bloco `value_loop`:
+  - volume de outcomes
+  - cobertura de atualização do ledger
+  - taxa de conclusão
+  - health consolidado (`healthy|partial|degraded|no_data|unknown`).
+
+### 10.5 To-do imediato (próxima etapa)
+- [ ] Agendar job diário de `rebuild_value_ledger_daily` (janela D-1) com evidência de execução.
+- [ ] Corrigir preenchimento de `metric_type` e `roi_entity_id` em `conversion_metrics` no pipeline legado (compat).
+- [ ] Passar a atualizar `event_receipts.processed_at` ao final de toda projeção aplicada (incluindo legados).
+- [ ] Definir SLO do loop Copilot (`outcomes_24h > 0` e `ledger_coverage_rate >= 90%`) com alerta automático.
