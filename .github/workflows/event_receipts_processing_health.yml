@@ -1,0 +1,73 @@
+name: Event Receipts Processing Health
+
+on:
+  schedule:
+    - cron: "20 * * * *"
+  workflow_dispatch:
+    inputs:
+      grace_minutes:
+        description: "Ignora receipts recentes nesta janela"
+        required: false
+        default: "5"
+      backfill_limit:
+        description: "Limite de linhas para backfill por execução"
+        required: false
+        default: "20000"
+      max_pending:
+        description: "Threshold de pendências (aged) para alerta"
+        required: false
+        default: "50"
+
+concurrency:
+  group: event-receipts-processing-health
+  cancel-in-progress: false
+
+jobs:
+  backfill-and-check:
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    env:
+      FORCE_JAVASCRIPT_ACTIONS_TO_NODE24: "true"
+      DJANGO_SECRET_KEY: ${{ secrets.DJANGO_SECRET_KEY }}
+      DEBUG: "0"
+      DATABASE_URL: ${{ secrets.DATABASE_URL }}
+      ALLOWED_HOSTS: ${{ secrets.ALLOWED_HOSTS || 'api.dalevision.com,.onrender.com' }}
+      GRACE_MINUTES: ${{ github.event.inputs.grace_minutes || vars.EVENT_RECEIPTS_GRACE_MINUTES || '5' }}
+      BACKFILL_LIMIT: ${{ github.event.inputs.backfill_limit || vars.EVENT_RECEIPTS_BACKFILL_LIMIT || '20000' }}
+      MAX_PENDING: ${{ github.event.inputs.max_pending || vars.EVENT_RECEIPTS_MAX_PENDING || '50' }}
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Setup Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+
+      - name: Install dependencies
+        run: |
+          python -m pip install --upgrade pip setuptools wheel
+          pip install -r requirements.prod.txt
+
+      - name: Backfill pending receipts
+        run: |
+          python manage.py backfill_event_receipts_processed_at \
+            --grace-minutes "${GRACE_MINUTES}" \
+            --limit "${BACKFILL_LIMIT}"
+
+      - name: Generate processing health snapshot
+        run: |
+          mkdir -p artifacts
+          python manage.py event_receipts_processing_health \
+            --grace-minutes "${GRACE_MINUTES}" \
+            --max-pending "${MAX_PENDING}" \
+            --json-output "artifacts/event_receipts_processing_health.json" \
+            --fail-on-breach
+
+      - name: Upload processing health artifact
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: event-receipts-processing-health
+          path: artifacts/event_receipts_processing_health.json

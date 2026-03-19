@@ -260,3 +260,15 @@ Sem esses 3 pilares, o produto segue operacional, mas ainda não atinge o nível
   - antes: `processed_null=8652`, `processed_set=0`
   - depois: `processed_null=10`, `processed_set=8648`
   - `status`: `processed=8648`, `received=10` (janela recente dentro de grace).
+
+### 10.8 Execução da etapa 4 (2026-03-19 21:30 BRT)
+- Automação contínua de receipts processados implementada:
+  - script Render: `bin/render_job_event_receipts_processing.sh`
+  - workflow GitHub: `.github/workflows/event_receipts_processing_health.yml` (hora em hora).
+- Health check com threshold e artifact:
+  - comando: `python manage.py event_receipts_processing_health --grace-minutes 5 --max-pending 50 --fail-on-breach`
+  - JSON de evidência com `pending_aged`, `pending_all`, `processed_count`, `failed_count`, breakdown por source e event_name.
+- Validação local (janela atual):
+  - `status=healthy`
+  - `pending_aged=30`
+  - `max_pending=50`

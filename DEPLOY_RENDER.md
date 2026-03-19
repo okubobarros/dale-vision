@@ -67,3 +67,22 @@ Smoke manual:
 
 Sem Render Jobs (plano Free):
 - usar GitHub Actions agendado (`.github/workflows/copilot_value_ledger_rebuild_daily.yml`)
+
+## Cron Job (Qualidade de receipts processados)
+Para manter `event_receipts.processed_at` sem passivo e sinalizar regressão:
+
+1. Criar um Render Cron Job no backend.
+2. Command:
+`bash bin/render_job_event_receipts_processing.sh`
+3. Schedule:
+`20 * * * *`
+4. Variáveis opcionais:
+- `EVENT_RECEIPTS_GRACE_MINUTES=5`
+- `EVENT_RECEIPTS_BACKFILL_LIMIT=20000`
+- `EVENT_RECEIPTS_MAX_PENDING=50`
+
+Smoke manual:
+`python manage.py event_receipts_processing_health --grace-minutes 5 --max-pending 50`
+
+Sem Render Jobs (plano Free):
+- usar GitHub Actions agendado (`.github/workflows/event_receipts_processing_health.yml`)
