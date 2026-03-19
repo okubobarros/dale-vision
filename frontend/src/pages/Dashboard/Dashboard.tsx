@@ -1863,7 +1863,28 @@ const Dashboard = () => {
       </div>
 
       <section className="space-y-4 sm:space-y-6">
-        {showPrincipalDashboard ? null : isNetworkMode ? (
+        {showPrincipalDashboard ? (
+          <PaidExecutiveDashboardView
+            stores={stores ?? []}
+            copilotPrompts={copilotPrompts}
+            onOpenCopilot={openCopilot}
+            selectedStoreId={selectedStore}
+            onSelectStore={setSelectedStoreOverride}
+            todayRevenueBRL={todayRevenueBRL}
+            todayRevenueDeltaPct={todayRevenueDeltaPct}
+            revenueSeries={hourlyRevenueSeries}
+            flowSeries={flowSeries}
+            revenueAtRiskBRL={revenueAtRiskDay}
+            conversionAvgPct={computedConversionRate}
+            queueAvgMin={queueAvgMinutes}
+            staffEfficiencyPct={computedHealthScore}
+            topRiskStores={topRiskStoreItems}
+            topBestStores={topBestStoreItems}
+            recentEvents={recentEventItems}
+            copilotHighlight={copilotHighlight}
+            showPosIntegrationCta={showPosIntegrationCta}
+          />
+        ) : isNetworkMode ? (
           <>
             <section className="grid grid-cols-1 lg:grid-cols-3 gap-3">
               {wealthCards.map((card) => (
@@ -2464,28 +2485,7 @@ const Dashboard = () => {
             </section>
           ) : null}
 
-          {showPrincipalDashboard ? (
-            <PaidExecutiveDashboardView
-              stores={stores ?? []}
-              copilotPrompts={copilotPrompts}
-              onOpenCopilot={openCopilot}
-              selectedStoreId={selectedStore}
-              onSelectStore={setSelectedStoreOverride}
-              todayRevenueBRL={todayRevenueBRL}
-              todayRevenueDeltaPct={todayRevenueDeltaPct}
-              revenueSeries={hourlyRevenueSeries}
-              flowSeries={flowSeries}
-              revenueAtRiskBRL={revenueAtRiskDay}
-              conversionAvgPct={computedConversionRate}
-              queueAvgMin={queueAvgMinutes}
-              staffEfficiencyPct={computedHealthScore}
-              topRiskStores={topRiskStoreItems}
-              topBestStores={topBestStoreItems}
-              recentEvents={recentEventItems}
-              copilotHighlight={copilotHighlight}
-              showPosIntegrationCta={showPosIntegrationCta}
-            />
-          ) : !isNetworkMode && shouldShowTrialArtifacts && !hasOperationalData ? (
+          {!isNetworkMode && shouldShowTrialArtifacts && !hasOperationalData ? (
             <TrialDashboardView
               trialUiState={trialUiState}
               trialCollectedHours={trialCollectedHours}
