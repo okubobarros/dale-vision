@@ -1945,6 +1945,7 @@ class StoreViewSet(viewsets.ModelViewSet):
                 }
                 for evt in open_events
             ]
+            metric_governance = _build_metric_governance()
 
             dashboard_data = {
                 'store': {
@@ -1976,6 +1977,26 @@ class StoreViewSet(viewsets.ModelViewSet):
                     'critical_alerts_open': int(critical_alerts_open),
                     'window': '7d',
                 },
+                'meta': {
+                    'metric_governance': {
+                        'visitor_flow': metric_governance["total_visitors"],
+                        'conversion_rate': metric_governance["avg_conversion_rate"],
+                        'avg_cart_value': {
+                            "metric_status": "estimated",
+                            "source_method": "fixed_ticket_reference",
+                            "ownership_mode": "single_camera_owner",
+                            "label": "Estimativa",
+                        },
+                        'health_score': {
+                            "metric_status": "derived",
+                            "source_method": "queue_alert_penalty_formula",
+                            "ownership_mode": "single_camera_owner",
+                            "label": "Derivada",
+                        },
+                        'productivity': metric_governance["avg_staff_active"],
+                        'idle_time': metric_governance["idle_index"],
+                    }
+                },
                 'recommendations': recommendations,
                 'alerts': alerts_payload,
             }
@@ -2001,6 +2022,9 @@ class StoreViewSet(viewsets.ModelViewSet):
                 },
                 'metrics': None,
                 'insights': None,
+                'meta': {
+                    'metric_governance': {},
+                },
                 'recommendations': [],
                 'alerts': [],
                 'timestamp': timezone.now().isoformat(),
@@ -2956,16 +2980,22 @@ class StoreViewSet(viewsets.ModelViewSet):
 
             if event_source in {"retail", "all"}:
                 retail_filters = [
-                    "event_name LIKE 'retail_%'",
+                    "(event_name LIKE 'retail_%' OR event_name LIKE 'retail.%')",
                     "ts >= %s",
                     "ts < %s",
                     "((raw->'data'->>'store_id') = %s OR (meta->>'store_id') = %s)",
                 ]
                 retail_params = [start, end, str(store.id), str(store.id)]
                 if event_type:
-                    normalized_retail = event_type if event_type.startswith("retail_") else f"retail_{event_type}"
-                    retail_filters.append("event_name = %s")
-                    retail_params.append(normalized_retail)
+                    normalized_retail_legacy = event_type if event_type.startswith("retail_") else f"retail_{event_type}"
+                    if event_type.startswith("retail."):
+                        normalized_retail_dot = event_type if event_type.endswith(".v1") else f"{event_type}.v1"
+                    elif event_type.startswith("retail_"):
+                        normalized_retail_dot = f"retail.{event_type[len('retail_'):]}.v1"
+                    else:
+                        normalized_retail_dot = f"retail.{event_type}.v1"
+                    retail_filters.append("(event_name = %s OR event_name = %s)")
+                    retail_params.extend([normalized_retail_legacy, normalized_retail_dot])
                 if camera_id:
                     retail_filters.append("(raw->'data'->>'camera_id') = %s")
                     retail_params.append(camera_id)
@@ -3143,7 +3173,7 @@ class StoreViewSet(viewsets.ModelViewSet):
 
             if event_source in {"retail", "all"}:
                 retail_filters = [
-                    "event_name LIKE 'retail_%'",
+                    "(event_name LIKE 'retail_%' OR event_name LIKE 'retail.%')",
                     "ts >= %s",
                     "ts < %s",
                     "((raw->'data'->>'store_id') = %s OR (meta->>'store_id') = %s)",
@@ -3159,9 +3189,15 @@ class StoreViewSet(viewsets.ModelViewSet):
                     retail_filters.append("(raw->'data'->>'roi_entity_id') = %s")
                     retail_params.append(roi_entity_id)
                 if event_type:
-                    normalized_retail = event_type if event_type.startswith("retail_") else f"retail_{event_type}"
-                    retail_filters.append("event_name = %s")
-                    retail_params.append(normalized_retail)
+                    normalized_retail_legacy = event_type if event_type.startswith("retail_") else f"retail_{event_type}"
+                    if event_type.startswith("retail."):
+                        normalized_retail_dot = event_type if event_type.endswith(".v1") else f"{event_type}.v1"
+                    elif event_type.startswith("retail_"):
+                        normalized_retail_dot = f"retail.{event_type[len('retail_'):]}.v1"
+                    else:
+                        normalized_retail_dot = f"retail.{event_type}.v1"
+                    retail_filters.append("(event_name = %s OR event_name = %s)")
+                    retail_params.extend([normalized_retail_legacy, normalized_retail_dot])
                 retail_where = " AND ".join(retail_filters)
 
                 cursor.execute(
@@ -3558,7 +3594,7 @@ class StoreViewSet(viewsets.ModelViewSet):
 
                         if event_source in {"retail", "all"}:
                             retail_filters = [
-                                "event_name LIKE 'retail_%'",
+                                "(event_name LIKE 'retail_%' OR event_name LIKE 'retail.%')",
                                 "ts >= %s",
                                 "ts < %s",
                                 f"(raw->'data'->>'store_id') IN ({store_placeholders})",
@@ -3574,9 +3610,15 @@ class StoreViewSet(viewsets.ModelViewSet):
                                 retail_filters.append("(raw->'data'->>'roi_entity_id') = %s")
                                 retail_params.append(roi_entity_id)
                             if event_type:
-                                normalized_retail = event_type if event_type.startswith("retail_") else f"retail_{event_type}"
-                                retail_filters.append("event_name = %s")
-                                retail_params.append(normalized_retail)
+                                normalized_retail_legacy = event_type if event_type.startswith("retail_") else f"retail_{event_type}"
+                                if event_type.startswith("retail."):
+                                    normalized_retail_dot = event_type if event_type.endswith(".v1") else f"{event_type}.v1"
+                                elif event_type.startswith("retail_"):
+                                    normalized_retail_dot = f"retail.{event_type[len('retail_'):]}.v1"
+                                else:
+                                    normalized_retail_dot = f"retail.{event_type}.v1"
+                                retail_filters.append("(event_name = %s OR event_name = %s)")
+                                retail_params.extend([normalized_retail_legacy, normalized_retail_dot])
                             retail_where = " AND ".join(retail_filters)
 
                             cursor.execute(

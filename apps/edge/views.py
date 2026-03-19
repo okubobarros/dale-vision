@@ -40,6 +40,8 @@ from .vision_metrics import (
     apply_vision_queue_state,
     apply_vision_checkout_proxy,
     apply_vision_zone_occupancy,
+    mark_event_receipt_processed,
+    mark_event_receipt_failed,
 )
 from apps.core.services.journey_events import log_journey_event
 
@@ -109,6 +111,25 @@ def _normalize_ingest_event_name(event_name: str, payload: dict, data: dict) -> 
         if not normalized.startswith("retail_"):
             return f"retail_{normalized}"
     return normalized
+
+
+def _canonical_ingest_event_name(event_name: str, payload: dict, data: dict) -> str:
+    raw_name = str(event_name or "").strip().lower()
+    if not raw_name:
+        return raw_name
+
+    # Keep legacy non-retail names stable for backward compatibility.
+    if raw_name != "retail.event.v1":
+        return raw_name
+
+    event_type = str(payload.get("event_type") or data.get("event_type") or "").strip().lower()
+    if not event_type:
+        return raw_name
+    if event_type.startswith("retail."):
+        return event_type if event_type.endswith(".v1") else f"{event_type}.v1"
+    if event_type.startswith("retail_"):
+        event_type = event_type[len("retail_") :]
+    return f"retail.{event_type}.v1"
 
 
 def _parse_edge_ts(raw_ts):
@@ -358,6 +379,7 @@ class EdgeEventsIngestView(APIView):
             or (payload.get("agent") or {}).get("store_id")
         )
         normalized = _normalize_ingest_event_name(event_name, payload, data)
+        canonical_event_name = _canonical_ingest_event_name(event_name, payload, data)
 
         if not event_name:
             return Response({"detail": "event_name ausente."}, status=status.HTTP_400_BAD_REQUEST)
@@ -400,6 +422,16 @@ class EdgeEventsIngestView(APIView):
                 store_id,
                 ",".join(contract_missing),
             )
+            return Response(
+                {
+                    "ok": False,
+                    "stored": False,
+                    "reason": "vision_contract_invalid",
+                    "contract_version": "vision_event_v1",
+                    "missing_fields": contract_missing,
+                },
+                status=status.HTTP_400_BAD_REQUEST,
+            )
 
         retail_contract_ok, retail_contract_errors = _validate_retail_event_contract(
             event_name=event_name, payload=payload, data=data
@@ -418,15 +450,6 @@ class EdgeEventsIngestView(APIView):
                     "reason": "retail_event_contract_invalid",
                     "contract_version": "retail_event_v1",
                     "errors": retail_contract_errors,
-                },
-                status=status.HTTP_400_BAD_REQUEST,
-            )
-            return Response(
-                {
-                    "ok": False,
-                    "stored": False,
-                    "reason": "vision_contract_invalid",
-                    "missing_fields": contract_missing,
                 },
                 status=status.HTTP_400_BAD_REQUEST,
             )
@@ -461,7 +484,7 @@ class EdgeEventsIngestView(APIView):
         try:
             created = insert_event_receipt_if_new(
                 event_id=receipt_id,
-                event_name=normalized,
+                event_name=canonical_event_name,
                 payload=payload,
                 source=source or "edge",
             )
@@ -528,12 +551,14 @@ class EdgeEventsIngestView(APIView):
             try:
                 if stored:
                     apply_vision_metrics(payload)
+                mark_event_receipt_processed(event_id=receipt_id)
                 return Response(
                     {"ok": True, "receipt_id": receipt_id or None, "stored": True, "deduped": not stored},
                     status=status.HTTP_201_CREATED if stored else status.HTTP_200_OK,
                 )
             except Exception:
                 logger.exception("[EDGE] vision metrics ingest failed")
+                mark_event_receipt_failed(event_id=receipt_id, error_message="vision_ingest_failed")
                 return Response(
                     {"ok": False, "stored": False, "reason": "vision_ingest_failed"},
                     status=status.HTTP_500_INTERNAL_SERVER_ERROR,
@@ -547,12 +572,14 @@ class EdgeEventsIngestView(APIView):
                 )
                 if inserted:
                     apply_vision_crossing(payload)
+                mark_event_receipt_processed(event_id=receipt_id)
                 return Response(
                     {"ok": True, "receipt_id": receipt_id or None, "stored": True, "deduped": not inserted},
                     status=status.HTTP_201_CREATED if inserted else status.HTTP_200_OK,
                 )
             except Exception:
                 logger.exception("[EDGE] vision crossing ingest failed")
+                mark_event_receipt_failed(event_id=receipt_id, error_message="vision_crossing_ingest_failed")
                 return Response(
                     {"ok": False, "stored": False, "reason": "vision_crossing_ingest_failed"},
                     status=status.HTTP_500_INTERNAL_SERVER_ERROR,
@@ -566,12 +593,14 @@ class EdgeEventsIngestView(APIView):
                 )
                 if inserted:
                     apply_vision_queue_state(payload)
+                mark_event_receipt_processed(event_id=receipt_id)
                 return Response(
                     {"ok": True, "receipt_id": receipt_id or None, "stored": True, "deduped": not inserted},
                     status=status.HTTP_201_CREATED if inserted else status.HTTP_200_OK,
                 )
             except Exception:
                 logger.exception("[EDGE] vision queue_state ingest failed")
+                mark_event_receipt_failed(event_id=receipt_id, error_message="vision_queue_state_ingest_failed")
                 return Response(
                     {"ok": False, "stored": False, "reason": "vision_queue_state_ingest_failed"},
                     status=status.HTTP_500_INTERNAL_SERVER_ERROR,
@@ -585,12 +614,14 @@ class EdgeEventsIngestView(APIView):
                 )
                 if inserted:
                     apply_vision_checkout_proxy(payload)
+                mark_event_receipt_processed(event_id=receipt_id)
                 return Response(
                     {"ok": True, "receipt_id": receipt_id or None, "stored": True, "deduped": not inserted},
                     status=status.HTTP_201_CREATED if inserted else status.HTTP_200_OK,
                 )
             except Exception:
                 logger.exception("[EDGE] vision checkout_proxy ingest failed")
+                mark_event_receipt_failed(event_id=receipt_id, error_message="vision_checkout_proxy_ingest_failed")
                 return Response(
                     {"ok": False, "stored": False, "reason": "vision_checkout_proxy_ingest_failed"},
                     status=status.HTTP_500_INTERNAL_SERVER_ERROR,
@@ -604,12 +635,14 @@ class EdgeEventsIngestView(APIView):
                 )
                 if inserted:
                     apply_vision_zone_occupancy(payload)
+                mark_event_receipt_processed(event_id=receipt_id)
                 return Response(
                     {"ok": True, "receipt_id": receipt_id or None, "stored": True, "deduped": not inserted},
                     status=status.HTTP_201_CREATED if inserted else status.HTTP_200_OK,
                 )
             except Exception:
                 logger.exception("[EDGE] vision zone_occupancy ingest failed")
+                mark_event_receipt_failed(event_id=receipt_id, error_message="vision_zone_occupancy_ingest_failed")
                 return Response(
                     {"ok": False, "stored": False, "reason": "vision_zone_occupancy_ingest_failed"},
                     status=status.HTTP_500_INTERNAL_SERVER_ERROR,
@@ -618,6 +651,7 @@ class EdgeEventsIngestView(APIView):
         # --- persistir heartbeat do edge ---
         if normalized == "camera_health":
             if not camera_obj:
+                mark_event_receipt_failed(event_id=receipt_id, error_message="camera_not_found")
                 return Response(
                     {"detail": "camera not found", "stored": False, "reason": "camera_not_found"},
                     status=status.HTTP_400_BAD_REQUEST,
@@ -662,6 +696,7 @@ class EdgeEventsIngestView(APIView):
                 except Exception:
                     pass
 
+            mark_event_receipt_processed(event_id=receipt_id)
             return Response(
                 {"ok": True, "stored": stored, "receipt_id": receipt_id or None},
                 status=status.HTTP_201_CREATED,
@@ -751,6 +786,7 @@ class EdgeEventsIngestView(APIView):
                         try:
                             enforce_trial_camera_limit(store_id, requested_active=True)
                         except PaywallError as exc:
+                            mark_event_receipt_failed(event_id=receipt_id, error_message="camera_limit_reached")
                             return Response(exc.detail, status=exc.status_code)
                         name_for_write = _camera_name_for_write(
                             incoming_name=incoming_name,
@@ -824,6 +860,7 @@ class EdgeEventsIngestView(APIView):
             except Exception:
                 heartbeat_ok = False
                 logger.exception("[WARN] heartbeat persist failed")
+                mark_event_receipt_failed(event_id=receipt_id, error_message="heartbeat_persist_failed")
 
             if heartbeat_ok and store_obj:
                 post_snapshot, post_reason = compute_store_edge_status_snapshot(store_id)
@@ -855,6 +892,7 @@ class EdgeEventsIngestView(APIView):
                         meta=edge_meta,
                     )
 
+            mark_event_receipt_processed(event_id=receipt_id)
             return Response(
                 {"ok": True, "receipt_id": receipt_id or None, "stored": stored, "deduped": deduped or False},
                 status=status.HTTP_201_CREATED if stored else status.HTTP_200_OK,
@@ -882,6 +920,7 @@ class EdgeEventsIngestView(APIView):
             service_user = self._get_service_user()
             if service_user is None:
                 # se não existir user, falha explícita para você corrigir rápido
+                mark_event_receipt_failed(event_id=receipt_id, error_message="edge_service_user_not_found")
                 return Response(
                     {"detail": "EDGE service user not found. Create user 'edge-agent' or set EDGE_SERVICE_USERNAME."},
                     status=status.HTTP_500_INTERNAL_SERVER_ERROR,
@@ -902,9 +941,14 @@ class EdgeEventsIngestView(APIView):
                     response.data.setdefault("deduped", deduped or False)
             except Exception:
                 pass
+            if getattr(response, "status_code", 500) >= 400:
+                mark_event_receipt_failed(event_id=receipt_id, error_message="alert_ingest_failed")
+            else:
+                mark_event_receipt_processed(event_id=receipt_id)
             return response
 
         # por enquanto: heartbeat/bucket aceita e responde ok
+        mark_event_receipt_processed(event_id=receipt_id)
         return Response(
             {"ok": True, "receipt_id": receipt_id or None, "stored": stored, "deduped": deduped or False},
             status=status.HTTP_201_CREATED if stored else status.HTTP_200_OK,

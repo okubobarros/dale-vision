@@ -7,6 +7,7 @@ from typing import Any, Dict, Optional
 import logging
 
 from django.db import IntegrityError, connection
+from django.test.testcases import DatabaseOperationForbidden
 from django.utils import timezone
 from django.utils.dateparse import parse_datetime
 from apps.core.models import Store
@@ -88,6 +89,49 @@ def insert_event_receipt_if_new(*, event_id: str, event_name: str, payload: dict
         return cursor.rowcount == 1
 
 
+def mark_event_receipt_processed(*, event_id: Optional[str]) -> None:
+    if not event_id:
+        return
+    try:
+        with connection.cursor() as cursor:
+            cursor.execute(
+                """
+                UPDATE public.event_receipts
+                SET processed_at = now(),
+                    last_error = NULL,
+                    attempt_count = COALESCE(attempt_count, 0) + 1,
+                    updated_at = now()
+                WHERE event_id = %s
+                """,
+                [str(event_id)],
+            )
+    except DatabaseOperationForbidden:
+        return
+    except Exception:
+        logger.exception("[EDGE] mark_event_receipt_processed failed event_id=%s", event_id)
+
+
+def mark_event_receipt_failed(*, event_id: Optional[str], error_message: str) -> None:
+    if not event_id:
+        return
+    try:
+        with connection.cursor() as cursor:
+            cursor.execute(
+                """
+                UPDATE public.event_receipts
+                SET attempt_count = COALESCE(attempt_count, 0) + 1,
+                    last_error = %s,
+                    updated_at = now()
+                WHERE event_id = %s
+                """,
+                [str(error_message or "processing_failed")[:500], str(event_id)],
+            )
+    except DatabaseOperationForbidden:
+        return
+    except Exception:
+        logger.exception("[EDGE] mark_event_receipt_failed failed event_id=%s", event_id)
+
+
 def insert_vision_atomic_event_if_new(*, receipt_id: str, payload: dict) -> bool:
     data = (payload.get("data") or {}) if isinstance(payload, dict) else {}
     raw = json.dumps(payload, ensure_ascii=False)
@@ -158,6 +202,8 @@ def _upsert_traffic_metrics(
     dwell = int(traffic.get("dwell_seconds_avg") or 0)
     ownership = str(traffic.get("ownership") or "primary").strip().lower() or "primary"
     metric_type = str(traffic.get("metric_type") or "").strip() or None
+    if not metric_type:
+        raise ProjectionContractError("traffic_metrics requires metric_type")
     roi_entity_id = str(traffic.get("roi_entity_id") or "").strip() or None
     with connection.cursor() as cursor:
         cursor.execute(
@@ -251,6 +297,8 @@ def _upsert_conversion_metrics(
     conversion_rate = float(conversion.get("conversion_rate") or 0)
     ownership = str(conversion.get("ownership") or "primary").strip().lower() or "primary"
     metric_type = str(conversion.get("metric_type") or "").strip() or None
+    if not metric_type:
+        raise ProjectionContractError("conversion_metrics requires metric_type")
     roi_entity_id = str(conversion.get("roi_entity_id") or "").strip() or None
     with connection.cursor() as cursor:
         cursor.execute(
@@ -364,6 +412,15 @@ def apply_vision_metrics(payload: Dict[str, Any]) -> None:
         should_log_first = False
     traffic = data.get("traffic") or {}
     conversion = data.get("conversion") or {}
+    shared_metric_type = str(
+        data.get("metric_type") or traffic.get("metric_type") or conversion.get("metric_type") or ""
+    ).strip()
+    if not shared_metric_type:
+        raise ProjectionContractError("vision.metrics.v1 requires metric_type")
+    if not traffic.get("metric_type"):
+        traffic = {**traffic, "metric_type": shared_metric_type}
+    if not conversion.get("metric_type"):
+        conversion = {**conversion, "metric_type": shared_metric_type}
     ownership = (data.get("ownership") or {}) if isinstance(data.get("ownership"), dict) else {}
     ownership_value = str(ownership.get("ownership") or ownership.get("mode") or "primary").strip().lower()
     if ownership_value == "single_camera_owner":
@@ -428,7 +485,9 @@ def apply_vision_crossing(payload: Dict[str, Any]) -> None:
     zone_id = str(data.get("zone_id") or "").strip() or None
     direction = str(data.get("direction") or "").strip().lower()
     count_value = int(data.get("count_value") or 1)
-    metric_type = str(data.get("metric_type") or "entry_exit").strip() or "entry_exit"
+    metric_type = str(data.get("metric_type") or "").strip()
+    if not metric_type:
+        raise ProjectionContractError("vision.crossing.v1 requires metric_type")
     roi_entity_id = str(data.get("roi_entity_id") or "").strip() or None
     ownership = str(data.get("ownership") or "primary").strip().lower() or "primary"
 
@@ -466,7 +525,9 @@ def apply_vision_queue_state(payload: Dict[str, Any]) -> None:
     zone_id = str(data.get("zone_id") or "").strip() or None
     roi_entity_id = str(data.get("roi_entity_id") or "").strip() or None
     ownership = str(data.get("ownership") or "primary").strip().lower() or "primary"
-    metric_type = str(data.get("metric_type") or "queue").strip() or "queue"
+    metric_type = str(data.get("metric_type") or "").strip()
+    if not metric_type:
+        raise ProjectionContractError("vision.queue_state.v1 requires metric_type")
 
     with connection.cursor() as cursor:
         cursor.execute(
@@ -570,7 +631,9 @@ def apply_vision_checkout_proxy(payload: Dict[str, Any]) -> None:
     zone_id = str(data.get("zone_id") or "").strip() or None
     roi_entity_id = str(data.get("roi_entity_id") or "").strip() or None
     ownership = str(data.get("ownership") or "primary").strip().lower() or "primary"
-    metric_type = str(data.get("metric_type") or "checkout_proxy").strip() or "checkout_proxy"
+    metric_type = str(data.get("metric_type") or "").strip()
+    if not metric_type:
+        raise ProjectionContractError("vision.checkout_proxy.v1 requires metric_type")
 
     with connection.cursor() as cursor:
         cursor.execute(
@@ -667,7 +730,9 @@ def apply_vision_zone_occupancy(payload: Dict[str, Any]) -> None:
     zone_id = str(data.get("zone_id") or "").strip() or None
     roi_entity_id = str(data.get("roi_entity_id") or "").strip() or None
     ownership = str(data.get("ownership") or "primary").strip().lower() or "primary"
-    metric_type = str(data.get("metric_type") or "occupancy").strip() or "occupancy"
+    metric_type = str(data.get("metric_type") or "").strip()
+    if not metric_type:
+        raise ProjectionContractError("vision.zone_occupancy.v1 requires metric_type")
 
     with connection.cursor() as cursor:
         cursor.execute(

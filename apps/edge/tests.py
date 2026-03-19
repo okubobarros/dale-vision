@@ -636,7 +636,7 @@ class EdgeRetailIngestUnitTests(SimpleTestCase):
         response = EdgeEventsIngestView.as_view()(request)
         self.assertIn(response.status_code, (200, 201))
         self.assertTrue(response.data.get("ok"))
-        self.assertEqual(insert_receipt.call_args.kwargs.get("event_name"), "retail_queue_length")
+        self.assertEqual(insert_receipt.call_args.kwargs.get("event_name"), "retail.queue_length.v1")
 
     @patch("apps.edge.views.TokenAuthentication.authenticate", return_value=None)
     @patch("apps.edge.views.EdgeEventsIngestView._is_edge_request")
@@ -961,7 +961,7 @@ class VisionMetricsContractTests(TestCase):
 
         self.assertTrue(inserted)
         _, params = cursor.execute.call_args[0]
-        meta = json.loads(params[5])
+        meta = json.loads(params[6])
         self.assertEqual(meta["store_id"], "store-1")
         self.assertEqual(meta["camera_id"], "cam-1")
         self.assertEqual(meta["zone_id"], "zone-front")
