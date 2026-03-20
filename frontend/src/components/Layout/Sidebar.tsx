@@ -1,5 +1,6 @@
 import { NavLink, useLocation } from "react-router-dom"
 import { useEffect, useState } from "react"
+import { useQuery } from "@tanstack/react-query"
 import {
   HomeIcon,
   BuildingStorefrontIcon,
@@ -10,11 +11,20 @@ import {
   Bars3Icon,
 } from "@heroicons/react/24/outline"
 import { useAuth } from "../../contexts/useAuth"
+import { meService } from "../../services/me"
 
 const Sidebar = () => {
   const location = useLocation()
   const { user } = useAuth()
-  const isInternalAdmin = Boolean(user?.is_staff || user?.is_superuser)
+  const statusQ = useQuery({
+    queryKey: ["me-status-sidebar"],
+    queryFn: () => meService.getStatus(),
+    staleTime: 60_000,
+    retry: false,
+  })
+  const isInternalAdmin = Boolean(
+    user?.is_staff || user?.is_superuser || statusQ.data?.is_internal_admin
+  )
   const [collapsed, setCollapsed] = useState<boolean>(() => {
     if (typeof window === "undefined") return false
     return localStorage.getItem("dv-sidebar-collapsed") === "1"

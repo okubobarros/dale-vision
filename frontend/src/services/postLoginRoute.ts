@@ -13,6 +13,17 @@ export const resolvePostLoginRoute = async (): Promise<string> => {
   }
 
   try {
+    const status = await meService.getStatus()
+    if (status?.is_internal_admin) {
+      return ADMIN_ROUTE
+    }
+  } catch (error) {
+    if (import.meta.env.DEV) {
+      console.warn("[post-login] me/status failed, fallback local user/setup", error)
+    }
+  }
+
+  try {
     const setup = await meService.getSetupState()
     if (setup?.ok) {
       if (setup.state === "ready" || setup.has_store) {
