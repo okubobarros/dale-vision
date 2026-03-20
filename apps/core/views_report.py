@@ -14,8 +14,8 @@ from rest_framework.permissions import IsAuthenticated
 from rest_framework.response import Response
 from rest_framework.views import APIView
 
-from django.db.models import Count, Q
-from apps.core.models import Store, DetectionEvent, Organization
+from django.db.models import Count, Q, Sum
+from apps.core.models import Store, DetectionEvent, Organization, PosTransactionEvent
 from apps.edge.models import EdgeUpdateEvent
 from apps.copilot.models import ActionOutcome
 from apps.stores.services.user_orgs import get_user_org_ids
@@ -255,6 +255,38 @@ def _build_report_payload(*, org_id: str, store_id: str | None, start, end):
                         "footfall": int(row[1] or 0),
                     }
                 )
+
+    pos_qs = PosTransactionEvent.objects.filter(occurred_at__gte=start, occurred_at__lt=end)
+    if store_ids:
+        pos_qs = pos_qs.filter(store_id__in=store_ids)
+    else:
+        pos_qs = pos_qs.none()
+
+    pos_totals = pos_qs.aggregate(
+        transactions_total=Count("id"),
+        gross_total=Sum("gross_amount"),
+        net_total=Sum("net_amount"),
+    )
+    pos_transactions_total = int(pos_totals.get("transactions_total") or 0)
+    pos_gross_total = float(pos_totals.get("gross_total") or 0)
+    pos_net_total = float(pos_totals.get("net_total") or 0)
+    pos_avg_ticket = (pos_gross_total / pos_transactions_total) if pos_transactions_total > 0 else None
+    official_conversion_rate = (
+        round((pos_transactions_total / totals["total_visitors"]), 4)
+        if totals["total_visitors"] > 0 and pos_transactions_total > 0
+        else None
+    )
+    pos_sources = list(
+        pos_qs.values("source_system")
+        .annotate(count=Count("id"))
+        .order_by("-count")[:5]
+    )
+    conversion_metric_status = "official" if official_conversion_rate is not None else "proxy"
+    conversion_source_method = (
+        "pos_transactions_over_traffic_footfall"
+        if official_conversion_rate is not None
+        else "checkout_events_over_footfall"
+    )
 
     alerts = []
     if store_ids:
@@ -585,10 +617,10 @@ def _build_report_payload(*, org_id: str, store_id: str | None, start, end):
                     "label": "Oficial",
                 },
                 "avg_conversion_rate": {
-                    "metric_status": "proxy",
-                    "source_method": "checkout_events_over_footfall",
+                    "metric_status": conversion_metric_status,
+                    "source_method": conversion_source_method,
                     "ownership_mode": "single_camera_owner",
-                    "label": "Proxy",
+                    "label": "Oficial" if conversion_metric_status == "official" else "Proxy",
                 },
                 "total_alerts": {
                     "metric_status": "official",
@@ -617,7 +649,21 @@ def _build_report_payload(*, org_id: str, store_id: str | None, start, end):
             "avg_dwell_seconds": totals["avg_dwell_seconds"],
             "avg_queue_seconds": totals["avg_queue_seconds"],
             "avg_conversion_rate": totals["avg_conversion_rate"],
+            "avg_conversion_rate_official": official_conversion_rate,
             "total_alerts": sum(a["count"] for a in alert_counts) if alert_counts else len(alerts),
+        },
+        "pos_integration": {
+            "has_official_data": official_conversion_rate is not None,
+            "transactions_total": pos_transactions_total,
+            "gross_total_brl": pos_gross_total,
+            "net_total_brl": pos_net_total,
+            "avg_ticket_brl": pos_avg_ticket,
+            "conversion_rate_official": official_conversion_rate,
+            "conversion_rate_proxy": totals["avg_conversion_rate"],
+            "sources": [
+                {"source_system": row.get("source_system"), "count": int(row.get("count") or 0)}
+                for row in pos_sources
+            ],
         },
         "chart_footfall_by_day": traffic_series,
         "chart_footfall_by_hour": chart_footfall_by_hour,

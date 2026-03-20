@@ -330,14 +330,27 @@ const Reports = () => {
 
   const consolidatedScore = useMemo(() => {
     const queueSeconds = summaryData?.kpis?.avg_queue_seconds || 0
-    const conversionRate = (summaryData?.kpis?.avg_conversion_rate || 0) * 100
+    const conversionRateBase =
+      summaryData?.pos_integration?.conversion_rate_official ??
+      summaryData?.kpis?.avg_conversion_rate ??
+      0
+    const conversionRate = conversionRateBase * 100
     const confidence = coverageData?.confidence_governance?.score || 0
     let score = 82
     score -= Math.min(24, queueSeconds / 9)
     score += Math.min(10, Math.max(-10, (conversionRate - 14) * 1.8))
     score += (confidence - 60) / 6
     return Math.round(clamp(score, 0, 100))
-  }, [coverageData?.confidence_governance?.score, summaryData?.kpis?.avg_conversion_rate, summaryData?.kpis?.avg_queue_seconds])
+  }, [
+    coverageData?.confidence_governance?.score,
+    summaryData?.kpis?.avg_conversion_rate,
+    summaryData?.kpis?.avg_queue_seconds,
+    summaryData?.pos_integration?.conversion_rate_official,
+  ])
+
+  const officialConversionRate = summaryData?.pos_integration?.conversion_rate_official
+  const conversionRateDisplay = officialConversionRate ?? summaryData?.kpis?.avg_conversion_rate
+  const conversionIsOfficial = officialConversionRate !== null && officialConversionRate !== undefined
 
   const scoreTrendPoints = useMemo(() => {
     const series = summaryData?.chart_footfall_by_day ?? []
@@ -787,9 +800,16 @@ const Reports = () => {
           <article className="rounded-xl border border-slate-200 bg-white p-4 shadow-sm">
             <p className="text-xs uppercase tracking-[0.08em] text-slate-500">Conversão Média</p>
             <p className="text-3xl font-semibold text-slate-900 mt-2">
-              {formatPercent(summaryData?.kpis?.avg_conversion_rate)}
+              {formatPercent(conversionRateDisplay)}
             </p>
-            <p className="text-[11px] text-slate-500 mt-2">vs meta de 15%</p>
+            <div className="mt-2 flex items-center gap-2">
+              <TrustBadge status={conversionIsOfficial ? "official" : "proxy"} />
+              <p className="text-[11px] text-slate-500">
+                {conversionIsOfficial
+                  ? `${summaryData?.pos_integration?.transactions_total || 0} transações PDV`
+                  : "Sem PDV conectado (proxy CV)"}
+              </p>
+            </div>
           </article>
         </div>
 

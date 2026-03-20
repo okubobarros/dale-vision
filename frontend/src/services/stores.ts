@@ -98,6 +98,45 @@ export type RegisterPdvInterestResponse = {
   created_at: string
 }
 
+export type PdvTransactionIngestPayload = {
+  store_id: string
+  source_system: string
+  transaction_id: string
+  occurred_at: string
+  gross_amount: number
+  net_amount?: number | null
+  currency?: string
+  payment_method?: string | null
+  metadata?: Record<string, unknown>
+}
+
+export type PdvTransactionIngestResponse = {
+  ok: boolean
+  created: boolean
+  id: string
+  store_id: string
+  org_id: string
+  source_system: string
+  transaction_id: string
+  occurred_at: string | null
+  gross_amount: number
+  net_amount: number | null
+  currency: string
+  payment_method: string | null
+}
+
+export type PdvTransactionSummaryResponse = {
+  period: string
+  from: string
+  to: string
+  store_id: string | null
+  transactions_total: number
+  gross_total: number
+  net_total: number
+  avg_ticket: number | null
+  stores_total: number
+}
+
 export interface StoreMetrics {
   total_cameras: number;
   active_cameras: number;
@@ -1622,5 +1661,27 @@ export const storesService = {
       noRetry: true,
     })
     return response.data as RegisterPdvInterestResponse
+  },
+
+  async ingestPdvTransactionEvent(
+    payload: PdvTransactionIngestPayload
+  ): Promise<PdvTransactionIngestResponse> {
+    const response = await api.post("/v1/integration/pdv/events/", payload, {
+      timeoutCategory: "best-effort",
+      noRetry: true,
+    })
+    return response.data as PdvTransactionIngestResponse
+  },
+
+  async getPdvTransactionSummary(params?: {
+    store_id?: string
+    period?: string
+  }): Promise<PdvTransactionSummaryResponse> {
+    const response = await api.get("/v1/integration/pdv/summary/", {
+      params: params || undefined,
+      timeoutCategory: "best-effort",
+      noRetry: true,
+    })
+    return response.data as PdvTransactionSummaryResponse
   },
 };

@@ -645,3 +645,44 @@ class PdvIntegrationInterest(models.Model):
             models.Index(fields=["store", "created_at"], name="pdv_interest_store_created_idx"),
             models.Index(fields=["user", "status"], name="pdv_interest_user_status_idx"),
         ]
+
+
+class PosTransactionEvent(models.Model):
+    id = models.UUIDField(primary_key=True, default=uuid.uuid4, editable=False)
+    org = models.ForeignKey(
+        "Organization",
+        on_delete=models.DO_NOTHING,
+        db_column="org_id",
+        related_name="pos_transaction_events",
+    )
+    store = models.ForeignKey(
+        "Store",
+        on_delete=models.DO_NOTHING,
+        db_column="store_id",
+        related_name="pos_transaction_events",
+    )
+    source_system = models.CharField(max_length=64)
+    transaction_id = models.CharField(max_length=128)
+    occurred_at = models.DateTimeField()
+    gross_amount = models.DecimalField(max_digits=14, decimal_places=2)
+    net_amount = models.DecimalField(max_digits=14, decimal_places=2, null=True, blank=True)
+    currency = models.CharField(max_length=3, default="BRL")
+    payment_method = models.CharField(max_length=32, null=True, blank=True)
+    raw_payload = models.JSONField(default=dict, blank=True)
+    created_at = models.DateTimeField(default=timezone.now)
+    updated_at = models.DateTimeField(default=timezone.now)
+
+    class Meta:
+        db_table = "pos_transaction_events"
+        managed = True
+        constraints = [
+            models.UniqueConstraint(
+                fields=["store", "source_system", "transaction_id"],
+                name="uniq_pos_transaction_store_source_tx",
+            ),
+        ]
+        indexes = [
+            models.Index(fields=["org", "occurred_at"], name="pos_tx_org_occ_idx"),
+            models.Index(fields=["store", "occurred_at"], name="pos_tx_store_occ_idx"),
+            models.Index(fields=["source_system", "occurred_at"], name="pos_tx_source_occ_idx"),
+        ]

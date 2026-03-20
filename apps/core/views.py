@@ -1,6 +1,10 @@
 import requests
+from decimal import Decimal, InvalidOperation
+from datetime import timedelta
 from django.conf import settings
+from django.db.models import Count, Sum
 from django.utils import timezone
+from django.utils.dateparse import parse_datetime
 from rest_framework import viewsets, status
 from rest_framework.response import Response
 from rest_framework.permissions import AllowAny, IsAuthenticated
@@ -8,6 +12,7 @@ from rest_framework.exceptions import PermissionDenied
 from rest_framework.views import APIView
 from apps.core.integrations import supabase_storage
 from apps.core import models
+from apps.stores.services.user_orgs import get_user_org_ids
 from .serializers import DemoLeadSerializer
 
 class DemoLeadViewSet(viewsets.ModelViewSet):
@@ -188,4 +193,187 @@ class PdvIntegrationInterestView(APIView):
                 "created_at": record.created_at.isoformat(),
             },
             status=status.HTTP_201_CREATED,
+        )
+
+
+class PdvTransactionIngestView(APIView):
+    permission_classes = [IsAuthenticated]
+
+    @staticmethod
+    def _can_access_store(user, store) -> bool:
+        if getattr(user, "is_staff", False) or getattr(user, "is_superuser", False):
+            return True
+        try:
+            org_ids = get_user_org_ids(user)
+            return str(store.org_id) in {str(org_id) for org_id in org_ids}
+        except Exception:
+            return False
+
+    @staticmethod
+    def _parse_datetime(raw_value):
+        if raw_value in (None, ""):
+            return None
+        dt = parse_datetime(str(raw_value).replace("Z", "+00:00"))
+        if dt is None:
+            return None
+        if timezone.is_naive(dt):
+            dt = timezone.make_aware(dt, timezone.get_current_timezone())
+        return dt
+
+    def post(self, request):
+        store_id = str(request.data.get("store_id") or "").strip()
+        source_system = str(request.data.get("source_system") or "").strip().lower()
+        transaction_id = str(request.data.get("transaction_id") or "").strip()
+        occurred_at = self._parse_datetime(request.data.get("occurred_at"))
+        currency = str(request.data.get("currency") or "BRL").strip().upper()[:3] or "BRL"
+        payment_method = str(request.data.get("payment_method") or "").strip() or None
+        metadata = request.data.get("metadata") or {}
+
+        if not store_id or not source_system or not transaction_id or occurred_at is None:
+            return Response(
+                {"detail": "store_id, source_system, transaction_id e occurred_at são obrigatórios."},
+                status=status.HTTP_400_BAD_REQUEST,
+            )
+
+        try:
+            gross_amount = Decimal(str(request.data.get("gross_amount")))
+            if gross_amount <= 0:
+                raise InvalidOperation("gross_amount_must_be_positive")
+        except (InvalidOperation, TypeError, ValueError):
+            return Response(
+                {"detail": "gross_amount deve ser numérico e maior que zero."},
+                status=status.HTTP_400_BAD_REQUEST,
+            )
+
+        net_raw = request.data.get("net_amount")
+        net_amount = None
+        if net_raw not in (None, ""):
+            try:
+                net_amount = Decimal(str(net_raw))
+            except (InvalidOperation, TypeError, ValueError):
+                return Response(
+                    {"detail": "net_amount deve ser numérico quando informado."},
+                    status=status.HTTP_400_BAD_REQUEST,
+                )
+
+        store = models.Store.objects.filter(id=store_id).first()
+        if not store:
+            return Response({"detail": "Loja não encontrada."}, status=status.HTTP_404_NOT_FOUND)
+        if not self._can_access_store(request.user, store):
+            raise PermissionDenied("Sem permissão para registrar transações nesta loja.")
+
+        payload_raw = {
+            "store_id": store_id,
+            "source_system": source_system,
+            "transaction_id": transaction_id,
+            "occurred_at": occurred_at.isoformat(),
+            "gross_amount": str(gross_amount),
+            "net_amount": str(net_amount) if net_amount is not None else None,
+            "currency": currency,
+            "payment_method": payment_method,
+            "metadata": metadata if isinstance(metadata, dict) else {},
+        }
+        record, created = models.PosTransactionEvent.objects.get_or_create(
+            store=store,
+            source_system=source_system,
+            transaction_id=transaction_id,
+            defaults={
+                "org_id": store.org_id,
+                "occurred_at": occurred_at,
+                "gross_amount": gross_amount,
+                "net_amount": net_amount,
+                "currency": currency,
+                "payment_method": payment_method,
+                "raw_payload": payload_raw,
+                "created_at": timezone.now(),
+                "updated_at": timezone.now(),
+            },
+        )
+        if not created:
+            record.occurred_at = occurred_at
+            record.gross_amount = gross_amount
+            record.net_amount = net_amount
+            record.currency = currency
+            record.payment_method = payment_method
+            record.raw_payload = payload_raw
+            record.updated_at = timezone.now()
+            record.save(
+                update_fields=[
+                    "occurred_at",
+                    "gross_amount",
+                    "net_amount",
+                    "currency",
+                    "payment_method",
+                    "raw_payload",
+                    "updated_at",
+                ]
+            )
+
+        return Response(
+            {
+                "ok": True,
+                "created": bool(created),
+                "id": str(record.id),
+                "store_id": str(store.id),
+                "org_id": str(store.org_id),
+                "source_system": record.source_system,
+                "transaction_id": record.transaction_id,
+                "occurred_at": record.occurred_at.isoformat() if record.occurred_at else None,
+                "gross_amount": float(record.gross_amount),
+                "net_amount": float(record.net_amount) if record.net_amount is not None else None,
+                "currency": record.currency,
+                "payment_method": record.payment_method,
+            },
+            status=status.HTTP_201_CREATED if created else status.HTTP_200_OK,
+        )
+
+
+class PdvTransactionSummaryView(APIView):
+    permission_classes = [IsAuthenticated]
+
+    def get(self, request):
+        store_id = str(request.query_params.get("store_id") or "").strip() or None
+        period = str(request.query_params.get("period") or "7d").strip().lower()
+
+        days = 7
+        if period.endswith("d"):
+            try:
+                days = int(period[:-1])
+            except Exception:
+                days = 7
+        days = max(1, min(days, 365))
+        start = timezone.now() - timedelta(days=days)
+
+        qs = models.PosTransactionEvent.objects.filter(occurred_at__gte=start)
+        if store_id:
+            qs = qs.filter(store_id=store_id)
+
+        if not (getattr(request.user, "is_staff", False) or getattr(request.user, "is_superuser", False)):
+            org_ids = {str(org_id) for org_id in get_user_org_ids(request.user)}
+            qs = qs.filter(org_id__in=org_ids)
+
+        totals = qs.aggregate(
+            transactions_total=Count("id"),
+            gross_total=Sum("gross_amount"),
+            net_total=Sum("net_amount"),
+            stores_total=Count("store", distinct=True),
+        )
+        transactions_total = int(totals.get("transactions_total") or 0)
+        gross_total = float(totals.get("gross_total") or 0)
+        net_total = float(totals.get("net_total") or 0)
+        avg_ticket = float(gross_total / transactions_total) if transactions_total > 0 else None
+
+        return Response(
+            {
+                "period": f"{days}d",
+                "from": start.isoformat(),
+                "to": timezone.now().isoformat(),
+                "store_id": store_id,
+                "transactions_total": transactions_total,
+                "gross_total": gross_total,
+                "net_total": net_total,
+                "avg_ticket": avg_ticket,
+                "stores_total": int(totals.get("stores_total") or 0),
+            },
+            status=status.HTTP_200_OK,
         )

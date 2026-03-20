@@ -53,7 +53,18 @@ export type ReportSummary = {
     avg_dwell_seconds: number
     avg_queue_seconds: number
     avg_conversion_rate: number
+    avg_conversion_rate_official?: number | null
     total_alerts: number
+  }
+  pos_integration?: {
+    has_official_data: boolean
+    transactions_total: number
+    gross_total_brl: number
+    net_total_brl: number
+    avg_ticket_brl: number | null
+    conversion_rate_official: number | null
+    conversion_rate_proxy: number
+    sources: Array<{ source_system: string | null; count: number }>
   }
   chart_footfall_by_day: Array<{ ts_bucket: string; footfall: number; dwell_seconds_avg: number }>
   chart_footfall_by_hour: Array<{ hour: number; footfall: number }>
