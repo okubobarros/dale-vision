@@ -4,6 +4,7 @@ import toast from "react-hot-toast"
 
 import { useAuth } from "../../contexts/useAuth"
 import { adminService } from "../../services/admin"
+import { meService } from "../../services/me"
 import { storesService, type StoreSummary } from "../../services/stores"
 import { supportService } from "../../services/support"
 
@@ -15,6 +16,11 @@ const formatNumber = (value: number | null | undefined) => {
 const formatPercent = (value: number | null | undefined) => {
   if (value === null || value === undefined || Number.isNaN(value)) return "—"
   return `${new Intl.NumberFormat("pt-BR", { maximumFractionDigits: 1 }).format(value)}%`
+}
+
+const formatRatioPercent = (value: number | null | undefined) => {
+  if (value === null || value === undefined || Number.isNaN(value)) return "—"
+  return `${new Intl.NumberFormat("pt-BR", { maximumFractionDigits: 1 }).format(value * 100)}%`
 }
 
 const daysUntil = (iso?: string | null) => {
@@ -57,6 +63,20 @@ export default function AdminControlTower() {
     queryFn: () => supportService.getAdminSupportRequests("pending"),
     enabled: isInternalAdmin,
     refetchInterval: 30_000,
+  })
+
+  const journeyFunnelQuery = useQuery({
+    queryKey: ["admin", "journey-funnel", "30d"],
+    queryFn: () => meService.getJourneyFunnel({ period: "30d" }, { include_global_leads: true }),
+    enabled: isInternalAdmin,
+    refetchInterval: 60_000,
+  })
+
+  const pdvHealthQuery = useQuery({
+    queryKey: ["admin", "pdv-ingestion-health", "30d"],
+    queryFn: () => storesService.getPdvIngestionHealth({ period: "30d" }),
+    enabled: isInternalAdmin,
+    refetchInterval: 60_000,
   })
 
   const grantSupportMutation = useMutation({
@@ -103,6 +123,35 @@ export default function AdminControlTower() {
       .sort((a, b) => b.score - a.score)
       .slice(0, 10)
   }, [storesSummaryQuery.data])
+
+  const dataQuality = useMemo(() => {
+    const funnel = journeyFunnelQuery.data
+    const pdv = pdvHealthQuery.data
+    const missingRates = (funnel?.stages || []).map((row) => Number(row.payload_missing_rate || 0))
+    const avgMissingRate =
+      missingRates.length > 0 ? missingRates.reduce((acc, item) => acc + item, 0) / missingRates.length : null
+    const payloadScore = avgMissingRate === null ? null : Math.max(0, 100 - avgMissingRate * 100)
+    const processingScore =
+      pdv?.processing_rate !== null && pdv?.processing_rate !== undefined
+        ? Math.max(0, Math.min(100, pdv.processing_rate * 100))
+        : null
+    const failurePenalty =
+      pdv?.failure_rate !== null && pdv?.failure_rate !== undefined ? Math.max(0, pdv.failure_rate * 100) : 0
+    if (payloadScore === null && processingScore === null) {
+      return {
+        score: null,
+        avgMissingRate: null,
+      }
+    }
+    const weighted =
+      (payloadScore === null ? 0 : payloadScore * 0.55) +
+      (processingScore === null ? 0 : processingScore * 0.45) -
+      failurePenalty * 0.2
+    return {
+      score: Math.max(0, Math.min(100, Math.round(weighted))),
+      avgMissingRate,
+    }
+  }, [journeyFunnelQuery.data, pdvHealthQuery.data])
 
   if (!isInternalAdmin) {
     return (
@@ -185,6 +234,112 @@ export default function AdminControlTower() {
               <Card title="Outcomes concluídos" value={formatNumber(summary?.value_loop?.outcomes_completed_24h)} />
               <Card title="Cobertura ledger" value={formatPercent(summary?.value_loop?.ledger_coverage_rate)} />
               <Card title="Health loop" value={String(summary?.value_loop?.health ?? "—")} />
+            </div>
+          </section>
+
+          <section className="space-y-3">
+            <h2 className="text-sm font-semibold text-gray-800 uppercase tracking-wide">Funil Produto (PM/Admin) - 30d</h2>
+            <div className="grid grid-cols-1 gap-3 md:grid-cols-4">
+              <Card title="Signups" value={formatNumber(journeyFunnelQuery.data?.kpis?.signups_total)} />
+              <Card title="Ativados" value={formatNumber(journeyFunnelQuery.data?.kpis?.activated_total)} />
+              <Card title="Taxa ativação" value={formatRatioPercent(journeyFunnelQuery.data?.kpis?.activation_rate)} />
+              <Card title="Taxa paid" value={formatRatioPercent(journeyFunnelQuery.data?.kpis?.paid_rate)} />
+            </div>
+            <div className="rounded-xl border border-gray-200 bg-white p-4">
+              <div className="flex items-center justify-between">
+                <h3 className="text-sm font-semibold text-gray-800">Passagem por etapa e qualidade de payload</h3>
+                <span className="text-xs text-gray-500">
+                  Queda crítica:{" "}
+                  {journeyFunnelQuery.data?.quality?.top_drop_stage
+                    ? `${journeyFunnelQuery.data.quality.top_drop_stage.from_stage} -> ${journeyFunnelQuery.data.quality.top_drop_stage.to_stage}`
+                    : "—"}
+                </span>
+              </div>
+              {!journeyFunnelQuery.data?.stages?.length ? (
+                <div className="mt-3 text-sm text-gray-600">Sem dados de funil no período selecionado.</div>
+              ) : (
+                <div className="mt-3 overflow-x-auto">
+                  <table className="min-w-full text-sm">
+                    <thead className="bg-gray-50 text-gray-600">
+                      <tr>
+                        <th className="px-3 py-2 text-left font-semibold">Etapa</th>
+                        <th className="px-3 py-2 text-left font-semibold">Volume</th>
+                        <th className="px-3 py-2 text-left font-semibold">Conversão etapa</th>
+                        <th className="px-3 py-2 text-left font-semibold">Payload incompleto</th>
+                      </tr>
+                    </thead>
+                    <tbody className="divide-y">
+                      {journeyFunnelQuery.data.stages.map((row) => (
+                        <tr key={row.stage_key}>
+                          <td className="px-3 py-2">{row.stage_label}</td>
+                          <td className="px-3 py-2">{formatNumber(row.count)}</td>
+                          <td className="px-3 py-2">{formatRatioPercent(row.conversion_from_previous)}</td>
+                          <td className="px-3 py-2">{formatRatioPercent(row.payload_missing_rate)}</td>
+                        </tr>
+                      ))}
+                    </tbody>
+                  </table>
+                </div>
+              )}
+            </div>
+          </section>
+
+          <section className="space-y-3">
+            <h2 className="text-sm font-semibold text-gray-800 uppercase tracking-wide">Plano redução agressiva de nulos</h2>
+            <div className="grid grid-cols-1 gap-3 md:grid-cols-4">
+              <Card title="Score qualidade (meta 95)" value={formatNumber(dataQuality.score)} />
+              <Card title="Payload faltante médio" value={formatRatioPercent(dataQuality.avgMissingRate)} />
+              <Card title="PDV processing rate" value={formatRatioPercent(pdvHealthQuery.data?.processing_rate)} />
+              <Card title="PDV failure rate" value={formatRatioPercent(pdvHealthQuery.data?.failure_rate)} />
+            </div>
+            <div className="rounded-xl border border-gray-200 bg-white p-4">
+              <h3 className="text-sm font-semibold text-gray-800">Backlog executivo (próximos 14 dias)</h3>
+              <div className="mt-3 overflow-x-auto">
+                <table className="min-w-full text-sm">
+                  <thead className="bg-gray-50 text-gray-600">
+                    <tr>
+                      <th className="px-3 py-2 text-left font-semibold">Frente</th>
+                      <th className="px-3 py-2 text-left font-semibold">Objetivo</th>
+                      <th className="px-3 py-2 text-left font-semibold">Dono</th>
+                      <th className="px-3 py-2 text-left font-semibold">SLA</th>
+                    </tr>
+                  </thead>
+                  <tbody className="divide-y">
+                    <tr>
+                      <td className="px-3 py-2">Contrato de eventos</td>
+                      <td className="px-3 py-2">Zerar payload faltante em `signup/store/camera/roi` ({'<= 2%'})</td>
+                      <td className="px-3 py-2">Backend + Frontend</td>
+                      <td className="px-3 py-2">D+5</td>
+                    </tr>
+                    <tr>
+                      <td className="px-3 py-2">Integração PDV</td>
+                      <td className="px-3 py-2">Failure rate ingestão {'<= 1%'} e pending = 0 em 24h</td>
+                      <td className="px-3 py-2">Data/Integrações</td>
+                      <td className="px-3 py-2">D+7</td>
+                    </tr>
+                    <tr>
+                      <td className="px-3 py-2">Funil ICP</td>
+                      <td className="px-3 py-2">Mapear e atacar maior drop-stage no onboarding</td>
+                      <td className="px-3 py-2">Produto + Growth</td>
+                      <td className="px-3 py-2">D+10</td>
+                    </tr>
+                    <tr>
+                      <td className="px-3 py-2">Governança Admin</td>
+                      <td className="px-3 py-2">Padronizar métricas `official/proxy/estimated` em todos os cards</td>
+                      <td className="px-3 py-2">Produto + Dados</td>
+                      <td className="px-3 py-2">D+14</td>
+                    </tr>
+                  </tbody>
+                </table>
+              </div>
+              {pdvHealthQuery.data?.top_errors?.length ? (
+                <div className="mt-3 text-xs text-gray-600">
+                  Top erros PDV:{" "}
+                  {pdvHealthQuery.data.top_errors
+                    .map((item) => `${item.error} (${item.count})`)
+                    .join(", ")}
+                </div>
+              ) : null}
             </div>
           </section>
 
