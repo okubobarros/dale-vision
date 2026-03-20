@@ -204,6 +204,46 @@ export type ProductivityCoverage = {
   windows: ProductivityCoverageWindow[]
 }
 
+export type JourneyFunnelStage = {
+  stage_key: string
+  stage_label: string
+  count: number
+  conversion_from_previous: number | null
+  payload_missing_rate: number
+  payload_missing_total: number
+  payload_samples: number
+}
+
+export type JourneyFunnel = {
+  period: string
+  from?: string | null
+  to?: string | null
+  method: {
+    id: string
+    version: string
+    label: string
+    description: string
+  }
+  stages: JourneyFunnelStage[]
+  kpis: {
+    signups_total: number
+    activated_total: number
+    subscriptions_active_total: number
+    activation_rate: number | null
+    paid_rate: number | null
+  }
+  quality: {
+    top_drop_stage: {
+      from_stage: string
+      to_stage: string
+      drop_rate: number
+      from_count: number
+      to_count: number
+    } | null
+    include_global_leads: boolean
+  }
+}
+
 const buildCoverageFallback = (
   summary: ReportSummary | null,
   storeId?: string | null,
@@ -346,6 +386,18 @@ export const meService = {
       }
       throw error
     }
+  },
+  async getJourneyFunnel(
+    range?: ReportRangeParams,
+    options?: { include_global_leads?: boolean }
+  ): Promise<JourneyFunnel> {
+    const params: Record<string, string> = {}
+    if (range?.from) params.from = range.from
+    if (range?.to) params.to = range.to
+    if (range?.period) params.period = range.period
+    if (options?.include_global_leads) params.include_global_leads = "true"
+    const response = await api.get("/v1/report/journey-funnel/", { params })
+    return response.data as JourneyFunnel
   },
   async exportReport(
     format: "csv" | "pdf",

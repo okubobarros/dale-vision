@@ -15,7 +15,7 @@ from rest_framework.response import Response
 from rest_framework.views import APIView
 
 from django.db.models import Count, Q, Sum
-from apps.core.models import Store, DetectionEvent, Organization, PosTransactionEvent
+from apps.core.models import Store, DetectionEvent, Organization, PosTransactionEvent, JourneyEvent, Subscription
 from apps.edge.models import EdgeUpdateEvent
 from apps.copilot.models import ActionOutcome
 from apps.stores.services.user_orgs import get_user_org_ids
@@ -1211,6 +1211,150 @@ def _build_productivity_coverage_payload(*, org_id: str, store_id: str | None, s
     )
 
 
+FUNNEL_STAGES = [
+    ("lead_created", "Lead criado (demo)"),
+    ("signup_completed", "Cadastro concluido"),
+    ("store_created", "Loja criada"),
+    ("camera_added", "Camera adicionada"),
+    ("roi_saved", "ROI salvo"),
+    ("first_metrics_received", "Primeiros dados recebidos"),
+    ("upgrade_clicked", "Upgrade clicado"),
+]
+
+FUNNEL_STAGE_REQUIRED_PAYLOAD_KEYS = {
+    "lead_created": ["email", "whatsapp"],
+    "signup_completed": ["user_id"],
+    "store_created": ["store_id"],
+    "camera_added": ["store_id", "camera_id"],
+    "roi_saved": ["store_id", "camera_id", "roi_version"],
+    "first_metrics_received": ["store_id"],
+    "upgrade_clicked": [],
+}
+
+
+def _to_bool(value) -> bool:
+    text = str(value or "").strip().lower()
+    return text in {"1", "true", "yes", "on"}
+
+
+def _build_journey_funnel_payload(*, org_id: str, start, end, include_global_leads: bool = False):
+    scoped_qs = JourneyEvent.objects.filter(created_at__gte=start, created_at__lt=end)
+    if not include_global_leads:
+        scoped_qs = scoped_qs.filter(org_id=org_id)
+    else:
+        scoped_qs = scoped_qs.filter(Q(org_id=org_id) | Q(org_id__isnull=True))
+
+    stage_keys = [stage_key for stage_key, _label in FUNNEL_STAGES]
+    stage_counts_raw = (
+        scoped_qs.filter(event_name__in=stage_keys)
+        .values("event_name")
+        .annotate(count=Count("id"))
+    )
+    counts_map = {str(row["event_name"]): int(row["count"] or 0) for row in stage_counts_raw}
+
+    payload_quality_samples: dict[str, int] = {stage_key: 0 for stage_key in stage_keys}
+    payload_quality_missing: dict[str, int] = {stage_key: 0 for stage_key in stage_keys}
+
+    quality_rows = scoped_qs.filter(event_name__in=stage_keys).values("event_name", "payload")
+    for row in quality_rows:
+        event_name = str(row.get("event_name") or "")
+        payload = row.get("payload")
+        payload_quality_samples[event_name] = int(payload_quality_samples.get(event_name) or 0) + 1
+        required_keys = FUNNEL_STAGE_REQUIRED_PAYLOAD_KEYS.get(event_name, [])
+        if not required_keys:
+            continue
+        if not isinstance(payload, dict):
+            payload_quality_missing[event_name] = int(payload_quality_missing.get(event_name) or 0) + 1
+            continue
+        missing_any = False
+        for key in required_keys:
+            raw = payload.get(key)
+            if raw is None or raw == "":
+                missing_any = True
+                break
+        if missing_any:
+            payload_quality_missing[event_name] = int(payload_quality_missing.get(event_name) or 0) + 1
+
+    stages_payload = []
+    previous_count = None
+    for stage_key, stage_label in FUNNEL_STAGES:
+        stage_count = int(counts_map.get(stage_key) or 0)
+        conversion_from_previous = (
+            round((stage_count / previous_count), 4)
+            if previous_count is not None and previous_count > 0
+            else None
+        )
+        sample_count = int(payload_quality_samples.get(stage_key) or 0)
+        missing_count = int(payload_quality_missing.get(stage_key) or 0)
+        missing_rate = round((missing_count / sample_count), 4) if sample_count > 0 else 0.0
+        stages_payload.append(
+            {
+                "stage_key": stage_key,
+                "stage_label": stage_label,
+                "count": stage_count,
+                "conversion_from_previous": conversion_from_previous,
+                "payload_missing_rate": missing_rate,
+                "payload_missing_total": missing_count,
+                "payload_samples": sample_count,
+            }
+        )
+        previous_count = stage_count
+
+    subscription_total = (
+        Subscription.objects.filter(
+            org_id=org_id,
+            status__in=["active", "trialing", "past_due"],
+        )
+        .count()
+    )
+    stage_terminal = int(previous_count or 0)
+    activation_rate = round((stage_terminal / counts_map.get("signup_completed", 0)), 4) if counts_map.get("signup_completed", 0) else None
+    paid_rate = round((subscription_total / counts_map.get("signup_completed", 0)), 4) if counts_map.get("signup_completed", 0) else None
+
+    top_drop_stage = None
+    biggest_drop_value = 0.0
+    for idx in range(1, len(stages_payload)):
+        prev = stages_payload[idx - 1]
+        current = stages_payload[idx]
+        prev_count = int(prev.get("count") or 0)
+        current_count = int(current.get("count") or 0)
+        if prev_count <= 0:
+            continue
+        drop_rate = 1.0 - (current_count / prev_count)
+        if drop_rate > biggest_drop_value:
+            biggest_drop_value = drop_rate
+            top_drop_stage = {
+                "from_stage": prev.get("stage_key"),
+                "to_stage": current.get("stage_key"),
+                "drop_rate": round(drop_rate, 4),
+                "from_count": prev_count,
+                "to_count": current_count,
+            }
+
+    return {
+        "from": start.isoformat(),
+        "to": end.isoformat(),
+        "method": {
+            "id": "journey_funnel",
+            "version": "journey_funnel_v1_2026-03-20",
+            "label": "Funil de jornada ICP",
+            "description": "Consolida eventos de jornada do produto para medir passagem de etapa, ativacao e assinatura.",
+        },
+        "stages": stages_payload,
+        "kpis": {
+            "signups_total": int(counts_map.get("signup_completed") or 0),
+            "activated_total": stage_terminal,
+            "subscriptions_active_total": int(subscription_total or 0),
+            "activation_rate": activation_rate,
+            "paid_rate": paid_rate,
+        },
+        "quality": {
+            "top_drop_stage": top_drop_stage,
+            "include_global_leads": bool(include_global_leads),
+        },
+    }
+
+
 class ReportSummaryView(APIView):
     permission_classes = [IsAuthenticated]
 
@@ -1550,6 +1694,56 @@ class ReportImpactView(APIView):
             store_id=store_id,
             start=start,
             end=end,
+        )
+        payload["period"] = period
+        return Response(payload)
+
+
+class JourneyFunnelView(APIView):
+    permission_classes = [IsAuthenticated]
+
+    def get(self, request):
+        org_ids = get_user_org_ids(request.user)
+        if not org_ids:
+            return Response(
+                {
+                    "period": "7d",
+                    "from": None,
+                    "to": None,
+                    "method": {
+                        "id": "journey_funnel",
+                        "version": "journey_funnel_v1_2026-03-20",
+                        "label": "Funil de jornada ICP",
+                        "description": "Sem organização ativa para cálculo.",
+                    },
+                    "stages": [],
+                    "kpis": {
+                        "signups_total": 0,
+                        "activated_total": 0,
+                        "subscriptions_active_total": 0,
+                        "activation_rate": None,
+                        "paid_rate": None,
+                    },
+                    "quality": {
+                        "top_drop_stage": None,
+                        "include_global_leads": False,
+                    },
+                }
+            )
+
+        org_id = str(org_ids[0])
+        tz = _get_org_timezone(org_id)
+        start, end, period = _parse_date_range(request, tz)
+        include_global_leads = _to_bool(request.query_params.get("include_global_leads"))
+        if include_global_leads and not (
+            getattr(request.user, "is_staff", False) or getattr(request.user, "is_superuser", False)
+        ):
+            include_global_leads = False
+        payload = _build_journey_funnel_payload(
+            org_id=org_id,
+            start=start,
+            end=end,
+            include_global_leads=include_global_leads,
         )
         payload["period"] = period
         return Response(payload)

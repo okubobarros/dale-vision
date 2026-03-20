@@ -1,7 +1,13 @@
 from django.urls import path
 from .views_onboarding import OnboardingProgressView, OnboardingStepCompleteView, OnboardingNextStepView
 from apps.accounts.views import MeStatusView, AdminControlTowerSummaryView
-from .views_report import ReportSummaryView, ReportExportView, ReportImpactView, ProductivityCoverageView
+from .views_report import (
+    ReportSummaryView,
+    ReportExportView,
+    ReportImpactView,
+    ProductivityCoverageView,
+    JourneyFunnelView,
+)
 from .views import (
     StorageStatusView,
     SalesProgressView,
@@ -19,6 +25,7 @@ urlpatterns = [
     path("me/admin/control-tower/summary/", AdminControlTowerSummaryView.as_view(), name="admin-control-tower-summary"),
     path("report/summary/", ReportSummaryView.as_view(), name="report-summary"),
     path("report/impact/", ReportImpactView.as_view(), name="report-impact"),
+    path("report/journey-funnel/", JourneyFunnelView.as_view(), name="report-journey-funnel"),
     path("report/export/", ReportExportView.as_view(), name="report-export"),
     path("sales/progress/", SalesProgressView.as_view(), name="sales-progress"),
     path("integration/pdv/interest/", PdvIntegrationInterestView.as_view(), name="pdv-integration-interest"),
