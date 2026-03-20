@@ -198,6 +198,35 @@ export type AdminIngestionFunnelGapRepairResponse = {
   repaired_store_ids: string[]
 }
 
+export type AdminPipelineObservabilityRow = {
+  store_id?: string | null
+  store_name?: string | null
+  camera_id?: string | null
+  camera_name?: string | null
+  frames_received: number
+  events_accepted: number
+  events_generated: number
+  drop_rate?: number | null
+  latency_ms_avg?: number | null
+  latest_event_at?: string | null
+}
+
+export type AdminPipelineObservabilityResponse = {
+  window_hours: number
+  from: string
+  to: string
+  store_id?: string | null
+  totals: {
+    rows_total: number
+    frames_received: number
+    events_accepted: number
+    events_generated: number
+    drop_rate?: number | null
+    latency_ms_avg?: number | null
+  }
+  rows: AdminPipelineObservabilityRow[]
+}
+
 export const adminService = {
   async getControlTowerSummary(): Promise<AdminControlTowerSummary> {
     const response = await api.get("/v1/me/admin/control-tower/summary/", {
@@ -305,5 +334,18 @@ export const adminService = {
       noRetry: true,
     })
     return response.data as AdminIngestionFunnelGapRepairResponse
+  },
+
+  async getPipelineObservability(params?: {
+    window_hours?: number
+    store_id?: string
+    limit?: number
+  }): Promise<AdminPipelineObservabilityResponse> {
+    const response = await api.get("/v1/me/admin/pipeline-observability/", {
+      params: params || undefined,
+      timeoutCategory: "best-effort",
+      noRetry: true,
+    })
+    return response.data as AdminPipelineObservabilityResponse
   },
 }

@@ -70,6 +70,7 @@ Notas de payload (stores):
 - `GET /api/v1/report/export/` (query: `format=csv|pdf`, `store_id`, `period`, `from`, `to`)
 - `GET /api/v1/me/admin/control-tower/summary/` (staff/superuser)
 - `GET|POST /api/v1/me/admin/ingestion-funnel-gap/` (staff/superuser; query/body: `window_hours`, `store_id`, `limit`)
+- `GET /api/v1/me/admin/pipeline-observability/` (staff/superuser; query: `window_hours`, `store_id`, `limit`)
 
 - `POST /api/v1/integration/pdv/interest/`
 - `POST /api/v1/integration/pdv/events/`
@@ -179,6 +180,18 @@ Resposta de `me/admin/ingestion-funnel-gap`:
 - `rows_total` + `rows[]` com `store_id`, `store_name`, `vision_events`, `last_vision_ts`
 - `GET`: diagnóstico de lojas com evento de visão recente e sem `first_metrics_received`
 - `POST`: executa repair de reconciliação e retorna `candidates_total`, `repaired_total`, `repaired_store_ids`
+
+Resposta de `me/admin/pipeline-observability`:
+- `totals.frames_received` (proxy de frames/eventos edge recebidos)
+- `totals.events_accepted`
+- `totals.events_generated` (eventos em `vision_atomic_events`)
+- `totals.drop_rate`
+- `totals.latency_ms_avg`
+- `rows[]` por loja/câmera com os mesmos indicadores e `latest_event_at`
+
+Operação DLQ/Retry (management command):
+- `python manage.py retry_failed_edge_receipts --hours 24 --limit 500 [--max-attempts 8] [--dry-run]`
+- Reprocessa receipts edge falhos (`processed_at IS NULL` e `last_error != NULL`) para eventos `vision.*`.
 
 Contrato de eventos de jornada (`JourneyEvent`):
 - Eventos críticos com campos obrigatórios (`signup_completed`, `store_created`, `camera_added`, `roi_saved`, `first_metrics_received`) têm validação de payload no backend.

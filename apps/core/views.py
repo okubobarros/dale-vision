@@ -790,3 +790,188 @@ class AdminIngestionFunnelGapView(APIView):
             },
             status=status.HTTP_200_OK,
         )
+
+
+def _load_pipeline_observability_rows(*, start, end, store_id: str | None = None, limit: int = 200):
+    query = """
+        WITH receipts AS (
+            SELECT
+                COALESCE(
+                    NULLIF(er.raw->'data'->>'store_id', ''),
+                    NULLIF(er.raw->>'store_id', ''),
+                    NULLIF(er.meta->>'store_id', '')
+                ) AS store_id,
+                COALESCE(
+                    NULLIF(er.raw->'data'->>'camera_id', ''),
+                    NULLIF(er.raw->>'camera_id', ''),
+                    NULLIF(er.raw->'data'->>'external_id', ''),
+                    NULLIF(er.meta->>'camera_id', ''),
+                    'unknown'
+                ) AS camera_key,
+                COUNT(*)::int AS frames_received,
+                COUNT(*) FILTER (
+                    WHERE er.processed_at IS NOT NULL
+                      AND COALESCE(NULLIF(TRIM(er.last_error), ''), NULL) IS NULL
+                )::int AS events_accepted,
+                AVG(
+                    EXTRACT(EPOCH FROM (COALESCE(er.processed_at, er.updated_at, now()) - er.ts)) * 1000.0
+                ) AS latency_ms_avg,
+                MAX(er.ts) AS latest_receipt_at
+            FROM public.event_receipts er
+            WHERE er.ts >= %s
+              AND er.ts < %s
+              AND er.source = 'edge'
+              AND (
+                er.event_name LIKE 'vision.%%'
+                OR er.event_name = 'retail.event.v1'
+                OR er.event_name LIKE 'retail.%%'
+                OR er.event_name LIKE 'retail_%%'
+              )
+            GROUP BY 1, 2
+        ),
+        vision AS (
+            SELECT
+                vae.store_id::text AS store_id,
+                COALESCE(vae.camera_id::text, 'unknown') AS camera_key,
+                COUNT(*)::int AS events_generated,
+                MAX(vae.ts) AS latest_vision_at
+            FROM public.vision_atomic_events vae
+            WHERE vae.ts >= %s
+              AND vae.ts < %s
+            GROUP BY 1, 2
+        )
+        SELECT
+            COALESCE(r.store_id, v.store_id) AS store_id,
+            s.name AS store_name,
+            COALESCE(NULLIF(r.camera_key, ''), NULLIF(v.camera_key, ''), 'unknown') AS camera_key,
+            c.name AS camera_name,
+            COALESCE(r.frames_received, 0) AS frames_received,
+            COALESCE(r.events_accepted, 0) AS events_accepted,
+            COALESCE(v.events_generated, 0) AS events_generated,
+            CASE
+                WHEN COALESCE(r.frames_received, 0) > 0
+                THEN ROUND(
+                    ((COALESCE(r.frames_received, 0) - COALESCE(r.events_accepted, 0))::numeric
+                    / COALESCE(r.frames_received, 1)::numeric),
+                    4
+                )
+                ELSE NULL
+            END AS drop_rate,
+            ROUND(COALESCE(r.latency_ms_avg, 0)::numeric, 2) AS latency_ms_avg,
+            GREATEST(COALESCE(r.latest_receipt_at, 'epoch'::timestamp), COALESCE(v.latest_vision_at, 'epoch'::timestamp)) AS latest_event_at
+        FROM receipts r
+        FULL OUTER JOIN vision v
+          ON v.store_id = r.store_id
+         AND v.camera_key = r.camera_key
+        LEFT JOIN public.stores s
+          ON s.id::text = COALESCE(r.store_id, v.store_id)
+        LEFT JOIN public.cameras c
+          ON c.id::text = COALESCE(NULLIF(r.camera_key, ''), NULLIF(v.camera_key, ''))
+        WHERE COALESCE(r.store_id, v.store_id) IS NOT NULL
+    """
+    params: list[object] = [start, end, start, end]
+    if store_id:
+        query += " AND COALESCE(r.store_id, v.store_id) = %s"
+        params.append(store_id)
+    query += """
+        ORDER BY
+          COALESCE(r.frames_received, 0) DESC,
+          COALESCE(v.events_generated, 0) DESC,
+          latest_event_at DESC
+        LIMIT %s
+    """
+    params.append(limit)
+    with connection.cursor() as cursor:
+        cursor.execute(query, params)
+        cols = [col[0] for col in cursor.description]
+        return [dict(zip(cols, row)) for row in cursor.fetchall()]
+
+
+class AdminPipelineObservabilityView(APIView):
+    permission_classes = [IsAuthenticated]
+
+    @staticmethod
+    def _assert_internal_admin(user):
+        if getattr(user, "is_staff", False) or getattr(user, "is_superuser", False):
+            return
+        raise PermissionDenied("Acesso restrito ao time interno (staff/superuser).")
+
+    @staticmethod
+    def _resolve_window_hours(raw_value):
+        try:
+            value = int(raw_value or 24)
+        except Exception:
+            value = 24
+        return max(1, min(value, 24 * 14))
+
+    @staticmethod
+    def _resolve_limit(raw_value):
+        try:
+            value = int(raw_value or 200)
+        except Exception:
+            value = 200
+        return max(1, min(value, 2000))
+
+    @staticmethod
+    def _serialize_rows(rows):
+        payload = []
+        for row in rows:
+            frames_received = int(row.get("frames_received") or 0)
+            events_accepted = int(row.get("events_accepted") or 0)
+            events_generated = int(row.get("events_generated") or 0)
+            drop_rate = row.get("drop_rate")
+            payload.append(
+                {
+                    "store_id": str(row.get("store_id")) if row.get("store_id") else None,
+                    "store_name": row.get("store_name"),
+                    "camera_id": str(row.get("camera_key")) if row.get("camera_key") else None,
+                    "camera_name": row.get("camera_name"),
+                    "frames_received": frames_received,
+                    "events_accepted": events_accepted,
+                    "events_generated": events_generated,
+                    "drop_rate": float(drop_rate) if drop_rate is not None else None,
+                    "latency_ms_avg": float(row.get("latency_ms_avg") or 0),
+                    "latest_event_at": row.get("latest_event_at").isoformat() if row.get("latest_event_at") else None,
+                }
+            )
+        return payload
+
+    def get(self, request):
+        self._assert_internal_admin(request.user)
+        window_hours = self._resolve_window_hours(request.query_params.get("window_hours"))
+        limit = self._resolve_limit(request.query_params.get("limit"))
+        store_id = str(request.query_params.get("store_id") or "").strip() or None
+        end = timezone.now()
+        start = end - timedelta(hours=window_hours)
+        rows = _load_pipeline_observability_rows(start=start, end=end, store_id=store_id, limit=limit)
+        serialized = self._serialize_rows(rows)
+
+        frames_received_total = sum(item["frames_received"] for item in serialized)
+        events_accepted_total = sum(item["events_accepted"] for item in serialized)
+        events_generated_total = sum(item["events_generated"] for item in serialized)
+        drop_rate_total = (
+            round((frames_received_total - events_accepted_total) / frames_received_total, 4)
+            if frames_received_total > 0
+            else None
+        )
+        latency_values = [item["latency_ms_avg"] for item in serialized if item["latency_ms_avg"] > 0]
+        latency_ms_avg = round(sum(latency_values) / len(latency_values), 2) if latency_values else None
+
+        return Response(
+            {
+                "window_hours": window_hours,
+                "from": start.isoformat(),
+                "to": end.isoformat(),
+                "store_id": store_id,
+                "totals": {
+                    "rows_total": len(serialized),
+                    "frames_received": frames_received_total,
+                    "events_accepted": events_accepted_total,
+                    "events_generated": events_generated_total,
+                    "drop_rate": drop_rate_total,
+                    "latency_ms_avg": latency_ms_avg,
+                },
+                "rows": serialized,
+            },
+            status=status.HTTP_200_OK,
+        )

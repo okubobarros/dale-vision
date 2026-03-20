@@ -366,6 +366,8 @@ Registrar decisões e eventos do dia.
   - SLA operacional adicionado para gap visão->funil (`4h`) no auto-generate, com leitura de vencimento no Admin Control Tower.
   - Contrato de Journey Events endurecido para etapas críticas (`signup/store/camera/roi/first_metrics`): payload incompleto agora é bloqueado e registrado com motivo técnico estruturado.
   - Ingestão edge passou a propagar `trace_id` (payload/meta/response), habilitando rastreio técnico evento-a-evento em `event_receipts`.
+  - Admin SaaS ganhou endpoint e tabela técnica de pipeline por loja/câmera (`frames_received`, `events_accepted`, `events_generated`, `drop_rate`, `latency_ms_avg`).
+  - Adicionado comando operacional de DLQ/retry para receipts edge com falha: `python manage.py retry_failed_edge_receipts --hours 24 --limit 500`.
 - Decisões:
   - Usar observabilidade de rede como gate de confiabilidade antes de analisar conversão/funil de produto.
   - Tratar “visão com sinal + funil zerado” como incidente de reconciliação e não de aquisição.

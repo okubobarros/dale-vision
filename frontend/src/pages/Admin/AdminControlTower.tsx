@@ -2,6 +2,7 @@ import { useMemo } from "react"
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query"
 import toast from "react-hot-toast"
 
+import PostLoginExplainer from "../../components/PostLoginExplainer"
 import { useAuth } from "../../contexts/useAuth"
 import { adminService, type CalibrationActionItem } from "../../services/admin"
 import { meService } from "../../services/me"
@@ -166,6 +167,12 @@ export default function AdminControlTower() {
   const ingestionGapQuery = useQuery({
     queryKey: ["admin", "ingestion-funnel-gap", "24h"],
     queryFn: () => adminService.getIngestionFunnelGap({ window_hours: 24, limit: 100 }),
+    enabled: isInternalAdmin,
+    refetchInterval: 30_000,
+  })
+  const pipelineObservabilityQuery = useQuery({
+    queryKey: ["admin", "pipeline-observability", "24h"],
+    queryFn: () => adminService.getPipelineObservability({ window_hours: 24, limit: 120 }),
     enabled: isInternalAdmin,
     refetchInterval: 30_000,
   })
@@ -350,9 +357,11 @@ export default function AdminControlTower() {
     .sort((a, b) => b[1] - a[1])
     .slice(0, 5)
   const ingestionGapRows = ingestionGapQuery.data?.rows || []
+  const pipelineRows = pipelineObservabilityQuery.data?.rows || []
 
   return (
     <div className="space-y-6">
+      <PostLoginExplainer />
       <div className="flex items-center justify-between gap-4">
         <div>
           <h1 className="text-2xl font-bold text-gray-900">Admin SaaS - Control Tower</h1>
@@ -698,6 +707,70 @@ export default function AdminControlTower() {
                               Reprocessar loja
                             </button>
                           </td>
+                        </tr>
+                      ))}
+                    </tbody>
+                  </table>
+                </div>
+              )}
+            </div>
+            <div className="rounded-xl border border-gray-200 bg-white p-4">
+              <div className="flex items-center justify-between gap-3">
+                <h3 className="text-sm font-semibold text-gray-800">Pipeline técnico por loja/câmera (24h)</h3>
+                <span className="text-xs text-gray-500">
+                  {formatNumber(pipelineObservabilityQuery.data?.totals?.rows_total)} linhas
+                </span>
+              </div>
+              <div className="mt-3 grid grid-cols-1 gap-3 md:grid-cols-5">
+                <Card title="Frames recebidos" value={formatNumber(pipelineObservabilityQuery.data?.totals?.frames_received)} />
+                <Card title="Eventos aceitos" value={formatNumber(pipelineObservabilityQuery.data?.totals?.events_accepted)} />
+                <Card title="Eventos gerados" value={formatNumber(pipelineObservabilityQuery.data?.totals?.events_generated)} />
+                <Card title="Drop rate" value={formatRatioPercent(pipelineObservabilityQuery.data?.totals?.drop_rate)} />
+                <Card
+                  title="Latência média"
+                  value={
+                    pipelineObservabilityQuery.data?.totals?.latency_ms_avg === null ||
+                    pipelineObservabilityQuery.data?.totals?.latency_ms_avg === undefined
+                      ? "—"
+                      : `${formatNumber(pipelineObservabilityQuery.data?.totals?.latency_ms_avg)} ms`
+                  }
+                />
+              </div>
+              {pipelineObservabilityQuery.isLoading ? (
+                <div className="mt-3 text-sm text-gray-600">Carregando observabilidade técnica...</div>
+              ) : pipelineRows.length === 0 ? (
+                <div className="mt-3 text-sm text-gray-600">Sem sinal técnico de ingestão no período.</div>
+              ) : (
+                <div className="mt-3 overflow-x-auto">
+                  <table className="min-w-full text-sm">
+                    <thead className="bg-gray-50 text-gray-600">
+                      <tr>
+                        <th className="px-3 py-2 text-left font-semibold">Loja/Câmera</th>
+                        <th className="px-3 py-2 text-left font-semibold">Frames recebidos</th>
+                        <th className="px-3 py-2 text-left font-semibold">Eventos aceitos</th>
+                        <th className="px-3 py-2 text-left font-semibold">Eventos gerados</th>
+                        <th className="px-3 py-2 text-left font-semibold">Drop rate</th>
+                        <th className="px-3 py-2 text-left font-semibold">Latência média</th>
+                        <th className="px-3 py-2 text-left font-semibold">Último evento</th>
+                      </tr>
+                    </thead>
+                    <tbody className="divide-y">
+                      {pipelineRows.slice(0, 20).map((row, index) => (
+                        <tr key={`${row.store_id || "store"}-${row.camera_id || "camera"}-${index}`}>
+                          <td className="px-3 py-2">
+                            <div className="font-medium text-gray-900">{row.store_name || row.store_id || "—"}</div>
+                            <div className="text-xs text-gray-500">{row.camera_name || row.camera_id || "camera_unknown"}</div>
+                          </td>
+                          <td className="px-3 py-2">{formatNumber(row.frames_received)}</td>
+                          <td className="px-3 py-2">{formatNumber(row.events_accepted)}</td>
+                          <td className="px-3 py-2">{formatNumber(row.events_generated)}</td>
+                          <td className="px-3 py-2">{formatRatioPercent(row.drop_rate)}</td>
+                          <td className="px-3 py-2">
+                            {row.latency_ms_avg === null || row.latency_ms_avg === undefined
+                              ? "—"
+                              : `${formatNumber(row.latency_ms_avg)} ms`}
+                          </td>
+                          <td className="px-3 py-2">{formatDateTime(row.latest_event_at)}</td>
                         </tr>
                       ))}
                     </tbody>
