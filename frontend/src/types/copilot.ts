@@ -146,6 +146,8 @@ export interface CopilotActionOutcome {
   channel: string
   source: string
   status: "dispatched" | "completed" | "failed" | "canceled"
+  outcome_status?: "resolved" | "partial" | "not_resolved" | null
+  outcome_comment?: string | null
   baseline?: Record<string, unknown>
   outcome?: Record<string, unknown>
   impact_expected_brl: number

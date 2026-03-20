@@ -113,6 +113,8 @@ class CopilotActionOutcomeSerializer(serializers.ModelSerializer):
             "channel",
             "source",
             "status",
+            "outcome_status",
+            "outcome_comment",
             "baseline",
             "outcome",
             "impact_expected_brl",
@@ -141,6 +143,12 @@ class CopilotActionOutcomeCreateSerializer(serializers.Serializer):
         required=False,
         default="dispatched",
     )
+    outcome_status = serializers.ChoiceField(
+        choices=["resolved", "partial", "not_resolved"],
+        required=False,
+        allow_null=True,
+    )
+    outcome_comment = serializers.CharField(required=False, allow_blank=True, allow_null=True, max_length=1000)
     baseline = serializers.JSONField(required=False)
     outcome = serializers.JSONField(required=False)
     impact_expected_brl = serializers.FloatField(required=False, default=0, min_value=0)
@@ -155,6 +163,12 @@ class CopilotActionOutcomeUpdateSerializer(serializers.Serializer):
         choices=["dispatched", "completed", "failed", "canceled"],
         required=False,
     )
+    outcome_status = serializers.ChoiceField(
+        choices=["resolved", "partial", "not_resolved"],
+        required=False,
+        allow_null=True,
+    )
+    outcome_comment = serializers.CharField(required=False, allow_blank=True, allow_null=True, max_length=1000)
     outcome = serializers.JSONField(required=False)
     impact_realized_brl = serializers.FloatField(required=False, min_value=0)
     confidence_score = serializers.IntegerField(required=False, min_value=0, max_value=100)

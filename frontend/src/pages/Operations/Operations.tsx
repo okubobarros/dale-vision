@@ -58,6 +58,7 @@ const OPERATIONAL_SCORE_WEIGHTS = {
 type QuickFilter = "all" | "critical" | "offline" | "people"
 type InterventionStatus = "pending" | "viewed" | "resolved"
 type RolloutChannelFilter = "all" | "stable" | "canary"
+type OutcomeFeedbackStatus = "resolved" | "partial" | "not_resolved"
 type GroupedOperationalEvent = {
   id: string
   store_id: string
@@ -81,6 +82,18 @@ const interventionStyles: Record<InterventionStatus, string> = {
   pending: "bg-rose-50 text-rose-700 border-rose-200",
   viewed: "bg-amber-50 text-amber-700 border-amber-200",
   resolved: "bg-emerald-50 text-emerald-700 border-emerald-200",
+}
+
+const outcomeFeedbackLabel: Record<OutcomeFeedbackStatus, string> = {
+  resolved: "Resolveu",
+  partial: "Parcial",
+  not_resolved: "Não resolveu",
+}
+
+const outcomeFeedbackBadgeStyle: Record<OutcomeFeedbackStatus, string> = {
+  resolved: "border-emerald-200 bg-emerald-50 text-emerald-700",
+  partial: "border-amber-200 bg-amber-50 text-amber-700",
+  not_resolved: "border-rose-200 bg-rose-50 text-rose-700",
 }
 
 const severityWeight = (severity: string) =>
@@ -108,6 +121,13 @@ const formatTime = (iso?: string) => {
     minute: "2-digit",
   })
 }
+
+const formatCurrencyBRL = (value: number) =>
+  value.toLocaleString("pt-BR", {
+    style: "currency",
+    currency: "BRL",
+    maximumFractionDigits: 0,
+  })
 
 const classifyPillar = (event: DetectionEvent): OperationalPillar => {
   const type = (event.type || "").toLowerCase()
@@ -222,6 +242,10 @@ const Operations = () => {
   const [quickFilter, setQuickFilter] = useState<QuickFilter>("all")
   const [rolloutActionStoreId, setRolloutActionStoreId] = useState<string | null>(null)
   const [rolloutChannelFilter, setRolloutChannelFilter] = useState<RolloutChannelFilter>("all")
+  const [feedbackOutcomeId, setFeedbackOutcomeId] = useState<string | null>(null)
+  const [feedbackStatus, setFeedbackStatus] = useState<OutcomeFeedbackStatus>("resolved")
+  const [feedbackComment, setFeedbackComment] = useState("")
+  const [savingFeedbackOutcomeId, setSavingFeedbackOutcomeId] = useState<string | null>(null)
 
   const { data: account } = useQuery<MeAccount | null>({
     queryKey: ["operations-account"],
@@ -279,6 +303,15 @@ const Operations = () => {
     {},
     { enabled: true, retry: false }
   )
+  const { data: actionOutcomesResponse, refetch: refetchActionOutcomes } = useQuery({
+    queryKey: ["operations-action-outcomes"],
+    queryFn: () =>
+      copilotService.listNetworkActionOutcomes({
+        limit: 10,
+      }),
+    staleTime: 30000,
+    retry: false,
+  })
 
   const storeNameById = useMemo(() => {
     const map = new Map<string, string>()
@@ -423,6 +456,7 @@ const Operations = () => {
   }, [groupedEvents, quickFilter, offlineStoreIds])
 
   const priorityGroups = useMemo(() => filteredGroupedEvents.slice(0, 8), [filteredGroupedEvents])
+  const actionOutcomes = actionOutcomesResponse?.items ?? []
   const criticalOpenEvents = groupedEvents.filter(
     (event) => event.severity === "critical" && event.status === "pending"
   ).length
@@ -616,6 +650,54 @@ const Operations = () => {
 
   const networkRows = networkDashboard?.stores ?? []
   const isEmptyNetwork = !storesLoading && stores.length === 0
+
+  const startOutcomeFeedback = (outcomeId: string, status: OutcomeFeedbackStatus) => {
+    setFeedbackOutcomeId(outcomeId)
+    setFeedbackStatus(status)
+    setFeedbackComment("")
+  }
+
+  const submitOutcomeFeedback = async (item: {
+    id: string
+    store_id: string
+    impact_expected_brl: number
+  }) => {
+    if (!feedbackOutcomeId || feedbackOutcomeId !== item.id || !item.store_id) return
+    setSavingFeedbackOutcomeId(item.id)
+    const resolved = feedbackStatus === "resolved"
+    const partial = feedbackStatus === "partial"
+    const realizedValue = resolved
+      ? Math.max(0, item.impact_expected_brl || 0)
+      : partial
+      ? Math.max(0, Math.round((item.impact_expected_brl || 0) * 0.4))
+      : 0
+    try {
+      await copilotService.updateActionOutcome(item.store_id, item.id, {
+        status: resolved ? "completed" : "failed",
+        outcome_status: feedbackStatus,
+        outcome_comment: feedbackComment.trim() || null,
+        impact_realized_brl: realizedValue,
+        outcome: {
+          feedback_by: "operations_ui",
+          feedback_from: "operations_execution_center",
+          feedback_status: feedbackStatus,
+        },
+      })
+      await refetchActionOutcomes()
+      setFeedbackOutcomeId(null)
+      setFeedbackComment("")
+      toast.success("Feedback operacional registrado.")
+    } catch (error) {
+      const payload = (error as { response?: { data?: Record<string, unknown> } })?.response?.data
+      const message =
+        (typeof payload?.message === "string" && payload.message) ||
+        (typeof payload?.detail === "string" && payload.detail) ||
+        "Não foi possível registrar o feedback."
+      toast.error(message)
+    } finally {
+      setSavingFeedbackOutcomeId(null)
+    }
+  }
 
   return (
     <div className="space-y-6 p-4 sm:p-6">
@@ -1048,6 +1130,122 @@ const Operations = () => {
             ))}
           </div>
         </aside>
+      </section>
+
+      <section className="rounded-2xl border border-gray-200 bg-white p-5 shadow-sm">
+        <div className="flex items-center justify-between gap-3 flex-wrap">
+          <div>
+            <h2 className="text-xl font-semibold text-gray-900">Fechamento das ações delegadas</h2>
+            <p className="text-sm text-gray-600 mt-1">
+              Marque o resultado da ação e registre comentário para aprendizado operacional.
+            </p>
+          </div>
+          <Link
+            to="/app/reports"
+            className="rounded-lg border border-gray-200 px-3 py-2 text-xs font-semibold text-gray-700 hover:bg-gray-50"
+          >
+            Ver histórico completo
+          </Link>
+        </div>
+        {!actionOutcomes.length ? (
+          <p className="mt-4 text-sm text-gray-600">Sem ações registradas recentemente.</p>
+        ) : (
+          <div className="mt-4 space-y-3">
+            {actionOutcomes.slice(0, 6).map((item) => (
+              <article key={item.id} className="rounded-xl border border-slate-200 bg-slate-50 p-4">
+                <div className="flex flex-wrap items-center justify-between gap-2">
+                  <div>
+                    <p className="text-sm font-semibold text-slate-900">{item.action_type}</p>
+                    <p className="text-xs text-slate-600">
+                      Esperado {formatCurrencyBRL(item.impact_expected_brl || 0)} · Realizado{" "}
+                      {formatCurrencyBRL(item.impact_realized_brl || 0)}
+                    </p>
+                  </div>
+                  <div className="flex items-center gap-2">
+                    <span className="rounded-full border border-slate-200 bg-white px-2 py-1 text-[11px] font-semibold text-slate-700">
+                      {item.status}
+                    </span>
+                    {item.outcome_status && (
+                      <span
+                        className={`rounded-full border px-2 py-1 text-[11px] font-semibold ${
+                          outcomeFeedbackBadgeStyle[item.outcome_status]
+                        }`}
+                      >
+                        {outcomeFeedbackLabel[item.outcome_status]}
+                      </span>
+                    )}
+                  </div>
+                </div>
+
+                {item.outcome_comment && (
+                  <p className="mt-2 text-xs text-slate-600">Comentário: {item.outcome_comment}</p>
+                )}
+
+                {item.status === "dispatched" && feedbackOutcomeId !== item.id && (
+                  <div className="mt-3 flex flex-wrap gap-2">
+                    <button
+                      type="button"
+                      onClick={() => startOutcomeFeedback(item.id, "resolved")}
+                      className="rounded-lg border border-emerald-200 bg-emerald-50 px-3 py-1.5 text-xs font-semibold text-emerald-700 hover:bg-emerald-100"
+                    >
+                      Resolveu
+                    </button>
+                    <button
+                      type="button"
+                      onClick={() => startOutcomeFeedback(item.id, "partial")}
+                      className="rounded-lg border border-amber-200 bg-amber-50 px-3 py-1.5 text-xs font-semibold text-amber-700 hover:bg-amber-100"
+                    >
+                      Parcial
+                    </button>
+                    <button
+                      type="button"
+                      onClick={() => startOutcomeFeedback(item.id, "not_resolved")}
+                      className="rounded-lg border border-rose-200 bg-rose-50 px-3 py-1.5 text-xs font-semibold text-rose-700 hover:bg-rose-100"
+                    >
+                      Não resolveu
+                    </button>
+                  </div>
+                )}
+
+                {feedbackOutcomeId === item.id && (
+                  <div className="mt-3 rounded-lg border border-slate-200 bg-white p-3">
+                    <p className="text-xs font-semibold uppercase tracking-wide text-slate-500">
+                      Feedback de fechamento: {outcomeFeedbackLabel[feedbackStatus]}
+                    </p>
+                    <textarea
+                      value={feedbackComment}
+                      onChange={(event) => setFeedbackComment(event.target.value)}
+                      placeholder="Comentário rápido (opcional): o que funcionou ou falhou?"
+                      rows={3}
+                      maxLength={1000}
+                      className="mt-2 w-full rounded-lg border border-slate-200 px-3 py-2 text-sm"
+                    />
+                    <div className="mt-2 flex gap-2">
+                      <button
+                        type="button"
+                        onClick={() => void submitOutcomeFeedback(item)}
+                        disabled={savingFeedbackOutcomeId === item.id}
+                        className="rounded-lg bg-slate-900 px-3 py-1.5 text-xs font-semibold text-white hover:bg-slate-800 disabled:opacity-70"
+                      >
+                        {savingFeedbackOutcomeId === item.id ? "Salvando..." : "Salvar feedback"}
+                      </button>
+                      <button
+                        type="button"
+                        onClick={() => {
+                          setFeedbackOutcomeId(null)
+                          setFeedbackComment("")
+                        }}
+                        className="rounded-lg border border-slate-200 bg-white px-3 py-1.5 text-xs font-semibold text-slate-700 hover:bg-slate-50"
+                      >
+                        Cancelar
+                      </button>
+                    </div>
+                  </div>
+                )}
+              </article>
+            ))}
+          </div>
+        )}
       </section>
 
       <section className="rounded-2xl border border-gray-200 bg-white p-5 shadow-sm">

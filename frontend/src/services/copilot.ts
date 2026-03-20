@@ -100,6 +100,8 @@ export const copilotService = {
       channel?: string
       source?: string
       status?: "dispatched" | "completed" | "failed" | "canceled"
+      outcome_status?: "resolved" | "partial" | "not_resolved" | null
+      outcome_comment?: string | null
       baseline?: Record<string, unknown>
       outcome?: Record<string, unknown>
       impact_expected_brl?: number
@@ -118,6 +120,8 @@ export const copilotService = {
     outcomeId: string,
     payload: {
       status?: "dispatched" | "completed" | "failed" | "canceled"
+      outcome_status?: "resolved" | "partial" | "not_resolved" | null
+      outcome_comment?: string | null
       outcome?: Record<string, unknown>
       impact_realized_brl?: number
       confidence_score?: number

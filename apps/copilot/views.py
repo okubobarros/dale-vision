@@ -675,6 +675,8 @@ class CopilotActionOutcomeView(APIView):
             channel=validated.get("channel") or "whatsapp",
             source=validated.get("source") or "copilot_decision_center",
             status=validated.get("status") or "dispatched",
+            outcome_status=validated.get("outcome_status"),
+            outcome_comment=(validated.get("outcome_comment") or None),
             baseline_json=validated.get("baseline") or {},
             outcome_json=validated.get("outcome") or {},
             impact_expected_brl=float(validated.get("impact_expected_brl") or 0),
@@ -712,6 +714,10 @@ class CopilotActionOutcomeDetailView(APIView):
 
         if "status" in data:
             outcome.status = data["status"]
+        if "outcome_status" in data:
+            outcome.outcome_status = data.get("outcome_status")
+        if "outcome_comment" in data:
+            outcome.outcome_comment = data.get("outcome_comment") or None
         if "outcome" in data:
             outcome.outcome_json = data["outcome"] or {}
         if "impact_realized_brl" in data:
@@ -739,6 +745,8 @@ class CopilotActionOutcomeDetailView(APIView):
         outcome.save(
             update_fields=[
                 "status",
+                "outcome_status",
+                "outcome_comment",
                 "outcome_json",
                 "impact_realized_brl",
                 "confidence_score",

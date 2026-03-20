@@ -34,6 +34,12 @@ ACTION_OUTCOME_STATUS = (
     ("canceled", "canceled"),
 )
 
+ACTION_OUTCOME_RESULT_STATUS = (
+    ("resolved", "resolved"),
+    ("partial", "partial"),
+    ("not_resolved", "not_resolved"),
+)
+
 BUSINESS_MODEL = (
     ("default", "default"),
     ("cafe", "cafe"),
@@ -201,6 +207,14 @@ class ActionOutcome(models.Model):
     channel = models.CharField(max_length=32, default="whatsapp")
     source = models.CharField(max_length=64, default="copilot_decision_center")
     status = models.CharField(max_length=16, choices=ACTION_OUTCOME_STATUS, default="dispatched", db_index=True)
+    outcome_status = models.CharField(
+        max_length=24,
+        choices=ACTION_OUTCOME_RESULT_STATUS,
+        null=True,
+        blank=True,
+        db_index=True,
+    )
+    outcome_comment = models.TextField(null=True, blank=True)
     baseline_json = models.JSONField(default=dict)
     outcome_json = models.JSONField(default=dict)
     impact_expected_brl = models.FloatField(default=0)

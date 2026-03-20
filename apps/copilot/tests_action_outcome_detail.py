@@ -39,6 +39,8 @@ class CopilotActionOutcomeDetailViewTests(SimpleTestCase):
             channel="whatsapp",
             source="reports_executive",
             status="dispatched",
+            outcome_status=None,
+            outcome_comment=None,
             baseline_json={},
             outcome_json={},
             impact_expected_brl=320.0,
@@ -59,6 +61,8 @@ class CopilotActionOutcomeDetailViewTests(SimpleTestCase):
 
         payload = {
             "status": "completed",
+            "outcome_status": "resolved",
+            "outcome_comment": "Equipe abriu caixa extra e estabilizou a fila.",
             "impact_realized_brl": 280.0,
             "confidence_score": 82,
             "outcome": {"queue_seconds_after": 180},
@@ -73,6 +77,8 @@ class CopilotActionOutcomeDetailViewTests(SimpleTestCase):
         response = self.view(request, store_id=store_id, outcome_id=outcome_id)
         self.assertEqual(response.status_code, 200)
         self.assertEqual(outcome.status, "completed")
+        self.assertEqual(outcome.outcome_status, "resolved")
+        self.assertEqual(outcome.outcome_comment, "Equipe abriu caixa extra e estabilizou a fila.")
         self.assertEqual(outcome.impact_realized_brl, 280.0)
         self.assertEqual(outcome.confidence_score, 82)
         self.assertEqual(outcome.outcome_json.get("queue_seconds_after"), 180)

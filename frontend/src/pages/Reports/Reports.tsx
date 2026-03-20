@@ -120,6 +120,12 @@ const targetStatusLabel = (status?: "go" | "no_go" | "no_data") => {
   return "SEM DADO"
 }
 
+const outcomeStatusLabel: Record<"resolved" | "partial" | "not_resolved", string> = {
+  resolved: "Resolveu",
+  partial: "Parcial",
+  not_resolved: "Não resolveu",
+}
+
 const TrustBadge = ({ status }: { status?: string | null }) => {
   const normalized = String(status || "estimated").toLowerCase()
   const map: Record<string, { label: string; className: string }> = {
@@ -586,6 +592,7 @@ const Reports = () => {
     try {
       await copilotService.updateActionOutcome(storeId, outcomeId, {
         status: "completed",
+        outcome_status: "resolved",
         impact_realized_brl: Math.max(0, expectedValue),
         outcome: { completed_by: "reports_ui", completed_from: "executive_outcomes" },
       })
@@ -609,6 +616,7 @@ const Reports = () => {
     try {
       await copilotService.updateActionOutcome(storeId, outcomeId, {
         status: "failed",
+        outcome_status: "not_resolved",
         outcome: { failed_by: "reports_ui", failed_from: "executive_outcomes" },
       })
       await Promise.all([ledgerQ.refetch(), outcomesQ.refetch()])
@@ -1341,6 +1349,14 @@ const Reports = () => {
                     Esperado {formatCurrencyBRL(item.impact_expected_brl)} · Realizado{" "}
                     {formatCurrencyBRL(item.impact_realized_brl)}
                   </p>
+                  {item.outcome_status && (
+                    <p className="text-xs text-slate-500">
+                      Resultado: {outcomeStatusLabel[item.outcome_status]}
+                    </p>
+                  )}
+                  {item.outcome_comment && (
+                    <p className="text-xs text-slate-500">Comentário: {item.outcome_comment}</p>
+                  )}
                 </div>
                 <div className="flex items-center gap-2">
                   <span
