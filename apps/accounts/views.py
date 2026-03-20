@@ -12,6 +12,7 @@ from knox.auth import TokenAuthentication
 from django.contrib.auth import authenticate
 from django.contrib.auth import get_user_model
 from django.db import connection
+from django.db.utils import ProgrammingError, OperationalError, DatabaseError
 from django.utils import timezone
 
 from drf_yasg.utils import swagger_auto_schema  # ✅
@@ -790,133 +791,138 @@ class AdminControlTowerDrilldownView(APIView):
         User = get_user_model()
 
         rows = []
-        if metric == "users_total":
-            rows = list(
-                User.objects.order_by("-date_joined")
-                .values("id", "username", "email", "is_active", "is_staff", "last_login", "date_joined")[:limit]
-            )
-        elif metric == "users_active":
-            rows = list(
-                User.objects.filter(is_active=True)
-                .order_by("-last_login", "-date_joined")
-                .values("id", "username", "email", "is_staff", "last_login", "date_joined")[:limit]
-            )
-        elif metric == "users_staff":
-            rows = list(
-                User.objects.filter(is_staff=True)
-                .order_by("-last_login", "-date_joined")
-                .values("id", "username", "email", "is_superuser", "last_login", "date_joined")[:limit]
-            )
-        elif metric == "organizations_total":
-            rows = list(
-                Organization.objects.order_by("-created_at")
-                .values("id", "name", "segment", "country", "trial_ends_at", "created_at")[:limit]
-            )
-        elif metric == "stores_total":
-            rows = list(
-                Store.objects.order_by("-updated_at")
-                .values("id", "org_id", "name", "status", "last_seen_at", "updated_at")[:limit]
-            )
-        elif metric == "stores_signal_recent_5m":
-            rows = list(
-                Store.objects.filter(last_seen_at__gte=recent_5m)
-                .order_by("-last_seen_at")
-                .values("id", "org_id", "name", "status", "last_seen_at")[:limit]
-            )
-        elif metric == "stores_signal_stale":
-            rows = list(
-                Store.objects.filter(last_seen_at__isnull=False, last_seen_at__lt=recent_5m)
-                .order_by("last_seen_at")
-                .values("id", "org_id", "name", "status", "last_seen_at")[:limit]
-            )
-        elif metric == "stores_signal_missing":
-            rows = list(
-                Store.objects.filter(last_seen_at__isnull=True)
-                .order_by("-updated_at")
-                .values("id", "org_id", "name", "status", "updated_at")[:limit]
-            )
-        elif metric == "subscriptions_active":
-            rows = list(
-                Subscription.objects.filter(status="active")
-                .order_by("-updated_at")
-                .values("id", "org_id", "plan_code", "status", "current_period_end", "updated_at")[:limit]
-            )
-        elif metric == "subscriptions_past_due":
-            rows = list(
-                Subscription.objects.filter(status="past_due")
-                .order_by("-updated_at")
-                .values("id", "org_id", "plan_code", "status", "current_period_end", "updated_at")[:limit]
-            )
-        elif metric == "organizations_trial_expiring_7d":
-            rows = list(
-                Organization.objects.filter(trial_ends_at__gte=now, trial_ends_at__lte=week)
-                .order_by("trial_ends_at")
-                .values("id", "name", "trial_ends_at", "created_at")[:limit]
-            )
-        elif metric == "stores_blocked":
-            rows = list(
-                Store.objects.filter(status="blocked")
-                .order_by("-updated_at")
-                .values("id", "org_id", "name", "blocked_reason", "trial_ends_at", "updated_at")[:limit]
-            )
-        elif metric == "incidents_notification_failed_24h":
-            rows = list(
-                NotificationLog.objects.filter(sent_at__gte=day_ago, status__in=["failed", "error"])
-                .order_by("-sent_at")
-                .values("id", "org_id", "store_id", "channel", "status", "error", "sent_at")[:limit]
-            )
-        elif metric == "incidents_stores_without_recent_signal":
-            rows = list(
-                Store.objects.filter(last_seen_at__lt=recent_5m)
-                .order_by("last_seen_at")
-                .values("id", "org_id", "name", "status", "last_seen_at")[:limit]
-            )
-        elif metric == "onboarding_in_progress":
-            rows = list(
-                OnboardingProgress.objects.filter(status="in_progress")
-                .order_by("-updated_at")
-                .values("id", "org_id", "store_id", "step", "progress_percent", "updated_at")[:limit]
-            )
-        elif metric == "cameras_offline":
-            rows = list(
-                Camera.objects.filter(status="offline")
-                .order_by("-last_seen_at")
-                .values("id", "store_id", "name", "status", "last_seen_at", "last_error")[:limit]
-            )
-        elif metric == "value_loop_outcomes_24h":
-            rows = list(
-                ActionOutcome.objects.filter(dispatched_at__gte=day_ago)
-                .order_by("-dispatched_at")
-                .values(
-                    "id",
-                    "org_id",
-                    "store_id",
-                    "status",
-                    "action_type",
-                    "channel",
-                    "impact_expected_brl",
-                    "impact_realized_brl",
-                    "dispatched_at",
-                    "completed_at",
-                )[:limit]
-            )
-        elif metric == "value_loop_outcomes_completed_24h":
-            rows = list(
-                ActionOutcome.objects.filter(dispatched_at__gte=day_ago, status="completed")
-                .order_by("-completed_at", "-dispatched_at")
-                .values(
-                    "id",
-                    "org_id",
-                    "store_id",
-                    "status",
-                    "action_type",
-                    "channel",
-                    "impact_expected_brl",
-                    "impact_realized_brl",
-                    "dispatched_at",
-                    "completed_at",
-                )[:limit]
-            )
+        warning_code = None
+        try:
+            if metric == "users_total":
+                rows = list(
+                    User.objects.order_by("-date_joined")
+                    .values("id", "username", "email", "is_active", "is_staff", "last_login", "date_joined")[:limit]
+                )
+            elif metric == "users_active":
+                rows = list(
+                    User.objects.filter(is_active=True)
+                    .order_by("-last_login", "-date_joined")
+                    .values("id", "username", "email", "is_staff", "last_login", "date_joined")[:limit]
+                )
+            elif metric == "users_staff":
+                rows = list(
+                    User.objects.filter(is_staff=True)
+                    .order_by("-last_login", "-date_joined")
+                    .values("id", "username", "email", "is_superuser", "last_login", "date_joined")[:limit]
+                )
+            elif metric == "organizations_total":
+                rows = list(
+                    Organization.objects.order_by("-created_at")
+                    .values("id", "name", "segment", "country", "trial_ends_at", "created_at")[:limit]
+                )
+            elif metric == "stores_total":
+                rows = list(
+                    Store.objects.order_by("-updated_at")
+                    .values("id", "org_id", "name", "status", "last_seen_at", "updated_at")[:limit]
+                )
+            elif metric == "stores_signal_recent_5m":
+                rows = list(
+                    Store.objects.filter(last_seen_at__gte=recent_5m)
+                    .order_by("-last_seen_at")
+                    .values("id", "org_id", "name", "status", "last_seen_at")[:limit]
+                )
+            elif metric == "stores_signal_stale":
+                rows = list(
+                    Store.objects.filter(last_seen_at__isnull=False, last_seen_at__lt=recent_5m)
+                    .order_by("last_seen_at")
+                    .values("id", "org_id", "name", "status", "last_seen_at")[:limit]
+                )
+            elif metric == "stores_signal_missing":
+                rows = list(
+                    Store.objects.filter(last_seen_at__isnull=True)
+                    .order_by("-updated_at")
+                    .values("id", "org_id", "name", "status", "updated_at")[:limit]
+                )
+            elif metric == "subscriptions_active":
+                rows = list(
+                    Subscription.objects.filter(status="active")
+                    .order_by("-updated_at")
+                    .values("id", "org_id", "plan_code", "status", "current_period_end", "updated_at")[:limit]
+                )
+            elif metric == "subscriptions_past_due":
+                rows = list(
+                    Subscription.objects.filter(status="past_due")
+                    .order_by("-updated_at")
+                    .values("id", "org_id", "plan_code", "status", "current_period_end", "updated_at")[:limit]
+                )
+            elif metric == "organizations_trial_expiring_7d":
+                rows = list(
+                    Organization.objects.filter(trial_ends_at__gte=now, trial_ends_at__lte=week)
+                    .order_by("trial_ends_at")
+                    .values("id", "name", "trial_ends_at", "created_at")[:limit]
+                )
+            elif metric == "stores_blocked":
+                rows = list(
+                    Store.objects.filter(status="blocked")
+                    .order_by("-updated_at")
+                    .values("id", "org_id", "name", "blocked_reason", "trial_ends_at", "updated_at")[:limit]
+                )
+            elif metric == "incidents_notification_failed_24h":
+                rows = list(
+                    NotificationLog.objects.filter(sent_at__gte=day_ago, status__in=["failed", "error"])
+                    .order_by("-sent_at")
+                    .values("id", "org_id", "store_id", "channel", "status", "error", "sent_at")[:limit]
+                )
+            elif metric == "incidents_stores_without_recent_signal":
+                rows = list(
+                    Store.objects.filter(last_seen_at__lt=recent_5m)
+                    .order_by("last_seen_at")
+                    .values("id", "org_id", "name", "status", "last_seen_at")[:limit]
+                )
+            elif metric == "onboarding_in_progress":
+                rows = list(
+                    OnboardingProgress.objects.filter(status="in_progress")
+                    .order_by("-updated_at")
+                    .values("id", "org_id", "store_id", "step", "progress_percent", "updated_at")[:limit]
+                )
+            elif metric == "cameras_offline":
+                rows = list(
+                    Camera.objects.filter(status="offline")
+                    .order_by("-last_seen_at")
+                    .values("id", "store_id", "name", "status", "last_seen_at", "last_error")[:limit]
+                )
+            elif metric == "value_loop_outcomes_24h":
+                rows = list(
+                    ActionOutcome.objects.filter(dispatched_at__gte=day_ago)
+                    .order_by("-dispatched_at")
+                    .values(
+                        "id",
+                        "org_id",
+                        "store_id",
+                        "status",
+                        "action_type",
+                        "channel",
+                        "impact_expected_brl",
+                        "impact_realized_brl",
+                        "dispatched_at",
+                        "completed_at",
+                    )[:limit]
+                )
+            elif metric == "value_loop_outcomes_completed_24h":
+                rows = list(
+                    ActionOutcome.objects.filter(dispatched_at__gte=day_ago, status="completed")
+                    .order_by("-completed_at", "-dispatched_at")
+                    .values(
+                        "id",
+                        "org_id",
+                        "store_id",
+                        "status",
+                        "action_type",
+                        "channel",
+                        "impact_expected_brl",
+                        "impact_realized_brl",
+                        "dispatched_at",
+                        "completed_at",
+                    )[:limit]
+                )
+        except (ProgrammingError, OperationalError, DatabaseError):
+            logger.exception("[ADMIN_CONTROL_TOWER] drilldown_failed metric=%s", metric)
+            warning_code = "DATA_UNAVAILABLE"
 
         normalized_rows = self._normalize_rows(rows)
         return Response(
@@ -925,6 +931,7 @@ class AdminControlTowerDrilldownView(APIView):
                 "title": self.METRIC_TITLES[metric],
                 "generated_at": timezone.now().isoformat(),
                 "total": len(normalized_rows),
+                "warning_code": warning_code,
                 "columns": self._columns_for_rows(normalized_rows),
                 "rows": normalized_rows,
             },

@@ -60,12 +60,19 @@ def _normalize_camera_role(
     return None
 
 
-def insert_event_receipt_if_new(*, event_id: str, event_name: str, payload: dict, source: str = "edge") -> bool:
+def insert_event_receipt_if_new(
+    *,
+    event_id: str,
+    event_name: str,
+    payload: dict,
+    source: str = "edge",
+    meta: Optional[Dict[str, Any]] = None,
+) -> bool:
     raw = json.dumps(payload, ensure_ascii=False)
     data = (payload.get("data") or {}) if isinstance(payload, dict) else {}
     traffic = data.get("traffic") or {}
     conversion = data.get("conversion") or {}
-    meta = {
+    derived_meta = {
         "store_id": data.get("store_id") or payload.get("store_id"),
         "camera_id": data.get("camera_id") or payload.get("camera_id"),
         "zone_id": traffic.get("zone_id") or conversion.get("zone_id") or data.get("zone_id"),
@@ -76,6 +83,7 @@ def insert_event_receipt_if_new(*, event_id: str, event_name: str, payload: dict
         or conversion.get("metric_type")
         or data.get("metric_type"),
     }
+    merged_meta = {**derived_meta, **(meta or {})}
     event_ts = _parse_ts(data.get("ts") or payload.get("ts"))
     with connection.cursor() as cursor:
         cursor.execute(
@@ -84,7 +92,7 @@ def insert_event_receipt_if_new(*, event_id: str, event_name: str, payload: dict
             VALUES (%s, %s, %s, %s, %s, %s::jsonb, %s::jsonb)
             ON CONFLICT (event_id) DO NOTHING
             """,
-            [event_id, event_name, 1, event_ts, source, raw, json.dumps(meta)],
+            [event_id, event_name, 1, event_ts, source, raw, json.dumps(merged_meta)],
         )
         return cursor.rowcount == 1
 

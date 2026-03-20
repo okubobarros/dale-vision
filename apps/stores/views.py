@@ -3594,7 +3594,7 @@ class StoreViewSet(viewsets.ModelViewSet):
 
                         if event_source in {"retail", "all"}:
                             retail_filters = [
-                                "(event_name LIKE 'retail_%' OR event_name LIKE 'retail.%')",
+                                "(event_name LIKE 'retail_%%' OR event_name LIKE 'retail.%%')",
                                 "ts >= %s",
                                 "ts < %s",
                                 f"(raw->'data'->>'store_id') IN ({store_placeholders})",
