@@ -24,12 +24,18 @@ Dar ao admin visão completa da operação SaaS: usuários, organizações, loja
 - Upgrade/trial guard no frontend (`/app/upgrade` + `SubscriptionGuard`).
 - Regras de trial/câmeras/lojas no backend.
 
-## Estado atual (gaps para SaaS admin)
-1. Não existe tela única de "control tower" multi-org.
-2. Não existe gestão de usuários global (listar, role, status, último login).
-3. Não existe visão consolidada de assinaturas/planos por organização.
-4. Não existe timeline unificada de incidentes da plataforma.
-5. Não existe score global de qualidade de dados por loja.
+## Estado atual (2026-03-20)
+Implementado:
+1. Tela de control tower multi-org em `/app/admin`.
+2. Blocos consolidados de usuários, orgs, lojas/edge, billing e risco operacional.
+3. Bloco de funil PM/Admin + qualidade de payload.
+4. Bloco de plano de redução agressiva de nulos e completude por tabela/campo.
+5. Backlog de calibração integrado ao admin com transição rápida de status.
+
+Ainda em evolução:
+1. Gestão global de usuários/memberships em UI dedicada.
+2. Incidentes com timeline unificada de causa raiz e MTTR fim-a-fim.
+3. Automação completa de criação de ações de calibração por regra.
 
 ## Jornada recomendada do SaaS Admin
 ### Abertura do dia (10 min)
@@ -79,15 +85,19 @@ Dar ao admin visão completa da operação SaaS: usuários, organizações, loja
 - tentativas de acesso negado / anomalias
 
 ## Mapa de implementação (sem depender da loja física)
-### Fase 1 (imediata)
-1. Criar página `/app/admin` (feature flag para staff/superuser).
-2. Entregar cards agregados com dados já existentes (stores + edge-status + notification logs + trial status).
-3. Entregar tabela de incidentes operacionais.
+### Fase 1 (imediata) - concluída
+1. Página `/app/admin` ativa com controle de acesso interno.
+2. Cards agregados + blocos de funil/data quality implementados.
+3. Tabelas de risco/suporte e backlog executivo disponíveis.
 
-### Fase 2
-1. Endpoint backend agregado `GET /api/v1/admin/control-tower/summary`.
-2. Endpoint `GET /api/v1/admin/control-tower/incidents`.
-3. Endpoint `GET /api/v1/admin/control-tower/orgs-billing`.
+### Fase 2 - em execução
+1. Endpoint agregado em produção: `GET /api/v1/me/admin/control-tower/summary/`.
+2. Endpoints de calibração em produção:
+   - `GET|POST /api/v1/calibration/actions/`
+   - `PATCH /api/v1/calibration/actions/{action_id}/`
+   - `POST /api/v1/calibration/actions/{action_id}/evidence/`
+   - `POST /api/v1/calibration/actions/{action_id}/result/`
+3. Próximo incremento: incidentes unificados multi-fonte com priorização.
 
 ### Fase 3
 1. Gestão de usuários e memberships (listar/filtrar/reconciliar).
@@ -106,3 +116,7 @@ Dar ao admin visão completa da operação SaaS: usuários, organizações, loja
 2. Qual o motivo raiz mais frequente hoje?
 3. Quais lojas não estão aptas para decisão executiva?
 4. Quais contas estão em risco comercial (trial/past_due)?
+
+## Atualização
+- Data: `2026-03-20`
+- Motivo: sincronizar documento com implementação real de `/app/admin` e workflow de calibração.

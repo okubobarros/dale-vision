@@ -23,6 +23,14 @@ Toda decisão de produto, contrato de API e regra crítica deve estar aqui antes
 - `60_buglog`: processo de bugs.
 - `70_ops`: suporte e release.
 
+## Atualização transversal mais recente
+- Data de referência: `2026-03-20`.
+- Mapa consolidado de atualização por pasta: `00_index/Documentation_Status_2026-03-20.md`.
+- Mudanças técnicas principais incorporadas na SSOT:
+  - Funil de jornada com `first_metrics_received` corrigido para ingestão real de visão.
+  - Control Tower/Admin e trilha de calibração (`actions/evidence/result`) documentados.
+  - Tela cliente de calibração (`/app/calibration`) e fluxo de validação antes/depois.
+
 ## Edge Agent Runbooks
 - `40_edge_agent/Edge_Install_Runbook.md`
 - `40_edge_agent/Edge_Doctor_Diagnostics.md`

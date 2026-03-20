@@ -30,12 +30,18 @@ ROI publicado e alertas configurados com baixo atrito.
 - Ajustar ROI ou alertas quando necessário.
 - Acompanhar alertas e métricas operacionais.
 - Revisar relatório semanal (SPEC-005).
+- Executar backlog de calibração por câmera:
+  - abrir ação recomendada;
+  - aplicar ajuste físico/lógico (ex.: ângulo, ROI, linha de crossing);
+  - anexar evidência antes/depois;
+  - registrar resultado (`baseline`, `after`, `passed`).
 
 ## Pontos críticos (fricções)
 - Edge offline ou sem heartbeat.
 - Câmera criada mas sem health (pendente).
 - ROI não publicado (insights não aparecem).
 - Permissões insuficientes por escopo de loja.
+- Ação executada sem evidência, impedindo validação objetiva do ganho.
 
 ## O que muda no dashboard (Admin/Manager vs Viewer)
 Admin/Manager pode:
@@ -51,8 +57,25 @@ Viewer vê (somente leitura):
 - Câmeras (lista e status), sem ações destrutivas.
 - ROI apenas leitura (quando aplicável).
 
+Admin/Manager agora também pode:
+- Gerenciar backlog de calibração em `/app/calibration`.
+- Atualizar status da ação (`open`, `in_progress`, `waiting_validation`, `validated`, `rejected`).
+- Anexar evidências e registrar resultado de validação.
+
 ## Métricas
 - Tempo para primeira câmera ativa.
 - Tempo para “primeiro sinal” após Edge Setup.
 - % de lojas online (7 dias).
 - Número de alertas acionáveis vs. ruidosos.
+- % de ações de calibração validadas no SLA.
+- Delta médio de qualidade após ação (baseline vs after).
+
+## Contratos relacionados
+- `GET|POST /api/v1/calibration/actions/`
+- `PATCH /api/v1/calibration/actions/{action_id}/`
+- `POST /api/v1/calibration/actions/{action_id}/evidence/`
+- `POST /api/v1/calibration/actions/{action_id}/result/`
+
+## Atualização
+- Data: `2026-03-20`
+- Motivo: jornada alinhada com workflow de calibração já implementado no produto.

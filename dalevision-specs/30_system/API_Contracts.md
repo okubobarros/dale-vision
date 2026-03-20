@@ -66,7 +66,20 @@ Notas de payload (stores):
 
 - `GET /api/v1/report/summary/`
 - `GET /api/v1/report/impact/`
+- `GET /api/v1/report/journey-funnel/` (query: `period`, `from`, `to`, `include_global_leads`)
 - `GET /api/v1/report/export/` (query: `format=csv|pdf`, `store_id`, `period`, `from`, `to`)
+- `GET /api/v1/me/admin/control-tower/summary/` (staff/superuser)
+
+- `POST /api/v1/integration/pdv/interest/`
+- `POST /api/v1/integration/pdv/events/`
+- `GET /api/v1/integration/pdv/summary/` (query: `store_id`, `period`)
+- `GET /api/v1/integration/pdv/ingestion-health/` (query: `store_id`, `period`)
+- `GET /api/v1/data-quality/completeness/` (query: `store_id`, `period`)
+
+- `GET|POST /api/v1/calibration/actions/`
+- `PATCH /api/v1/calibration/actions/{action_id}/`
+- `POST /api/v1/calibration/actions/{action_id}/evidence/`
+- `POST /api/v1/calibration/actions/{action_id}/result/`
 
 - `GET|POST /api/alerts/alert-rules/`
 - `GET|PUT|PATCH|DELETE /api/alerts/alert-rules/{id}/`
@@ -174,3 +187,7 @@ Resposta de `network/vision/ingestion-summary`:
 - `GET /api/v1/onboarding/next-step/` retorna `400` com `error=store_id_invalid` quando `store_id` ausente ou inválido.
 
 - `POST /api/v1/cameras/{camera_id}/test-connection/` retorna `{ok, status, elapsed_ms, detail}`; `status="timeout"` e `detail="rtsp_probe_timeout"` quando estoura o limite.
+
+## Atualização
+- Data: `2026-03-20`
+- Motivo: sincronização de contratos com endpoints já implementados para PM/Admin, data quality, PDV e calibração.

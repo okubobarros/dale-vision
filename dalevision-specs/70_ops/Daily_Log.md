@@ -10,6 +10,27 @@ Registrar decisões e eventos do dia.
 - Decisões:
 - Próximos passos:
 
+## 2026-03-20
+- Data: 2026-03-20
+- Highlights:
+  - Funil de jornada corrigido para registrar `first_metrics_received` também quando o primeiro sinal chega por eventos de visão além de `vision.metrics.v1`.
+  - Backfill operacional executado para lojas já com métricas e sem marco de funil.
+  - Workflow de calibração MVP implementado ponta a ponta:
+    - backend: `calibration_actions`, `calibration_evidences`, `calibration_results`;
+    - APIs de ação/evidência/resultado publicadas;
+    - Admin SaaS com backlog de calibração ativo;
+    - tela cliente `/app/calibration` com atualização de status, envio de evidência e registro de resultado.
+  - Plano e análise CV/MLOps multi-cliente documentados e alinhados com jornada de produto.
+- Bloqueios:
+  - Ainda falta validação ampla multi-loja com amostra maior para medir ganho médio por tipo de ação.
+- Decisões:
+  - Manter Admin como torre de controle e evoluir Lab de calibração como módulo especializado.
+  - Tornar evidência antes/depois obrigatória para validação de ação crítica.
+- Próximos passos:
+  - Expor criação assistida de ações de calibração automática por regra (`issue_code`).
+  - Integrar upload/gestão de mídia assinada por tenant (sem URL manual).
+  - Fechar painel de impacto por ação (`baseline -> after`) no dashboard do cliente e do admin.
+
 ## 2026-03-16
 - Data: 2026-03-16
 - Highlights:

@@ -40,11 +40,16 @@ Dependencias opcionais:
 - `checkout_events` (proxy de conversao)
 - `consumo_max`, `consumo_avg` (ocupacao do salao)
 
-## Limitacoes atuais
-- MVP usa 1 frame por tick (RTSP ou snapshot). Para maior precisao, evoluir para tracking RTSP low-FPS.
-- Ingestao backend e painel ainda nao implementados (SPEC-007).
+## Limitacoes atuais (checkpoint 2026-03-20)
+- Parte do pipeline já está em produção, mas ainda há variação de qualidade por câmera/ângulo/iluminação.
+- Cenários com reflexo e oclusão (vitrine/luminária) ainda geram FN/FP acima do ideal em algumas lojas.
+- Falta ampliar validação de campo multi-loja com benchmark contínuo por tipo de câmera.
 
 ## Proximos passos
-1. Integrar inferencia do Edge com envio de eventos (SPEC-007).
-2. Persistir e agregar em buckets no backend.
-3. Exibir metricas no app.
+1. Consolidar tuning operacional por papel de câmera (entrada, balcão, salão).
+2. Fechar ciclo de calibração com evidência antes/depois para cada ação crítica.
+3. Evoluir monitoramento de drift com gatilho automático de backlog de calibração.
+
+## Atualização
+- Data: `2026-03-20`
+- Motivo: refletir estado real do pipeline edge->backend->app e foco atual em confiabilidade operacional.
