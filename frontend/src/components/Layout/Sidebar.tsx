@@ -7,6 +7,7 @@ import {
   BellAlertIcon,
   Cog6ToothIcon,
   DocumentTextIcon,
+  WrenchScrewdriverIcon,
   ShieldCheckIcon,
   Bars3Icon,
 } from "@heroicons/react/24/outline"
@@ -37,10 +38,12 @@ const Sidebar = () => {
   // Considera aberto se estiver em qualquer rota de alertas
   const isAlertsOpen = location.pathname.startsWith("/app/alerts")
   const isOperationsOpen = location.pathname.startsWith("/app/operations")
+  const isCalibrationOpen = location.pathname.startsWith("/app/calibration")
 
   const navigation = [
     { name: "Dashboard", href: "/app/dashboard", icon: HomeIcon },
     { name: "Operações", href: "/app/operations", icon: BuildingStorefrontIcon },
+    { name: "Calibração", href: "/app/calibration", icon: WrenchScrewdriverIcon },
     { name: "Relatórios", href: "/app/reports", icon: DocumentTextIcon },
 
     // Grupo ALERTAS (abre no HOVER)
@@ -96,7 +99,8 @@ const Sidebar = () => {
                   `flex items-center ${collapsed ? "justify-center px-2" : "px-4"} py-3 rounded-lg transition-colors ${
                     isActive ||
                     (item.name === "Alertas" && isAlertsOpen) ||
-                    (item.name === "Operações" && isOperationsOpen)
+                    (item.name === "Operações" && isOperationsOpen) ||
+                    (item.name === "Calibração" && isCalibrationOpen)
                       ? "bg-blue-50 text-blue-700 border-l-4 border-blue-500"
                       : "text-gray-700 hover:bg-gray-50"
                   }`

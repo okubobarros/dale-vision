@@ -27,6 +27,7 @@ const Upgrade = lazy(() => import("./pages/Billing/Upgrade"))
 const EdgeHelp = lazy(() => import("./pages/EdgeHelp/EdgeHelp"))
 const Reports = lazy(() => import("./pages/Reports/Reports"))
 const AdminControlTower = lazy(() => import("./pages/Admin/AdminControlTower"))
+const CalibrationActions = lazy(() => import("./pages/Calibration/CalibrationActions"))
 
 // ✅ Alerts stack
 const AlertRules = lazy(() => import("./pages/AlertRules/AlertRules"))
@@ -97,6 +98,7 @@ function App() {
         <Route path="profile" element={<ProfilePage />} />
         <Route path="report" element={<Navigate to="/app/reports" replace />} />
         <Route path="reports" element={<Reports />} />
+        <Route path="calibration" element={<CalibrationActions />} />
         <Route path="admin" element={<AdminControlTower />} />
         <Route path="upgrade" element={<Upgrade />} />
         <Route path="edge-help" element={<EdgeHelp />} />
@@ -110,6 +112,7 @@ function App() {
       <Route path="/alerts" element={<Navigate to="/app/alerts" replace />} />
       <Route path="/settings" element={<Navigate to="/app/settings" replace />} />
       <Route path="/admin" element={<Navigate to="/app/admin" replace />} />
+      <Route path="/calibration" element={<Navigate to="/app/calibration" replace />} />
       <Route path="/copilot" element={<Navigate to="/app/copilot" replace />} />
 
       {/* ✅ Redirects Alerts */}
