@@ -37,6 +37,18 @@ const formatFreshness = (seconds?: number | null) => {
   return `${Math.round(seconds / 3600)}h`
 }
 
+const getSlaStatus = (slaDueAt?: string | null, referenceNowMs?: number | null) => {
+  if (!slaDueAt) return { label: "Sem SLA", className: "text-gray-500" }
+  if (!referenceNowMs || referenceNowMs <= 0) return { label: "Aguardando", className: "text-gray-500" }
+  const dt = new Date(slaDueAt)
+  if (Number.isNaN(dt.getTime())) return { label: "SLA inválido", className: "text-gray-500" }
+  const diffMs = dt.getTime() - referenceNowMs
+  if (diffMs <= 0) return { label: "Vencido", className: "text-rose-700" }
+  const minutes = Math.round(diffMs / (1000 * 60))
+  if (minutes < 60) return { label: `${minutes} min`, className: "text-amber-700" }
+  return { label: `${Math.round(minutes / 60)}h`, className: "text-emerald-700" }
+}
+
 const getPipelineStatusLabel = (status?: string | null) => {
   if (status === "healthy") return "Saudável"
   if (status === "stale") return "Desatualizado"
@@ -226,6 +238,16 @@ export default function AdminControlTower() {
     const items = calibrationActionsQuery.data?.items || []
     return (items as CalibrationActionItem[]).filter((item) => item.status !== "closed").slice(0, 20)
   }, [calibrationActionsQuery.data?.items])
+  const slaReferenceNowMs = calibrationActionsQuery.dataUpdatedAt || null
+  const calibrationOverdueTotal = useMemo(
+    () =>
+      activeCalibrationActions.filter((item) => {
+        if (!item.sla_due_at) return false
+        const dt = new Date(item.sla_due_at)
+        return !Number.isNaN(dt.getTime()) && !!slaReferenceNowMs && dt.getTime() <= slaReferenceNowMs
+      }).length,
+    [activeCalibrationActions, slaReferenceNowMs]
+  )
 
   const storeRisks = useMemo(() => {
     const rows = (storesSummaryQuery.data || []) as StoreSummary[]
@@ -700,6 +722,7 @@ export default function AdminControlTower() {
                   Gerar ações automáticas
                 </button>
                 <span className="text-xs text-gray-500">{activeCalibrationActions.length} abertas</span>
+                <span className="text-xs text-rose-600">{calibrationOverdueTotal} vencidas</span>
               </div>
             </div>
             {calibrationActionsQuery.isLoading ? (
@@ -716,6 +739,7 @@ export default function AdminControlTower() {
                       <th className="px-3 py-2 text-left font-semibold">Ação recomendada</th>
                       <th className="px-3 py-2 text-left font-semibold">Status</th>
                       <th className="px-3 py-2 text-left font-semibold">Prioridade</th>
+                      <th className="px-3 py-2 text-left font-semibold">SLA</th>
                       <th className="px-3 py-2 text-left font-semibold">Ações</th>
                     </tr>
                   </thead>
@@ -730,6 +754,12 @@ export default function AdminControlTower() {
                         <td className="px-3 py-2">{row.recommended_action}</td>
                         <td className="px-3 py-2">{row.status}</td>
                         <td className="px-3 py-2">{row.priority}</td>
+                        <td className="px-3 py-2">
+                          <div className={`text-xs font-semibold ${getSlaStatus(row.sla_due_at, slaReferenceNowMs).className}`}>
+                            {getSlaStatus(row.sla_due_at, slaReferenceNowMs).label}
+                          </div>
+                          <div className="text-xs text-gray-500">{formatDateTime(row.sla_due_at)}</div>
+                        </td>
                         <td className="px-3 py-2">
                           <div className="flex flex-wrap gap-2">
                             <button

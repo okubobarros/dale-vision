@@ -463,7 +463,16 @@ class CalibrationActionAutoGenerateView(APIView):
         created_items: list[dict] = []
         skipped_items: list[dict] = []
 
-        def _register_candidate(*, store: Store, issue_code: str, recommended_action: str, priority: str, camera: Camera | None = None, metadata: dict | None = None):
+        def _register_candidate(
+            *,
+            store: Store,
+            issue_code: str,
+            recommended_action: str,
+            priority: str,
+            camera: Camera | None = None,
+            metadata: dict | None = None,
+            sla_due_hours: int | None = None,
+        ):
             if len(created_items) >= max_actions:
                 return
             camera_id = str(camera.id) if camera else None
@@ -485,6 +494,10 @@ class CalibrationActionAutoGenerateView(APIView):
                 "recommended_action": recommended_action,
                 "metadata": metadata or {},
             }
+            sla_due_at = None
+            if sla_due_hours and int(sla_due_hours) > 0:
+                sla_due_at = now + timedelta(hours=int(sla_due_hours))
+                item["sla_due_at"] = sla_due_at.isoformat()
             if dry_run:
                 created_items.append({**item, "dry_run": True})
                 return
@@ -499,6 +512,7 @@ class CalibrationActionAutoGenerateView(APIView):
                 priority=priority,
                 source="system",
                 created_by_user_uuid=_safe_uuid(_safe_user_uuid(request.user)),
+                sla_due_at=sla_due_at,
                 metadata=metadata or {},
                 created_at=now,
                 updated_at=now,
@@ -672,6 +686,7 @@ class CalibrationActionAutoGenerateView(APIView):
                     issue_code="vision_funnel_reconciliation_gap_24h",
                     priority="critical" if events_total >= 100 else "high",
                     recommended_action="Executar reconciliação de funil (first_metrics_received) para alinhar visão com jornada e desbloquear métricas de ativação.",
+                    sla_due_hours=4,
                     metadata={
                         "rule_id": "rule_vision_funnel_reconciliation_gap_v1",
                         "period_hours": 24,

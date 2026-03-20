@@ -182,3 +182,9 @@ class CalibrationActionAutoGenerateViewTests(SimpleTestCase):
         self.assertEqual(response.status_code, 200)
         issue_codes = [item.get("issue_code") for item in response.data.get("created", [])]
         self.assertIn("vision_funnel_reconciliation_gap_24h", issue_codes)
+        reconciliation_items = [
+            item for item in response.data.get("created", [])
+            if item.get("issue_code") == "vision_funnel_reconciliation_gap_24h"
+        ]
+        self.assertTrue(reconciliation_items)
+        self.assertTrue(reconciliation_items[0].get("sla_due_at"))

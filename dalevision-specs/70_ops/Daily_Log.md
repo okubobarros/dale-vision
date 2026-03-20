@@ -363,6 +363,7 @@ Registrar decisões e eventos do dia.
   - API/Admin de reconciliação operacional entregue: `GET|POST /api/v1/me/admin/ingestion-funnel-gap/` + ações de reprocessamento por loja/todas no Control Tower.
   - Auto-generate de calibração ampliado com regra `vision_funnel_reconciliation_gap_24h` para abrir ações automaticamente quando há sinal de visão sem `first_metrics_received` no funil.
   - UI de Admin e Calibração ajustada para rótulos legíveis de `issue_code` (incluindo gap visão->funil).
+  - SLA operacional adicionado para gap visão->funil (`4h`) no auto-generate, com leitura de vencimento no Admin Control Tower.
 - Decisões:
   - Usar observabilidade de rede como gate de confiabilidade antes de analisar conversão/funil de produto.
   - Tratar “visão com sinal + funil zerado” como incidente de reconciliação e não de aquisição.
