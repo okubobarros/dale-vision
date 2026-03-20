@@ -1,6 +1,7 @@
 import { useEffect, useMemo, useRef, useState } from "react"
 import toast from "react-hot-toast"
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query"
+import { useSearchParams } from "react-router-dom"
 import {
   alertsService,
   type AlertRule,
@@ -157,9 +158,13 @@ const buildRuleQuality = (rule: AlertRule, logs: NotificationLog[]): RuleQuality
 
 export default function AlertRulesPage() {
   const qc = useQueryClient()
+  const [searchParams] = useSearchParams()
   const trackedSuggestionKeysRef = useRef<Set<string>>(new Set())
+  const initialStoreFromQuery = (searchParams.get("store_id") || "").trim()
 
-  const [storeIdOverride, setStoreIdOverride] = useState<string | null>(null)
+  const [storeIdOverride, setStoreIdOverride] = useState<string | null>(
+    initialStoreFromQuery || null
+  )
   const [type, setType] = useState("queue_long")
   const [severity, setSeverity] = useState<Severity>("warning")
   const [cooldown, setCooldown] = useState<number>(15)
@@ -626,7 +631,11 @@ export default function AlertRulesPage() {
                               <p className="mt-2 text-xs text-amber-900">
                                 Acao recomendada: revisar destinos em{" "}
                                 <a
-                                  href="/app/alerts/history"
+                                  href={
+                                    storeId
+                                      ? `/app/alerts/history?store_id=${encodeURIComponent(storeId)}`
+                                      : "/app/alerts/history"
+                                  }
                                   className="font-semibold underline"
                                 >
                                   Historico de Alertas

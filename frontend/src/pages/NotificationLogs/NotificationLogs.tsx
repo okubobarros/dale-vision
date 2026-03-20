@@ -1,5 +1,6 @@
 import { useMemo, useState } from "react"
 import { useQuery } from "@tanstack/react-query"
+import { useSearchParams } from "react-router-dom"
 
 import { storesService, type StoreMinimal } from "../../services/stores"
 import { alertsService, type NotificationLog } from "../../services/alerts"
@@ -13,7 +14,11 @@ function formatDateBR(value?: string) {
 }
 
 export default function NotificationLogs() {
-  const [selectedStoreOverride, setSelectedStoreOverride] = useState<string | null>(null)
+  const [searchParams] = useSearchParams()
+  const initialStoreFromQuery = (searchParams.get("store_id") || "").trim()
+  const [selectedStoreOverride, setSelectedStoreOverride] = useState<string | null>(
+    initialStoreFromQuery || null
+  )
   const [eventIdFilter, setEventIdFilter] = useState<string>("")
 
   // Stores

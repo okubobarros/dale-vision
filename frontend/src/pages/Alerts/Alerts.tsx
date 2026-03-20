@@ -1,7 +1,7 @@
 // src/pages/Alerts/Alerts.tsx
 import { startTransition, useEffect, useMemo, useState } from "react"
 import { useQuery } from "@tanstack/react-query"
-import { useSearchParams } from "react-router-dom"
+import { Link, useSearchParams } from "react-router-dom"
 
 import {
   useAlertsEvents,
@@ -98,6 +98,7 @@ export default function Alerts() {
   const [resolutionSubmitting, setResolutionSubmitting] = useState(false)
   const [dateFrom, setDateFrom] = useState<string>("")
   const [dateTo, setDateTo] = useState<string>("")
+  const [missingContextTracked, setMissingContextTracked] = useState(false)
 
   useEffect(() => {
     const nextStore = searchParams.get("store_id") || ""
@@ -136,6 +137,35 @@ export default function Alerts() {
       ),
     [stores]
   )
+  const currentStoreName = storesMap.get(storeId) || (storeId ? `Loja ${storeId}` : "")
+
+  useEffect(() => {
+    if (!storeId) return
+    void trackJourneyEvent("store_context_preserved", {
+      from_route: "/app/alerts",
+      to_route: "/app/alerts",
+      store_id: storeId,
+      store_id_present: true,
+    })
+  }, [storeId])
+
+  useEffect(() => {
+    if (storeId || missingContextTracked) return
+    setMissingContextTracked(true)
+    void trackJourneyEvent("store_context_missing_fallback", {
+      from_route: "/app/alerts",
+      store_id_present: false,
+    })
+  }, [missingContextTracked, storeId])
+
+  const trackContextLink = (toRoute: string) => {
+    void trackJourneyEvent("store_context_link_clicked", {
+      from_route: "/app/alerts",
+      to_route: toRoute,
+      store_id: storeId || null,
+      store_id_present: Boolean(storeId),
+    })
+  }
 
   // eventos
   const occurredFrom = useMemo(() => {
@@ -543,6 +573,34 @@ export default function Alerts() {
           </div>
         </div>
       </div>
+
+      {storeId ? (
+        <div className="rounded-xl border border-blue-200 bg-blue-50 p-3">
+          <div className="flex flex-wrap items-center gap-2 text-sm text-blue-900">
+            <span className="font-semibold">Contexto atual:</span>
+            <span>{currentStoreName}</span>
+            <Link
+              to={`/app/operations/stores/${encodeURIComponent(storeId)}`}
+              className="rounded-lg border border-blue-300 bg-white px-3 py-1 text-xs font-semibold text-blue-800 hover:bg-blue-100"
+              onClick={() => trackContextLink("/app/operations/stores/:storeId")}
+            >
+              Abrir operacao da loja
+            </Link>
+            <Link
+              to={`/app/cameras?store_id=${encodeURIComponent(storeId)}`}
+              className="rounded-lg border border-blue-300 bg-white px-3 py-1 text-xs font-semibold text-blue-800 hover:bg-blue-100"
+              onClick={() => trackContextLink("/app/cameras")}
+            >
+              Ir para cameras
+            </Link>
+          </div>
+        </div>
+      ) : (
+        <div className="rounded-xl border border-amber-200 bg-amber-50 p-3 text-sm text-amber-900">
+          Contexto de loja nao definido. Selecione uma loja no filtro para manter navegacao
+          consistente entre operacoes, cameras e alertas.
+        </div>
+      )}
 
       {/* States */}
       {eventsQuery.isLoading && (
