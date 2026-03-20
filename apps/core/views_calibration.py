@@ -3,8 +3,8 @@ from __future__ import annotations
 import uuid
 from datetime import timedelta
 
-from django.db import connection
-from django.db.models import Count
+from django.db import connection, models
+from django.db.models import Avg, Count
 from django.utils import timezone
 from django.utils.dateparse import parse_datetime
 from rest_framework import status
@@ -135,6 +135,16 @@ def _has_active_action(*, store_id: str, issue_code: str, camera_id: str | None 
     else:
         filters["camera_id__isnull"] = True
     return CalibrationAction.objects.filter(**filters).exists()
+
+
+def _resolve_period_window(raw_period: str | None):
+    period = str(raw_period or "30d").strip().lower()
+    now = timezone.now()
+    if period == "7d":
+        return now - timedelta(days=7), now, "7d"
+    if period == "90d":
+        return now - timedelta(days=90), now, "90d"
+    return now - timedelta(days=30), now, "30d"
 
 
 class CalibrationActionListCreateView(APIView):
@@ -624,6 +634,134 @@ class CalibrationActionAutoGenerateView(APIView):
                 "created": created_items,
                 "skipped_total": len(skipped_items),
                 "skipped": skipped_items[:200],
+            },
+            status=status.HTTP_200_OK,
+        )
+
+
+class CalibrationImpactSummaryView(APIView):
+    permission_classes = [IsAuthenticated]
+
+    def get(self, request):
+        is_admin = _is_internal_admin(request.user)
+        scoped_org_ids = {str(item) for item in get_user_org_ids(request.user)} if not is_admin else set()
+        if not is_admin and not scoped_org_ids:
+            return Response(
+                {
+                    "period": "30d",
+                    "from": None,
+                    "to": None,
+                    "totals": {
+                        "actions_total": 0,
+                        "actions_validated": 0,
+                        "results_total": 0,
+                        "results_passed": 0,
+                        "pass_rate": None,
+                        "avg_delta": None,
+                    },
+                    "by_issue": [],
+                },
+                status=status.HTTP_200_OK,
+            )
+
+        start, end, period = _resolve_period_window(request.GET.get("period"))
+        store_id = str(request.GET.get("store_id") or "").strip() or None
+
+        actions_qs = CalibrationAction.objects.filter(created_at__gte=start, created_at__lt=end)
+        if not is_admin:
+            actions_qs = actions_qs.filter(org_id__in=scoped_org_ids)
+        if store_id:
+            actions_qs = actions_qs.filter(store_id=store_id)
+
+        action_ids = list(actions_qs.values_list("id", flat=True))
+        if not action_ids:
+            return Response(
+                {
+                    "period": period,
+                    "from": start.isoformat(),
+                    "to": end.isoformat(),
+                    "totals": {
+                        "actions_total": 0,
+                        "actions_validated": 0,
+                        "results_total": 0,
+                        "results_passed": 0,
+                        "pass_rate": None,
+                        "avg_delta": None,
+                    },
+                    "by_issue": [],
+                },
+                status=status.HTTP_200_OK,
+            )
+
+        results_qs = CalibrationResult.objects.filter(action_id__in=action_ids)
+        totals = results_qs.aggregate(
+            results_total=Count("id"),
+            results_passed=Count("id", filter=models.Q(passed=True)),
+            avg_delta=Avg("delta_value"),
+        )
+        actions_total = len(action_ids)
+        actions_validated = actions_qs.filter(status="validated").count()
+        results_total = int(totals.get("results_total") or 0)
+        results_passed = int(totals.get("results_passed") or 0)
+        pass_rate = round((results_passed / results_total), 4) if results_total > 0 else None
+        avg_delta = float(totals.get("avg_delta")) if totals.get("avg_delta") is not None else None
+
+        by_issue_rows = (
+            actions_qs.values("issue_code")
+            .annotate(
+                actions_total=Count("id"),
+                actions_validated=Count("id", filter=models.Q(status="validated")),
+            )
+            .order_by("-actions_total")
+        )
+        by_issue = []
+        for row in by_issue_rows:
+            issue_code = str(row.get("issue_code") or "")
+            issue_action_ids = list(
+                actions_qs.filter(issue_code=issue_code).values_list("id", flat=True)
+            )
+            issue_results_qs = CalibrationResult.objects.filter(action_id__in=issue_action_ids)
+            issue_aggr = issue_results_qs.aggregate(
+                results_total=Count("id"),
+                results_passed=Count("id", filter=models.Q(passed=True)),
+                avg_delta=Avg("delta_value"),
+            )
+            issue_results_total = int(issue_aggr.get("results_total") or 0)
+            issue_results_passed = int(issue_aggr.get("results_passed") or 0)
+            issue_pass_rate = (
+                round((issue_results_passed / issue_results_total), 4)
+                if issue_results_total > 0
+                else None
+            )
+            issue_avg_delta = (
+                float(issue_aggr.get("avg_delta")) if issue_aggr.get("avg_delta") is not None else None
+            )
+            by_issue.append(
+                {
+                    "issue_code": issue_code,
+                    "actions_total": int(row.get("actions_total") or 0),
+                    "actions_validated": int(row.get("actions_validated") or 0),
+                    "results_total": issue_results_total,
+                    "results_passed": issue_results_passed,
+                    "pass_rate": issue_pass_rate,
+                    "avg_delta": issue_avg_delta,
+                }
+            )
+
+        return Response(
+            {
+                "period": period,
+                "from": start.isoformat(),
+                "to": end.isoformat(),
+                "totals": {
+                    "actions_total": actions_total,
+                    "actions_validated": actions_validated,
+                    "results_total": results_total,
+                    "results_passed": results_passed,
+                    "pass_rate": pass_rate,
+                    "avg_delta": avg_delta,
+                },
+                "by_issue": by_issue,
             },
             status=status.HTTP_200_OK,
         )

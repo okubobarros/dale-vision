@@ -23,6 +23,7 @@ from .views_calibration import (
     CalibrationActionEvidenceCreateView,
     CalibrationActionResultCreateView,
     CalibrationActionAutoGenerateView,
+    CalibrationImpactSummaryView,
 )
 
 urlpatterns = [
@@ -43,6 +44,7 @@ urlpatterns = [
     path("data-quality/completeness/", DataCompletenessView.as_view(), name="data-quality-completeness"),
     path("calibration/actions/", CalibrationActionListCreateView.as_view(), name="calibration-actions"),
     path("calibration/actions/auto-generate/", CalibrationActionAutoGenerateView.as_view(), name="calibration-actions-auto-generate"),
+    path("calibration/actions/impact-summary/", CalibrationImpactSummaryView.as_view(), name="calibration-actions-impact-summary"),
     path("calibration/actions/<uuid:action_id>/", CalibrationActionStatusView.as_view(), name="calibration-action-status"),
     path("calibration/actions/<uuid:action_id>/evidence/", CalibrationActionEvidenceCreateView.as_view(), name="calibration-action-evidence"),
     path("calibration/actions/<uuid:action_id>/result/", CalibrationActionResultCreateView.as_view(), name="calibration-action-result"),

@@ -146,6 +146,31 @@ export type CalibrationAutoGenerateResponse = {
   skipped: Array<Record<string, unknown>>
 }
 
+export type CalibrationImpactIssueRow = {
+  issue_code: string
+  actions_total: number
+  actions_validated: number
+  results_total: number
+  results_passed: number
+  pass_rate: number | null
+  avg_delta: number | null
+}
+
+export type CalibrationImpactSummaryResponse = {
+  period: string
+  from: string | null
+  to: string | null
+  totals: {
+    actions_total: number
+    actions_validated: number
+    results_total: number
+    results_passed: number
+    pass_rate: number | null
+    avg_delta: number | null
+  }
+  by_issue: CalibrationImpactIssueRow[]
+}
+
 export const adminService = {
   async getControlTowerSummary(): Promise<AdminControlTowerSummary> {
     const response = await api.get("/v1/me/admin/control-tower/summary/", {
@@ -216,5 +241,17 @@ export const adminService = {
       noRetry: true,
     })
     return response.data as CalibrationAutoGenerateResponse
+  },
+
+  async getCalibrationImpactSummary(params?: {
+    period?: "7d" | "30d" | "90d"
+    store_id?: string
+  }): Promise<CalibrationImpactSummaryResponse> {
+    const response = await api.get("/v1/calibration/actions/impact-summary/", {
+      params: params || undefined,
+      timeoutCategory: "best-effort",
+      noRetry: true,
+    })
+    return response.data as CalibrationImpactSummaryResponse
   },
 }

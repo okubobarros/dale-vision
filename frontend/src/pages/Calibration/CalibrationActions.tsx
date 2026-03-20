@@ -74,6 +74,16 @@ export default function CalibrationActions() {
     refetchInterval: 30_000,
   })
 
+  const impactSummaryQuery = useQuery({
+    queryKey: ["calibration", "impact-summary", storeFilter],
+    queryFn: () =>
+      adminService.getCalibrationImpactSummary({
+        period: "30d",
+        store_id: storeFilter === "all" ? undefined : storeFilter,
+      }),
+    refetchInterval: 60_000,
+  })
+
   const patchActionMutation = useMutation({
     mutationFn: ({
       actionId,
@@ -151,6 +161,17 @@ export default function CalibrationActions() {
   })
 
   const actions = useMemo(() => (actionsQuery.data?.items || []) as CalibrationActionItem[], [actionsQuery.data?.items])
+  const impact = impactSummaryQuery.data
+
+  const formatPercent = (value?: number | null) => {
+    if (value === null || value === undefined || Number.isNaN(value)) return "—"
+    return `${new Intl.NumberFormat("pt-BR", { maximumFractionDigits: 1 }).format(value * 100)}%`
+  }
+
+  const formatNumber = (value?: number | null) => {
+    if (value === null || value === undefined || Number.isNaN(value)) return "—"
+    return new Intl.NumberFormat("pt-BR", { maximumFractionDigits: 2 }).format(value)
+  }
 
   return (
     <div className="space-y-6">
@@ -202,6 +223,69 @@ export default function CalibrationActions() {
             <div className="mt-1 text-2xl font-bold">{actions.length}</div>
           </div>
         </div>
+      </section>
+
+      <section className="rounded-xl border border-gray-200 bg-white p-4">
+        <div className="flex items-center justify-between">
+          <h2 className="text-sm font-semibold text-gray-800 uppercase tracking-wide">
+            Impacto das ações (30d)
+          </h2>
+          <span className="text-xs text-gray-500">
+            {impact?.from && impact?.to ? `${new Date(impact.from).toLocaleDateString("pt-BR")} - ${new Date(impact.to).toLocaleDateString("pt-BR")}` : "—"}
+          </span>
+        </div>
+        {impactSummaryQuery.isLoading ? (
+          <div className="mt-3 text-sm text-gray-600">Calculando impacto...</div>
+        ) : (
+          <>
+            <div className="mt-3 grid grid-cols-1 gap-3 md:grid-cols-4">
+              <div className="rounded-lg border border-gray-200 bg-gray-50 p-3">
+                <div className="text-xs font-semibold uppercase text-gray-500">Ações totais</div>
+                <div className="mt-1 text-xl font-bold text-gray-900">{formatNumber(impact?.totals.actions_total)}</div>
+              </div>
+              <div className="rounded-lg border border-gray-200 bg-gray-50 p-3">
+                <div className="text-xs font-semibold uppercase text-gray-500">Ações validadas</div>
+                <div className="mt-1 text-xl font-bold text-gray-900">{formatNumber(impact?.totals.actions_validated)}</div>
+              </div>
+              <div className="rounded-lg border border-gray-200 bg-gray-50 p-3">
+                <div className="text-xs font-semibold uppercase text-gray-500">Taxa de aprovação</div>
+                <div className="mt-1 text-xl font-bold text-gray-900">{formatPercent(impact?.totals.pass_rate)}</div>
+              </div>
+              <div className="rounded-lg border border-gray-200 bg-gray-50 p-3">
+                <div className="text-xs font-semibold uppercase text-gray-500">Delta médio</div>
+                <div className="mt-1 text-xl font-bold text-gray-900">{formatNumber(impact?.totals.avg_delta)}</div>
+              </div>
+            </div>
+            {!impact?.by_issue?.length ? (
+              <div className="mt-3 text-sm text-gray-600">Sem resultados suficientes para ranking por issue.</div>
+            ) : (
+              <div className="mt-3 overflow-x-auto">
+                <table className="min-w-full text-sm">
+                  <thead className="bg-gray-50 text-gray-600">
+                    <tr>
+                      <th className="px-3 py-2 text-left font-semibold">Issue</th>
+                      <th className="px-3 py-2 text-left font-semibold">Ações</th>
+                      <th className="px-3 py-2 text-left font-semibold">Validadas</th>
+                      <th className="px-3 py-2 text-left font-semibold">Pass rate</th>
+                      <th className="px-3 py-2 text-left font-semibold">Delta médio</th>
+                    </tr>
+                  </thead>
+                  <tbody className="divide-y">
+                    {impact.by_issue.slice(0, 10).map((row) => (
+                      <tr key={row.issue_code}>
+                        <td className="px-3 py-2">{row.issue_code}</td>
+                        <td className="px-3 py-2">{formatNumber(row.actions_total)}</td>
+                        <td className="px-3 py-2">{formatNumber(row.actions_validated)}</td>
+                        <td className="px-3 py-2">{formatPercent(row.pass_rate)}</td>
+                        <td className="px-3 py-2">{formatNumber(row.avg_delta)}</td>
+                      </tr>
+                    ))}
+                  </tbody>
+                </table>
+              </div>
+            )}
+          </>
+        )}
       </section>
 
       <section className="rounded-xl border border-gray-200 bg-white p-4">
