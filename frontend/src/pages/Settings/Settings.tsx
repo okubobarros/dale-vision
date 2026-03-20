@@ -3,6 +3,16 @@ import { Link } from "react-router-dom"
 import EdgeSetupModal from "../../components/EdgeSetupModal"
 import { storesService, type StoreSummary, type StoreEdgeUpdateEvent } from "../../services/stores"
 import { copilotService } from "../../services/copilot"
+import { trackJourneyEvent } from "../../services/journey"
+
+const inferGoalType = (value: string) => {
+  const text = value.toLowerCase()
+  if (!text.trim()) return "none"
+  if (text.includes("expan") || text.includes("loja") || text.includes("unidade")) return "expansion"
+  if (text.includes("viag") || text.includes("fam")) return "personal_life"
+  if (text.includes("equipe") || text.includes("padron") || text.includes("gest")) return "operational_excellence"
+  return "other"
+}
 
 const Settings = () => {
   const [edgeSetupOpen, setEdgeSetupOpen] = useState(false)
@@ -154,12 +164,41 @@ const Settings = () => {
         profile?.defaults && typeof profile.defaults === "object"
           ? (profile.defaults as Record<string, unknown>)
           : {}
-      await copilotService.updateStoreProfile(selectedStoreId, {
+      const previousGoal = String(defaults.owner_goal || "").trim()
+      const previousTone = String(defaults.notification_tone || "")
+      const normalizedGoal = ownerGoal.trim()
+      const updatedProfile = await copilotService.updateStoreProfile(selectedStoreId, {
         defaults: {
           ...defaults,
-          owner_goal: ownerGoal.trim() || null,
+          owner_goal: normalizedGoal || null,
           notification_tone: notificationTone,
         },
+      })
+      if (normalizedGoal && normalizedGoal !== previousGoal) {
+        void trackJourneyEvent("owner_goal_defined", {
+          source: "settings",
+          store_id: selectedStoreId,
+          profile_id: updatedProfile?.id || null,
+          tone: notificationTone,
+          goal_type: inferGoalType(normalizedGoal),
+        })
+      }
+      if (previousTone !== notificationTone) {
+        void trackJourneyEvent("notification_tone_updated", {
+          source: "settings",
+          store_id: selectedStoreId,
+          profile_id: updatedProfile?.id || null,
+          tone: notificationTone,
+          previous_tone: previousTone || null,
+          goal_type: inferGoalType(normalizedGoal),
+        })
+      }
+      void trackJourneyEvent("notification_preferences_saved", {
+        source: "settings",
+        store_id: selectedStoreId,
+        profile_id: updatedProfile?.id || null,
+        tone: notificationTone,
+        goal_type: inferGoalType(normalizedGoal),
       })
       setPrefsSuccess("Preferências humanas salvas com sucesso.")
     } catch {

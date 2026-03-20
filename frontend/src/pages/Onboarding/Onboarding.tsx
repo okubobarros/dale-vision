@@ -7,12 +7,22 @@ import { storesService } from "../../services/stores"
 import { employeesService } from "../../services/employees"
 import { resolvePostLoginRoute } from "../../services/postLoginRoute"
 import { copilotService } from "../../services/copilot"
+import { trackJourneyEvent } from "../../services/journey"
 import PostLoginExplainer from "../../components/PostLoginExplainer"
 import OnboardingProgress from "./components/OnboardingProgress"
 import StoresSetup, { type StoreDraft } from "./components/StoresSetup"
 import EmployeesSetup, { type EmployeeDraft } from "./components/EmployeesSetup"
 import LgpdConsent from "./components/LgpdConsent"
 import { buildEmployeesPayload } from "./helpers/employeePayload"
+
+const inferGoalType = (value: string) => {
+  const text = value.toLowerCase()
+  if (!text.trim()) return "none"
+  if (text.includes("expan") || text.includes("loja") || text.includes("unidade")) return "expansion"
+  if (text.includes("viag") || text.includes("fam")) return "personal_life"
+  if (text.includes("equipe") || text.includes("padron") || text.includes("gest")) return "operational_excellence"
+  return "other"
+}
 
 export default function Onboarding() {
   const navigate = useNavigate()
@@ -242,12 +252,40 @@ export default function Onboarding() {
           const profile = await copilotService.getStoreProfile(storeId)
           const previousDefaults =
             profile?.defaults && typeof profile.defaults === "object" ? profile.defaults : {}
-          await copilotService.updateStoreProfile(storeId, {
+          const previousTone = String((previousDefaults as Record<string, unknown>).notification_tone || "")
+          const updatedProfile = await copilotService.updateStoreProfile(storeId, {
             defaults: {
               ...previousDefaults,
               owner_goal: ownerGoal.trim() || null,
               notification_tone: notificationTone,
             },
+          })
+          const normalizedGoal = ownerGoal.trim()
+          if (normalizedGoal) {
+            void trackJourneyEvent("owner_goal_defined", {
+              source: "onboarding",
+              store_id: storeId,
+              profile_id: updatedProfile?.id || null,
+              tone: notificationTone,
+              goal_type: inferGoalType(normalizedGoal),
+            })
+          }
+          if (previousTone !== notificationTone) {
+            void trackJourneyEvent("notification_tone_updated", {
+              source: "onboarding",
+              store_id: storeId,
+              profile_id: updatedProfile?.id || null,
+              tone: notificationTone,
+              previous_tone: previousTone || null,
+              goal_type: inferGoalType(normalizedGoal),
+            })
+          }
+          void trackJourneyEvent("notification_preferences_saved", {
+            source: "onboarding",
+            store_id: storeId,
+            profile_id: updatedProfile?.id || null,
+            tone: notificationTone,
+            goal_type: inferGoalType(normalizedGoal),
           })
         } catch (error) {
           if (import.meta.env.DEV) {

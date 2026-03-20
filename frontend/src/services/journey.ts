@@ -41,6 +41,9 @@ export type JourneyEventName =
   | "operation_action_delegated"
   | "operation_action_completed"
   | "operation_action_feedback_submitted"
+  | "owner_goal_defined"
+  | "notification_tone_updated"
+  | "notification_preferences_saved"
 
 export type JourneyEventPayload = Record<string, unknown>
 
