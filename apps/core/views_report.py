@@ -1237,12 +1237,29 @@ def _to_bool(value) -> bool:
     return text in {"1", "true", "yes", "on"}
 
 
-def _build_journey_funnel_payload(*, org_id: str, start, end, include_global_leads: bool = False):
+def _build_journey_funnel_payload(
+    *,
+    org_id: str | None = None,
+    org_ids: list[str] | None = None,
+    start,
+    end,
+    include_global_leads: bool = False,
+):
     scoped_qs = JourneyEvent.objects.filter(created_at__gte=start, created_at__lt=end)
-    if not include_global_leads:
-        scoped_qs = scoped_qs.filter(org_id=org_id)
-    else:
-        scoped_qs = scoped_qs.filter(Q(org_id=org_id) | Q(org_id__isnull=True))
+    scoped_subscriptions = Subscription.objects.all()
+    scope_org_ids = [str(item) for item in (org_ids or []) if str(item).strip()]
+    if org_id:
+        scope_org_ids = [str(org_id)]
+
+    if scope_org_ids:
+        if not include_global_leads:
+            scoped_qs = scoped_qs.filter(org_id__in=scope_org_ids)
+        else:
+            scoped_qs = scoped_qs.filter(Q(org_id__in=scope_org_ids) | Q(org_id__isnull=True))
+        scoped_subscriptions = scoped_subscriptions.filter(org_id__in=scope_org_ids)
+    elif include_global_leads:
+        # staff/superuser global mode: include all orgs + global leads
+        scoped_qs = scoped_qs.filter(Q(org_id__isnull=True) | Q(org_id__isnull=False))
 
     stage_keys = [stage_key for stage_key, _label in FUNNEL_STAGES]
     stage_counts_raw = (
@@ -1300,13 +1317,7 @@ def _build_journey_funnel_payload(*, org_id: str, start, end, include_global_lea
         )
         previous_count = stage_count
 
-    subscription_total = (
-        Subscription.objects.filter(
-            org_id=org_id,
-            status__in=["active", "trialing", "past_due"],
-        )
-        .count()
-    )
+    subscription_total = scoped_subscriptions.filter(status__in=["active", "trialing", "past_due"]).count()
     stage_terminal = int(previous_count or 0)
     activation_rate = round((stage_terminal / counts_map.get("signup_completed", 0)), 4) if counts_map.get("signup_completed", 0) else None
     paid_rate = round((subscription_total / counts_map.get("signup_completed", 0)), 4) if counts_map.get("signup_completed", 0) else None
@@ -1703,8 +1714,15 @@ class JourneyFunnelView(APIView):
     permission_classes = [IsAuthenticated]
 
     def get(self, request):
-        org_ids = get_user_org_ids(request.user)
-        if not org_ids:
+        is_internal_admin = bool(
+            getattr(request.user, "is_staff", False) or getattr(request.user, "is_superuser", False)
+        )
+        org_ids = [str(item) for item in get_user_org_ids(request.user)]
+        include_global_leads = _to_bool(request.query_params.get("include_global_leads"))
+        if include_global_leads and not is_internal_admin:
+            include_global_leads = False
+
+        if not org_ids and not is_internal_admin:
             return Response(
                 {
                     "period": "7d",
@@ -1731,16 +1749,12 @@ class JourneyFunnelView(APIView):
                 }
             )
 
-        org_id = str(org_ids[0])
+        org_id = str(org_ids[0]) if org_ids else None
         tz = _get_org_timezone(org_id)
         start, end, period = _parse_date_range(request, tz)
-        include_global_leads = _to_bool(request.query_params.get("include_global_leads"))
-        if include_global_leads and not (
-            getattr(request.user, "is_staff", False) or getattr(request.user, "is_superuser", False)
-        ):
-            include_global_leads = False
         payload = _build_journey_funnel_payload(
-            org_id=org_id,
+            org_id=None if is_internal_admin else org_id,
+            org_ids=[] if is_internal_admin else org_ids,
             start=start,
             end=end,
             include_global_leads=include_global_leads,

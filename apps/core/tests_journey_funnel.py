@@ -84,3 +84,45 @@ class JourneyFunnelViewTests(SimpleTestCase):
         self.assertEqual(response.data["period"], "7d")
         self.assertEqual(response.data["kpis"]["activation_rate"], 0.4)
         self.assertEqual(response.data["stages"][0]["stage_key"], "signup_completed")
+
+    @patch("apps.core.views_report._build_journey_funnel_payload")
+    @patch("apps.core.views_report._parse_date_range")
+    @patch("apps.core.views_report._get_org_timezone")
+    @patch("apps.core.views_report.get_user_org_ids", return_value=[])
+    def test_staff_user_can_view_global_funnel_without_org_membership(
+        self,
+        _orgs_mock,
+        tz_mock,
+        range_mock,
+        payload_mock,
+    ):
+        now = timezone.now()
+        tz_mock.return_value = timezone.get_current_timezone()
+        range_mock.return_value = (now - timedelta(days=7), now, "7d")
+        payload_mock.return_value = {
+            "from": (now - timedelta(days=7)).isoformat(),
+            "to": now.isoformat(),
+            "method": {"id": "journey_funnel", "version": "journey_funnel_v1_2026-03-20", "label": "Funil", "description": "desc"},
+            "stages": [],
+            "kpis": {
+                "signups_total": 0,
+                "activated_total": 0,
+                "subscriptions_active_total": 0,
+                "activation_rate": None,
+                "paid_rate": None,
+            },
+            "quality": {"top_drop_stage": None, "include_global_leads": True},
+        }
+
+        request = self.factory.get("/api/v1/report/journey-funnel/?period=7d&include_global_leads=1")
+        force_authenticate(
+            request,
+            user=SimpleNamespace(is_authenticated=True, id=10, is_staff=True, is_superuser=False),
+        )
+        response = self.view(request)
+        self.assertEqual(response.status_code, 200)
+        payload_mock.assert_called_once()
+        kwargs = payload_mock.call_args.kwargs
+        self.assertIsNone(kwargs["org_id"])
+        self.assertEqual(kwargs["org_ids"], [])
+        self.assertTrue(kwargs["include_global_leads"])
