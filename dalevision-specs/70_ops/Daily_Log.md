@@ -353,3 +353,17 @@ Registrar decisões e eventos do dia.
     2. publicar release/endpoint válido para fallback (ou remover fallback GitHub) para eliminar `UPD009 (404)`;
     3. repetir checklist `S4_AutoUpdate_Validation_Checklist_Notebook_Store.md`;
     4. só após isso habilitar `AUTO_UPDATE_ENABLED=1` na máquina da loja.
+
+## 2026-03-20
+- Data: 2026-03-20
+- Highlights:
+  - Admin SaaS ganhou bloco de observabilidade de ingestão (rede 24h) com KPIs de pipeline: status, total de eventos visão/retail, último evento, freshness e cobertura de lojas.
+  - Diagnóstico de reconciliação visão->funil adicionado no painel para detectar gap crítico quando há eventos de visão mas etapa `first_metrics_received` segue zerada.
+  - Seção inclui top eventos processados (`vision_atomic_events` e `event_receipts`) para acelerar triagem operacional.
+  - API/Admin de reconciliação operacional entregue: `GET|POST /api/v1/me/admin/ingestion-funnel-gap/` + ações de reprocessamento por loja/todas no Control Tower.
+- Decisões:
+  - Usar observabilidade de rede como gate de confiabilidade antes de analisar conversão/funil de produto.
+  - Tratar “visão com sinal + funil zerado” como incidente de reconciliação e não de aquisição.
+- Próximos passos:
+  - Implementar job de reconciliação automática de funil (reprocessar eventos órfãos e preencher etapa `first_metrics_received`).
+  - Expor no Admin lista de lojas com gap crítico e CTA de reprocessamento por loja.

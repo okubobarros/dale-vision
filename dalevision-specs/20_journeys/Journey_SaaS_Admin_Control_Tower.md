@@ -31,6 +31,8 @@ Implementado:
 3. Bloco de funil PM/Admin + qualidade de payload.
 4. Bloco de plano de redução agressiva de nulos e completude por tabela/campo.
 5. Backlog de calibração integrado ao admin com transição rápida de status.
+6. Bloco de observabilidade de ingestão (rede 24h) com status de pipeline, freshness, cobertura e top eventos.
+7. Diagnóstico/reparo de gap visão -> funil no Admin (reprocessar loja ou reprocessar todas sem terminal).
 
 Ainda em evolução:
 1. Gestão global de usuários/memberships em UI dedicada.
@@ -98,6 +100,8 @@ Ainda em evolução:
    - `POST /api/v1/calibration/actions/{action_id}/evidence/`
    - `POST /api/v1/calibration/actions/{action_id}/result/`
 3. Próximo incremento: incidentes unificados multi-fonte com priorização.
+4. Endpoint de reconciliação em produção:
+   - `GET|POST /api/v1/me/admin/ingestion-funnel-gap/`
 
 ### Fase 3
 1. Gestão de usuários e memberships (listar/filtrar/reconciliar).

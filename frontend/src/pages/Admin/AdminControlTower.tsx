@@ -23,6 +23,28 @@ const formatRatioPercent = (value: number | null | undefined) => {
   return `${new Intl.NumberFormat("pt-BR", { maximumFractionDigits: 1 }).format(value * 100)}%`
 }
 
+const formatDateTime = (iso?: string | null) => {
+  if (!iso) return "—"
+  const dt = new Date(iso)
+  if (Number.isNaN(dt.getTime())) return "—"
+  return dt.toLocaleString("pt-BR")
+}
+
+const formatFreshness = (seconds?: number | null) => {
+  if (seconds === null || seconds === undefined || Number.isNaN(seconds)) return "—"
+  if (seconds < 60) return `${Math.max(0, Math.round(seconds))}s`
+  if (seconds < 3600) return `${Math.round(seconds / 60)} min`
+  return `${Math.round(seconds / 3600)}h`
+}
+
+const getPipelineStatusLabel = (status?: string | null) => {
+  if (status === "healthy") return "Saudável"
+  if (status === "stale") return "Desatualizado"
+  if (status === "no_signal") return "Sem sinal"
+  if (status === "no_data") return "Sem dados"
+  return "—"
+}
+
 const daysUntil = (iso?: string | null) => {
   if (!iso) return null
   const date = new Date(iso)
@@ -101,9 +123,23 @@ export default function AdminControlTower() {
     refetchInterval: 60_000,
   })
 
+  const networkIngestion24hQuery = useQuery({
+    queryKey: ["admin", "network-vision-ingestion-summary", "24h"],
+    queryFn: () => storesService.getNetworkVisionIngestionSummary({ event_source: "all", window_hours: 24 }),
+    enabled: isInternalAdmin,
+    refetchInterval: 30_000,
+  })
+
   const calibrationActionsQuery = useQuery({
     queryKey: ["admin", "calibration-actions", "active"],
     queryFn: () => adminService.getCalibrationActions({ status: "all", limit: 100 }),
+    enabled: isInternalAdmin,
+    refetchInterval: 30_000,
+  })
+
+  const ingestionGapQuery = useQuery({
+    queryKey: ["admin", "ingestion-funnel-gap", "24h"],
+    queryFn: () => adminService.getIngestionFunnelGap({ window_hours: 24, limit: 100 }),
     enabled: isInternalAdmin,
     refetchInterval: 30_000,
   })
@@ -155,6 +191,20 @@ export default function AdminControlTower() {
     },
     onError: (error: unknown) => {
       toast.error((error as { message?: string })?.message || "Falha ao gerar ações automáticas.")
+    },
+  })
+
+  const repairIngestionGapMutation = useMutation({
+    mutationFn: (payload?: { store_id?: string }) =>
+      adminService.repairIngestionFunnelGap({ window_hours: 24, ...(payload || {}) }),
+    onSuccess: (result) => {
+      toast.success(`Reconciliação concluída: ${result.repaired_total}/${result.candidates_total} lojas.`)
+      queryClient.invalidateQueries({ queryKey: ["admin", "ingestion-funnel-gap", "24h"] })
+      queryClient.invalidateQueries({ queryKey: ["admin", "journey-funnel", "30d"] })
+      queryClient.invalidateQueries({ queryKey: ["admin", "network-vision-ingestion-summary", "24h"] })
+    },
+    onError: (error: unknown) => {
+      toast.error((error as { message?: string })?.message || "Falha ao executar reconciliação.")
     },
   })
 
@@ -234,6 +284,20 @@ export default function AdminControlTower() {
 
   const summary = summaryQuery.data
   const loading = summaryQuery.isLoading
+  const networkIngestion = networkIngestion24hQuery.data
+  const firstMetricsStageCount =
+    (journeyFunnelQuery.data?.stages || []).find((stage) => stage.stage_key === "first_metrics_received")?.count ?? 0
+  const reconciliationGapStatus =
+    (networkIngestion?.vision_summary?.total || 0) > 0 && Number(firstMetricsStageCount || 0) === 0
+      ? "crítico"
+      : "ok"
+  const topVisionEvents = Object.entries(networkIngestion?.vision_summary?.by_event_type || {})
+    .sort((a, b) => b[1] - a[1])
+    .slice(0, 5)
+  const topRetailEvents = Object.entries(networkIngestion?.retail_summary?.by_event_name || {})
+    .sort((a, b) => b[1] - a[1])
+    .slice(0, 5)
+  const ingestionGapRows = ingestionGapQuery.data?.rows || []
 
   return (
     <div className="space-y-6">
@@ -447,6 +511,147 @@ export default function AdminControlTower() {
                     .join(", ")}
                 </div>
               ) : null}
+            </div>
+          </section>
+
+          <section className="space-y-3">
+            <h2 className="text-sm font-semibold text-gray-800 uppercase tracking-wide">
+              Observabilidade de ingestão (rede 24h)
+            </h2>
+            <div className="grid grid-cols-1 gap-3 md:grid-cols-4">
+              <Card
+                title="Status pipeline"
+                value={getPipelineStatusLabel(networkIngestion?.operational_summary?.pipeline_status)}
+                hint={networkIngestion?.operational_summary?.recommended_action || undefined}
+              />
+              <Card title="Eventos visão" value={formatNumber(networkIngestion?.vision_summary?.total)} />
+              <Card title="Eventos retail" value={formatNumber(networkIngestion?.retail_summary?.total)} />
+              <Card title="Total eventos" value={formatNumber(networkIngestion?.operational_summary?.events_total)} />
+            </div>
+            <div className="grid grid-cols-1 gap-3 md:grid-cols-4">
+              <Card
+                title="Último evento"
+                value={formatDateTime(networkIngestion?.operational_summary?.latest_event_at)}
+              />
+              <Card
+                title="Freshness janela"
+                value={formatFreshness(networkIngestion?.operational_summary?.operational_window?.freshness_seconds)}
+              />
+              <Card
+                title="Cobertura lojas"
+                value={formatRatioPercent(networkIngestion?.operational_summary?.operational_window?.coverage_rate)}
+                hint={`${formatNumber(networkIngestion?.operational_summary?.operational_window?.coverage_stores)} lojas com sinal`}
+              />
+              <Card
+                title="Status janela"
+                value={getPipelineStatusLabel(networkIngestion?.operational_summary?.operational_window?.status)}
+              />
+            </div>
+            <div className="grid grid-cols-1 gap-3 md:grid-cols-3">
+              <Card
+                title="First metrics no funil (30d)"
+                value={formatNumber(firstMetricsStageCount)}
+                hint="Etapa first_metrics_received no journey funnel"
+              />
+              <Card
+                title="Gap reconciliação visão->funil"
+                value={reconciliationGapStatus}
+                hint={
+                  reconciliationGapStatus === "crítico"
+                    ? "Há eventos de visão, mas funil segue sem first_metrics_received."
+                    : "Sinal de visão e funil sem gap crítico."
+                }
+              />
+              <Card
+                title="Ação imediata"
+                value={reconciliationGapStatus === "crítico" ? "Rodar reconciliação" : "Monitorar"}
+                hint="Próximo passo operacional"
+              />
+            </div>
+            <div className="rounded-xl border border-gray-200 bg-white p-4">
+              <h3 className="text-sm font-semibold text-gray-800">Top eventos processados (24h)</h3>
+              <div className="mt-3 grid grid-cols-1 gap-4 md:grid-cols-2">
+                <div>
+                  <div className="text-xs font-semibold uppercase tracking-wide text-gray-500">Visão (vision_atomic_events)</div>
+                  {topVisionEvents.length === 0 ? (
+                    <div className="mt-2 text-sm text-gray-600">Sem eventos de visão no período.</div>
+                  ) : (
+                    <ul className="mt-2 space-y-1 text-sm text-gray-700">
+                      {topVisionEvents.map(([eventType, count]) => (
+                        <li key={eventType} className="flex items-center justify-between gap-3">
+                          <span className="truncate">{eventType}</span>
+                          <span className="font-semibold text-gray-900">{formatNumber(count)}</span>
+                        </li>
+                      ))}
+                    </ul>
+                  )}
+                </div>
+                <div>
+                  <div className="text-xs font-semibold uppercase tracking-wide text-gray-500">Retail (event_receipts)</div>
+                  {topRetailEvents.length === 0 ? (
+                    <div className="mt-2 text-sm text-gray-600">Sem eventos retail no período.</div>
+                  ) : (
+                    <ul className="mt-2 space-y-1 text-sm text-gray-700">
+                      {topRetailEvents.map(([eventName, count]) => (
+                        <li key={eventName} className="flex items-center justify-between gap-3">
+                          <span className="truncate">{eventName}</span>
+                          <span className="font-semibold text-gray-900">{formatNumber(count)}</span>
+                        </li>
+                      ))}
+                    </ul>
+                  )}
+                </div>
+              </div>
+            </div>
+            <div className="rounded-xl border border-gray-200 bg-white p-4">
+              <div className="flex items-center justify-between gap-3">
+                <h3 className="text-sm font-semibold text-gray-800">Lojas com gap visão → funil</h3>
+                <button
+                  type="button"
+                  onClick={() => repairIngestionGapMutation.mutate()}
+                  disabled={repairIngestionGapMutation.isPending || ingestionGapRows.length === 0}
+                  className="rounded-lg border border-blue-300 px-2 py-1 text-xs font-semibold text-blue-700 hover:bg-blue-50 disabled:cursor-not-allowed disabled:opacity-50"
+                >
+                  Reprocessar todas
+                </button>
+              </div>
+              {ingestionGapQuery.isLoading ? (
+                <div className="mt-3 text-sm text-gray-600">Carregando gaps de reconciliação...</div>
+              ) : ingestionGapRows.length === 0 ? (
+                <div className="mt-3 text-sm text-gray-600">Sem gaps críticos na janela de 24h.</div>
+              ) : (
+                <div className="mt-3 overflow-x-auto">
+                  <table className="min-w-full text-sm">
+                    <thead className="bg-gray-50 text-gray-600">
+                      <tr>
+                        <th className="px-3 py-2 text-left font-semibold">Loja</th>
+                        <th className="px-3 py-2 text-left font-semibold">Eventos visão (24h)</th>
+                        <th className="px-3 py-2 text-left font-semibold">Último evento visão</th>
+                        <th className="px-3 py-2 text-left font-semibold">Ação</th>
+                      </tr>
+                    </thead>
+                    <tbody className="divide-y">
+                      {ingestionGapRows.slice(0, 20).map((row) => (
+                        <tr key={row.store_id}>
+                          <td className="px-3 py-2">{row.store_name || row.store_id}</td>
+                          <td className="px-3 py-2">{formatNumber(row.vision_events)}</td>
+                          <td className="px-3 py-2">{formatDateTime(row.last_vision_ts)}</td>
+                          <td className="px-3 py-2">
+                            <button
+                              type="button"
+                              onClick={() => repairIngestionGapMutation.mutate({ store_id: row.store_id })}
+                              disabled={repairIngestionGapMutation.isPending}
+                              className="rounded-lg border border-emerald-300 px-2 py-1 text-xs font-semibold text-emerald-700 hover:bg-emerald-50 disabled:cursor-not-allowed disabled:opacity-50"
+                            >
+                              Reprocessar loja
+                            </button>
+                          </td>
+                        </tr>
+                      ))}
+                    </tbody>
+                  </table>
+                </div>
+              )}
             </div>
           </section>
 

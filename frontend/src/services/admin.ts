@@ -171,6 +171,33 @@ export type CalibrationImpactSummaryResponse = {
   by_issue: CalibrationImpactIssueRow[]
 }
 
+export type AdminIngestionFunnelGapRow = {
+  store_id: string
+  org_id?: string | null
+  store_name?: string | null
+  vision_events: number
+  last_vision_ts?: string | null
+}
+
+export type AdminIngestionFunnelGapResponse = {
+  window_hours: number
+  from: string
+  to: string
+  store_id?: string | null
+  rows_total: number
+  rows: AdminIngestionFunnelGapRow[]
+}
+
+export type AdminIngestionFunnelGapRepairResponse = {
+  window_hours: number
+  from: string
+  to: string
+  store_id?: string | null
+  candidates_total: number
+  repaired_total: number
+  repaired_store_ids: string[]
+}
+
 export const adminService = {
   async getControlTowerSummary(): Promise<AdminControlTowerSummary> {
     const response = await api.get("/v1/me/admin/control-tower/summary/", {
@@ -253,5 +280,30 @@ export const adminService = {
       noRetry: true,
     })
     return response.data as CalibrationImpactSummaryResponse
+  },
+
+  async getIngestionFunnelGap(params?: {
+    window_hours?: number
+    store_id?: string
+    limit?: number
+  }): Promise<AdminIngestionFunnelGapResponse> {
+    const response = await api.get("/v1/me/admin/ingestion-funnel-gap/", {
+      params: params || undefined,
+      timeoutCategory: "best-effort",
+      noRetry: true,
+    })
+    return response.data as AdminIngestionFunnelGapResponse
+  },
+
+  async repairIngestionFunnelGap(payload?: {
+    window_hours?: number
+    store_id?: string
+    limit?: number
+  }): Promise<AdminIngestionFunnelGapRepairResponse> {
+    const response = await api.post("/v1/me/admin/ingestion-funnel-gap/", payload || {}, {
+      timeoutCategory: "best-effort",
+      noRetry: true,
+    })
+    return response.data as AdminIngestionFunnelGapRepairResponse
   },
 }

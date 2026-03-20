@@ -69,6 +69,7 @@ Notas de payload (stores):
 - `GET /api/v1/report/journey-funnel/` (query: `period`, `from`, `to`, `include_global_leads`)
 - `GET /api/v1/report/export/` (query: `format=csv|pdf`, `store_id`, `period`, `from`, `to`)
 - `GET /api/v1/me/admin/control-tower/summary/` (staff/superuser)
+- `GET|POST /api/v1/me/admin/ingestion-funnel-gap/` (staff/superuser; query/body: `window_hours`, `store_id`, `limit`)
 
 - `POST /api/v1/integration/pdv/interest/`
 - `POST /api/v1/integration/pdv/events/`
@@ -171,6 +172,11 @@ Resposta de `network/vision/ingestion-summary`:
 - `retail_summary.by_event_name` + `retail_summary.total` + `retail_summary.latest_event_at`
 - `operational_summary.events_total`
 - `operational_summary.pipeline_status` (`healthy|stale|no_signal`)
+
+Resposta de `me/admin/ingestion-funnel-gap`:
+- `rows_total` + `rows[]` com `store_id`, `store_name`, `vision_events`, `last_vision_ts`
+- `GET`: diagnóstico de lojas com evento de visão recente e sem `first_metrics_received`
+- `POST`: executa repair de reconciliação e retorna `candidates_total`, `repaired_total`, `repaired_store_ids`
 
 ## Endpoints TBD (não implementar sem definição)
  (não implementar sem definição)

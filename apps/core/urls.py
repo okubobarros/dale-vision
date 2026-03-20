@@ -16,6 +16,7 @@ from .views import (
     PdvTransactionSummaryView,
     PdvIngestionHealthView,
     DataCompletenessView,
+    AdminIngestionFunnelGapView,
 )
 from .views_calibration import (
     CalibrationActionListCreateView,
@@ -42,6 +43,7 @@ urlpatterns = [
     path("integration/pdv/summary/", PdvTransactionSummaryView.as_view(), name="pdv-summary"),
     path("integration/pdv/ingestion-health/", PdvIngestionHealthView.as_view(), name="pdv-ingestion-health"),
     path("data-quality/completeness/", DataCompletenessView.as_view(), name="data-quality-completeness"),
+    path("me/admin/ingestion-funnel-gap/", AdminIngestionFunnelGapView.as_view(), name="admin-ingestion-funnel-gap"),
     path("calibration/actions/", CalibrationActionListCreateView.as_view(), name="calibration-actions"),
     path("calibration/actions/auto-generate/", CalibrationActionAutoGenerateView.as_view(), name="calibration-actions-auto-generate"),
     path("calibration/actions/impact-summary/", CalibrationImpactSummaryView.as_view(), name="calibration-actions-impact-summary"),

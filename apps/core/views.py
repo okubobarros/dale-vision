@@ -21,6 +21,7 @@ from apps.core.services.event_receipts import (
     mark_event_receipt_failed,
     mark_event_receipt_processed,
 )
+from apps.core.services.journey_events import log_journey_event
 from apps.core.services.pdv_health import get_pdv_ingestion_health
 from .serializers import DemoLeadSerializer
 
@@ -634,6 +635,158 @@ class DataCompletenessView(APIView):
                 "tables": rows,
                 "overall_null_rate": overall_null_rate,
                 "quality_score": max(0, min(100, round(100 - (overall_null_rate * 100)))),
+            },
+            status=status.HTTP_200_OK,
+        )
+
+
+def _load_ingestion_funnel_gap_rows(*, start, end, store_id: str | None = None, limit: int = 200):
+    query = """
+        WITH vision_recent AS (
+            SELECT
+                vae.store_id::text AS store_id,
+                COUNT(*)::int AS vision_events,
+                MAX(vae.ts) AS last_vision_ts
+            FROM public.vision_atomic_events vae
+            WHERE vae.ts >= %s
+              AND vae.ts < %s
+            GROUP BY 1
+        ),
+        first_metrics AS (
+            SELECT DISTINCT je.payload->>'store_id' AS store_id
+            FROM public.journey_events je
+            WHERE je.event_name = 'first_metrics_received'
+              AND je.payload ? 'store_id'
+        )
+        SELECT
+            s.id::text AS store_id,
+            s.org_id::text AS org_id,
+            s.name AS store_name,
+            vr.vision_events AS vision_events,
+            vr.last_vision_ts AS last_vision_ts
+        FROM vision_recent vr
+        JOIN public.stores s ON s.id::text = vr.store_id
+        LEFT JOIN first_metrics fm ON fm.store_id = vr.store_id
+        WHERE fm.store_id IS NULL
+    """
+    params: list[object] = [start, end]
+    if store_id:
+        query += " AND s.id::text = %s"
+        params.append(store_id)
+    query += " ORDER BY vr.vision_events DESC, vr.last_vision_ts DESC LIMIT %s"
+    params.append(limit)
+
+    with connection.cursor() as cursor:
+        cursor.execute(query, params)
+        cols = [col[0] for col in cursor.description]
+        return [dict(zip(cols, row)) for row in cursor.fetchall()]
+
+
+class AdminIngestionFunnelGapView(APIView):
+    permission_classes = [IsAuthenticated]
+
+    @staticmethod
+    def _assert_internal_admin(user):
+        if getattr(user, "is_staff", False) or getattr(user, "is_superuser", False):
+            return
+        raise PermissionDenied("Acesso restrito ao time interno (staff/superuser).")
+
+    @staticmethod
+    def _serialize_rows(rows):
+        payload = []
+        for row in rows:
+            payload.append(
+                {
+                    "store_id": str(row.get("store_id")),
+                    "org_id": str(row.get("org_id")) if row.get("org_id") else None,
+                    "store_name": row.get("store_name"),
+                    "vision_events": int(row.get("vision_events") or 0),
+                    "last_vision_ts": row.get("last_vision_ts").isoformat() if row.get("last_vision_ts") else None,
+                }
+            )
+        return payload
+
+    @staticmethod
+    def _resolve_window_hours(raw_value):
+        try:
+            value = int(raw_value or 24)
+        except Exception:
+            value = 24
+        return max(1, min(value, 24 * 14))
+
+    @staticmethod
+    def _resolve_limit(raw_value):
+        try:
+            value = int(raw_value or 200)
+        except Exception:
+            value = 200
+        return max(1, min(value, 5000))
+
+    def get(self, request):
+        self._assert_internal_admin(request.user)
+        window_hours = self._resolve_window_hours(request.query_params.get("window_hours"))
+        limit = self._resolve_limit(request.query_params.get("limit"))
+        store_id = str(request.query_params.get("store_id") or "").strip() or None
+        end = timezone.now()
+        start = end - timedelta(hours=window_hours)
+        rows = _load_ingestion_funnel_gap_rows(start=start, end=end, store_id=store_id, limit=limit)
+
+        return Response(
+            {
+                "window_hours": window_hours,
+                "from": start.isoformat(),
+                "to": end.isoformat(),
+                "store_id": store_id,
+                "rows_total": len(rows),
+                "rows": self._serialize_rows(rows),
+            },
+            status=status.HTTP_200_OK,
+        )
+
+    def post(self, request):
+        self._assert_internal_admin(request.user)
+        window_hours = self._resolve_window_hours(request.data.get("window_hours"))
+        limit = self._resolve_limit(request.data.get("limit"))
+        requested_store_id = str(request.data.get("store_id") or "").strip() or None
+        end = timezone.now()
+        start = end - timedelta(hours=window_hours)
+        rows = _load_ingestion_funnel_gap_rows(
+            start=start,
+            end=end,
+            store_id=requested_store_id,
+            limit=limit,
+        )
+
+        inserted = 0
+        repaired_store_ids = []
+        for row in rows:
+            store_id = str(row.get("store_id"))
+            org_id = str(row.get("org_id")) if row.get("org_id") else None
+            last_vision_ts = row.get("last_vision_ts")
+            event = log_journey_event(
+                org_id=org_id,
+                event_name="first_metrics_received",
+                payload={
+                    "store_id": store_id,
+                    "ts_bucket": last_vision_ts.isoformat() if last_vision_ts else None,
+                    "source": "admin_ingestion_funnel_gap_repair",
+                    "window_hours": window_hours,
+                },
+                source="app",
+            )
+            if event:
+                inserted += 1
+                repaired_store_ids.append(store_id)
+
+        return Response(
+            {
+                "window_hours": window_hours,
+                "from": start.isoformat(),
+                "to": end.isoformat(),
+                "store_id": requested_store_id,
+                "candidates_total": len(rows),
+                "repaired_total": inserted,
+                "repaired_store_ids": repaired_store_ids,
             },
             status=status.HTTP_200_OK,
         )
