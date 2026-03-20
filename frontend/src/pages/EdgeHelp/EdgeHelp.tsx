@@ -9,6 +9,8 @@ const EdgeHelp = () => {
   const [searchParams] = useSearchParams()
   const storeId = searchParams.get("store_id") || ""
   const reasonCode = searchParams.get("reason_code") || ""
+  const cameraCause = searchParams.get("camera_cause") || ""
+  const reasonNote = searchParams.get("reason") || ""
   const cameraId = searchParams.get("camera_id") || ""
   const eventId = searchParams.get("event_id") || ""
   const escalationSource = searchParams.get("source") || ""
@@ -33,6 +35,70 @@ const EdgeHelp = () => {
     if (severity === "alta") return "border-amber-200 bg-amber-50 text-amber-800"
     return "border-blue-200 bg-blue-50 text-blue-800"
   }, [runbookQ.data?.runbook?.severity])
+
+  const cameraPlaybook = useMemo(() => {
+    const fallback = {
+      title: "Diagnóstico de câmera",
+      summary: "Use o fluxo guiado para estabilizar câmera e retomar captura de sinal.",
+      steps: [
+        "Validar conectividade do Edge com a loja.",
+        "Revisar credenciais e stream RTSP da câmera/NVR.",
+        "Executar validação no módulo de câmeras após ajuste.",
+      ],
+    }
+    if (cameraCause === "credencial") {
+      return {
+        title: "Causa provável: credencial/RTSP",
+        summary: "A câmera não autentica ou o RTSP está incompleto.",
+        steps: [
+          "Abrir câmera no módulo /app/cameras e revisar usuário/senha.",
+          "Confirmar URL RTSP/canal/subtipo da câmera ou NVR.",
+          "Salvar e usar 'Validar correção' para confirmar status online.",
+        ],
+      }
+    }
+    if (cameraCause === "conectividade") {
+      return {
+        title: "Causa provável: conectividade",
+        summary: "Edge não alcança a câmera/NVR na rede local.",
+        steps: [
+          "Conferir IP/porta e disponibilidade da câmera na rede da loja.",
+          "Validar firewall/regras de rede para tráfego RTSP.",
+          "Executar 'Validar correção' no módulo /app/cameras.",
+        ],
+      }
+    }
+    if (cameraCause === "stream") {
+      return {
+        title: "Causa provável: stream",
+        summary: "Feed RTSP não entrega frames válidos.",
+        steps: [
+          "Confirmar canal e subtipo corretos no NVR/câmera.",
+          "Revisar formato RTSP compatível com equipamento.",
+          "Executar 'Validar correção' e observar latência/erro retornado.",
+        ],
+      }
+    }
+    if (cameraCause === "heartbeat") {
+      return {
+        title: "Causa provável: heartbeat do Edge",
+        summary: "Agente da loja sem comunicação recente com o backend.",
+        steps: [
+          "Verificar serviço do Edge Agent na máquina da loja.",
+          "Restabelecer conectividade do agente até heartbeat recente.",
+          "Retornar para /app/cameras e validar status da câmera.",
+        ],
+      }
+    }
+    return fallback
+  }, [cameraCause])
+
+  const backToCamerasUrl = useMemo(() => {
+    const params = new URLSearchParams()
+    if (storeId) params.set("store_id", storeId)
+    if (cameraId) params.set("camera_id", cameraId)
+    return `/app/cameras${params.toString() ? `?${params.toString()}` : ""}`
+  }, [cameraId, storeId])
 
   useEffect(() => {
     if (!storeId || !escalationSource || escalationOpenedRef.current) return
@@ -118,6 +184,53 @@ const EdgeHelp = () => {
                 ))}
               </ul>
             </div>
+          </div>
+        </div>
+      )}
+
+      {(cameraId || cameraCause) && (
+        <div className="rounded-2xl border border-amber-200 bg-amber-50 p-6 text-sm text-amber-900">
+          <div className="flex flex-wrap items-center justify-between gap-2">
+            <h2 className="text-lg font-semibold">{cameraPlaybook.title}</h2>
+            {cameraId && (
+              <span className="rounded-full border border-amber-300 bg-white px-2 py-0.5 text-xs font-semibold">
+                Camera: {cameraId}
+              </span>
+            )}
+          </div>
+          <p className="mt-2">{cameraPlaybook.summary}</p>
+          {reasonNote && (
+            <p className="mt-2 rounded-lg border border-amber-300 bg-white p-2 text-xs">
+              Motivo informado: {reasonNote}
+            </p>
+          )}
+          <ul className="mt-3 space-y-1 text-xs">
+            {cameraPlaybook.steps.map((step) => (
+              <li key={step}>- {step}</li>
+            ))}
+          </ul>
+          <div className="mt-4 flex flex-wrap gap-2">
+            <a
+              href={backToCamerasUrl}
+              className="rounded-lg bg-amber-700 px-3 py-2 text-xs font-semibold text-white hover:bg-amber-800"
+              onClick={() => {
+                void trackJourneyEvent("camera_diagnosis_action_clicked", {
+                  source: "edge_help",
+                  action: "validate",
+                  store_id: storeId || null,
+                  camera_id: cameraId || null,
+                  failure_cause: cameraCause || null,
+                })
+              }}
+            >
+              Voltar e validar correção
+            </a>
+            <a
+              href="/app/cameras"
+              className="rounded-lg border border-amber-300 bg-white px-3 py-2 text-xs font-semibold text-amber-900 hover:bg-amber-100"
+            >
+              Abrir módulo de câmeras
+            </a>
           </div>
         </div>
       )}

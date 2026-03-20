@@ -19,6 +19,7 @@ import {
 } from "../../services/onboarding"
 import { supportService } from "../../services/support"
 import { formatReason, formatStatusLabel, formatTimestamp } from "../../utils/edgeReasons"
+import { trackJourneyEvent } from "../../services/journey"
 import { useAuth } from "../../contexts/useAuth"
 import EdgeSetupModal from "../../components/EdgeSetupModal"
 import CameraRoiEditor from "../../components/CameraRoiEditor"
@@ -64,6 +65,82 @@ const FIELD_LABELS: Record<string, string> = {
   active: "Ativo",
 }
 
+type CameraDiagnosisCause = "credencial" | "conectividade" | "stream" | "heartbeat"
+type CameraDiagnosis = {
+  cause: CameraDiagnosisCause
+  title: string
+  recommendedAction: string
+  reasonCode: string
+}
+
+const diagnoseCameraFailure = ({
+  camera,
+  realtimeReason,
+  edgeOnline,
+}: {
+  camera: Camera
+  realtimeReason?: string | null
+  edgeOnline: boolean
+}): CameraDiagnosis | null => {
+  const statusValue = (camera.camera_health?.status ?? camera.status ?? "unknown").toLowerCase()
+  if (statusValue === "online" || statusValue === "degraded") return null
+
+  const rawError = String(camera.camera_health?.error || camera.last_error || "").toLowerCase()
+  const rawReason = String(realtimeReason || camera.error_reason || "").toLowerCase()
+  const rtspMissing = !(camera.rtsp_url_masked || "").trim()
+
+  if (
+    rtspMissing ||
+    rawError.includes("credential") ||
+    rawError.includes("unauthorized") ||
+    rawError.includes("auth") ||
+    rawError.includes("senha") ||
+    rawError.includes("usuario")
+  ) {
+    return {
+      cause: "credencial",
+      title: "Falha de credencial/RTSP",
+      recommendedAction: "Revisar usuário, senha e RTSP da câmera/NVR e salvar novamente.",
+      reasonCode: "camera_credentials",
+    }
+  }
+
+  if (
+    !edgeOnline ||
+    rawReason.includes("no_heartbeat") ||
+    rawReason.includes("heartbeat_expired") ||
+    rawReason.includes("stale_heartbeat")
+  ) {
+    return {
+      cause: "heartbeat",
+      title: "Edge sem heartbeat recente",
+      recommendedAction: "Restabelecer agente Edge na loja antes de testar a câmera novamente.",
+      reasonCode: "edge_heartbeat",
+    }
+  }
+
+  if (
+    rawError.includes("timeout") ||
+    rawError.includes("network") ||
+    rawError.includes("unreachable") ||
+    rawError.includes("refused")
+  ) {
+    return {
+      cause: "conectividade",
+      title: "Falha de conectividade",
+      recommendedAction: "Validar rede local, IP/porta 554 e firewall entre Edge e câmera/NVR.",
+      reasonCode: "camera_connectivity",
+    }
+  }
+
+  return {
+    cause: "stream",
+    title: "Falha de stream",
+    recommendedAction: "Validar canal/subtipo do stream e disponibilidade do feed RTSP.",
+    reasonCode: "camera_stream",
+  }
+}
+
 const Cameras = () => {
   const location = useLocation()
   const initialParams = new URLSearchParams(location.search)
@@ -97,10 +174,10 @@ const Cameras = () => {
   const [testError, setTestError] = useState<string | null>(null)
   const [testCooldownCameraId, setTestCooldownCameraId] = useState<string | null>(null)
   const testCooldownTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null)
+  const diagnosisViewedRef = useRef<Set<string>>(new Set())
   const zoneOpenHandled = useRef(false)
   const onboardingMode = initialOnboardingMode
   const queryClient = useQueryClient()
-  const diagnoseUrl = "/app/edge-help"
   const { user } = useAuth()
 
   useEffect(() => {
@@ -149,6 +226,14 @@ const Cameras = () => {
     [stores, selectedStore]
   )
   const selectedStoreRole = selectedStoreItem?.role ?? null
+  const diagnoseUrl = useMemo(() => {
+    const params = new URLSearchParams()
+    params.set("source", "cameras")
+    if (selectedStore && selectedStore !== "all") {
+      params.set("store_id", selectedStore)
+    }
+    return `/app/edge-help?${params.toString()}`
+  }, [selectedStore])
   const baseCanManageStore =
     selectedStore !== "all" &&
       (selectedStoreRole ? ["owner", "admin", "manager"].includes(selectedStoreRole) : true)
@@ -256,6 +341,36 @@ const Cameras = () => {
     })
     return map
   }, [edgeStatus?.cameras])
+
+  const getCameraDiagnoseUrl = useCallback(
+    (camera: Camera, diagnosis: CameraDiagnosis) => {
+      const params = new URLSearchParams()
+      if (selectedStore && selectedStore !== "all") params.set("store_id", selectedStore)
+      params.set("camera_id", String(camera.id))
+      params.set("reason_code", diagnosis.reasonCode)
+      params.set("camera_cause", diagnosis.cause)
+      params.set("source", "cameras")
+      return `/app/edge-help?${params.toString()}`
+    },
+    [selectedStore]
+  )
+
+  const trackDiagnosisAction = useCallback(
+    (
+      camera: Camera,
+      diagnosis: CameraDiagnosis | null,
+      action: "diagnose" | "correct" | "validate"
+    ) => {
+      void trackJourneyEvent("camera_diagnosis_action_clicked", {
+        source: "cameras",
+        store_id: selectedStore && selectedStore !== "all" ? selectedStore : null,
+        camera_id: String(camera.id),
+        failure_cause: diagnosis?.cause || null,
+        action,
+      })
+    },
+    [selectedStore]
+  )
 
   const { data: limits } = useQuery({
     queryKey: ["store-limits", selectedStore],
@@ -626,12 +741,48 @@ const Cameras = () => {
     onboardingProgress?.steps?.monitoring_started?.completed,
   ])
 
+  useEffect(() => {
+    if (!cameras || cameras.length === 0) return
+    cameras.forEach((camera) => {
+      const realtime = edgeCameraMap.get(String(camera.id))
+      const diagnosis = diagnoseCameraFailure({
+        camera,
+        realtimeReason: realtime?.reason,
+        edgeOnline,
+      })
+      if (!diagnosis) return
+      const key = `${selectedStore}:${camera.id}:${diagnosis.cause}`
+      if (diagnosisViewedRef.current.has(key)) return
+      diagnosisViewedRef.current.add(key)
+      void trackJourneyEvent("camera_diagnosis_viewed", {
+        source: "cameras",
+        store_id: selectedStore && selectedStore !== "all" ? selectedStore : null,
+        camera_id: String(camera.id),
+        failure_cause: diagnosis.cause,
+      })
+    })
+  }, [cameras, edgeCameraMap, edgeOnline, selectedStore])
+
   const handleTestConnection = useCallback(
     async (cameraId: string) => {
       setTestingCameraId(cameraId)
       setTestError(null)
       setTestMessage(null)
       try {
+        const beforeCameras = queryClient.getQueryData<Camera[]>([
+          "store-cameras",
+          selectedStore,
+        ])
+        const beforeCamera = beforeCameras?.find((cam) => cam.id === cameraId) || null
+        const beforeRealtime = beforeCamera ? edgeCameraMap.get(String(beforeCamera.id)) : null
+        const previousDiagnosis = beforeCamera
+          ? diagnoseCameraFailure({
+              camera: beforeCamera,
+              realtimeReason: beforeRealtime?.reason,
+              edgeOnline,
+            })
+          : null
+
         await queryClient.refetchQueries({ queryKey: ["store-cameras", selectedStore] })
         const current = queryClient.getQueryData<Camera[]>([
           "store-cameras",
@@ -650,6 +801,15 @@ const Cameras = () => {
           const timeLabel = checkedAt ? ` em ${formatTimestamp(checkedAt)}` : ""
           setTestMessage(`Status do Edge: ${formatStatusLabel(status)}${latencyLabel}${timeLabel}.`)
           toast.success("Status do Edge atualizado.")
+          if (previousDiagnosis) {
+            void trackJourneyEvent("camera_diagnosis_resolved", {
+              source: "cameras",
+              store_id: selectedStore && selectedStore !== "all" ? selectedStore : null,
+              camera_id: cameraId,
+              failure_cause: previousDiagnosis.cause,
+              resolved_status: status,
+            })
+          }
         } else if (error) {
           setTestError(`Edge reportou erro: ${error}`)
           toast.error("Edge reportou erro.")
@@ -671,7 +831,7 @@ const Cameras = () => {
         setTestingCameraId(null)
       }
     },
-    [queryClient, selectedStore]
+    [edgeCameraMap, edgeOnline, queryClient, selectedStore]
   )
 
   useEffect(() => {
@@ -955,6 +1115,11 @@ const Cameras = () => {
                 const snapshotUrl =
                   camera.camera_health?.snapshot_url ?? camera.last_snapshot_url ?? null
                 const realtimeReason = realtime?.reason ?? null
+                const diagnosis = diagnoseCameraFailure({
+                  camera,
+                  realtimeReason,
+                  edgeOnline,
+                })
                 const showInlineTestResult =
                   (testingCameraId === camera.id || testCooldownCameraId === camera.id) &&
                   (testMessage || testError || latencyValue || errorValue || snapshotUrl)
@@ -1025,6 +1190,50 @@ const Cameras = () => {
                           alt={`Snapshot ${camera.name}`}
                           className="mt-2 h-24 w-full max-w-xs rounded-lg border border-gray-200 object-cover"
                         />
+                      </div>
+                    )}
+                    {diagnosis && (
+                      <div className="mt-3 rounded-lg border border-amber-200 bg-amber-50 p-3 text-xs text-amber-900">
+                        <div className="font-semibold">{diagnosis.title}</div>
+                        <p className="mt-1">{diagnosis.recommendedAction}</p>
+                        <div className="mt-2 flex flex-wrap items-center gap-2">
+                          <a
+                            href={getCameraDiagnoseUrl(camera, diagnosis)}
+                            className="rounded-md border border-amber-300 bg-white px-2 py-1 font-semibold text-amber-800 hover:bg-amber-100"
+                            onClick={() => trackDiagnosisAction(camera, diagnosis, "diagnose")}
+                          >
+                            Diagnosticar
+                          </a>
+                          <button
+                            type="button"
+                            className="rounded-md border border-amber-300 bg-white px-2 py-1 font-semibold text-amber-800 hover:bg-amber-100"
+                            onClick={() => {
+                              trackDiagnosisAction(camera, diagnosis, "correct")
+                              if (diagnosis.cause === "credencial" || diagnosis.cause === "stream") {
+                                openEditModal(camera)
+                                return
+                              }
+                              setConnectionHelpOpen(true)
+                            }}
+                          >
+                            Corrigir agora
+                          </button>
+                          <button
+                            type="button"
+                            className="rounded-md border border-emerald-300 bg-white px-2 py-1 font-semibold text-emerald-800 hover:bg-emerald-100"
+                            onClick={() => {
+                              trackDiagnosisAction(camera, diagnosis, "validate")
+                              void handleTestConnection(camera.id)
+                            }}
+                            disabled={
+                              !canManageStore ||
+                              testingCameraId === camera.id ||
+                              testCooldownCameraId === camera.id
+                            }
+                          >
+                            Validar correcao
+                          </button>
+                        </div>
                       </div>
                     )}
                   </div>
