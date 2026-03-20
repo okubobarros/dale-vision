@@ -1,10 +1,17 @@
 import { meService } from "./me"
 import { storesService } from "./stores"
+import { authService } from "./auth"
 
 const DASHBOARD_ROUTE = "/app/dashboard?openEdgeSetup=1"
 const ONBOARDING_ROUTE = "/onboarding"
+const ADMIN_ROUTE = "/app/admin"
 
 export const resolvePostLoginRoute = async (): Promise<string> => {
+  const currentUser = authService.getCurrentUser()
+  if (currentUser?.is_staff || currentUser?.is_superuser) {
+    return ADMIN_ROUTE
+  }
+
   try {
     const setup = await meService.getSetupState()
     if (setup?.ok) {
@@ -29,4 +36,3 @@ export const resolvePostLoginRoute = async (): Promise<string> => {
     return ONBOARDING_ROUTE
   }
 }
-
