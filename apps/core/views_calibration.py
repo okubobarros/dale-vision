@@ -626,6 +626,60 @@ class CalibrationActionAutoGenerateView(APIView):
                         },
                     )
 
+        # Rule 5: vision has recent signal but journey funnel has no first_metrics_received.
+        if store_ids and len(created_items) < max_actions:
+            with connection.cursor() as cursor:
+                cursor.execute(
+                    """
+                    WITH vision_recent AS (
+                      SELECT
+                        store_id::text AS store_id,
+                        COUNT(*)::int AS vision_events,
+                        MAX(ts) AS last_vision_ts
+                      FROM public.vision_atomic_events
+                      WHERE ts >= %s
+                        AND store_id::text = ANY(%s)
+                      GROUP BY 1
+                    ),
+                    first_metrics AS (
+                      SELECT DISTINCT payload->>'store_id' AS store_id
+                      FROM public.journey_events
+                      WHERE event_name = 'first_metrics_received'
+                        AND payload ? 'store_id'
+                    )
+                    SELECT
+                      vr.store_id,
+                      vr.vision_events,
+                      vr.last_vision_ts
+                    FROM vision_recent vr
+                    LEFT JOIN first_metrics fm ON fm.store_id = vr.store_id
+                    WHERE fm.store_id IS NULL
+                    """,
+                    [day_ago, store_ids],
+                )
+                rows = cursor.fetchall()
+            by_store = {str(store.id): store for store in stores}
+            for row in rows:
+                if len(created_items) >= max_actions:
+                    break
+                store_id, vision_events, last_vision_ts = row
+                store_obj = by_store.get(str(store_id))
+                if not store_obj:
+                    continue
+                events_total = int(vision_events or 0)
+                _register_candidate(
+                    store=store_obj,
+                    issue_code="vision_funnel_reconciliation_gap_24h",
+                    priority="critical" if events_total >= 100 else "high",
+                    recommended_action="Executar reconciliação de funil (first_metrics_received) para alinhar visão com jornada e desbloquear métricas de ativação.",
+                    metadata={
+                        "rule_id": "rule_vision_funnel_reconciliation_gap_v1",
+                        "period_hours": 24,
+                        "vision_events": events_total,
+                        "last_vision_ts": last_vision_ts.isoformat() if last_vision_ts else None,
+                    },
+                )
+
         return Response(
             {
                 "dry_run": dry_run,

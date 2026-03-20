@@ -30,6 +30,19 @@ const statusBadge: Record<string, string> = {
   closed: "bg-slate-100 text-slate-700 border-slate-200",
 }
 
+const ISSUE_LABELS: Record<string, string> = {
+  edge_signal_stale: "Edge sem sinal recente",
+  camera_signal_unhealthy: "Câmera com sinal ruim/offline",
+  conversion_identity_null_rate_high: "Nulos altos em conversão",
+  pdv_signal_missing_7d: "Sem sinal PDV em 7 dias",
+  vision_funnel_reconciliation_gap_24h: "Gap visão -> funil (24h)",
+}
+
+const formatIssueCode = (issueCode?: string | null) => {
+  const key = String(issueCode || "").trim()
+  return ISSUE_LABELS[key] || key || "—"
+}
+
 const formatDateTime = (value?: string | null) => {
   if (!value) return "—"
   const date = new Date(value)
@@ -273,7 +286,7 @@ export default function CalibrationActions() {
                   <tbody className="divide-y">
                     {impact.by_issue.slice(0, 10).map((row) => (
                       <tr key={row.issue_code}>
-                        <td className="px-3 py-2">{row.issue_code}</td>
+                        <td className="px-3 py-2">{formatIssueCode(row.issue_code)}</td>
                         <td className="px-3 py-2">{formatNumber(row.actions_total)}</td>
                         <td className="px-3 py-2">{formatNumber(row.actions_validated)}</td>
                         <td className="px-3 py-2">{formatPercent(row.pass_rate)}</td>
@@ -318,7 +331,7 @@ export default function CalibrationActions() {
                           Evidências: {row.evidences_total ?? 0} | Resultados: {row.results_total ?? 0}
                         </div>
                       </td>
-                      <td className="px-3 py-2">{row.issue_code}</td>
+                      <td className="px-3 py-2">{formatIssueCode(row.issue_code)}</td>
                       <td className="px-3 py-2">{row.recommended_action}</td>
                       <td className="px-3 py-2">
                         <span className={`inline-flex rounded-full border px-2 py-1 text-xs font-semibold ${statusBadge[row.status] || statusBadge.open}`}>

@@ -45,6 +45,19 @@ const getPipelineStatusLabel = (status?: string | null) => {
   return "—"
 }
 
+const ISSUE_LABELS: Record<string, string> = {
+  edge_signal_stale: "Edge sem sinal recente",
+  camera_signal_unhealthy: "Câmera com sinal ruim/offline",
+  conversion_identity_null_rate_high: "Nulos altos em conversão",
+  pdv_signal_missing_7d: "Sem sinal PDV em 7 dias",
+  vision_funnel_reconciliation_gap_24h: "Gap visão -> funil (24h)",
+}
+
+const formatIssueCode = (issueCode?: string | null) => {
+  const key = String(issueCode || "").trim()
+  return ISSUE_LABELS[key] || key || "—"
+}
+
 const daysUntil = (iso?: string | null) => {
   if (!iso) return null
   const date = new Date(iso)
@@ -713,7 +726,7 @@ export default function AdminControlTower() {
                           <div className="font-medium text-gray-900">{row.store_name || row.store_id}</div>
                           <div className="text-xs text-gray-500">{row.camera_name || row.camera_id || "Todas as câmeras"}</div>
                         </td>
-                        <td className="px-3 py-2">{row.issue_code}</td>
+                        <td className="px-3 py-2">{formatIssueCode(row.issue_code)}</td>
                         <td className="px-3 py-2">{row.recommended_action}</td>
                         <td className="px-3 py-2">{row.status}</td>
                         <td className="px-3 py-2">{row.priority}</td>

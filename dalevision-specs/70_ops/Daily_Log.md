@@ -361,6 +361,8 @@ Registrar decisões e eventos do dia.
   - Diagnóstico de reconciliação visão->funil adicionado no painel para detectar gap crítico quando há eventos de visão mas etapa `first_metrics_received` segue zerada.
   - Seção inclui top eventos processados (`vision_atomic_events` e `event_receipts`) para acelerar triagem operacional.
   - API/Admin de reconciliação operacional entregue: `GET|POST /api/v1/me/admin/ingestion-funnel-gap/` + ações de reprocessamento por loja/todas no Control Tower.
+  - Auto-generate de calibração ampliado com regra `vision_funnel_reconciliation_gap_24h` para abrir ações automaticamente quando há sinal de visão sem `first_metrics_received` no funil.
+  - UI de Admin e Calibração ajustada para rótulos legíveis de `issue_code` (incluindo gap visão->funil).
 - Decisões:
   - Usar observabilidade de rede como gate de confiabilidade antes de analisar conversão/funil de produto.
   - Tratar “visão com sinal + funil zerado” como incidente de reconciliação e não de aquisição.
