@@ -1,7 +1,9 @@
 from __future__ import annotations
 
 import uuid
+from datetime import timedelta
 
+from django.db import connection
 from django.db.models import Count
 from django.utils import timezone
 from django.utils.dateparse import parse_datetime
@@ -15,6 +17,7 @@ from apps.core.models import (
     CalibrationEvidence,
     CalibrationResult,
     Camera,
+    PosTransactionEvent,
     Store,
 )
 from apps.stores.services.user_orgs import get_user_org_ids
@@ -22,6 +25,7 @@ from apps.stores.services.user_uuid import ensure_user_uuid
 
 ALLOWED_STATUSES = {"open", "in_progress", "waiting_validation", "validated", "rejected", "closed"}
 ALLOWED_PRIORITIES = {"low", "medium", "high", "critical"}
+ACTIVE_ACTION_STATUSES = {"open", "in_progress", "waiting_validation"}
 
 
 def _is_internal_admin(user) -> bool:
@@ -112,6 +116,25 @@ def _serialize_result(row: CalibrationResult) -> dict:
         "validated_at": row.validated_at.isoformat() if row.validated_at else None,
         "notes": row.notes,
     }
+
+
+def _parse_bool(value, default: bool = False) -> bool:
+    if value in (None, ""):
+        return default
+    return str(value).strip().lower() in {"1", "true", "yes", "on"}
+
+
+def _has_active_action(*, store_id: str, issue_code: str, camera_id: str | None = None) -> bool:
+    filters = {
+        "store_id": store_id,
+        "issue_code": issue_code,
+        "status__in": ACTIVE_ACTION_STATUSES,
+    }
+    if camera_id:
+        filters["camera_id"] = camera_id
+    else:
+        filters["camera_id__isnull"] = True
+    return CalibrationAction.objects.filter(**filters).exists()
 
 
 class CalibrationActionListCreateView(APIView):
@@ -400,3 +423,207 @@ class CalibrationActionResultCreateView(APIView):
         action.updated_at = timezone.now()
         action.save(update_fields=["status", "updated_at"])
         return Response(_serialize_result(row), status=status.HTTP_201_CREATED)
+
+
+class CalibrationActionAutoGenerateView(APIView):
+    permission_classes = [IsAuthenticated]
+
+    def post(self, request):
+        is_admin = _is_internal_admin(request.user)
+        scoped_org_ids = {str(item) for item in get_user_org_ids(request.user)} if not is_admin else set()
+        if not is_admin and not scoped_org_ids:
+            return Response({"created_total": 0, "created": [], "skipped_total": 0, "skipped": []}, status=status.HTTP_200_OK)
+
+        payload = request.data or {}
+        store_id_filter = str(payload.get("store_id") or "").strip() or None
+        dry_run = _parse_bool(payload.get("dry_run"), default=False)
+        max_actions = int(payload.get("max_actions") or 50)
+        max_actions = max(1, min(max_actions, 200))
+        now = timezone.now()
+        stale_cutoff = now - timedelta(minutes=10)
+        day_ago = now - timedelta(hours=24)
+
+        stores_qs = Store.objects.all()
+        if store_id_filter:
+            stores_qs = stores_qs.filter(id=store_id_filter)
+        if not is_admin:
+            stores_qs = stores_qs.filter(org_id__in=scoped_org_ids)
+        stores = list(stores_qs[:500])
+
+        created_items: list[dict] = []
+        skipped_items: list[dict] = []
+
+        def _register_candidate(*, store: Store, issue_code: str, recommended_action: str, priority: str, camera: Camera | None = None, metadata: dict | None = None):
+            if len(created_items) >= max_actions:
+                return
+            camera_id = str(camera.id) if camera else None
+            if _has_active_action(store_id=str(store.id), issue_code=issue_code, camera_id=camera_id):
+                skipped_items.append(
+                    {
+                        "store_id": str(store.id),
+                        "camera_id": camera_id,
+                        "issue_code": issue_code,
+                        "reason": "already_has_active_action",
+                    }
+                )
+                return
+            item = {
+                "store_id": str(store.id),
+                "camera_id": camera_id,
+                "issue_code": issue_code,
+                "priority": priority,
+                "recommended_action": recommended_action,
+                "metadata": metadata or {},
+            }
+            if dry_run:
+                created_items.append({**item, "dry_run": True})
+                return
+            row = CalibrationAction.objects.create(
+                org_id=store.org_id,
+                store_id=store.id,
+                camera_id=camera.id if camera else None,
+                issue_code=issue_code,
+                recommended_action=recommended_action,
+                owner_role="store_manager",
+                status="open",
+                priority=priority,
+                source="system",
+                created_by_user_uuid=_safe_uuid(_safe_user_uuid(request.user)),
+                metadata=metadata or {},
+                created_at=now,
+                updated_at=now,
+            )
+            created_items.append(
+                {
+                    **item,
+                    "id": str(row.id),
+                    "status": row.status,
+                }
+            )
+
+        # Rule 1: store without recent edge signal.
+        for store in stores:
+            if len(created_items) >= max_actions:
+                break
+            if store.last_seen_at is None or store.last_seen_at < stale_cutoff:
+                _register_candidate(
+                    store=store,
+                    issue_code="edge_signal_stale",
+                    priority="high",
+                    recommended_action="Verificar edge-agent e conectividade. Reiniciar serviço e validar heartbeat em até 10 minutos.",
+                    metadata={
+                        "rule_id": "rule_store_signal_stale_v1",
+                        "last_seen_at": store.last_seen_at.isoformat() if store.last_seen_at else None,
+                    },
+                )
+
+        # Rule 2: active camera offline/error/unknown or stale.
+        cameras_qs = Camera.objects.filter(active=True, store_id__in=[store.id for store in stores]).select_related("store")
+        for camera in cameras_qs[:2000]:
+            if len(created_items) >= max_actions:
+                break
+            camera_status = str(camera.status or "").strip().lower()
+            camera_stale = camera.last_seen_at is None or camera.last_seen_at < stale_cutoff
+            if camera_status in {"offline", "error", "unknown"} or camera_stale:
+                _register_candidate(
+                    store=camera.store,
+                    camera=camera,
+                    issue_code="camera_signal_unhealthy",
+                    priority="high" if camera_status in {"offline", "error"} else "medium",
+                    recommended_action="Ajustar posicionamento (15-25 graus), checar energia/rede e validar novo snapshot após ajuste.",
+                    metadata={
+                        "rule_id": "rule_camera_signal_unhealthy_v1",
+                        "camera_status": camera_status,
+                        "camera_last_seen_at": camera.last_seen_at.isoformat() if camera.last_seen_at else None,
+                    },
+                )
+
+        # Rule 3: conversion identity null-rate high in last 24h.
+        store_ids = [str(store.id) for store in stores]
+        if store_ids and len(created_items) < max_actions:
+            with connection.cursor() as cursor:
+                cursor.execute(
+                    """
+                    SELECT
+                      store_id::text,
+                      COUNT(*) AS total_count,
+                      COUNT(*) FILTER (
+                        WHERE metric_type IS NULL OR metric_type = '' OR roi_entity_id IS NULL OR roi_entity_id = ''
+                      ) AS null_count
+                    FROM public.conversion_metrics
+                    WHERE ts_bucket >= %s
+                      AND store_id::text = ANY(%s)
+                    GROUP BY store_id
+                    """,
+                    [day_ago, store_ids],
+                )
+                rows = cursor.fetchall()
+            by_store = {str(store.id): store for store in stores}
+            for row in rows:
+                if len(created_items) >= max_actions:
+                    break
+                store_id, total_count, null_count = row
+                total = int(total_count or 0)
+                nulls = int(null_count or 0)
+                if total <= 0:
+                    continue
+                null_rate = (nulls / total) if total else 0.0
+                if null_rate < 0.20:
+                    continue
+                store_obj = by_store.get(str(store_id))
+                if not store_obj:
+                    continue
+                _register_candidate(
+                    store=store_obj,
+                    issue_code="conversion_identity_null_rate_high",
+                    priority="critical" if null_rate >= 0.40 else "high",
+                    recommended_action="Revisar ROI/metric_type no edge e publicar nova configuração para reduzir nulos em conversion_metrics.",
+                    metadata={
+                        "rule_id": "rule_conversion_identity_null_rate_v1",
+                        "period_hours": 24,
+                        "null_rate": round(null_rate, 4),
+                        "null_count": nulls,
+                        "total_count": total,
+                    },
+                )
+
+        # Rule 4: PDV integration desired but no sales signal in 7d.
+        if len(created_items) < max_actions:
+            week_ago = now - timedelta(days=7)
+            stores_with_pdv_interest = [store for store in stores if bool(getattr(store, "pos_integration_interest", False))]
+            if stores_with_pdv_interest:
+                store_ids_interest = [store.id for store in stores_with_pdv_interest]
+                stores_with_recent_pdv = set(
+                    str(item)
+                    for item in PosTransactionEvent.objects.filter(
+                        store_id__in=store_ids_interest,
+                        occurred_at__gte=week_ago,
+                    ).values_list("store_id", flat=True).distinct()
+                )
+                for store in stores_with_pdv_interest:
+                    if len(created_items) >= max_actions:
+                        break
+                    if str(store.id) in stores_with_recent_pdv:
+                        continue
+                    _register_candidate(
+                        store=store,
+                        issue_code="pdv_signal_missing_7d",
+                        priority="medium",
+                        recommended_action="Conectar PDV/gateway real para elevar confiabilidade da conversão oficial e reduzir proxy.",
+                        metadata={
+                            "rule_id": "rule_pdv_signal_missing_v1",
+                            "period_days": 7,
+                        },
+                    )
+
+        return Response(
+            {
+                "dry_run": dry_run,
+                "max_actions": max_actions,
+                "created_total": len(created_items),
+                "created": created_items,
+                "skipped_total": len(skipped_items),
+                "skipped": skipped_items[:200],
+            },
+            status=status.HTTP_200_OK,
+        )

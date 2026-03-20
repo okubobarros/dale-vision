@@ -147,6 +147,17 @@ export default function AdminControlTower() {
     },
   })
 
+  const autoGenerateCalibrationMutation = useMutation({
+    mutationFn: () => adminService.autoGenerateCalibrationActions({ dry_run: false, max_actions: 40 }),
+    onSuccess: (result) => {
+      toast.success(`Geração automática concluída: ${result.created_total} ações novas.`)
+      queryClient.invalidateQueries({ queryKey: ["admin", "calibration-actions", "active"] })
+    },
+    onError: (error: unknown) => {
+      toast.error((error as { message?: string })?.message || "Falha ao gerar ações automáticas.")
+    },
+  })
+
   const activeCalibrationActions = useMemo(() => {
     const items = calibrationActionsQuery.data?.items || []
     return (items as CalibrationActionItem[]).filter((item) => item.status !== "closed").slice(0, 20)
@@ -444,7 +455,17 @@ export default function AdminControlTower() {
               <h2 className="text-sm font-semibold text-gray-800 uppercase tracking-wide">
                 Ações de calibração (admin + cliente)
               </h2>
-              <span className="text-xs text-gray-500">{activeCalibrationActions.length} abertas</span>
+              <div className="flex items-center gap-3">
+                <button
+                  type="button"
+                  onClick={() => autoGenerateCalibrationMutation.mutate()}
+                  disabled={autoGenerateCalibrationMutation.isPending}
+                  className="rounded-lg border border-blue-300 px-2 py-1 text-xs font-semibold text-blue-700 hover:bg-blue-50 disabled:cursor-not-allowed disabled:opacity-50"
+                >
+                  Gerar ações automáticas
+                </button>
+                <span className="text-xs text-gray-500">{activeCalibrationActions.length} abertas</span>
+              </div>
             </div>
             {calibrationActionsQuery.isLoading ? (
               <div className="mt-3 text-sm text-gray-600">Carregando backlog de calibração...</div>

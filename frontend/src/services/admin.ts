@@ -137,6 +137,15 @@ export type CalibrationResultResponse = {
   notes?: string | null
 }
 
+export type CalibrationAutoGenerateResponse = {
+  dry_run: boolean
+  max_actions: number
+  created_total: number
+  created: Array<Record<string, unknown>>
+  skipped_total: number
+  skipped: Array<Record<string, unknown>>
+}
+
 export const adminService = {
   async getControlTowerSummary(): Promise<AdminControlTowerSummary> {
     const response = await api.get("/v1/me/admin/control-tower/summary/", {
@@ -195,5 +204,17 @@ export const adminService = {
       noRetry: true,
     })
     return response.data as CalibrationResultResponse
+  },
+
+  async autoGenerateCalibrationActions(payload?: {
+    store_id?: string
+    dry_run?: boolean
+    max_actions?: number
+  }): Promise<CalibrationAutoGenerateResponse> {
+    const response = await api.post("/v1/calibration/actions/auto-generate/", payload || {}, {
+      timeoutCategory: "best-effort",
+      noRetry: true,
+    })
+    return response.data as CalibrationAutoGenerateResponse
   },
 }
