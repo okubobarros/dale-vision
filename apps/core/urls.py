@@ -18,6 +18,7 @@ from .views import (
     DataCompletenessView,
     AdminIngestionFunnelGapView,
     AdminPipelineObservabilityView,
+    AdminReleaseGateView,
 )
 from .views_calibration import (
     CalibrationActionListCreateView,
@@ -46,6 +47,7 @@ urlpatterns = [
     path("data-quality/completeness/", DataCompletenessView.as_view(), name="data-quality-completeness"),
     path("me/admin/ingestion-funnel-gap/", AdminIngestionFunnelGapView.as_view(), name="admin-ingestion-funnel-gap"),
     path("me/admin/pipeline-observability/", AdminPipelineObservabilityView.as_view(), name="admin-pipeline-observability"),
+    path("me/admin/release-gate/", AdminReleaseGateView.as_view(), name="admin-release-gate"),
     path("calibration/actions/", CalibrationActionListCreateView.as_view(), name="calibration-actions"),
     path("calibration/actions/auto-generate/", CalibrationActionAutoGenerateView.as_view(), name="calibration-actions-auto-generate"),
     path("calibration/actions/impact-summary/", CalibrationImpactSummaryView.as_view(), name="calibration-actions-impact-summary"),

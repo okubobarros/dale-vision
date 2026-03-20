@@ -975,3 +975,233 @@ class AdminPipelineObservabilityView(APIView):
             },
             status=status.HTTP_200_OK,
         )
+
+
+def _compute_release_gate_summary():
+    now = timezone.now()
+    start_30d = now - timedelta(days=30)
+    start_24h = now - timedelta(hours=24)
+
+    with connection.cursor() as cursor:
+        # Check 1: critical null rate on mandatory fields.
+        cursor.execute(
+            """
+            WITH journey AS (
+                SELECT
+                  COUNT(*) FILTER (WHERE event_name = 'signup_completed')::int AS signup_count,
+                  COUNT(*) FILTER (
+                    WHERE event_name = 'signup_completed'
+                      AND COALESCE(NULLIF(TRIM(payload->>'user_id'), ''), NULL) IS NULL
+                  )::int AS signup_missing_user_id,
+                  COUNT(*) FILTER (WHERE event_name = 'store_created')::int AS store_count,
+                  COUNT(*) FILTER (
+                    WHERE event_name = 'store_created'
+                      AND COALESCE(NULLIF(TRIM(payload->>'store_id'), ''), NULL) IS NULL
+                  )::int AS store_missing_store_id,
+                  COUNT(*) FILTER (WHERE event_name = 'camera_added')::int AS camera_count,
+                  COUNT(*) FILTER (
+                    WHERE event_name = 'camera_added'
+                      AND (
+                        COALESCE(NULLIF(TRIM(payload->>'store_id'), ''), NULL) IS NULL
+                        OR COALESCE(NULLIF(TRIM(payload->>'camera_id'), ''), NULL) IS NULL
+                      )
+                  )::int AS camera_missing_required,
+                  COUNT(*) FILTER (WHERE event_name = 'roi_saved')::int AS roi_count,
+                  COUNT(*) FILTER (
+                    WHERE event_name = 'roi_saved'
+                      AND (
+                        COALESCE(NULLIF(TRIM(payload->>'store_id'), ''), NULL) IS NULL
+                        OR COALESCE(NULLIF(TRIM(payload->>'camera_id'), ''), NULL) IS NULL
+                        OR COALESCE(NULLIF(TRIM(payload->>'roi_version'), ''), NULL) IS NULL
+                      )
+                  )::int AS roi_missing_required,
+                  COUNT(*) FILTER (WHERE event_name = 'first_metrics_received')::int AS first_metrics_count,
+                  COUNT(*) FILTER (
+                    WHERE event_name = 'first_metrics_received'
+                      AND COALESCE(NULLIF(TRIM(payload->>'store_id'), ''), NULL) IS NULL
+                  )::int AS first_metrics_missing_store_id
+                FROM public.journey_events
+                WHERE created_at >= %s
+            ),
+            conversion AS (
+                SELECT
+                  COUNT(*)::int AS rows_total,
+                  COUNT(*) FILTER (
+                    WHERE COALESCE(NULLIF(TRIM(metric_type::text), ''), NULL) IS NULL
+                  )::int AS metric_type_missing,
+                  COUNT(*) FILTER (
+                    WHERE COALESCE(NULLIF(TRIM(roi_entity_id::text), ''), NULL) IS NULL
+                  )::int AS roi_entity_missing
+                FROM public.conversion_metrics
+                WHERE ts_bucket >= %s
+            ),
+            traffic AS (
+                SELECT
+                  COUNT(*)::int AS rows_total,
+                  COUNT(*) FILTER (
+                    WHERE COALESCE(NULLIF(TRIM(camera_role::text), ''), NULL) IS NULL
+                  )::int AS camera_role_missing,
+                  COUNT(*) FILTER (
+                    WHERE COALESCE(NULLIF(TRIM(ownership::text), ''), NULL) IS NULL
+                  )::int AS ownership_missing
+                FROM public.traffic_metrics
+                WHERE ts_bucket >= %s
+            )
+            SELECT
+              -- samples
+              (
+                j.signup_count
+                + j.store_count
+                + (j.camera_count * 2)
+                + (j.roi_count * 3)
+                + j.first_metrics_count
+                + (c.rows_total * 2)
+                + (t.rows_total * 2)
+              )::bigint AS critical_samples,
+              -- missing
+              (
+                j.signup_missing_user_id
+                + j.store_missing_store_id
+                + j.camera_missing_required
+                + j.roi_missing_required
+                + j.first_metrics_missing_store_id
+                + c.metric_type_missing
+                + c.roi_entity_missing
+                + t.camera_role_missing
+                + t.ownership_missing
+              )::bigint AS critical_missing
+            FROM journey j
+            CROSS JOIN conversion c
+            CROSS JOIN traffic t
+            """,
+            [start_30d, start_30d, start_30d],
+        )
+        critical_row = cursor.fetchone() or [0, 0]
+        critical_samples = int(critical_row[0] or 0)
+        critical_missing = int(critical_row[1] or 0)
+        null_rate_critical = (critical_missing / critical_samples) if critical_samples > 0 else None
+
+        # Check 2: pipeline success in last 24h.
+        cursor.execute(
+            """
+            SELECT
+              COUNT(*)::int AS received_total,
+              COUNT(*) FILTER (
+                WHERE processed_at IS NOT NULL
+                  AND COALESCE(NULLIF(TRIM(last_error), ''), NULL) IS NULL
+              )::int AS accepted_total
+            FROM public.event_receipts
+            WHERE source = 'edge'
+              AND ts >= %s
+              AND (
+                event_name LIKE 'vision.%%'
+                OR event_name = 'retail.event.v1'
+                OR event_name LIKE 'retail.%%'
+                OR event_name LIKE 'retail_%%'
+              )
+            """,
+            [start_24h],
+        )
+        pipeline_row = cursor.fetchone() or [0, 0]
+        received_total = int(pipeline_row[0] or 0)
+        accepted_total = int(pipeline_row[1] or 0)
+        pipeline_success = (accepted_total / received_total) if received_total > 0 else None
+
+        # Check 3: funnel non-zero on active stores with signal.
+        cursor.execute(
+            """
+            WITH active_signal_stores AS (
+                SELECT DISTINCT s.id::text AS store_id
+                FROM public.stores s
+                LEFT JOIN public.vision_atomic_events vae
+                  ON vae.store_id::text = s.id::text
+                 AND vae.ts >= %s
+                WHERE s.status IN ('active', 'trial')
+                  AND (
+                    s.last_seen_at >= %s
+                    OR vae.store_id IS NOT NULL
+                  )
+            ),
+            funnel_stores AS (
+                SELECT DISTINCT je.payload->>'store_id' AS store_id
+                FROM public.journey_events je
+                WHERE je.event_name = 'first_metrics_received'
+                  AND je.created_at >= %s
+                  AND je.payload ? 'store_id'
+            )
+            SELECT
+              (SELECT COUNT(*)::int FROM active_signal_stores) AS active_signal_total,
+              (
+                SELECT COUNT(*)::int
+                FROM active_signal_stores a
+                JOIN funnel_stores f ON f.store_id = a.store_id
+              ) AS active_with_funnel_total
+            """,
+            [start_24h, start_24h, start_30d],
+        )
+        funnel_row = cursor.fetchone() or [0, 0]
+        active_signal_total = int(funnel_row[0] or 0)
+        active_with_funnel_total = int(funnel_row[1] or 0)
+
+    thresholds = {
+        "null_rate_critical_max": 0.02,
+        "pipeline_success_min": 0.99,
+    }
+    checks = {
+        "null_rate_critical": {
+            "value": null_rate_critical,
+            "threshold": thresholds["null_rate_critical_max"],
+            "operator": "<=",
+            "pass": bool(null_rate_critical is not None and null_rate_critical <= thresholds["null_rate_critical_max"]),
+            "samples": critical_samples,
+            "missing": critical_missing,
+        },
+        "pipeline_success": {
+            "value": pipeline_success,
+            "threshold": thresholds["pipeline_success_min"],
+            "operator": ">=",
+            "pass": bool(pipeline_success is not None and pipeline_success >= thresholds["pipeline_success_min"]),
+            "received_total": received_total,
+            "accepted_total": accepted_total,
+        },
+        "funnel_non_zero_active_store": {
+            "value": active_with_funnel_total,
+            "threshold": active_signal_total,
+            "operator": "==",
+            "pass": bool(active_signal_total > 0 and active_with_funnel_total >= active_signal_total),
+            "active_signal_total": active_signal_total,
+            "active_with_funnel_total": active_with_funnel_total,
+        },
+    }
+    overall_pass = bool(
+        checks["null_rate_critical"]["pass"]
+        and checks["pipeline_success"]["pass"]
+        and checks["funnel_non_zero_active_store"]["pass"]
+    )
+    return {
+        "generated_at": now.isoformat(),
+        "window": {
+            "from_30d": start_30d.isoformat(),
+            "from_24h": start_24h.isoformat(),
+            "to": now.isoformat(),
+        },
+        "thresholds": thresholds,
+        "checks": checks,
+        "overall_pass": overall_pass,
+        "status": "go" if overall_pass else "no_go",
+    }
+
+
+class AdminReleaseGateView(APIView):
+    permission_classes = [IsAuthenticated]
+
+    @staticmethod
+    def _assert_internal_admin(user):
+        if getattr(user, "is_staff", False) or getattr(user, "is_superuser", False):
+            return
+        raise PermissionDenied("Acesso restrito ao time interno (staff/superuser).")
+
+    def get(self, request):
+        self._assert_internal_admin(request.user)
+        payload = _compute_release_gate_summary()
+        return Response(payload, status=status.HTTP_200_OK)

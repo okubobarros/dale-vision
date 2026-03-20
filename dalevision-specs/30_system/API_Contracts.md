@@ -71,6 +71,7 @@ Notas de payload (stores):
 - `GET /api/v1/me/admin/control-tower/summary/` (staff/superuser)
 - `GET|POST /api/v1/me/admin/ingestion-funnel-gap/` (staff/superuser; query/body: `window_hours`, `store_id`, `limit`)
 - `GET /api/v1/me/admin/pipeline-observability/` (staff/superuser; query: `window_hours`, `store_id`, `limit`)
+- `GET /api/v1/me/admin/release-gate/` (staff/superuser; sem query)
 
 - `POST /api/v1/integration/pdv/interest/`
 - `POST /api/v1/integration/pdv/events/`
@@ -192,6 +193,13 @@ Resposta de `me/admin/pipeline-observability`:
 Operação DLQ/Retry (management command):
 - `python manage.py retry_failed_edge_receipts --hours 24 --limit 500 [--max-attempts 8] [--dry-run]`
 - Reprocessa receipts edge falhos (`processed_at IS NULL` e `last_error != NULL`) para eventos `vision.*`.
+
+Resposta de `me/admin/release-gate`:
+- `status`: `go|no_go`
+- `overall_pass`: boolean
+- `checks.null_rate_critical` (`value`, `threshold=0.02`, `pass`)
+- `checks.pipeline_success` (`value`, `threshold=0.99`, `pass`)
+- `checks.funnel_non_zero_active_store` (`active_signal_total`, `active_with_funnel_total`, `pass`)
 
 Contrato de eventos de jornada (`JourneyEvent`):
 - Eventos críticos com campos obrigatórios (`signup_completed`, `store_created`, `camera_added`, `roi_saved`, `first_metrics_received`) têm validação de payload no backend.

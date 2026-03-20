@@ -227,6 +227,39 @@ export type AdminPipelineObservabilityResponse = {
   rows: AdminPipelineObservabilityRow[]
 }
 
+export type AdminReleaseGateCheck = {
+  value?: number | null
+  threshold?: number | null
+  operator?: string
+  pass: boolean
+  samples?: number
+  missing?: number
+  received_total?: number
+  accepted_total?: number
+  active_signal_total?: number
+  active_with_funnel_total?: number
+}
+
+export type AdminReleaseGateResponse = {
+  generated_at: string
+  window: {
+    from_30d: string
+    from_24h: string
+    to: string
+  }
+  thresholds: {
+    null_rate_critical_max: number
+    pipeline_success_min: number
+  }
+  checks: {
+    null_rate_critical: AdminReleaseGateCheck
+    pipeline_success: AdminReleaseGateCheck
+    funnel_non_zero_active_store: AdminReleaseGateCheck
+  }
+  overall_pass: boolean
+  status: "go" | "no_go" | string
+}
+
 export const adminService = {
   async getControlTowerSummary(): Promise<AdminControlTowerSummary> {
     const response = await api.get("/v1/me/admin/control-tower/summary/", {
@@ -347,5 +380,13 @@ export const adminService = {
       noRetry: true,
     })
     return response.data as AdminPipelineObservabilityResponse
+  },
+
+  async getReleaseGate(): Promise<AdminReleaseGateResponse> {
+    const response = await api.get("/v1/me/admin/release-gate/", {
+      timeoutCategory: "best-effort",
+      noRetry: true,
+    })
+    return response.data as AdminReleaseGateResponse
   },
 }
