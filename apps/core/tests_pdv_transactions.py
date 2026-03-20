@@ -6,7 +6,11 @@ from unittest.mock import MagicMock, patch
 from django.test import SimpleTestCase
 from rest_framework.test import APIRequestFactory, force_authenticate
 
-from apps.core.views import PdvTransactionIngestView, PdvTransactionSummaryView
+from apps.core.views import (
+    PdvIngestionHealthView,
+    PdvTransactionIngestView,
+    PdvTransactionSummaryView,
+)
 
 
 class PdvTransactionIngestViewTests(SimpleTestCase):
@@ -15,6 +19,8 @@ class PdvTransactionIngestViewTests(SimpleTestCase):
         self.view = PdvTransactionIngestView.as_view()
         self.user = SimpleNamespace(is_authenticated=True, is_staff=False, is_superuser=False, id=123)
 
+    @patch("apps.core.views.mark_event_receipt_processed")
+    @patch("apps.core.views.insert_event_receipt_if_new")
     @patch("apps.core.views.models.Store.objects.filter")
     @patch("apps.core.views.get_user_org_ids", return_value=["org-1"])
     @patch("apps.core.views.models.PosTransactionEvent.objects.get_or_create")
@@ -23,6 +29,8 @@ class PdvTransactionIngestViewTests(SimpleTestCase):
         get_or_create_mock: MagicMock,
         _org_ids_mock: MagicMock,
         store_filter_mock: MagicMock,
+        _insert_receipt_mock: MagicMock,
+        mark_processed_mock: MagicMock,
     ):
         store = SimpleNamespace(id="store-1", org_id="org-1")
         event = SimpleNamespace(
@@ -63,6 +71,7 @@ class PdvTransactionIngestViewTests(SimpleTestCase):
         self.assertEqual(response.data["source_system"], "linx")
         self.assertEqual(response.data["transaction_id"], "tx-123")
         self.assertEqual(response.data["gross_amount"], 129.9)
+        mark_processed_mock.assert_called_once()
 
     def test_ingest_requires_required_fields(self):
         request = self.factory.post(
@@ -78,6 +87,8 @@ class PdvTransactionIngestViewTests(SimpleTestCase):
         response = self.view(request)
         self.assertEqual(response.status_code, 400)
 
+    @patch("apps.core.views.mark_event_receipt_processed")
+    @patch("apps.core.views.insert_event_receipt_if_new")
     @patch("apps.core.views.models.Store.objects.filter")
     @patch("apps.core.views.get_user_org_ids", return_value=["org-1"])
     @patch("apps.core.views.models.PosTransactionEvent.objects.get_or_create")
@@ -86,6 +97,8 @@ class PdvTransactionIngestViewTests(SimpleTestCase):
         get_or_create_mock: MagicMock,
         _org_ids_mock: MagicMock,
         store_filter_mock: MagicMock,
+        _insert_receipt_mock: MagicMock,
+        mark_processed_mock: MagicMock,
     ):
         store = SimpleNamespace(id="store-1", org_id="org-1")
         record = MagicMock()
@@ -121,6 +134,31 @@ class PdvTransactionIngestViewTests(SimpleTestCase):
         self.assertFalse(response.data["created"])
         self.assertEqual(response.data["transaction_id"], "tx-999")
         record.save.assert_called_once()
+        mark_processed_mock.assert_called_once()
+
+    @patch("apps.core.views.mark_event_receipt_failed")
+    @patch("apps.core.views.insert_event_receipt_if_new")
+    def test_ingest_marks_failed_receipt_on_invalid_gross_amount(
+        self,
+        _insert_receipt_mock: MagicMock,
+        mark_failed_mock: MagicMock,
+    ):
+        request = self.factory.post(
+            "/api/v1/integration/pdv/events/",
+            {
+                "store_id": "store-1",
+                "source_system": "linx",
+                "transaction_id": "tx-invalid",
+                "occurred_at": "2026-03-19T16:00:00Z",
+                "gross_amount": "abc",
+            },
+            format="json",
+        )
+        force_authenticate(request, user=self.user)
+
+        response = self.view(request)
+        self.assertEqual(response.status_code, 400)
+        mark_failed_mock.assert_called_once()
 
 
 class PdvTransactionSummaryViewTests(SimpleTestCase):
@@ -157,3 +195,45 @@ class PdvTransactionSummaryViewTests(SimpleTestCase):
         self.assertEqual(response.data["net_total"], 950.0)
         self.assertEqual(response.data["avg_ticket"], 100.0)
         qs.filter.assert_any_call(org_id__in={"org-1"})
+
+
+class PdvIngestionHealthViewTests(SimpleTestCase):
+    def setUp(self):
+        self.factory = APIRequestFactory()
+        self.view = PdvIngestionHealthView.as_view()
+        self.user = SimpleNamespace(is_authenticated=True, is_staff=False, is_superuser=False, id=123)
+
+    @patch("apps.core.views.models.Store.objects.filter")
+    @patch("apps.core.views.get_user_org_ids", return_value=["org-1"])
+    @patch("apps.core.views.get_pdv_ingestion_health")
+    def test_health_returns_payload_for_accessible_scope(
+        self,
+        health_mock: MagicMock,
+        _orgs_mock: MagicMock,
+        store_filter_mock: MagicMock,
+    ):
+        store_qs = MagicMock()
+        store_qs.values_list.return_value = ["store-1", "store-2"]
+        store_filter_mock.return_value = store_qs
+        health_mock.return_value = {
+            "from": "2026-03-12T00:00:00+00:00",
+            "to": "2026-03-19T00:00:00+00:00",
+            "total_receipts": 20,
+            "processed_total": 18,
+            "failed_total": 2,
+            "pending_total": 0,
+            "processing_rate": 0.9,
+            "failure_rate": 0.1,
+            "latest_received_at": "2026-03-19T10:00:00+00:00",
+            "top_errors": [{"error": "store_not_found", "count": 2}],
+        }
+
+        request = self.factory.get("/api/v1/integration/pdv/ingestion-health/?period=7d")
+        force_authenticate(request, user=self.user)
+        response = self.view(request)
+
+        self.assertEqual(response.status_code, 200)
+        self.assertEqual(response.data["period"], "7d")
+        self.assertEqual(response.data["total_receipts"], 20)
+        self.assertEqual(response.data["failed_total"], 2)
+        self.assertEqual(response.data["top_errors"][0]["error"], "store_not_found")

@@ -5,6 +5,7 @@ from django.conf import settings
 from django.db.models import Count, Sum
 from django.utils import timezone
 from django.utils.dateparse import parse_datetime
+from django.test.testcases import DatabaseOperationForbidden
 from rest_framework import viewsets, status
 from rest_framework.response import Response
 from rest_framework.permissions import AllowAny, IsAuthenticated
@@ -13,6 +14,13 @@ from rest_framework.views import APIView
 from apps.core.integrations import supabase_storage
 from apps.core import models
 from apps.stores.services.user_orgs import get_user_org_ids
+from apps.core.services.event_receipts import (
+    build_pdv_receipt_id,
+    insert_event_receipt_if_new,
+    mark_event_receipt_failed,
+    mark_event_receipt_processed,
+)
+from apps.core.services.pdv_health import get_pdv_ingestion_health
 from .serializers import DemoLeadSerializer
 
 class DemoLeadViewSet(viewsets.ModelViewSet):
@@ -235,11 +243,45 @@ class PdvTransactionIngestView(APIView):
                 status=status.HTTP_400_BAD_REQUEST,
             )
 
+        receipt_id = build_pdv_receipt_id(
+            store_id=store_id,
+            source_system=source_system,
+            transaction_id=transaction_id,
+        )
+        payload_raw = {
+            "store_id": store_id,
+            "source_system": source_system,
+            "transaction_id": transaction_id,
+            "occurred_at": occurred_at.isoformat(),
+            "gross_amount": request.data.get("gross_amount"),
+            "net_amount": request.data.get("net_amount"),
+            "currency": currency,
+            "payment_method": payment_method,
+            "metadata": metadata if isinstance(metadata, dict) else {},
+        }
+        try:
+            insert_event_receipt_if_new(
+                event_id=receipt_id,
+                event_name="pdv_transaction_ingest",
+                source="pdv_integration",
+                payload=payload_raw,
+                meta={
+                    "store_id": store_id,
+                    "source_system": source_system,
+                    "transaction_id": transaction_id,
+                },
+            )
+        except DatabaseOperationForbidden:
+            pass
+        except Exception:
+            pass
+
         try:
             gross_amount = Decimal(str(request.data.get("gross_amount")))
             if gross_amount <= 0:
                 raise InvalidOperation("gross_amount_must_be_positive")
         except (InvalidOperation, TypeError, ValueError):
+            mark_event_receipt_failed(event_id=receipt_id, error_message="invalid_gross_amount")
             return Response(
                 {"detail": "gross_amount deve ser numérico e maior que zero."},
                 status=status.HTTP_400_BAD_REQUEST,
@@ -251,6 +293,7 @@ class PdvTransactionIngestView(APIView):
             try:
                 net_amount = Decimal(str(net_raw))
             except (InvalidOperation, TypeError, ValueError):
+                mark_event_receipt_failed(event_id=receipt_id, error_message="invalid_net_amount")
                 return Response(
                     {"detail": "net_amount deve ser numérico quando informado."},
                     status=status.HTTP_400_BAD_REQUEST,
@@ -258,8 +301,10 @@ class PdvTransactionIngestView(APIView):
 
         store = models.Store.objects.filter(id=store_id).first()
         if not store:
+            mark_event_receipt_failed(event_id=receipt_id, error_message="store_not_found")
             return Response({"detail": "Loja não encontrada."}, status=status.HTTP_404_NOT_FOUND)
         if not self._can_access_store(request.user, store):
+            mark_event_receipt_failed(event_id=receipt_id, error_message="permission_denied")
             raise PermissionDenied("Sem permissão para registrar transações nesta loja.")
 
         payload_raw = {
@@ -309,6 +354,7 @@ class PdvTransactionIngestView(APIView):
                 ]
             )
 
+        mark_event_receipt_processed(event_id=receipt_id)
         return Response(
             {
                 "ok": True,
@@ -377,3 +423,38 @@ class PdvTransactionSummaryView(APIView):
             },
             status=status.HTTP_200_OK,
         )
+
+
+class PdvIngestionHealthView(APIView):
+    permission_classes = [IsAuthenticated]
+
+    def get(self, request):
+        period = str(request.query_params.get("period") or "7d").strip().lower()
+        store_id = str(request.query_params.get("store_id") or "").strip() or None
+
+        days = 7
+        if period.endswith("d"):
+            try:
+                days = int(period[:-1])
+            except Exception:
+                days = 7
+        days = max(1, min(days, 365))
+        start = timezone.now() - timedelta(days=days)
+
+        if getattr(request.user, "is_staff", False) or getattr(request.user, "is_superuser", False):
+            scoped_store_ids = [store_id] if store_id else []
+        else:
+            org_ids = {str(org_id) for org_id in get_user_org_ids(request.user)}
+            store_qs = models.Store.objects.filter(org_id__in=org_ids)
+            if store_id:
+                if not store_qs.filter(id=store_id).exists():
+                    raise PermissionDenied("Sem permissão para consultar esta loja.")
+                scoped_store_ids = [store_id]
+            else:
+                scoped_store_ids = [str(sid) for sid in store_qs.values_list("id", flat=True)]
+
+        payload = get_pdv_ingestion_health(start=start, store_ids=scoped_store_ids)
+        payload["period"] = f"{days}d"
+        payload["store_id"] = store_id
+        payload["scope_stores"] = len(scoped_store_ids) if scoped_store_ids else None
+        return Response(payload, status=status.HTTP_200_OK)

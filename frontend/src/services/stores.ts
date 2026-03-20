@@ -137,6 +137,22 @@ export type PdvTransactionSummaryResponse = {
   stores_total: number
 }
 
+export type PdvIngestionHealthResponse = {
+  period: string
+  from: string
+  to: string
+  store_id: string | null
+  scope_stores: number | null
+  total_receipts: number
+  processed_total: number
+  failed_total: number
+  pending_total: number
+  processing_rate: number
+  failure_rate: number
+  latest_received_at: string | null
+  top_errors: Array<{ error: string; count: number }>
+}
+
 export interface StoreMetrics {
   total_cameras: number;
   active_cameras: number;
@@ -1683,5 +1699,17 @@ export const storesService = {
       noRetry: true,
     })
     return response.data as PdvTransactionSummaryResponse
+  },
+
+  async getPdvIngestionHealth(params?: {
+    store_id?: string
+    period?: string
+  }): Promise<PdvIngestionHealthResponse> {
+    const response = await api.get("/v1/integration/pdv/ingestion-health/", {
+      params: params || undefined,
+      timeoutCategory: "best-effort",
+      noRetry: true,
+    })
+    return response.data as PdvIngestionHealthResponse
   },
 };
