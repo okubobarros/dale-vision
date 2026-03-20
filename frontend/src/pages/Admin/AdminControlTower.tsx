@@ -62,17 +62,18 @@ const Card = ({ title, value, hint }: { title: string; value: string; hint?: str
 )
 
 export default function AdminControlTower() {
-  const { user } = useAuth()
+  const { user, isAuthenticated } = useAuth()
   const queryClient = useQueryClient()
   const statusQuery = useQuery({
     queryKey: ["admin", "me-status"],
     queryFn: () => meService.getStatus(),
     staleTime: 60_000,
-    retry: false,
+    retry: 2,
   })
   const isInternalAdmin = Boolean(
     user?.is_staff || user?.is_superuser || statusQuery.data?.is_internal_admin
   )
+  const waitingStatusValidation = isAuthenticated && !user?.is_staff && !user?.is_superuser && statusQuery.isLoading
 
   const summaryQuery = useQuery({
     queryKey: ["admin", "control-tower", "summary"],
@@ -271,6 +272,17 @@ export default function AdminControlTower() {
     }
   }, [journeyFunnelQuery.data, pdvHealthQuery.data, completeness30dQuery.data, completeness7dQuery.data])
 
+  if (waitingStatusValidation) {
+    return (
+      <div className="space-y-4">
+        <h1 className="text-2xl font-bold text-gray-900">Admin SaaS</h1>
+        <div className="rounded-xl border border-blue-200 bg-blue-50 p-4 text-sm text-blue-700">
+          Validando permissões de admin interno...
+        </div>
+      </div>
+    )
+  }
+
   if (!isInternalAdmin) {
     return (
       <div className="space-y-4">
@@ -278,6 +290,11 @@ export default function AdminControlTower() {
         <div className="rounded-xl border border-red-200 bg-red-50 p-4 text-sm text-red-700">
           Acesso restrito ao time interno (staff/superuser).
         </div>
+        {statusQuery.isError ? (
+          <div className="rounded-xl border border-amber-200 bg-amber-50 p-4 text-sm text-amber-700">
+            Não foi possível validar seu status agora (API indisponível/cold start). Tente atualizar em alguns segundos.
+          </div>
+        ) : null}
       </div>
     )
   }

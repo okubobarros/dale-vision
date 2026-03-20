@@ -313,7 +313,10 @@ api.interceptors.response.use(
       !config?.noRetry &&
       isGet &&
       !isTimeout &&
-      (status !== undefined && [502, 503, 504].includes(status))
+      (
+        (status !== undefined && [502, 503, 504].includes(status)) ||
+        (status === undefined && axiosError.code === "ERR_NETWORK")
+      )
     const retryCount = config?._retryCount ?? 0
 
     if (shouldRetry && config && retryCount < RETRY_BACKOFF_MS.length) {
