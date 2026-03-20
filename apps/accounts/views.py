@@ -6,7 +6,7 @@ from rest_framework import status
 from rest_framework.response import Response
 from rest_framework.views import APIView
 from rest_framework.permissions import AllowAny, IsAuthenticated
-from rest_framework.exceptions import AuthenticationFailed
+from rest_framework.exceptions import AuthenticationFailed, PermissionDenied
 from knox.models import AuthToken
 from knox.auth import TokenAuthentication
 from django.contrib.auth import authenticate
@@ -705,3 +705,228 @@ class AdminControlTowerSummaryView(APIView):
                 status=status.HTTP_403_FORBIDDEN,
             )
         return Response(self._build_summary(), status=status.HTTP_200_OK)
+
+
+class AdminControlTowerDrilldownView(APIView):
+    permission_classes = [IsAuthenticated]
+
+    METRIC_TITLES = {
+        "users_total": "Usuários totais",
+        "users_active": "Usuários ativos",
+        "users_staff": "Usuários staff",
+        "organizations_total": "Organizações",
+        "stores_total": "Lojas",
+        "stores_signal_recent_5m": "Lojas com sinal recente (5m)",
+        "stores_signal_stale": "Lojas com sinal stale",
+        "stores_signal_missing": "Lojas sem sinal",
+        "subscriptions_active": "Assinaturas ativas",
+        "subscriptions_past_due": "Assinaturas past due",
+        "organizations_trial_expiring_7d": "Organizações com trial expirando em 7 dias",
+        "stores_blocked": "Lojas bloqueadas",
+        "incidents_notification_failed_24h": "Falhas de notificação (24h)",
+        "incidents_stores_without_recent_signal": "Lojas sem sinal recente",
+        "onboarding_in_progress": "Onboarding em progresso",
+        "cameras_offline": "Câmeras offline",
+        "value_loop_outcomes_24h": "Outcomes 24h",
+        "value_loop_outcomes_completed_24h": "Outcomes concluídos 24h",
+    }
+
+    @staticmethod
+    def _assert_internal_admin(user):
+        if getattr(user, "is_staff", False) or getattr(user, "is_superuser", False):
+            return
+        raise PermissionDenied("Acesso restrito ao admin interno.")
+
+    @staticmethod
+    def _resolve_limit(raw_value):
+        try:
+            value = int(raw_value or 50)
+        except Exception:
+            value = 50
+        return max(1, min(value, 200))
+
+    @staticmethod
+    def _normalize_value(value):
+        if value is None:
+            return None
+        if hasattr(value, "isoformat"):
+            try:
+                return value.isoformat()
+            except Exception:
+                return str(value)
+        return str(value) if type(value).__name__ == "UUID" else value
+
+    @classmethod
+    def _normalize_rows(cls, rows):
+        normalized = []
+        for row in rows:
+            normalized.append({key: cls._normalize_value(value) for key, value in row.items()})
+        return normalized
+
+    @staticmethod
+    def _columns_for_rows(rows):
+        if not rows:
+            return []
+        return [{"key": key, "label": key.replace("_", " ").title()} for key in rows[0].keys()]
+
+    def get(self, request):
+        self._assert_internal_admin(request.user)
+        metric = str(request.query_params.get("metric") or "").strip()
+        limit = self._resolve_limit(request.query_params.get("limit"))
+        if metric not in self.METRIC_TITLES:
+            return Response(
+                {
+                    "code": "INVALID_METRIC",
+                    "message": "Métrica de drilldown inválida.",
+                    "available_metrics": sorted(self.METRIC_TITLES.keys()),
+                },
+                status=status.HTTP_400_BAD_REQUEST,
+            )
+
+        now = timezone.now()
+        week = now + timedelta(days=7)
+        recent_5m = now - timedelta(minutes=5)
+        day_ago = now - timedelta(hours=24)
+        User = get_user_model()
+
+        rows = []
+        if metric == "users_total":
+            rows = list(
+                User.objects.order_by("-date_joined")
+                .values("id", "username", "email", "is_active", "is_staff", "last_login", "date_joined")[:limit]
+            )
+        elif metric == "users_active":
+            rows = list(
+                User.objects.filter(is_active=True)
+                .order_by("-last_login", "-date_joined")
+                .values("id", "username", "email", "is_staff", "last_login", "date_joined")[:limit]
+            )
+        elif metric == "users_staff":
+            rows = list(
+                User.objects.filter(is_staff=True)
+                .order_by("-last_login", "-date_joined")
+                .values("id", "username", "email", "is_superuser", "last_login", "date_joined")[:limit]
+            )
+        elif metric == "organizations_total":
+            rows = list(
+                Organization.objects.order_by("-created_at")
+                .values("id", "name", "segment", "country", "trial_ends_at", "created_at")[:limit]
+            )
+        elif metric == "stores_total":
+            rows = list(
+                Store.objects.order_by("-updated_at")
+                .values("id", "org_id", "name", "status", "last_seen_at", "updated_at")[:limit]
+            )
+        elif metric == "stores_signal_recent_5m":
+            rows = list(
+                Store.objects.filter(last_seen_at__gte=recent_5m)
+                .order_by("-last_seen_at")
+                .values("id", "org_id", "name", "status", "last_seen_at")[:limit]
+            )
+        elif metric == "stores_signal_stale":
+            rows = list(
+                Store.objects.filter(last_seen_at__isnull=False, last_seen_at__lt=recent_5m)
+                .order_by("last_seen_at")
+                .values("id", "org_id", "name", "status", "last_seen_at")[:limit]
+            )
+        elif metric == "stores_signal_missing":
+            rows = list(
+                Store.objects.filter(last_seen_at__isnull=True)
+                .order_by("-updated_at")
+                .values("id", "org_id", "name", "status", "updated_at")[:limit]
+            )
+        elif metric == "subscriptions_active":
+            rows = list(
+                Subscription.objects.filter(status="active")
+                .order_by("-updated_at")
+                .values("id", "org_id", "plan_code", "status", "current_period_end", "updated_at")[:limit]
+            )
+        elif metric == "subscriptions_past_due":
+            rows = list(
+                Subscription.objects.filter(status="past_due")
+                .order_by("-updated_at")
+                .values("id", "org_id", "plan_code", "status", "current_period_end", "updated_at")[:limit]
+            )
+        elif metric == "organizations_trial_expiring_7d":
+            rows = list(
+                Organization.objects.filter(trial_ends_at__gte=now, trial_ends_at__lte=week)
+                .order_by("trial_ends_at")
+                .values("id", "name", "trial_ends_at", "created_at")[:limit]
+            )
+        elif metric == "stores_blocked":
+            rows = list(
+                Store.objects.filter(status="blocked")
+                .order_by("-updated_at")
+                .values("id", "org_id", "name", "blocked_reason", "trial_ends_at", "updated_at")[:limit]
+            )
+        elif metric == "incidents_notification_failed_24h":
+            rows = list(
+                NotificationLog.objects.filter(sent_at__gte=day_ago, status__in=["failed", "error"])
+                .order_by("-sent_at")
+                .values("id", "org_id", "store_id", "channel", "status", "error", "sent_at")[:limit]
+            )
+        elif metric == "incidents_stores_without_recent_signal":
+            rows = list(
+                Store.objects.filter(last_seen_at__lt=recent_5m)
+                .order_by("last_seen_at")
+                .values("id", "org_id", "name", "status", "last_seen_at")[:limit]
+            )
+        elif metric == "onboarding_in_progress":
+            rows = list(
+                OnboardingProgress.objects.filter(status="in_progress")
+                .order_by("-updated_at")
+                .values("id", "org_id", "store_id", "step", "progress_percent", "updated_at")[:limit]
+            )
+        elif metric == "cameras_offline":
+            rows = list(
+                Camera.objects.filter(status="offline")
+                .order_by("-last_seen_at")
+                .values("id", "store_id", "name", "status", "last_seen_at", "last_error")[:limit]
+            )
+        elif metric == "value_loop_outcomes_24h":
+            rows = list(
+                ActionOutcome.objects.filter(dispatched_at__gte=day_ago)
+                .order_by("-dispatched_at")
+                .values(
+                    "id",
+                    "org_id",
+                    "store_id",
+                    "status",
+                    "action_type",
+                    "channel",
+                    "impact_expected_brl",
+                    "impact_realized_brl",
+                    "dispatched_at",
+                    "completed_at",
+                )[:limit]
+            )
+        elif metric == "value_loop_outcomes_completed_24h":
+            rows = list(
+                ActionOutcome.objects.filter(dispatched_at__gte=day_ago, status="completed")
+                .order_by("-completed_at", "-dispatched_at")
+                .values(
+                    "id",
+                    "org_id",
+                    "store_id",
+                    "status",
+                    "action_type",
+                    "channel",
+                    "impact_expected_brl",
+                    "impact_realized_brl",
+                    "dispatched_at",
+                    "completed_at",
+                )[:limit]
+            )
+
+        normalized_rows = self._normalize_rows(rows)
+        return Response(
+            {
+                "metric": metric,
+                "title": self.METRIC_TITLES[metric],
+                "generated_at": timezone.now().isoformat(),
+                "total": len(normalized_rows),
+                "columns": self._columns_for_rows(normalized_rows),
+                "rows": normalized_rows,
+            },
+            status=status.HTTP_200_OK,
+        )

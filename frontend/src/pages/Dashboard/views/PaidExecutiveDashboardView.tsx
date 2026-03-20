@@ -162,7 +162,6 @@ export function PaidExecutiveDashboardView({
   const goalDaysBase = (salesGoal.daysMode || "calendar") === "business" ? businessDaysInMonth : daysInMonth
   const dailyGoal = monthlyGoal > 0 ? monthlyGoal / Math.max(goalDaysBase, 1) : 0
   const dailyProgressPct = dailyGoal > 0 ? Math.min(200, Math.round((todayRevenueBRL / dailyGoal) * 100)) : 0
-  const metaDeltaPct = dailyGoal > 0 ? Math.round(((todayRevenueBRL - dailyGoal) / dailyGoal) * 100) : 0
   const criticalEvents = recentEvents.filter((event) => event.severity === "critical").length
   const warningEvents = recentEvents.filter((event) => event.severity === "warning").length
   const estimatedSalesSeries = revenueSeries.map((point) => ({
@@ -286,7 +285,11 @@ export function PaidExecutiveDashboardView({
       <section className="grid grid-cols-1 sm:grid-cols-2 xl:grid-cols-4 gap-3">
         <button
           type="button"
-          onClick={() => onOpenCopilot("Explique a evolução de receita de hoje e próximos riscos")}
+          onClick={() => {
+            setPdvStoreId(selectedStoreId !== STORE_ALL ? selectedStoreId : stores[0]?.id || "")
+            setPdvEmail(user?.email || "")
+            setPdvModalOpen(true)
+          }}
           className="text-left rounded-xl border border-gray-200 bg-white p-4 hover:border-blue-300"
         >
           <p className="text-xs font-semibold uppercase tracking-wide text-gray-500">Receita Bruta</p>
@@ -302,13 +305,22 @@ export function PaidExecutiveDashboardView({
         </button>
         <button
           type="button"
-          onClick={() => onOpenCopilot("Avalie meta diária versus receita e sugira ações para recuperar desvio")}
+          onClick={() => {
+            setGoalInput(monthlyGoal > 0 ? String(Math.round(monthlyGoal)) : "")
+            setGoalMonth(salesGoal.month || new Date().toISOString().slice(0, 7))
+            setGoalDaysMode(salesGoal.daysMode || "calendar")
+            setGoalModalOpen(true)
+          }}
           className="text-left rounded-xl border border-gray-200 bg-white p-4 hover:border-blue-300"
         >
           <p className="text-xs font-semibold uppercase tracking-wide text-gray-500">Meta Realizada</p>
           <p className="mt-2 text-2xl font-bold text-gray-900">{dailyGoal > 0 ? `${dailyProgressPct}%` : "—"}</p>
           <p className="mt-1 text-xs text-gray-600">
             {monthlyGoal > 0 ? `${formatCurrency(dailyGoal)} meta diária` : "Meta mensal não configurada"}
+          </p>
+          <p className="mt-1 text-xs text-gray-600">
+            Hoje: {formatCurrency(todayRevenueBRL)}
+            {dailyGoal > 0 ? ` · ${dailyProgressPct}% da meta` : ""}
           </p>
           {monthlyGoal > 0 && (
             <div className="mt-2 h-1.5 w-full rounded-full bg-gray-100">
@@ -481,48 +493,6 @@ export function PaidExecutiveDashboardView({
               {recentEvents.length === 0 && (
                 <p className="text-sm text-gray-500">Sem alertas recentes.</p>
               )}
-            </div>
-          </section>
-
-          <section className="rounded-2xl border border-gray-200 bg-white p-4 sm:p-6">
-            <div className="flex items-center justify-between gap-2">
-              <h4 className="text-sm font-semibold text-gray-900">Meta do Mês</h4>
-              <button
-                type="button"
-                onClick={() => {
-                  setGoalInput(monthlyGoal > 0 ? String(Math.round(monthlyGoal)) : "")
-                  setGoalMonth(salesGoal.month || new Date().toISOString().slice(0, 7))
-                  setGoalDaysMode(salesGoal.daysMode || "calendar")
-                  setGoalModalOpen(true)
-                }}
-                className="rounded-lg border border-slate-200 bg-white px-3 py-1.5 text-xs font-semibold text-slate-700 hover:bg-slate-50"
-              >
-                Configurar meta
-              </button>
-            </div>
-            <div className="mt-3 rounded-lg border border-slate-200 bg-slate-50 p-3">
-              <p className="text-xs text-slate-600">Mês de referência</p>
-              <p className="text-sm font-medium text-slate-900">{goalMonth}</p>
-              <p className="mt-2 text-xs text-slate-600">Meta mensal (fonte: backend)</p>
-              <p className="text-lg font-semibold text-slate-900">
-                {monthlyGoal > 0 ? formatCurrency(monthlyGoal) : "—"}
-              </p>
-              <p className="mt-1 text-xs text-slate-600">
-                Base diária: {(salesGoal.daysMode || "calendar") === "business" ? "dias úteis" : "dias corridos"}
-              </p>
-              {salesGoal.state !== "connected" && (
-                <p className="mt-2 text-xs text-amber-700">
-                  A integração de vendas ainda não está conectada. Meta e receita podem estar incompletas.
-                </p>
-              )}
-            </div>
-            <div className="mt-3 rounded-lg border border-slate-200 bg-slate-50 p-3">
-              <p className="text-xs text-slate-600">Meta diária</p>
-              <p className="text-lg font-semibold text-slate-900">{dailyGoal > 0 ? formatCurrency(dailyGoal) : "—"}</p>
-              <p className="mt-1 text-xs text-slate-600">
-                Hoje: {formatCurrency(todayRevenueBRL)}{" "}
-                {dailyGoal > 0 ? `(${dailyProgressPct}% da meta · ${metaDeltaPct >= 0 ? "+" : ""}${metaDeltaPct}% vs meta)` : ""}
-              </p>
             </div>
           </section>
 

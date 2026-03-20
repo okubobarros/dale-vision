@@ -60,6 +60,15 @@ export type AdminControlTowerSummary = {
   }
 }
 
+export type AdminControlTowerDrilldownResponse = {
+  metric: string
+  title: string
+  generated_at: string
+  total: number
+  columns: Array<{ key: string; label: string }>
+  rows: Array<Record<string, unknown>>
+}
+
 export type CalibrationActionItem = {
   id: string
   org_id: string
@@ -338,6 +347,15 @@ export const adminService = {
       timeoutCategory: "critical",
     })
     return response.data as AdminControlTowerSummary
+  },
+
+  async getControlTowerDrilldown(metric: string, limit = 80): Promise<AdminControlTowerDrilldownResponse> {
+    const response = await api.get("/v1/me/admin/control-tower/drilldown/", {
+      params: { metric, limit },
+      timeoutCategory: "best-effort",
+      noRetry: true,
+    })
+    return response.data as AdminControlTowerDrilldownResponse
   },
 
   async getCalibrationActions(params?: {

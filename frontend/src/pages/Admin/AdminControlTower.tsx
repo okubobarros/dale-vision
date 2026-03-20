@@ -1,10 +1,14 @@
-import { useMemo } from "react"
+import { useMemo, useState } from "react"
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query"
 import toast from "react-hot-toast"
 
 import PostLoginExplainer from "../../components/PostLoginExplainer"
 import { useAuth } from "../../contexts/useAuth"
-import { adminService, type CalibrationActionItem } from "../../services/admin"
+import {
+  adminService,
+  type CalibrationActionItem,
+  type AdminControlTowerDrilldownResponse,
+} from "../../services/admin"
 import { meService } from "../../services/me"
 import { storesService, type StoreSummary } from "../../services/stores"
 import { supportService } from "../../services/support"
@@ -87,9 +91,70 @@ const Card = ({ title, value, hint }: { title: string; value: string; hint?: str
   </div>
 )
 
+const CardInteractive = ({
+  title,
+  value,
+  hint,
+  onClick,
+}: {
+  title: string
+  value: string
+  hint?: string
+  onClick?: () => void
+}) => {
+  if (!onClick) return <Card title={title} value={value} hint={hint} />
+  return (
+    <button
+      type="button"
+      onClick={onClick}
+      className="rounded-xl border border-gray-200 bg-white p-4 text-left transition hover:border-blue-300 hover:bg-blue-50/40"
+    >
+      <div className="text-xs font-semibold uppercase tracking-wide text-gray-500">{title}</div>
+      <div className="mt-2 text-2xl font-bold text-gray-900">{value}</div>
+      <div className="mt-1 text-xs text-blue-700">{hint || "Clique para ver detalhes"}</div>
+    </button>
+  )
+}
+
+const formatDrilldownValue = (value: unknown) => {
+  if (value === null || value === undefined || value === "") return "—"
+  if (typeof value === "number") return new Intl.NumberFormat("pt-BR").format(value)
+  if (typeof value === "boolean") return value ? "Sim" : "Não"
+  if (typeof value === "string") {
+    const maybeDate = new Date(value)
+    if (!Number.isNaN(maybeDate.getTime()) && (value.includes("T") || value.includes("-"))) {
+      return maybeDate.toLocaleString("pt-BR")
+    }
+    return value
+  }
+  return String(value)
+}
+
+type DrillMetric =
+  | "users_total"
+  | "users_active"
+  | "users_staff"
+  | "organizations_total"
+  | "stores_total"
+  | "stores_signal_recent_5m"
+  | "stores_signal_stale"
+  | "stores_signal_missing"
+  | "subscriptions_active"
+  | "subscriptions_past_due"
+  | "organizations_trial_expiring_7d"
+  | "stores_blocked"
+  | "incidents_notification_failed_24h"
+  | "incidents_stores_without_recent_signal"
+  | "onboarding_in_progress"
+  | "cameras_offline"
+  | "value_loop_outcomes_24h"
+  | "value_loop_outcomes_completed_24h"
+
 export default function AdminControlTower() {
   const { user, isAuthenticated } = useAuth()
   const queryClient = useQueryClient()
+  const [activeDrillMetric, setActiveDrillMetric] = useState<DrillMetric | null>(null)
+  const [activeDrillTitle, setActiveDrillTitle] = useState<string>("")
   const statusQuery = useQuery({
     queryKey: ["admin", "me-status"],
     queryFn: () => meService.getStatus(),
@@ -193,6 +258,13 @@ export default function AdminControlTower() {
     queryFn: () => adminService.getHvEventHealth({ window_days: 7 }),
     enabled: isInternalAdmin,
     refetchInterval: 60_000,
+  })
+  const drilldownQuery = useQuery<AdminControlTowerDrilldownResponse>({
+    queryKey: ["admin", "control-tower", "drilldown", activeDrillMetric],
+    queryFn: () => adminService.getControlTowerDrilldown(String(activeDrillMetric)),
+    enabled: isInternalAdmin && Boolean(activeDrillMetric),
+    retry: false,
+    staleTime: 30_000,
   })
 
   const grantSupportMutation = useMutation({
@@ -332,6 +404,11 @@ export default function AdminControlTower() {
     }
   }, [journeyFunnelQuery.data, pdvHealthQuery.data, completeness30dQuery.data, completeness7dQuery.data])
 
+  const openDrilldown = (metric: DrillMetric, title: string) => {
+    setActiveDrillMetric(metric)
+    setActiveDrillTitle(title)
+  }
+
   if (waitingStatusValidation) {
     return (
       <div className="space-y-4">
@@ -404,48 +481,120 @@ export default function AdminControlTower() {
           <section className="space-y-3">
             <h2 className="text-sm font-semibold text-gray-800 uppercase tracking-wide">Usuários e organizações</h2>
             <div className="grid grid-cols-1 gap-3 md:grid-cols-4">
-              <Card title="Usuários totais" value={formatNumber(summary?.users.total)} />
-              <Card title="Usuários ativos" value={formatNumber(summary?.users.active)} />
-              <Card title="Staff" value={formatNumber(summary?.users.staff)} />
-              <Card title="Orgs totais" value={formatNumber(summary?.organizations.total)} />
+              <CardInteractive
+                title="Usuários totais"
+                value={formatNumber(summary?.users.total)}
+                onClick={() => openDrilldown("users_total", "Usuários totais")}
+              />
+              <CardInteractive
+                title="Usuários ativos"
+                value={formatNumber(summary?.users.active)}
+                onClick={() => openDrilldown("users_active", "Usuários ativos")}
+              />
+              <CardInteractive
+                title="Staff"
+                value={formatNumber(summary?.users.staff)}
+                onClick={() => openDrilldown("users_staff", "Staff")}
+              />
+              <CardInteractive
+                title="Orgs totais"
+                value={formatNumber(summary?.organizations.total)}
+                onClick={() => openDrilldown("organizations_total", "Organizações")}
+              />
             </div>
           </section>
 
           <section className="space-y-3">
             <h2 className="text-sm font-semibold text-gray-800 uppercase tracking-wide">Lojas e edge</h2>
             <div className="grid grid-cols-1 gap-3 md:grid-cols-4">
-              <Card title="Lojas totais" value={formatNumber(summary?.stores.total)} />
-              <Card title="Sinal recente (5m)" value={formatNumber(summary?.stores.signal_recent_5m)} />
-              <Card title="Sinal stale" value={formatNumber(summary?.stores.signal_stale)} />
-              <Card title="Sem sinal" value={formatNumber(summary?.stores.signal_missing)} />
+              <CardInteractive
+                title="Lojas totais"
+                value={formatNumber(summary?.stores.total)}
+                onClick={() => openDrilldown("stores_total", "Lojas totais")}
+              />
+              <CardInteractive
+                title="Sinal recente (5m)"
+                value={formatNumber(summary?.stores.signal_recent_5m)}
+                onClick={() => openDrilldown("stores_signal_recent_5m", "Lojas com sinal recente")}
+              />
+              <CardInteractive
+                title="Sinal stale"
+                value={formatNumber(summary?.stores.signal_stale)}
+                onClick={() => openDrilldown("stores_signal_stale", "Lojas com sinal stale")}
+              />
+              <CardInteractive
+                title="Sem sinal"
+                value={formatNumber(summary?.stores.signal_missing)}
+                onClick={() => openDrilldown("stores_signal_missing", "Lojas sem sinal")}
+              />
             </div>
           </section>
 
           <section className="space-y-3">
             <h2 className="text-sm font-semibold text-gray-800 uppercase tracking-wide">Billing e risco comercial</h2>
             <div className="grid grid-cols-1 gap-3 md:grid-cols-4">
-              <Card title="Assinaturas ativas" value={formatNumber(summary?.subscriptions.active)} />
-              <Card title="Past due" value={formatNumber(summary?.subscriptions.past_due)} />
-              <Card title="Trial expirando 7d" value={formatNumber(summary?.organizations.trial_expiring_7d)} />
-              <Card title="Lojas bloqueadas" value={formatNumber(summary?.stores.blocked)} />
+              <CardInteractive
+                title="Assinaturas ativas"
+                value={formatNumber(summary?.subscriptions.active)}
+                onClick={() => openDrilldown("subscriptions_active", "Assinaturas ativas")}
+              />
+              <CardInteractive
+                title="Past due"
+                value={formatNumber(summary?.subscriptions.past_due)}
+                onClick={() => openDrilldown("subscriptions_past_due", "Assinaturas past due")}
+              />
+              <CardInteractive
+                title="Trial expirando 7d"
+                value={formatNumber(summary?.organizations.trial_expiring_7d)}
+                onClick={() => openDrilldown("organizations_trial_expiring_7d", "Trial expirando 7 dias")}
+              />
+              <CardInteractive
+                title="Lojas bloqueadas"
+                value={formatNumber(summary?.stores.blocked)}
+                onClick={() => openDrilldown("stores_blocked", "Lojas bloqueadas")}
+              />
             </div>
           </section>
 
           <section className="space-y-3">
             <h2 className="text-sm font-semibold text-gray-800 uppercase tracking-wide">Incidentes e qualidade operacional</h2>
             <div className="grid grid-cols-1 gap-3 md:grid-cols-4">
-              <Card title="Falhas notif 24h" value={formatNumber(summary?.incidents.notification_failed_24h)} />
-              <Card title="Lojas sem sinal recente" value={formatNumber(summary?.incidents.stores_without_recent_signal)} />
-              <Card title="Onboarding em progresso" value={formatNumber(summary?.onboarding.in_progress)} />
-              <Card title="Câmeras offline" value={formatNumber(summary?.cameras.offline)} />
+              <CardInteractive
+                title="Falhas notif 24h"
+                value={formatNumber(summary?.incidents.notification_failed_24h)}
+                onClick={() => openDrilldown("incidents_notification_failed_24h", "Falhas de notificação")}
+              />
+              <CardInteractive
+                title="Lojas sem sinal recente"
+                value={formatNumber(summary?.incidents.stores_without_recent_signal)}
+                onClick={() => openDrilldown("incidents_stores_without_recent_signal", "Lojas sem sinal recente")}
+              />
+              <CardInteractive
+                title="Onboarding em progresso"
+                value={formatNumber(summary?.onboarding.in_progress)}
+                onClick={() => openDrilldown("onboarding_in_progress", "Onboarding em progresso")}
+              />
+              <CardInteractive
+                title="Câmeras offline"
+                value={formatNumber(summary?.cameras.offline)}
+                onClick={() => openDrilldown("cameras_offline", "Câmeras offline")}
+              />
             </div>
           </section>
 
           <section className="space-y-3">
             <h2 className="text-sm font-semibold text-gray-800 uppercase tracking-wide">Loop de valor do Copilot (24h)</h2>
             <div className="grid grid-cols-1 gap-3 md:grid-cols-4">
-              <Card title="Outcomes 24h" value={formatNumber(summary?.value_loop?.outcomes_24h)} />
-              <Card title="Outcomes concluídos" value={formatNumber(summary?.value_loop?.outcomes_completed_24h)} />
+              <CardInteractive
+                title="Outcomes 24h"
+                value={formatNumber(summary?.value_loop?.outcomes_24h)}
+                onClick={() => openDrilldown("value_loop_outcomes_24h", "Outcomes 24h")}
+              />
+              <CardInteractive
+                title="Outcomes concluídos"
+                value={formatNumber(summary?.value_loop?.outcomes_completed_24h)}
+                onClick={() => openDrilldown("value_loop_outcomes_completed_24h", "Outcomes concluídos 24h")}
+              />
               <Card title="Cobertura ledger" value={formatPercent(summary?.value_loop?.ledger_coverage_rate)} />
               <Card title="Health loop" value={String(summary?.value_loop?.health ?? "—")} />
             </div>
@@ -1147,6 +1296,70 @@ export default function AdminControlTower() {
             )}
           </section>
         </>
+      )}
+      {activeDrillMetric && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-slate-900/40 p-4">
+          <div className="w-full max-w-6xl rounded-2xl border border-slate-200 bg-white p-5 shadow-xl">
+            <div className="flex items-start justify-between gap-3">
+              <div>
+                <h3 className="text-lg font-semibold text-slate-900">
+                  Detalhes analíticos: {activeDrillTitle || drilldownQuery.data?.title || activeDrillMetric}
+                </h3>
+                <p className="mt-1 text-xs text-slate-500">
+                  {drilldownQuery.data?.generated_at
+                    ? `Atualizado em ${new Date(drilldownQuery.data.generated_at).toLocaleString("pt-BR")}`
+                    : "Carregando detalhes..."}
+                </p>
+              </div>
+              <button
+                type="button"
+                onClick={() => {
+                  setActiveDrillMetric(null)
+                  setActiveDrillTitle("")
+                }}
+                className="rounded-lg border border-slate-200 px-3 py-1.5 text-xs font-semibold text-slate-700 hover:bg-slate-50"
+              >
+                Fechar
+              </button>
+            </div>
+            {drilldownQuery.isLoading ? (
+              <div className="mt-4 text-sm text-slate-600">Carregando detalhes...</div>
+            ) : drilldownQuery.isError ? (
+              <div className="mt-4 rounded-lg border border-rose-200 bg-rose-50 p-3 text-sm text-rose-700">
+                Não foi possível carregar os detalhes dessa métrica.
+              </div>
+            ) : !(drilldownQuery.data?.rows?.length) ? (
+              <div className="mt-4 rounded-lg border border-slate-200 bg-slate-50 p-3 text-sm text-slate-600">
+                Sem registros para esta métrica no momento.
+              </div>
+            ) : (
+              <div className="mt-4 max-h-[65vh] overflow-auto rounded-xl border border-slate-200">
+                <table className="min-w-full text-sm">
+                  <thead className="bg-slate-50 text-slate-600">
+                    <tr>
+                      {(drilldownQuery.data?.columns || []).map((col) => (
+                        <th key={col.key} className="px-3 py-2 text-left font-semibold whitespace-nowrap">
+                          {col.label}
+                        </th>
+                      ))}
+                    </tr>
+                  </thead>
+                  <tbody className="divide-y divide-slate-100">
+                    {(drilldownQuery.data?.rows || []).map((row, index) => (
+                      <tr key={`${activeDrillMetric}-${index}`}>
+                        {(drilldownQuery.data?.columns || []).map((col) => (
+                          <td key={`${activeDrillMetric}-${index}-${col.key}`} className="px-3 py-2 align-top text-slate-700 whitespace-nowrap">
+                            {formatDrilldownValue(row[col.key])}
+                          </td>
+                        ))}
+                      </tr>
+                    ))}
+                  </tbody>
+                </table>
+              </div>
+            )}
+          </div>
+        </div>
       )}
     </div>
   )

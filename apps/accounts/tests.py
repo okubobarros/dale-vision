@@ -280,3 +280,56 @@ class AdminControlTowerSummaryViewTests(APITestCase):
         self.assertEqual(response.status_code, 200)
         self.assertIn("generated_at", response.data)
         self.assertIn("users", response.data)
+
+
+class AdminControlTowerDrilldownViewTests(APITestCase):
+    def test_requires_staff_or_superuser(self):
+        user = User.objects.create_user(
+            username="normaldrill",
+            email="normal.drill@example.com",
+            password="pass1234",
+        )
+        self.client.force_authenticate(user=user)
+        response = self.client.get("/api/v1/me/admin/control-tower/drilldown/?metric=users_active")
+        self.assertEqual(response.status_code, 403)
+
+    def test_staff_receives_users_active_drilldown(self):
+        User.objects.create_user(
+            username="active_a",
+            email="active_a@example.com",
+            password="pass1234",
+            is_active=True,
+        )
+        User.objects.create_user(
+            username="inactive_a",
+            email="inactive_a@example.com",
+            password="pass1234",
+            is_active=False,
+        )
+        staff = User.objects.create_user(
+            username="staffdrill",
+            email="staff.drill@example.com",
+            password="pass1234",
+            is_staff=True,
+        )
+        self.client.force_authenticate(user=staff)
+        response = self.client.get("/api/v1/me/admin/control-tower/drilldown/?metric=users_active&limit=10")
+        self.assertEqual(response.status_code, 200)
+        self.assertEqual(response.data.get("metric"), "users_active")
+        self.assertIn("columns", response.data)
+        self.assertIn("rows", response.data)
+        rows = response.data.get("rows") or []
+        self.assertTrue(any(row.get("username") == "active_a" for row in rows))
+        self.assertFalse(any(row.get("username") == "inactive_a" for row in rows))
+
+    def test_returns_400_for_invalid_metric(self):
+        staff = User.objects.create_user(
+            username="staffinvalid",
+            email="staff.invalid@example.com",
+            password="pass1234",
+            is_staff=True,
+        )
+        self.client.force_authenticate(user=staff)
+        response = self.client.get("/api/v1/me/admin/control-tower/drilldown/?metric=invalid_metric")
+        self.assertEqual(response.status_code, 400)
+        self.assertEqual(response.data.get("code"), "INVALID_METRIC")
