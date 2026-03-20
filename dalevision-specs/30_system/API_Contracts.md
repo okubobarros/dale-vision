@@ -72,6 +72,7 @@ Notas de payload (stores):
 - `GET|POST /api/v1/me/admin/ingestion-funnel-gap/` (staff/superuser; query/body: `window_hours`, `store_id`, `limit`)
 - `GET /api/v1/me/admin/pipeline-observability/` (staff/superuser; query: `window_hours`, `store_id`, `limit`)
 - `GET /api/v1/me/admin/release-gate/` (staff/superuser; sem query)
+- `GET /api/v1/me/admin/cv-quality-baseline/` (staff/superuser; query: `period=7d|30d`, `store_id`, `limit`)
 
 - `POST /api/v1/integration/pdv/interest/`
 - `POST /api/v1/integration/pdv/events/`
@@ -200,6 +201,15 @@ Resposta de `me/admin/release-gate`:
 - `checks.null_rate_critical` (`value`, `threshold=0.02`, `pass`)
 - `checks.pipeline_success` (`value`, `threshold=0.99`, `pass`)
 - `checks.funnel_non_zero_active_store` (`active_signal_total`, `active_with_funnel_total`, `pass`)
+
+Resposta de `me/admin/cv-quality-baseline`:
+- `totals.samples_total`, `totals.passed_total`, `totals.pass_rate`, `totals.avg_delta`
+- `rows[]` por loja/câmera/métrica com:
+  - `samples_total`
+  - `passed_total`
+  - `pass_rate`
+  - `avg_delta`
+  - `latest_validated_at`
 
 Contrato de eventos de jornada (`JourneyEvent`):
 - Eventos críticos com campos obrigatórios (`signup_completed`, `store_created`, `camera_added`, `roi_saved`, `first_metrics_received`) têm validação de payload no backend.

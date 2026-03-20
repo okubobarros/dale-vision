@@ -977,6 +977,122 @@ class AdminPipelineObservabilityView(APIView):
         )
 
 
+def _load_cv_quality_baseline_rows(*, start, end, store_id: str | None = None, limit: int = 300):
+    query = """
+        SELECT
+            ca.store_id::text AS store_id,
+            s.name AS store_name,
+            ca.camera_id::text AS camera_id,
+            c.name AS camera_name,
+            cr.metric_name AS metric_name,
+            COUNT(*)::int AS samples_total,
+            COUNT(*) FILTER (WHERE cr.passed = TRUE)::int AS passed_total,
+            AVG(cr.delta_value) AS avg_delta,
+            MAX(COALESCE(cr.validated_at, cr.updated_at, cr.created_at)) AS latest_validated_at
+        FROM public.calibration_results cr
+        JOIN public.calibration_actions ca ON ca.id = cr.action_id
+        LEFT JOIN public.stores s ON s.id = ca.store_id
+        LEFT JOIN public.cameras c ON c.id = ca.camera_id
+        WHERE COALESCE(cr.validated_at, cr.updated_at, cr.created_at) >= %s
+          AND COALESCE(cr.validated_at, cr.updated_at, cr.created_at) < %s
+    """
+    params: list[object] = [start, end]
+    if store_id:
+        query += " AND ca.store_id::text = %s"
+        params.append(store_id)
+    query += """
+        GROUP BY 1,2,3,4,5
+        ORDER BY samples_total DESC, latest_validated_at DESC
+        LIMIT %s
+    """
+    params.append(limit)
+    with connection.cursor() as cursor:
+        cursor.execute(query, params)
+        cols = [col[0] for col in cursor.description]
+        return [dict(zip(cols, row)) for row in cursor.fetchall()]
+
+
+class AdminCvQualityBaselineView(APIView):
+    permission_classes = [IsAuthenticated]
+
+    @staticmethod
+    def _assert_internal_admin(user):
+        if getattr(user, "is_staff", False) or getattr(user, "is_superuser", False):
+            return
+        raise PermissionDenied("Acesso restrito ao time interno (staff/superuser).")
+
+    @staticmethod
+    def _resolve_period(raw_period: str | None):
+        period = str(raw_period or "7d").strip().lower()
+        now = timezone.now()
+        if period == "30d":
+            return now - timedelta(days=30), now, "30d"
+        return now - timedelta(days=7), now, "7d"
+
+    @staticmethod
+    def _resolve_limit(raw_value):
+        try:
+            value = int(raw_value or 300)
+        except Exception:
+            value = 300
+        return max(1, min(value, 2000))
+
+    @staticmethod
+    def _serialize_rows(rows):
+        payload = []
+        for row in rows:
+            samples_total = int(row.get("samples_total") or 0)
+            passed_total = int(row.get("passed_total") or 0)
+            pass_rate = round((passed_total / samples_total), 4) if samples_total > 0 else None
+            payload.append(
+                {
+                    "store_id": str(row.get("store_id")) if row.get("store_id") else None,
+                    "store_name": row.get("store_name"),
+                    "camera_id": str(row.get("camera_id")) if row.get("camera_id") else None,
+                    "camera_name": row.get("camera_name"),
+                    "metric_name": row.get("metric_name"),
+                    "samples_total": samples_total,
+                    "passed_total": passed_total,
+                    "pass_rate": pass_rate,
+                    "avg_delta": float(row.get("avg_delta")) if row.get("avg_delta") is not None else None,
+                    "latest_validated_at": row.get("latest_validated_at").isoformat() if row.get("latest_validated_at") else None,
+                }
+            )
+        return payload
+
+    def get(self, request):
+        self._assert_internal_admin(request.user)
+        start, end, period = self._resolve_period(request.query_params.get("period"))
+        store_id = str(request.query_params.get("store_id") or "").strip() or None
+        limit = self._resolve_limit(request.query_params.get("limit"))
+        rows = _load_cv_quality_baseline_rows(start=start, end=end, store_id=store_id, limit=limit)
+        serialized = self._serialize_rows(rows)
+
+        samples_total = sum(item["samples_total"] for item in serialized)
+        passed_total = sum(item["passed_total"] for item in serialized)
+        pass_rate = round((passed_total / samples_total), 4) if samples_total > 0 else None
+        avg_delta_values = [item["avg_delta"] for item in serialized if item["avg_delta"] is not None]
+        avg_delta = round(sum(avg_delta_values) / len(avg_delta_values), 4) if avg_delta_values else None
+
+        return Response(
+            {
+                "period": period,
+                "from": start.isoformat(),
+                "to": end.isoformat(),
+                "store_id": store_id,
+                "totals": {
+                    "rows_total": len(serialized),
+                    "samples_total": samples_total,
+                    "passed_total": passed_total,
+                    "pass_rate": pass_rate,
+                    "avg_delta": avg_delta,
+                },
+                "rows": serialized,
+            },
+            status=status.HTTP_200_OK,
+        )
+
+
 def _compute_release_gate_summary():
     now = timezone.now()
     start_30d = now - timedelta(days=30)

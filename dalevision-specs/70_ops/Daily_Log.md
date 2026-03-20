@@ -369,6 +369,7 @@ Registrar decisões e eventos do dia.
   - Admin SaaS ganhou endpoint e tabela técnica de pipeline por loja/câmera (`frames_received`, `events_accepted`, `events_generated`, `drop_rate`, `latency_ms_avg`).
   - Adicionado comando operacional de DLQ/retry para receipts edge com falha: `python manage.py retry_failed_edge_receipts --hours 24 --limit 500`.
   - Gate automático de release implementado no Admin SaaS (`/api/v1/me/admin/release-gate`) com decisão `GO/NO-GO` baseada em: null rate crítico, pipeline success e funil não-zero em loja ativa.
+  - Baseline de qualidade CV semanal adicionado no Admin SaaS (`/api/v1/me/admin/cv-quality-baseline`) com pass rate por câmera/métrica.
 - Decisões:
   - Usar observabilidade de rede como gate de confiabilidade antes de analisar conversão/funil de produto.
   - Tratar “visão com sinal + funil zerado” como incidente de reconciliação e não de aquisição.

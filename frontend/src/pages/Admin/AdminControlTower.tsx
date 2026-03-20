@@ -182,6 +182,12 @@ export default function AdminControlTower() {
     enabled: isInternalAdmin,
     refetchInterval: 60_000,
   })
+  const cvBaselineQuery = useQuery({
+    queryKey: ["admin", "cv-quality-baseline", "7d"],
+    queryFn: () => adminService.getCvQualityBaseline({ period: "7d", limit: 120 }),
+    enabled: isInternalAdmin,
+    refetchInterval: 60_000,
+  })
 
   const grantSupportMutation = useMutation({
     mutationFn: (requestId: string) => supportService.grantSupportRequest(requestId, 120),
@@ -365,6 +371,7 @@ export default function AdminControlTower() {
   const ingestionGapRows = ingestionGapQuery.data?.rows || []
   const pipelineRows = pipelineObservabilityQuery.data?.rows || []
   const releaseGate = releaseGateQuery.data
+  const cvBaselineRows = cvBaselineQuery.data?.rows || []
 
   return (
     <div className="space-y-6">
@@ -618,6 +625,55 @@ export default function AdminControlTower() {
                   hint={`${releaseGate?.checks?.funnel_non_zero_active_store?.pass ? "OK" : "Falhou"} · deve cobrir 100%`}
                 />
               </div>
+            </div>
+          </section>
+
+          <section className="space-y-3">
+            <h2 className="text-sm font-semibold text-gray-800 uppercase tracking-wide">Baseline de qualidade CV (7d)</h2>
+            <div className="rounded-xl border border-gray-200 bg-white p-4">
+              <div className="grid grid-cols-1 gap-3 md:grid-cols-4">
+                <Card title="Amostras validadas" value={formatNumber(cvBaselineQuery.data?.totals?.samples_total)} />
+                <Card title="Amostras aprovadas" value={formatNumber(cvBaselineQuery.data?.totals?.passed_total)} />
+                <Card title="Pass rate CV" value={formatRatioPercent(cvBaselineQuery.data?.totals?.pass_rate)} />
+                <Card title="Delta médio" value={formatNumber(cvBaselineQuery.data?.totals?.avg_delta)} />
+              </div>
+              {cvBaselineQuery.isLoading ? (
+                <div className="mt-3 text-sm text-gray-600">Carregando baseline CV...</div>
+              ) : cvBaselineRows.length === 0 ? (
+                <div className="mt-3 text-sm text-gray-600">Sem dados de baseline no período (7 dias).</div>
+              ) : (
+                <div className="mt-3 overflow-x-auto">
+                  <table className="min-w-full text-sm">
+                    <thead className="bg-gray-50 text-gray-600">
+                      <tr>
+                        <th className="px-3 py-2 text-left font-semibold">Loja/Câmera</th>
+                        <th className="px-3 py-2 text-left font-semibold">Métrica</th>
+                        <th className="px-3 py-2 text-left font-semibold">Amostras</th>
+                        <th className="px-3 py-2 text-left font-semibold">Aprovadas</th>
+                        <th className="px-3 py-2 text-left font-semibold">Pass rate</th>
+                        <th className="px-3 py-2 text-left font-semibold">Delta médio</th>
+                        <th className="px-3 py-2 text-left font-semibold">Última validação</th>
+                      </tr>
+                    </thead>
+                    <tbody className="divide-y">
+                      {cvBaselineRows.slice(0, 20).map((row, index) => (
+                        <tr key={`${row.store_id || "store"}-${row.camera_id || "camera"}-${row.metric_name}-${index}`}>
+                          <td className="px-3 py-2">
+                            <div className="font-medium text-gray-900">{row.store_name || row.store_id || "—"}</div>
+                            <div className="text-xs text-gray-500">{row.camera_name || row.camera_id || "camera_unknown"}</div>
+                          </td>
+                          <td className="px-3 py-2">{row.metric_name}</td>
+                          <td className="px-3 py-2">{formatNumber(row.samples_total)}</td>
+                          <td className="px-3 py-2">{formatNumber(row.passed_total)}</td>
+                          <td className="px-3 py-2">{formatRatioPercent(row.pass_rate)}</td>
+                          <td className="px-3 py-2">{formatNumber(row.avg_delta)}</td>
+                          <td className="px-3 py-2">{formatDateTime(row.latest_validated_at)}</td>
+                        </tr>
+                      ))}
+                    </tbody>
+                  </table>
+                </div>
+              )}
             </div>
           </section>
 

@@ -260,6 +260,34 @@ export type AdminReleaseGateResponse = {
   status: "go" | "no_go" | string
 }
 
+export type AdminCvQualityBaselineRow = {
+  store_id?: string | null
+  store_name?: string | null
+  camera_id?: string | null
+  camera_name?: string | null
+  metric_name: string
+  samples_total: number
+  passed_total: number
+  pass_rate?: number | null
+  avg_delta?: number | null
+  latest_validated_at?: string | null
+}
+
+export type AdminCvQualityBaselineResponse = {
+  period: "7d" | "30d" | string
+  from: string
+  to: string
+  store_id?: string | null
+  totals: {
+    rows_total: number
+    samples_total: number
+    passed_total: number
+    pass_rate?: number | null
+    avg_delta?: number | null
+  }
+  rows: AdminCvQualityBaselineRow[]
+}
+
 export const adminService = {
   async getControlTowerSummary(): Promise<AdminControlTowerSummary> {
     const response = await api.get("/v1/me/admin/control-tower/summary/", {
@@ -388,5 +416,18 @@ export const adminService = {
       noRetry: true,
     })
     return response.data as AdminReleaseGateResponse
+  },
+
+  async getCvQualityBaseline(params?: {
+    period?: "7d" | "30d"
+    store_id?: string
+    limit?: number
+  }): Promise<AdminCvQualityBaselineResponse> {
+    const response = await api.get("/v1/me/admin/cv-quality-baseline/", {
+      params: params || undefined,
+      timeoutCategory: "best-effort",
+      noRetry: true,
+    })
+    return response.data as AdminCvQualityBaselineResponse
   },
 }
