@@ -1,81 +1,67 @@
 # Journey - Admin (Org Admin / Store Manager)
 
-## Objetivo
-Garantir operação segura e eficiente da(s) loja(s): Edge online, câmeras ativas,
-ROI publicado e alertas configurados com baixo atrito.
+## Objetivo de valor
+Garantir operacao estavel e padronizada por loja, com resposta rapida a incidentes e melhoria continua de desempenho operacional.
 
-## Quem é
-- Admin (Org Admin): administra múltiplas lojas, câmeras, ROI e equipe.
-- Manager (Store Manager): administra lojas específicas (escopo por loja).
-- Owner (Org Owner): faz tudo que Admin faz + billing e gestão de plano.
-- Viewer: somente leitura (não faz parte desta jornada).
+## Perfil e escopo
+- `Org Admin`: administra lojas, cameras, ROI operacional, regras de alerta e usuarios conforme permissao.
+- `Store Manager`: foco em lojas sob seu escopo.
+- Fora do escopo: governanca global SaaS (`/app/admin`) e billing owner-only.
 
-## Jornada (primeiro acesso)
-1. Login e seleção de loja (se multi-loja).
-2. Edge Setup (gera .env, instala agent, valida “Loja Online”).
-   - Baixar e extrair ZIP do edge-agent
-   - Configurar `.env` com `EDGE_TOKEN`, `STORE_ID`, `AGENT_ID`, `CLOUD_BASE_URL`
-   - Teste: `02_TESTE_RAPIDO.bat`
-   - Produção: `03_INSTALAR_AUTOSTART.bat`
-   - Verificar: `04_VERIFICAR_STATUS.bat`
-3. Cadastro de câmeras (inventário inicial).
-4. Teste de conexão (assíncrono; aguarda status).
-5. Definição de ROI (entrada, caixa, fila, salão, etc).
-6. Publicação do ROI (versão ativa).
-7. Confirmação de “primeiro sinal” (health/snapshot/heartbeat).
-8. Configuração de alertas e navegação para Analytics.
+## Rotas principais
+- Operacao: `/app/dashboard`, `/app/operations`, `/app/operations/stores`, `/app/operations/stores/:storeId`.
+- Setup e infraestrutura: `/app/cameras`, `/app/edge-help`, `/app/calibration`.
+- Alertas: `/app/alerts`, `/app/alerts/rules`, `/app/alerts/history`.
+- Analise: `/app/analytics`, `/app/reports`.
+- Configuracoes: `/app/settings`, `/app/profile`.
 
-## Jornada (rotina diária/semana)
-- Monitorar status (Loja Online, câmera degradada/offline).
-- Ajustar ROI ou alertas quando necessário.
-- Acompanhar alertas e métricas operacionais.
-- Revisar relatório semanal (SPEC-005).
-- Executar backlog de calibração por câmera:
-  - abrir ação recomendada;
-  - aplicar ajuste físico/lógico (ex.: ângulo, ROI, linha de crossing);
-  - anexar evidência antes/depois;
-  - registrar resultado (`baseline`, `after`, `passed`).
+## Jornada detalhada por etapa
 
-## Pontos críticos (fricções)
-- Edge offline ou sem heartbeat.
-- Câmera criada mas sem health (pendente).
-- ROI não publicado (insights não aparecem).
-- Permissões insuficientes por escopo de loja.
-- Ação executada sem evidência, impedindo validação objetiva do ganho.
+| Etapa | Objetivo do usuario | Rota principal | Opcoes de caminho (rotas/acoes) | Features envolvidas | Valor real gerado |
+|---|---|---|---|---|---|
+| 1. Entrada operacional | Saber o que precisa de acao agora | `/app/dashboard` | Abrir recomendacao por loja em `/app/operations/stores/:storeId`; abrir alertas em `/app/alerts` | Dashboard operacional e blocos de prioridade | Menor tempo para detectar risco relevante |
+| 2. Leitura da rede de lojas | Priorizar lojas com maior impacto | `/app/operations` | Filtrar por status; abrir detalhes da loja; acessar edge-help contextual | Visao multi-loja com saude edge/cameras | Alocacao mais eficiente da atencao do time |
+| 3. Diagnostico por loja | Entender causa raiz local | `/app/operations/stores/:storeId` | Ir para `/app/cameras?store_id=...`; ir para `/app/alerts?store_id=...`; abrir copilot com contexto | Store details, trilha operacional, recomendacoes | Decisao baseada em evidencia da loja e nao em achismo |
+| 4. Estabilizacao de infraestrutura | Eliminar causas tecnicas de ruido | `/app/cameras` | Testar conexao, editar camera, revisar health; falha recorrente -> `/app/edge-help` | Gestao de cameras, health, diagnostico edge | Dados mais confiaveis para acao operacional |
+| 5. Calibracao e confianca de metrica | Melhorar qualidade de captura e semantica | `/app/calibration` | Abrir acao pendente, anexar evidencia antes/depois, concluir resultado | Backlog de calibracao com status e evidencias | Aumento da confiabilidade dos indicadores oficiais |
+| 6. Resposta a eventos | Tratar risco operacional em tempo util | `/app/alerts` | Resolver, ignorar, delegar; rastrear impacto em analytics | Feed de alertas com contexto | Menor perda por fila, ociosidade e falha operacional |
+| 7. Governanca de ruido | Ajustar regra para reduzir falso positivo | `/app/alerts/rules` | Ajustar limiar, cooldown, canal; validar historico em `/app/alerts/history` | Motor de regras + historico de notificacao | Melhor relacao sinal/ruido para o time |
+| 8. Revisao de resultado | Confirmar melhora operacional e financeira | `/app/analytics` e `/app/reports` | Comparar periodo, cruzar alertas vs resultado, exportar evidencias | Analytics + relatorios executivos | Prova de impacto para replicar boas praticas |
 
-## O que muda no dashboard (Admin/Manager vs Viewer)
-Admin/Manager pode:
-- Adicionar/editar/remover câmera e testar conexão.
-- Criar/editar/publicar ROI.
-- Configurar alertas (limiares, cooldown, canais).
-- Gerar/rotacionar token do Edge e ver heartbeat/versão.
-- Convidar usuários e definir papéis (Admin/Owner).
+## Service design (Admin/Manager)
 
-Viewer vê (somente leitura):
-- Dashboard/Analytics/Relatórios.
-- Alertas (lista e detalhes).
-- Câmeras (lista e status), sem ações destrutivas.
-- ROI apenas leitura (quando aplicável).
+| Momento | Acao do usuario (frontstage) | Sistema/operacao (backstage) | Feature chave | Valor percebido |
+|---|---|---|---|---|
+| Triagem | Abre dashboard e escolhe prioridades | Consolida sinais de operacao, edge e alertas | Dashboard + Operations | Foco rapido no que afeta resultado |
+| Diagnostico | Investiga loja/camera com contexto | Relaciona heartbeat, health, eventos e backlog | Store details + Cameras | Causa raiz mais clara e menos retrabalho |
+| Intervencao | Resolve alertas e ajusta regras | Regras recalculadas e trilha de notificacao | Alerts + Rules + History | Menos ruido e mais acao util |
+| Melhoria continua | Executa calibracao por evidencia | Versiona acao e mede delta antes/depois | Calibration | Aumento progressivo da confiabilidade |
+| Prestacao de contas | Consolida relatorio por periodo | Agregacao de KPI e export | Analytics + Reports | Transparencia para dono e operacao |
 
-Admin/Manager agora também pode:
-- Gerenciar backlog de calibração em `/app/calibration`.
-- Atualizar status da ação (`open`, `in_progress`, `waiting_validation`, `validated`, `rejected`).
-- Anexar evidências e registrar resultado de validação.
+## User stories priorizadas
+1. Como `Org Admin`, quero ver quais lojas estao em risco em uma tela para priorizar meu dia.
+2. Como `Store Manager`, quero abrir detalhes da loja com um clique para agir sem troca excessiva de contexto.
+3. Como `Org Admin`, quero diagnosticar camera degradada/offline para recuperar qualidade de dado rapido.
+4. Como `Store Manager`, quero resolver e delegar alertas para reduzir tempo de resposta.
+5. Como `Org Admin`, quero ajustar regras por loja/turno para reduzir alertas ruidosos.
+6. Como `Store Manager`, quero evidenciar melhoria apos acao para validar que a intervencao funcionou.
+7. Como `Org Admin`, quero comparar periodos e exportar relatorio para governanca semanal.
+8. Como `Org Admin`, quero trilha auditavel das notificacoes para evitar perda de contexto.
 
-## Métricas
-- Tempo para primeira câmera ativa.
-- Tempo para “primeiro sinal” após Edge Setup.
-- % de lojas online (7 dias).
-- Número de alertas acionáveis vs. ruidosos.
-- % de ações de calibração validadas no SLA.
-- Delta médio de qualidade após ação (baseline vs after).
+## KPIs da jornada
+- MTTA/MTTR de alertas criticos por loja.
+- `%` de lojas online com heartbeat recente.
+- `%` de cameras saudaveis por loja.
+- Taxa de alertas acionaveis vs ruidosos.
+- Tempo medio entre incidente detectado e acao registrada.
 
-## Contratos relacionados
-- `GET|POST /api/v1/calibration/actions/`
-- `PATCH /api/v1/calibration/actions/{action_id}/`
-- `POST /api/v1/calibration/actions/{action_id}/evidence/`
-- `POST /api/v1/calibration/actions/{action_id}/result/`
+## Friccoes e caminhos de mitigacao
+- Loja sem heartbeat: priorizar fluxo `/app/operations` -> `/app/edge-help`.
+- Camera criada sem health: diagnosticar em `/app/cameras` antes de mexer em regra de negocio.
+- Alerta em excesso: ajustar limite/cooldown em `/app/alerts/rules`.
+- Decisao sem confianca: usar `/app/calibration` para validar antes/depois com evidencia.
 
-## Atualização
-- Data: `2026-03-20`
-- Motivo: jornada alinhada com workflow de calibração já implementado no produto.
+## Alinhamento com a documentacao de produto
+- Reforca o ciclo fechado de valor: evento detectado -> acao operacional -> melhoria mensuravel.
+- Preserva foco em comportamento agregado (sem biometria/reconhecimento pessoal).
+- Conecta operacao diaria a impacto financeiro (fila, conversao, produtividade).

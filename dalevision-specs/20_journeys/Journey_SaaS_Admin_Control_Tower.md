@@ -1,126 +1,63 @@
-# Journey - SaaS Admin Control Tower
+# Journey - SaaS Admin Control Tower (Interno Dale Vision)
 
-## Objetivo
-Dar ao admin visão completa da operação SaaS: usuários, organizações, lojas, edge, câmeras, qualidade de dados e cobrança.
+## Objetivo de valor
+Dar ao time interno Dale Vision capacidade de operar a plataforma multi-tenant com confianca, reduzindo MTTR de incidentes e risco comercial (trial/billing/data quality).
 
-## Escopo do papel
-- Perfil: `SaaS Admin` (interno Dale Vision, não apenas owner de uma org).
-- Responsável por saúde da plataforma, governança e escala.
+## Perfil e escopo
+- Perfil: `SaaS Admin` interno (`/app/admin`).
+- Responsavel por saude da plataforma, governanca de dados, risco operacional, funil e habilitacao de escala.
+- Nao substitui o fluxo operacional da loja; coordena e destrava.
 
-## Estado atual (já existe)
-### Visão operacional por loja
-- Dashboard por loja (`/app/dashboard`).
-- Lista de lojas e status (`/app/stores`).
-- Status edge por loja (heartbeat, reason, câmeras).
-- Gestão de câmeras por loja (`/app/cameras`).
-- ROI e auditoria operacional de visão (`/app/analytics`).
-- Alertas, regras e logs de notificação (`/app/alerts`, `/app/alert-rules`, `/app/notification-logs`).
+## Rotas principais
+- Control tower: `/app/admin`.
+- Investigacao operacional: `/app/operations`, `/app/operations/stores/:storeId`.
+- Saude de infraestrutura: `/app/cameras`, `/app/edge-help`, `/app/calibration`.
+- Risco de valor/comercial: `/app/reports`, `/app/upgrade` (contexto de trial/paid quando necessario).
 
-### Edge onboarding
-- Wizard de setup de edge e geração de `.env`.
-- Perfis: estabilização e backend-gerenciado.
+## Jornada detalhada por etapa
 
-### Billing/trial (parcial)
-- Upgrade/trial guard no frontend (`/app/upgrade` + `SubscriptionGuard`).
-- Regras de trial/câmeras/lojas no backend.
+| Etapa | Objetivo do usuario | Rota principal | Opcoes de caminho (rotas/acoes) | Features envolvidas | Valor real gerado |
+|---|---|---|---|---|---|
+| 1. Abertura do dia | Obter panorama de risco da rede em 10 min | `/app/admin` | Ver lojas offline/stale, funil de ingestao, risco de dados e billing | Cards consolidados multi-org | Prioridade clara para atuacao do dia |
+| 2. Triagem de incidentes | Separar incidente critico de ruido operacional | `/app/admin` | Abrir loja especifica em `/app/operations/stores/:storeId`; abrir calibracao se suspeita de drift | Blocos de incidentes e risco | Menor MTTR e menos escalacao desnecessaria |
+| 3. Diagnostico tecnico-funcional | Confirmar causa raiz (edge, camera, dados, regra) | `/app/operations` e `/app/cameras` | Validar heartbeat, health camera, cobertura e null-rate; ir para edge-help quando preciso | Visao cruzada de infraestrutura e dados | Resolucao orientada por evidencias |
+| 4. Acao corretiva estruturada | Executar ou acionar reparo com rastreabilidade | `/app/calibration` e `/app/admin` | Criar/atualizar acao de calibracao, anexar evidencia, definir status/SLA | Backlog de calibracao + workflow de evidencia | Melhoria de qualidade com governanca |
+| 5. Reconciliacao de funil e dados | Fechar gaps de ingestao e consistencia | `/app/admin` | Reprocessar loja/rede, acompanhar efeito em cobertura e freshness | Bloco de observabilidade e gap repair | Reducao de perda silenciosa de dados |
+| 6. Risco comercial e decisao executiva | Antecipar contas em risco e bloqueios indevidos | `/app/admin` + apoio `/app/reports` | Ver trials expirando/past_due/bloqueios; acionar time responsavel | Bloco de billing e risco comercial | Protecao de receita e reducao de churn involuntario |
+| 7. Fechamento do dia | Consolidar status, pendencias e proximo plano | `/app/admin` | Revisar backlog aberto, registrar GO/NO-GO de rollout | Control tower + trilha de acao | Operacao previsivel e escalavel |
 
-## Estado atual (2026-03-20)
-Implementado:
-1. Tela de control tower multi-org em `/app/admin`.
-2. Blocos consolidados de usuários, orgs, lojas/edge, billing e risco operacional.
-3. Bloco de funil PM/Admin + qualidade de payload.
-4. Bloco de plano de redução agressiva de nulos e completude por tabela/campo.
-5. Backlog de calibração integrado ao admin com transição rápida de status.
-6. Bloco de observabilidade de ingestão (rede 24h) com status de pipeline, freshness, cobertura e top eventos.
-7. Diagnóstico/reparo de gap visão -> funil no Admin (reprocessar loja ou reprocessar todas sem terminal).
+## Service design (SaaS Admin)
 
-Ainda em evolução:
-1. Gestão global de usuários/memberships em UI dedicada.
-2. Incidentes com timeline unificada de causa raiz e MTTR fim-a-fim.
-3. Automação completa de criação de ações de calibração por regra.
+| Momento | Acao do usuario (frontstage) | Sistema/operacao (backstage) | Feature chave | Valor percebido |
+|---|---|---|---|---|
+| Leitura macro | Analisa rede multi-tenant | Agrega sinais de edge, cameras, dados e billing | Admin Control Tower | Decisao de prioridade em minutos |
+| Investigacao | Navega para loja/camera com risco | Correlaciona fontes e historico tecnico | Operations + Cameras | Menos diagnostico por tentativa e erro |
+| Correcao | Dispara acao de calibracao/reprocesso | Workflow versionado com evidencia e status | Calibration + admin actions | Qualidade de dados sustentavel |
+| Governanca | Monitora funil/completude/cobertura | Reconciliacao e monitoramento continuo | Ingestion observability | Menos gaps invisiveis no produto |
+| Protecao de receita | Acompanha trials e bloqueios | Cruza risco tecnico e comercial | Billing risk blocks | Menos churn evitavel |
 
-## Jornada recomendada do SaaS Admin
-### Abertura do dia (10 min)
-1. Ver saúde da rede: lojas online/offline, edge stale, câmeras stale.
-2. Ver incidentes novos desde última sessão.
-3. Ver lojas com risco de dados (drift/calibração pendente).
+## User stories priorizadas
+1. Como `SaaS Admin`, quero identificar em uma tela quais lojas estao offline agora para priorizar incidentes criticos.
+2. Como `SaaS Admin`, quero diferenciar falha de edge, camera e pipeline para acionar o time certo sem atraso.
+3. Como `SaaS Admin`, quero abrir acao de calibracao com evidencias para melhorar qualidade de metrica de forma auditavel.
+4. Como `SaaS Admin`, quero reprocessar gaps de funil sem terminal para reduzir dependencia operacional.
+5. Como `SaaS Admin`, quero acompanhar null-rate e cobertura por loja para manter confianca das decisoes.
+6. Como `SaaS Admin`, quero monitorar risco de trial/billing para evitar bloqueio indevido e perda de receita.
+7. Como `SaaS Admin`, quero fechar o dia com backlog priorizado e SLA claro para o proximo ciclo.
 
-### Rotina operacional (contínua)
-1. Priorizar incidentes críticos (loja sem heartbeat, API timeout, falha de sync).
-2. Acompanhar recuperação e MTTR.
-3. Validar ações de suporte em trilha auditável.
+## KPIs da jornada
+- MTTR de incidentes criticos (meta: <= 30 min).
+- `%` de lojas com heartbeat dentro do SLA.
+- `%` de cobertura minima para decisao executiva por loja.
+- Null-rate de campos criticos e completude de payload.
+- `%` de bloqueios indevidos por trial/billing.
 
-### Fechamento do dia (10 min)
-1. Conferir backlog de incidentes abertos.
-2. Revisar saúde de trial/assinatura (bloqueios indevidos).
-3. Registrar decisão GO/NO-GO para rollout.
+## Friccoes e mitigacao
+- Multiplicidade de fontes sem visao unica: consolidacao em `/app/admin` como fonte primaria.
+- Gaps entre CV e funil de produto: reconciliacao integrada e reprocessamento assistido.
+- Acao corretiva sem prova de impacto: obrigatoriedade de evidencia antes/depois no backlog de calibracao.
 
-## Painel ideal (MVP SaaS Admin)
-### Bloco A - Plataforma
-- API availability (p95 timeout/error rate)
-- Latência de endpoints críticos (`/stores`, `/edge-status`, `/dashboard`)
-- Jobs pendentes/falhos
-
-### Bloco B - Rede de lojas
-- total lojas, online, degradadas, offline
-- lojas sem heartbeat > X min
-- lojas com camera_health stale
-
-### Bloco C - Edge fleet
-- agentes ativos
-- boot-to-first-heartbeat p95
-- falhas de autostart/remoção
-
-### Bloco D - Dados e confiança
-- cobertura operacional por loja
-- métricas com status `official|proxy|estimated`
-- lojas em `recalibrar`
-
-### Bloco E - Receita e risco
-- orgs trialing, active, past_due, blocked
-- trials expirando em 7 dias
-- orgs bloqueadas por billing
-
-### Bloco F - Usuários e segurança
-- novos usuários 24h
-- usuários sem membership
-- tentativas de acesso negado / anomalias
-
-## Mapa de implementação (sem depender da loja física)
-### Fase 1 (imediata) - concluída
-1. Página `/app/admin` ativa com controle de acesso interno.
-2. Cards agregados + blocos de funil/data quality implementados.
-3. Tabelas de risco/suporte e backlog executivo disponíveis.
-
-### Fase 2 - em execução
-1. Endpoint agregado em produção: `GET /api/v1/me/admin/control-tower/summary/`.
-2. Endpoints de calibração em produção:
-   - `GET|POST /api/v1/calibration/actions/`
-   - `PATCH /api/v1/calibration/actions/{action_id}/`
-   - `POST /api/v1/calibration/actions/{action_id}/evidence/`
-   - `POST /api/v1/calibration/actions/{action_id}/result/`
-3. Próximo incremento: incidentes unificados multi-fonte com priorização.
-4. Endpoint de reconciliação em produção:
-   - `GET|POST /api/v1/me/admin/ingestion-funnel-gap/`
-
-### Fase 3
-1. Gestão de usuários e memberships (listar/filtrar/reconciliar).
-2. Ações administrativas seguras (bloquear/desbloquear org, reprocessar status, reenfileirar jobs).
-3. Auditoria completa de ações de admin.
-
-## KPIs de sucesso do SaaS Admin
-- MTTR incidentes críticos <= 30 min.
-- % lojas com heartbeat recente >= 98%.
-- % lojas com cobertura mínima para comparativo >= 90%.
-- % bloqueios indevidos por trial/billing = 0.
-
-## Definição de pronto (MVP Control Tower)
-- Admin interno consegue responder, em uma tela:
-1. Quem está offline agora?
-2. Qual o motivo raiz mais frequente hoje?
-3. Quais lojas não estão aptas para decisão executiva?
-4. Quais contas estão em risco comercial (trial/past_due)?
-
-## Atualização
-- Data: `2026-03-20`
-- Motivo: sincronizar documento com implementação real de `/app/admin` e workflow de calibração.
+## Alinhamento com a documentacao
+- Mantem arquitetura orientada a eventos (edge -> ingestao -> KPI -> alerta -> acao).
+- Reforca governanca multi-tenant com RBAC e trilha auditavel.
+- Sustenta a tese de valor em escala: decisao rapida com confianca operacional e comercial.
