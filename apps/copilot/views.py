@@ -1374,6 +1374,227 @@ class CopilotNetworkValueLedgerDailyView(APIView):
         )
 
 
+class CopilotNetworkEfficiencyRankingView(APIView):
+    permission_classes = [IsAuthenticated]
+
+    def get(self, request):
+        period_days = min(max(int(request.query_params.get("days", 30)), 1), 180)
+        org_ids = list(get_user_org_ids(request.user))
+        is_internal = bool(
+            getattr(request.user, "is_staff", False)
+            or getattr(request.user, "is_superuser", False)
+        )
+        if not org_ids and not is_internal:
+            return Response(
+                {
+                    "period_days": period_days,
+                    "anonymized": False,
+                    "items": [],
+                    "summary": {
+                        "stores_total": 0,
+                        "median_score": 0,
+                        "best_score": 0,
+                        "worst_score": 0,
+                    },
+                },
+                status=status.HTTP_200_OK,
+            )
+
+        anonymized_param = str(request.query_params.get("anonymized") or "").strip().lower()
+        if anonymized_param in {"1", "true", "yes"}:
+            anonymized = True
+        elif anonymized_param in {"0", "false", "no"}:
+            anonymized = False
+        else:
+            sample_profile = (
+                StoreProfile.objects.filter(org_id__in=org_ids).order_by("-updated_at").first()
+                if org_ids
+                else None
+            )
+            defaults = sample_profile.defaults_json if sample_profile and isinstance(sample_profile.defaults_json, dict) else {}
+            anonymized = bool(defaults.get("ranking_anonymized", False))
+
+        from_date = timezone.localdate() - timedelta(days=period_days - 1)
+        stores_qs = Store.objects.all()
+        if org_ids:
+            stores_qs = stores_qs.filter(org_id__in=org_ids)
+        stores = list(stores_qs.values("id", "name"))
+        store_ids = [row["id"] for row in stores]
+        if not store_ids:
+            return Response(
+                {
+                    "period_days": period_days,
+                    "anonymized": anonymized,
+                    "items": [],
+                    "summary": {
+                        "stores_total": 0,
+                        "median_score": 0,
+                        "best_score": 0,
+                        "worst_score": 0,
+                    },
+                },
+                status=status.HTTP_200_OK,
+            )
+
+        events_agg = (
+            DetectionEvent.objects.filter(store_id__in=store_ids, created_at__date__gte=from_date)
+            .values("store_id")
+            .annotate(
+                critical_open=Sum(
+                    models.Case(
+                        models.When(severity="critical", status="open", then=1),
+                        default=0,
+                        output_field=models.IntegerField(),
+                    )
+                ),
+                warning_open=Sum(
+                    models.Case(
+                        models.When(severity="warning", status="open", then=1),
+                        default=0,
+                        output_field=models.IntegerField(),
+                    )
+                ),
+                total_events=Count("id"),
+            )
+        )
+        outcomes_agg = (
+            ActionOutcome.objects.filter(store_id__in=store_ids, dispatched_at__date__gte=from_date)
+            .values("store_id")
+            .annotate(
+                actions_dispatched=Count("id"),
+                actions_completed=Sum(
+                    models.Case(
+                        models.When(status="completed", then=1),
+                        default=0,
+                        output_field=models.IntegerField(),
+                    )
+                ),
+                impact_expected_brl=Sum("impact_expected_brl"),
+                impact_realized_brl=Sum("impact_realized_brl"),
+                confidence_avg=Avg("confidence_score"),
+            )
+        )
+        ledger_agg = (
+            ValueLedgerDaily.objects.filter(store_id__in=store_ids, ledger_date__gte=from_date)
+            .values("store_id")
+            .annotate(
+                value_recovered_brl=Sum("value_recovered_brl"),
+                value_at_risk_brl=Sum("value_at_risk_brl"),
+                confidence_score_avg=Avg("confidence_score_avg"),
+            )
+        )
+
+        events_map = {str(row["store_id"]): row for row in events_agg}
+        outcomes_map = {str(row["store_id"]): row for row in outcomes_agg}
+        ledger_map = {str(row["store_id"]): row for row in ledger_agg}
+
+        items = []
+        for row in stores:
+            store_id = str(row["id"])
+            event = events_map.get(store_id, {})
+            outcome = outcomes_map.get(store_id, {})
+            ledger = ledger_map.get(store_id, {})
+
+            critical_open = int(event.get("critical_open") or 0)
+            warning_open = int(event.get("warning_open") or 0)
+            actions_dispatched = int(outcome.get("actions_dispatched") or 0)
+            actions_completed = int(outcome.get("actions_completed") or 0)
+            impact_expected_brl = float(outcome.get("impact_expected_brl") or 0)
+            impact_realized_brl = float(outcome.get("impact_realized_brl") or 0)
+            completion_rate = round((actions_completed / actions_dispatched) * 100, 1) if actions_dispatched > 0 else 0.0
+            recovery_rate = round((impact_realized_brl / impact_expected_brl) * 100, 1) if impact_expected_brl > 0 else 0.0
+            confidence_score_avg = float(
+                ledger.get("confidence_score_avg")
+                or outcome.get("confidence_avg")
+                or 0
+            )
+            score = (
+                100
+                - (critical_open * 18)
+                - (warning_open * 8)
+                + min(20.0, recovery_rate * 0.2)
+                + min(12.0, completion_rate * 0.12)
+                + min(10.0, confidence_score_avg * 0.1)
+            )
+            score = max(0, min(100, round(score)))
+            if score >= 75:
+                performance_band = "leader"
+            elif score >= 50:
+                performance_band = "stable"
+            else:
+                performance_band = "at_risk"
+
+            contribution_factors = [
+                {
+                    "key": "critical_open",
+                    "label": "Alertas críticos abertos",
+                    "value": critical_open,
+                },
+                {
+                    "key": "completion_rate",
+                    "label": "Taxa de conclusão",
+                    "value": completion_rate,
+                },
+                {
+                    "key": "recovery_rate",
+                    "label": "Taxa de recuperação financeira",
+                    "value": recovery_rate,
+                },
+            ]
+
+            items.append(
+                {
+                    "store_id": store_id,
+                    "store_name": row.get("name") or "Loja",
+                    "efficiency_score": score,
+                    "performance_band": performance_band,
+                    "metrics": {
+                        "critical_open": critical_open,
+                        "warning_open": warning_open,
+                        "actions_dispatched": actions_dispatched,
+                        "actions_completed": actions_completed,
+                        "completion_rate": completion_rate,
+                        "recovery_rate": recovery_rate,
+                        "confidence_score_avg": confidence_score_avg,
+                        "value_recovered_brl": float(ledger.get("value_recovered_brl") or 0),
+                        "value_at_risk_brl": float(ledger.get("value_at_risk_brl") or 0),
+                    },
+                    "contribution_factors": contribution_factors,
+                }
+            )
+
+        items.sort(key=lambda item: item["efficiency_score"], reverse=True)
+        for idx, item in enumerate(items, start=1):
+            item["rank"] = idx
+            if anonymized:
+                item["display_name"] = f"Loja #{idx}"
+            else:
+                item["display_name"] = item["store_name"]
+
+        scores = [int(item["efficiency_score"]) for item in items]
+        if scores:
+            ordered_scores = sorted(scores)
+            mid = len(ordered_scores) // 2
+            median_score = ordered_scores[mid] if len(ordered_scores) % 2 == 1 else round((ordered_scores[mid - 1] + ordered_scores[mid]) / 2)
+        else:
+            median_score = 0
+
+        return Response(
+            {
+                "period_days": period_days,
+                "anonymized": anonymized,
+                "items": items,
+                "summary": {
+                    "stores_total": len(items),
+                    "median_score": median_score,
+                    "best_score": max(scores) if scores else 0,
+                    "worst_score": min(scores) if scores else 0,
+                },
+            },
+            status=status.HTTP_200_OK,
+        )
+
+
 class CopilotStoreProfileView(APIView):
     permission_classes = [IsAuthenticated]
 

@@ -308,6 +308,16 @@ const Reports = () => {
     staleTime: 60000,
     retry: false,
   })
+  const rankingQ = useQuery({
+    queryKey: ["reports-network-efficiency-ranking", period],
+    queryFn: () =>
+      copilotService.getNetworkEfficiencyRanking({
+        days: getPeriodDays(period),
+      }),
+    enabled: !selectedStore,
+    staleTime: 60000,
+    retry: false,
+  })
 
   const stores = useMemo(() => storesQ.data ?? [], [storesQ.data])
   const summaryData = summaryQ.data
@@ -605,10 +615,31 @@ const Reports = () => {
   }
 
   const ranking = useMemo(() => {
+    const backendItems = rankingQ.data?.items ?? []
+    if (backendItems.length) {
+      const sorted = [...backendItems].sort((a, b) => b.efficiency_score - a.efficiency_score)
+      const normalize = (item: (typeof backendItems)[number]) => ({
+        id: item.store_id,
+        label: item.display_name || item.store_name,
+        score: item.efficiency_score,
+        factor: item.contribution_factors?.[0]?.label || "Sem fator dominante",
+      })
+      return { top: sorted.slice(0, 3).map(normalize), bottom: sorted.slice(-3).reverse().map(normalize) }
+    }
+
     const items = (networkQ.data?.stores ?? []).filter((store) => typeof store.conversion === "number")
     const sorted = [...items].sort((a, b) => (b.conversion || 0) - (a.conversion || 0))
-    return { top: sorted.slice(0, 3), bottom: sorted.slice(-3).reverse() }
-  }, [networkQ.data?.stores])
+    const normalizeFallback = (store: (typeof items)[number]) => ({
+      id: store.id,
+      label: store.name,
+      score: Math.round((store.conversion || 0) * 5),
+      factor: "Baseado em conversão (fallback)",
+    })
+    return {
+      top: sorted.slice(0, 3).map(normalizeFallback),
+      bottom: sorted.slice(-3).reverse().map(normalizeFallback),
+    }
+  }, [networkQ.data?.stores, rankingQ.data?.items])
 
   const interventionCards = useMemo(() => {
     const storesList = networkQ.data?.stores ?? []
@@ -1812,7 +1843,7 @@ const Reports = () => {
                 <ul className="mt-2 space-y-2">
                   {ranking.top.map((store) => (
                     <li key={store.id} className="text-sm text-slate-800">
-                      {store.name} · {formatPercent((store.conversion || 0) / 100)}
+                      {store.label} · Score {store.score} · {store.factor}
                     </li>
                   ))}
                 </ul>
@@ -1822,7 +1853,7 @@ const Reports = () => {
                 <ul className="mt-2 space-y-2">
                   {ranking.bottom.map((store) => (
                     <li key={store.id} className="text-sm text-slate-800">
-                      {store.name} · {formatPercent((store.conversion || 0) / 100)}
+                      {store.label} · Score {store.score} · {store.factor}
                     </li>
                   ))}
                 </ul>

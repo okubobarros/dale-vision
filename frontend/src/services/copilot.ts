@@ -5,6 +5,7 @@ import type {
   CopilotConversationMessage,
   CopilotDailyBriefing,
   CopilotDashboardContext,
+  CopilotEfficiencyRankingResponse,
   CopilotValueLedgerDailyResponse,
   CopilotOperationalInsight,
   CopilotReport72h,
@@ -175,5 +176,17 @@ export const copilotService = {
       noRetry: true,
     })
     return response.data as CopilotValueLedgerDailyResponse
+  },
+
+  async getNetworkEfficiencyRanking(options?: { days?: number; anonymized?: boolean }): Promise<CopilotEfficiencyRankingResponse> {
+    const response = await api.get(`/v1/copilot/network/efficiency-ranking/`, {
+      params: {
+        days: options?.days ?? 30,
+        anonymized: options?.anonymized,
+      },
+      timeoutCategory: "best-effort",
+      noRetry: true,
+    })
+    return response.data as CopilotEfficiencyRankingResponse
   },
 }

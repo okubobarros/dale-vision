@@ -275,3 +275,40 @@ export interface CopilotValueLedgerDailyResponse {
   }>
   items: CopilotValueLedgerDailyItem[]
 }
+
+export interface CopilotEfficiencyRankingItem {
+  store_id: string
+  store_name: string
+  display_name?: string
+  rank: number
+  efficiency_score: number
+  performance_band: "leader" | "stable" | "at_risk" | string
+  metrics: {
+    critical_open: number
+    warning_open: number
+    actions_dispatched: number
+    actions_completed: number
+    completion_rate: number
+    recovery_rate: number
+    confidence_score_avg: number
+    value_recovered_brl: number
+    value_at_risk_brl: number
+  }
+  contribution_factors: Array<{
+    key: string
+    label: string
+    value: number
+  }>
+}
+
+export interface CopilotEfficiencyRankingResponse {
+  period_days: number
+  anonymized: boolean
+  summary: {
+    stores_total: number
+    median_score: number
+    best_score: number
+    worst_score: number
+  }
+  items: CopilotEfficiencyRankingItem[]
+}

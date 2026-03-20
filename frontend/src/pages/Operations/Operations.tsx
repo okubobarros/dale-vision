@@ -467,6 +467,13 @@ const Operations = () => {
 
   const orgName = account?.orgs?.[0]?.name || "Sua rede"
   const heroStatus = networkStatusLabel(storesHealthy, storesTotal, criticalOpenEvents)
+  const { data: networkEfficiencyRanking } = useQuery({
+    queryKey: ["operations-network-efficiency-ranking"],
+    queryFn: () => copilotService.getNetworkEfficiencyRanking({ days: 30 }),
+    staleTime: 30000,
+    retry: false,
+    enabled: storesTotal > 1,
+  })
 
   const openCopilot = (prompt?: string) => {
     window.dispatchEvent(
@@ -618,7 +625,7 @@ const Operations = () => {
         store.plan === "paid"
     )
   const shouldShowRanking = hasProPlan && storesTotal > 1 && !isTrialOrStart
-  const rankingRows = useMemo(() => {
+  const fallbackRankingRows = useMemo(() => {
     const byStore = new Map<
       string,
       {
@@ -628,6 +635,8 @@ const Operations = () => {
         warning: number
         productivity: number
         score: number
+        performanceBand?: string
+        contributionFactors?: Array<{ label: string; value: number }>
       }
     >()
 
@@ -656,6 +665,22 @@ const Operations = () => {
       .sort((a, b) => b.score - a.score)
       .slice(0, 5)
   }, [operationalEvents])
+  const rankingRows = useMemo(() => {
+    const fromBackend = networkEfficiencyRanking?.items ?? []
+    if (fromBackend.length > 0) {
+      return fromBackend.slice(0, 5).map((item) => ({
+        storeId: item.store_id,
+        storeName: item.display_name || item.store_name,
+        critical: item.metrics.critical_open,
+        warning: item.metrics.warning_open,
+        productivity: item.metrics.actions_dispatched - item.metrics.actions_completed,
+        score: item.efficiency_score,
+        performanceBand: item.performance_band,
+        contributionFactors: item.contribution_factors ?? [],
+      }))
+    }
+    return fallbackRankingRows
+  }, [fallbackRankingRows, networkEfficiencyRanking?.items])
 
   const networkRows = networkDashboard?.stores ?? []
   const isEmptyNetwork = !storesLoading && stores.length === 0
@@ -958,6 +983,13 @@ const Operations = () => {
                       </p>
                       <p className="text-xs text-gray-600">
                         Score {row.score} · críticos {row.critical} · atenção {row.warning}
+                        {row.performanceBand ? ` · faixa ${row.performanceBand}` : ""}
+                      </p>
+                      <p className="text-xs text-slate-500 mt-1">
+                        {(row.contributionFactors ?? [])
+                          .slice(0, 2)
+                          .map((factor) => `${factor.label}: ${factor.value}`)
+                          .join(" · ") || "Sem fatores explicativos suficientes no período."}
                       </p>
                     </div>
                     <Link
