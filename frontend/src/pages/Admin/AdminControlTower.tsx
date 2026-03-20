@@ -41,8 +41,16 @@ const Card = ({ title, value, hint }: { title: string; value: string; hint?: str
 
 export default function AdminControlTower() {
   const { user } = useAuth()
-  const isInternalAdmin = Boolean(user?.is_staff || user?.is_superuser)
   const queryClient = useQueryClient()
+  const statusQuery = useQuery({
+    queryKey: ["admin", "me-status"],
+    queryFn: () => meService.getStatus(),
+    staleTime: 60_000,
+    retry: false,
+  })
+  const isInternalAdmin = Boolean(
+    user?.is_staff || user?.is_superuser || statusQuery.data?.is_internal_admin
+  )
 
   const summaryQuery = useQuery({
     queryKey: ["admin", "control-tower", "summary"],
