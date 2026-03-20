@@ -90,6 +90,53 @@ export type CalibrationActionListResponse = {
   total: number
 }
 
+export type CalibrationEvidencePayload = {
+  snapshot_before_url?: string
+  snapshot_after_url?: string
+  clip_before_url?: string
+  clip_after_url?: string
+  captured_at?: string
+  notes?: string
+  metadata?: Record<string, unknown>
+}
+
+export type CalibrationEvidenceResponse = {
+  id: string
+  action_id: string
+  snapshot_before_url?: string | null
+  snapshot_after_url?: string | null
+  clip_before_url?: string | null
+  clip_after_url?: string | null
+  captured_at?: string | null
+  captured_by_user_uuid?: string | null
+  notes?: string | null
+  metadata?: Record<string, unknown>
+}
+
+export type CalibrationResultPayload = {
+  metric_name: string
+  baseline_value?: number | null
+  after_value?: number | null
+  threshold_value?: number | null
+  passed: boolean
+  notes?: string
+  validated_at?: string
+}
+
+export type CalibrationResultResponse = {
+  id: string
+  action_id: string
+  metric_name: string
+  baseline_value?: number | null
+  after_value?: number | null
+  delta_value?: number | null
+  threshold_value?: number | null
+  passed: boolean
+  validated_by_user_uuid?: string | null
+  validated_at?: string | null
+  notes?: string | null
+}
+
 export const adminService = {
   async getControlTowerSummary(): Promise<AdminControlTowerSummary> {
     const response = await api.get("/v1/me/admin/control-tower/summary/", {
@@ -126,5 +173,27 @@ export const adminService = {
       noRetry: true,
     })
     return response.data as CalibrationActionItem
+  },
+
+  async createCalibrationEvidence(
+    actionId: string,
+    payload: CalibrationEvidencePayload
+  ): Promise<CalibrationEvidenceResponse> {
+    const response = await api.post(`/v1/calibration/actions/${actionId}/evidence/`, payload, {
+      timeoutCategory: "best-effort",
+      noRetry: true,
+    })
+    return response.data as CalibrationEvidenceResponse
+  },
+
+  async createCalibrationResult(
+    actionId: string,
+    payload: CalibrationResultPayload
+  ): Promise<CalibrationResultResponse> {
+    const response = await api.post(`/v1/calibration/actions/${actionId}/result/`, payload, {
+      timeoutCategory: "best-effort",
+      noRetry: true,
+    })
+    return response.data as CalibrationResultResponse
   },
 }
