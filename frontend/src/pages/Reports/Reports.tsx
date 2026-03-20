@@ -18,6 +18,7 @@ import {
   type Store,
   type StoreVisionIngestionSummary,
 } from "../../services/stores"
+import { trackJourneyEvent } from "../../services/journey"
 
 type OperationalWindow = {
   startHour: number
@@ -409,7 +410,7 @@ const Reports = () => {
         })
         dispatchedEventId = dispatchResponse.event_id
         try {
-          await copilotService.createActionOutcome(targetStoreId, {
+          const createdOutcome = await copilotService.createActionOutcome(targetStoreId, {
             action_event_id: dispatchedEventId ?? null,
             insight_id: insightId,
             action_type: "priority_intervention_approval",
@@ -423,6 +424,14 @@ const Reports = () => {
               selected_store: selectedStore || null,
               window_label: formatWindowLabel(operationalWindow),
             },
+          })
+          void trackJourneyEvent("operation_action_delegated", {
+            source: "reports_decision_center",
+            store_id: targetStoreId,
+            action_id: createdOutcome?.id || null,
+            action_event_id: dispatchedEventId || null,
+            action_type: "priority_intervention_approval",
+            channel: "copilot",
           })
         } catch {
           // Non-blocking: dispatch is already registered.
@@ -527,7 +536,7 @@ const Reports = () => {
         },
       })
       try {
-        await copilotService.createActionOutcome(item.id, {
+        const createdOutcome = await copilotService.createActionOutcome(item.id, {
           action_event_id: dispatchResponse.event_id ?? null,
           insight_id: insightId,
           action_type: "whatsapp_delegation",
@@ -541,6 +550,14 @@ const Reports = () => {
             origin: "reports_where_to_act_now",
             period,
           },
+        })
+        void trackJourneyEvent("operation_action_delegated", {
+          source: "reports_where_to_act_now",
+          store_id: item.id,
+          action_id: createdOutcome?.id || null,
+          action_event_id: dispatchResponse.event_id || null,
+          action_type: "whatsapp_delegation",
+          channel: "whatsapp",
         })
       } catch {
         // Non-blocking: dispatch is already registered.
@@ -596,6 +613,20 @@ const Reports = () => {
         impact_realized_brl: Math.max(0, expectedValue),
         outcome: { completed_by: "reports_ui", completed_from: "executive_outcomes" },
       })
+      void trackJourneyEvent("operation_action_feedback_submitted", {
+        source: "reports_executive_outcomes",
+        store_id: storeId,
+        action_id: outcomeId,
+        outcome_status: "resolved",
+        has_comment: false,
+      })
+      void trackJourneyEvent("operation_action_completed", {
+        source: "reports_executive_outcomes",
+        store_id: storeId,
+        action_id: outcomeId,
+        outcome_status: "resolved",
+        final_status: "completed",
+      })
       await Promise.all([ledgerQ.refetch(), outcomesQ.refetch()])
       toast.success("Ação marcada como concluída.")
     } catch (error) {
@@ -618,6 +649,20 @@ const Reports = () => {
         status: "failed",
         outcome_status: "not_resolved",
         outcome: { failed_by: "reports_ui", failed_from: "executive_outcomes" },
+      })
+      void trackJourneyEvent("operation_action_feedback_submitted", {
+        source: "reports_executive_outcomes",
+        store_id: storeId,
+        action_id: outcomeId,
+        outcome_status: "not_resolved",
+        has_comment: false,
+      })
+      void trackJourneyEvent("operation_action_completed", {
+        source: "reports_executive_outcomes",
+        store_id: storeId,
+        action_id: outcomeId,
+        outcome_status: "not_resolved",
+        final_status: "failed",
       })
       await Promise.all([ledgerQ.refetch(), outcomesQ.refetch()])
       toast.success("Ação marcada como falha.")
@@ -666,7 +711,7 @@ const Reports = () => {
         },
       })
       try {
-        await copilotService.createActionOutcome(storeId, {
+        const createdOutcome = await copilotService.createActionOutcome(storeId, {
           action_event_id: dispatchResponse.event_id ?? null,
           insight_id: insightId,
           action_type: "edge_rollout_intervention",
@@ -680,6 +725,14 @@ const Reports = () => {
             rollout_health: item.health,
             reason_code: item.reason_code || null,
           },
+        })
+        void trackJourneyEvent("operation_action_delegated", {
+          source: "reports_rollout",
+          store_id: storeId,
+          action_id: createdOutcome?.id || null,
+          action_event_id: dispatchResponse.event_id || null,
+          action_type: "edge_rollout_intervention",
+          channel: "copilot",
         })
       } catch {
         // Non-blocking: dispatch already persisted.

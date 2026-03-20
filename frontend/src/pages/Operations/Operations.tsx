@@ -13,6 +13,7 @@ import { useAlertsEvents } from "../../queries/alerts.queries"
 import { meService, type MeAccount, type MeStatus } from "../../services/me"
 import { alertsService, type ActionDispatchResponse } from "../../services/alerts"
 import { copilotService } from "../../services/copilot"
+import { trackJourneyEvent } from "../../services/journey"
 import type { DetectionEvent } from "../../services/alerts"
 import type { OperationalEvent, OperationalPillar } from "../../types/operations"
 
@@ -505,7 +506,7 @@ const Operations = () => {
         },
       })
       try {
-        await copilotService.createActionOutcome(storeId, {
+        const createdOutcome = await copilotService.createActionOutcome(storeId, {
           action_event_id: dispatchResponse.event_id ?? null,
           insight_id: insightId,
           action_type: "edge_rollout_intervention",
@@ -518,6 +519,14 @@ const Operations = () => {
             rollout_health: store.health,
             reason_code: store.reason_code || null,
           },
+        })
+        void trackJourneyEvent("operation_action_delegated", {
+          source: "operations_rollout",
+          store_id: storeId,
+          action_id: createdOutcome?.id || null,
+          action_event_id: dispatchResponse.event_id || null,
+          action_type: "edge_rollout_intervention",
+          channel: "copilot",
         })
       } catch {
         // Non-blocking: dispatch already persisted.
@@ -682,6 +691,20 @@ const Operations = () => {
           feedback_from: "operations_execution_center",
           feedback_status: feedbackStatus,
         },
+      })
+      void trackJourneyEvent("operation_action_feedback_submitted", {
+        source: "operations_execution_center",
+        store_id: item.store_id,
+        action_id: item.id,
+        outcome_status: feedbackStatus,
+        has_comment: Boolean(feedbackComment.trim()),
+      })
+      void trackJourneyEvent("operation_action_completed", {
+        source: "operations_execution_center",
+        store_id: item.store_id,
+        action_id: item.id,
+        outcome_status: feedbackStatus,
+        final_status: resolved ? "completed" : "failed",
       })
       await refetchActionOutcomes()
       setFeedbackOutcomeId(null)

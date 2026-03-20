@@ -38,6 +38,9 @@ export type JourneyEventName =
   | "trial_expired_shown"
   | "upgrade_viewed"
   | "upgrade_clicked"
+  | "operation_action_delegated"
+  | "operation_action_completed"
+  | "operation_action_feedback_submitted"
 
 export type JourneyEventPayload = Record<string, unknown>
 
