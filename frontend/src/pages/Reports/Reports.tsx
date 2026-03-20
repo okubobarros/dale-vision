@@ -102,6 +102,33 @@ const formatWindowLabel = (window: { startHour: number; endHour: number }) =>
 
 const clamp = (value: number, min: number, max: number) => Math.min(max, Math.max(min, value))
 
+const getPeriodDays = (period: string) => {
+  if (period === "7d") return 7
+  if (period === "90d") return 90
+  return 30
+}
+
+const toDateOnly = (value?: string | null) => {
+  if (!value) return null
+  const parsed = new Date(`${value}T00:00:00`)
+  if (Number.isNaN(parsed.getTime())) return null
+  return parsed
+}
+
+const sumLedgerRecoveredInRange = (
+  items: Array<{ ledger_date: string; value_recovered_brl: number }>,
+  rangeStart: Date,
+  rangeEndExclusive: Date
+) =>
+  items.reduce((acc, entry) => {
+    const date = toDateOnly(entry.ledger_date)
+    if (!date) return acc
+    if (date >= rangeStart && date < rangeEndExclusive) {
+      return acc + Number(entry.value_recovered_brl || 0)
+    }
+    return acc
+  }, 0)
+
 const formatDateTime = (value?: string | null) => {
   if (!value) return "—"
   const date = new Date(value)
@@ -243,6 +270,28 @@ const Reports = () => {
     staleTime: 60000,
     retry: false,
   })
+  const comparisonPeriodDays = getPeriodDays(period)
+  const compareEnabled = period !== "custom"
+  const ledgerMoMQ = useQuery({
+    queryKey: ["reports-value-ledger-mom", selectedStore, period],
+    queryFn: () =>
+      selectedStore
+        ? copilotService.getValueLedgerDaily(selectedStore, { days: comparisonPeriodDays * 2 })
+        : copilotService.getNetworkValueLedgerDaily({ days: comparisonPeriodDays * 2 }),
+    enabled: compareEnabled,
+    staleTime: 60000,
+    retry: false,
+  })
+  const ledgerYoYQ = useQuery({
+    queryKey: ["reports-value-ledger-yoy", selectedStore, period],
+    queryFn: () =>
+      selectedStore
+        ? copilotService.getValueLedgerDaily(selectedStore, { days: comparisonPeriodDays + 365 })
+        : copilotService.getNetworkValueLedgerDaily({ days: comparisonPeriodDays + 365 }),
+    enabled: compareEnabled,
+    staleTime: 60000,
+    retry: false,
+  })
   const outcomesQ = useQuery({
     queryKey: ["reports-action-outcomes", selectedStore, period, outcomeStatusFilter],
     queryFn: () =>
@@ -296,6 +345,77 @@ const Reports = () => {
   const sprint2Acceptance = !selectedStore ? ledgerQ.data?.sprint2_acceptance : undefined
   const outcomesSummary = outcomesQ.data?.summary
   const actionOutcomes = outcomesQ.data?.items ?? []
+  const evolutionComparison = useMemo(() => {
+    if (!compareEnabled) {
+      return {
+        periodDays: comparisonPeriodDays,
+        currentRecovered: 0,
+        momRecovered: null as number | null,
+        yoyRecovered: null as number | null,
+        momDeltaPct: null as number | null,
+        yoyDeltaPct: null as number | null,
+      }
+    }
+    const now = new Date()
+    const endCurrent = new Date(now.getFullYear(), now.getMonth(), now.getDate() + 1)
+    const startCurrent = new Date(endCurrent)
+    startCurrent.setDate(startCurrent.getDate() - comparisonPeriodDays)
+
+    const endMoM = startCurrent
+    const startMoM = new Date(startCurrent)
+    startMoM.setDate(startMoM.getDate() - comparisonPeriodDays)
+
+    const endYoY = new Date(startCurrent)
+    endYoY.setFullYear(endYoY.getFullYear() - 1)
+    const startYoY = new Date(endYoY)
+    startYoY.setDate(startYoY.getDate() - comparisonPeriodDays)
+
+    const currentRecovered = Number(ledgerTotals?.value_recovered_brl || 0)
+    const momRecovered = sumLedgerRecoveredInRange(
+      ledgerMoMQ.data?.items ?? [],
+      startMoM,
+      endMoM
+    )
+    const yoyRecovered = sumLedgerRecoveredInRange(
+      ledgerYoYQ.data?.items ?? [],
+      startYoY,
+      endYoY
+    )
+    const momDeltaPct =
+      momRecovered > 0 ? Math.round(((currentRecovered - momRecovered) / momRecovered) * 1000) / 10 : null
+    const yoyDeltaPct =
+      yoyRecovered > 0 ? Math.round(((currentRecovered - yoyRecovered) / yoyRecovered) * 1000) / 10 : null
+    return {
+      periodDays: comparisonPeriodDays,
+      currentRecovered,
+      momRecovered: Number.isFinite(momRecovered) ? momRecovered : null,
+      yoyRecovered: Number.isFinite(yoyRecovered) ? yoyRecovered : null,
+      momDeltaPct,
+      yoyDeltaPct,
+    }
+  }, [
+    compareEnabled,
+    comparisonPeriodDays,
+    ledgerMoMQ.data?.items,
+    ledgerTotals?.value_recovered_brl,
+    ledgerYoYQ.data?.items,
+  ])
+  const evolutionNarrative = useMemo(() => {
+    if (!compareEnabled) return "Comparação evolutiva disponível para períodos pré-definidos (7d/30d/90d)."
+    const momText =
+      evolutionComparison.momDeltaPct === null
+        ? "MoM sem base comparável"
+        : evolutionComparison.momDeltaPct >= 0
+        ? `MoM +${evolutionComparison.momDeltaPct.toFixed(1)}%`
+        : `MoM ${evolutionComparison.momDeltaPct.toFixed(1)}%`
+    const yoyText =
+      evolutionComparison.yoyDeltaPct === null
+        ? "YoY sem base histórica suficiente"
+        : evolutionComparison.yoyDeltaPct >= 0
+        ? `YoY +${evolutionComparison.yoyDeltaPct.toFixed(1)}%`
+        : `YoY ${evolutionComparison.yoyDeltaPct.toFixed(1)}%`
+    return `Evolução de valor recuperado no período: ${momText} · ${yoyText}.`
+  }, [compareEnabled, evolutionComparison.momDeltaPct, evolutionComparison.yoyDeltaPct])
 
   const openingWindow = useMemo(() => {
     if (!selectedStoreMeta) return null
@@ -1037,6 +1157,42 @@ const Reports = () => {
             {(outcomesSummary?.recovery_rate ?? 0).toFixed(1)}%
           </p>
         </article>
+      </section>
+
+      <section className="rounded-xl border border-slate-200 bg-white p-4 shadow-sm">
+        <div className="flex items-center justify-between gap-3">
+          <div>
+            <h2 className="text-base font-semibold text-slate-900">Evolução de Valor (MoM/YoY)</h2>
+            <p className="text-xs text-slate-500 mt-1">{evolutionNarrative}</p>
+          </div>
+          <span className="text-xs text-slate-500">Janela {evolutionComparison.periodDays} dias</span>
+        </div>
+        <div className="mt-3 grid grid-cols-1 md:grid-cols-2 gap-3">
+          <article className="rounded-lg border border-slate-200 bg-slate-50 p-3">
+            <p className="text-xs uppercase tracking-[0.08em] text-slate-500">MoM</p>
+            <p className="mt-1 text-lg font-semibold text-slate-900">
+              {evolutionComparison.momDeltaPct === null
+                ? "Sem base"
+                : `${evolutionComparison.momDeltaPct >= 0 ? "+" : ""}${evolutionComparison.momDeltaPct.toFixed(1)}%`}
+            </p>
+            <p className="text-xs text-slate-500 mt-1">
+              Atual {formatCurrencyBRL(evolutionComparison.currentRecovered)} vs mês anterior{" "}
+              {formatCurrencyBRL(evolutionComparison.momRecovered)}
+            </p>
+          </article>
+          <article className="rounded-lg border border-slate-200 bg-slate-50 p-3">
+            <p className="text-xs uppercase tracking-[0.08em] text-slate-500">YoY</p>
+            <p className="mt-1 text-lg font-semibold text-slate-900">
+              {evolutionComparison.yoyDeltaPct === null
+                ? "Sem base"
+                : `${evolutionComparison.yoyDeltaPct >= 0 ? "+" : ""}${evolutionComparison.yoyDeltaPct.toFixed(1)}%`}
+            </p>
+            <p className="text-xs text-slate-500 mt-1">
+              Atual {formatCurrencyBRL(evolutionComparison.currentRecovered)} vs ano anterior{" "}
+              {formatCurrencyBRL(evolutionComparison.yoyRecovered)}
+            </p>
+          </article>
+        </div>
       </section>
 
       <section className="rounded-xl border border-slate-200 bg-white p-4 shadow-sm">

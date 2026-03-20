@@ -870,7 +870,7 @@ class CopilotValueLedgerDailyView(APIView):
             return err
         require_store_role(request.user, str(store_id), ALLOWED_READ_ROLES)
 
-        days = min(max(int(request.query_params.get("days", 30)), 1), 180)
+        days = min(max(int(request.query_params.get("days", 30)), 1), 730)
         from_date = timezone.localdate() - timedelta(days=days - 1)
         rows = (
             ValueLedgerDaily.objects.filter(store_id=store_id, ledger_date__gte=from_date)
@@ -1098,7 +1098,7 @@ class CopilotNetworkValueLedgerDailyView(APIView):
     permission_classes = [IsAuthenticated]
 
     def get(self, request):
-        days = min(max(int(request.query_params.get("days", 30)), 1), 180)
+        days = min(max(int(request.query_params.get("days", 30)), 1), 730)
         coverage_min = min(max(int(request.query_params.get("coverage_min", 80)), 0), 100)
         stale_rate_max = min(max(int(request.query_params.get("stale_rate_max", 20)), 0), 100)
         no_data_rate_max = min(max(int(request.query_params.get("no_data_rate_max", 20)), 0), 100)
