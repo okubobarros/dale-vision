@@ -10,7 +10,7 @@ from django.db import IntegrityError, connection
 from django.test.testcases import DatabaseOperationForbidden
 from django.utils import timezone
 from django.utils.dateparse import parse_datetime
-from apps.core.models import Store
+from apps.core.models import JourneyEvent, Store
 from apps.core.services.journey_events import log_journey_event
 
 logger = logging.getLogger(__name__)
@@ -386,6 +386,34 @@ def _upsert_conversion_metrics(
                 raise ProjectionContractError("conversion_metrics uniqueness contract violation") from exc
 
 
+def _emit_first_metrics_received_if_missing(*, store_id: str, ts_bucket) -> None:
+    if not store_id:
+        return
+    try:
+        already_emitted = JourneyEvent.objects.filter(
+            event_name="first_metrics_received",
+            payload__store_id=str(store_id),
+        ).exists()
+        if already_emitted:
+            return
+        org_id = Store.objects.filter(id=store_id).values_list("org_id", flat=True).first()
+        log_journey_event(
+            org_id=str(org_id) if org_id else None,
+            event_name="first_metrics_received",
+            payload={
+                "store_id": str(store_id),
+                "ts_bucket": ts_bucket.isoformat() if ts_bucket else None,
+            },
+            source="app",
+        )
+    except Exception:
+        logger.exception(
+            "[EDGE] failed to emit first_metrics_received store_id=%s ts_bucket=%s",
+            store_id,
+            ts_bucket,
+        )
+
+
 def apply_vision_metrics(payload: Dict[str, Any]) -> None:
     data = payload.get("data") or {}
     store_id = data.get("store_id")
@@ -394,22 +422,6 @@ def apply_vision_metrics(payload: Dict[str, Any]) -> None:
     ts_bucket = _parse_ts(bucket.get("start"))
     if not store_id:
         return
-    should_log_first = False
-    try:
-        with connection.cursor() as cursor:
-            cursor.execute(
-                "SELECT 1 FROM public.traffic_metrics WHERE store_id = %s LIMIT 1",
-                [store_id],
-            )
-            has_traffic = cursor.fetchone() is not None
-            cursor.execute(
-                "SELECT 1 FROM public.conversion_metrics WHERE store_id = %s LIMIT 1",
-                [store_id],
-            )
-            has_conversion = cursor.fetchone() is not None
-        should_log_first = not (has_traffic or has_conversion)
-    except Exception:
-        should_log_first = False
     traffic = data.get("traffic") or {}
     conversion = data.get("conversion") or {}
     shared_metric_type = str(
@@ -455,22 +467,7 @@ def apply_vision_metrics(payload: Dict[str, Any]) -> None:
         camera_id=str(camera_id).strip() if camera_id else None,
         camera_role=camera_role,
     )
-    if should_log_first:
-        try:
-            org_id = (
-                Store.objects.filter(id=store_id).values_list("org_id", flat=True).first()
-            )
-            log_journey_event(
-                org_id=str(org_id) if org_id else None,
-                event_name="first_metrics_received",
-                payload={
-                    "store_id": str(store_id),
-                    "ts_bucket": ts_bucket.isoformat() if ts_bucket else None,
-                },
-                source="app",
-            )
-        except Exception:
-            pass
+    _emit_first_metrics_received_if_missing(store_id=str(store_id), ts_bucket=ts_bucket)
 
 
 def apply_vision_crossing(payload: Dict[str, Any]) -> None:
@@ -508,6 +505,7 @@ def apply_vision_crossing(payload: Dict[str, Any]) -> None:
         camera_role=camera_role,
         accumulate=True,
     )
+    _emit_first_metrics_received_if_missing(store_id=str(store_id), ts_bucket=ts_bucket)
 
 
 def apply_vision_queue_state(payload: Dict[str, Any]) -> None:
@@ -632,6 +630,7 @@ def apply_vision_queue_state(payload: Dict[str, Any]) -> None:
                     staff_active_est,
                 ],
             )
+    _emit_first_metrics_received_if_missing(store_id=str(store_id), ts_bucket=ts_bucket)
 
 
 def apply_vision_checkout_proxy(payload: Dict[str, Any]) -> None:
@@ -749,6 +748,7 @@ def apply_vision_checkout_proxy(payload: Dict[str, Any]) -> None:
                     checkout_events,
                 ],
             )
+    _emit_first_metrics_received_if_missing(store_id=str(store_id), ts_bucket=ts_bucket)
 
 
 def apply_vision_zone_occupancy(payload: Dict[str, Any]) -> None:
@@ -807,3 +807,4 @@ def apply_vision_zone_occupancy(payload: Dict[str, Any]) -> None:
         camera_id=camera_id,
         camera_role=camera_role,
     )
+    _emit_first_metrics_received_if_missing(store_id=str(store_id), ts_bucket=ts_bucket)

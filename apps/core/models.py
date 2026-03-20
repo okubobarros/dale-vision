@@ -487,6 +487,22 @@ SUPPORT_REQUEST_STATUS = (
     ("rejected", "rejected"),
 )
 
+CALIBRATION_ACTION_STATUS = (
+    ("open", "open"),
+    ("in_progress", "in_progress"),
+    ("waiting_validation", "waiting_validation"),
+    ("validated", "validated"),
+    ("rejected", "rejected"),
+    ("closed", "closed"),
+)
+
+CALIBRATION_ACTION_PRIORITY = (
+    ("low", "low"),
+    ("medium", "medium"),
+    ("high", "high"),
+    ("critical", "critical"),
+)
+
 
 class SupportAccessRequest(models.Model):
     id = models.UUIDField(primary_key=True, default=uuid.uuid4, editable=False)
@@ -553,6 +569,109 @@ class SupportAccessGrant(models.Model):
         indexes = [
             models.Index(fields=["store", "user_uuid", "active"], name="support_grant_store_user_idx"),
             models.Index(fields=["expires_at"], name="support_grant_expires_idx"),
+        ]
+
+
+class CalibrationAction(models.Model):
+    id = models.UUIDField(primary_key=True, default=uuid.uuid4, editable=False)
+    org = models.ForeignKey(
+        "Organization",
+        on_delete=models.DO_NOTHING,
+        db_column="org_id",
+        related_name="calibration_actions",
+    )
+    store = models.ForeignKey(
+        "Store",
+        on_delete=models.DO_NOTHING,
+        db_column="store_id",
+        related_name="calibration_actions",
+    )
+    camera = models.ForeignKey(
+        "Camera",
+        on_delete=models.DO_NOTHING,
+        db_column="camera_id",
+        related_name="calibration_actions",
+        null=True,
+        blank=True,
+    )
+    issue_code = models.CharField(max_length=64)
+    recommended_action = models.TextField()
+    owner_role = models.CharField(max_length=32, default="store_manager")
+    status = models.CharField(max_length=24, choices=CALIBRATION_ACTION_STATUS, default="open")
+    priority = models.CharField(max_length=16, choices=CALIBRATION_ACTION_PRIORITY, default="medium")
+    source = models.CharField(max_length=32, default="system")
+    assigned_to_user_uuid = models.UUIDField(null=True, blank=True)
+    created_by_user_uuid = models.UUIDField(null=True, blank=True)
+    sla_due_at = models.DateTimeField(null=True, blank=True)
+    metadata = models.JSONField(default=dict, blank=True)
+    notes = models.TextField(null=True, blank=True)
+    created_at = models.DateTimeField(default=timezone.now)
+    updated_at = models.DateTimeField(default=timezone.now)
+
+    class Meta:
+        db_table = "calibration_actions"
+        managed = True
+        indexes = [
+            models.Index(fields=["org", "status"], name="cal_action_org_status_idx"),
+            models.Index(fields=["store", "status"], name="cal_action_store_status_idx"),
+            models.Index(fields=["camera", "status"], name="cal_action_camera_status_idx"),
+            models.Index(fields=["priority", "created_at"], name="cal_action_prio_created_idx"),
+        ]
+
+
+class CalibrationEvidence(models.Model):
+    id = models.UUIDField(primary_key=True, default=uuid.uuid4, editable=False)
+    action = models.ForeignKey(
+        "CalibrationAction",
+        on_delete=models.CASCADE,
+        db_column="action_id",
+        related_name="evidences",
+    )
+    snapshot_before_url = models.TextField(null=True, blank=True)
+    snapshot_after_url = models.TextField(null=True, blank=True)
+    clip_before_url = models.TextField(null=True, blank=True)
+    clip_after_url = models.TextField(null=True, blank=True)
+    captured_at = models.DateTimeField(default=timezone.now)
+    captured_by_user_uuid = models.UUIDField(null=True, blank=True)
+    notes = models.TextField(null=True, blank=True)
+    metadata = models.JSONField(default=dict, blank=True)
+    created_at = models.DateTimeField(default=timezone.now)
+    updated_at = models.DateTimeField(default=timezone.now)
+
+    class Meta:
+        db_table = "calibration_evidences"
+        managed = True
+        indexes = [
+            models.Index(fields=["action", "captured_at"], name="cal_evidence_action_cap_idx"),
+        ]
+
+
+class CalibrationResult(models.Model):
+    id = models.UUIDField(primary_key=True, default=uuid.uuid4, editable=False)
+    action = models.ForeignKey(
+        "CalibrationAction",
+        on_delete=models.CASCADE,
+        db_column="action_id",
+        related_name="results",
+    )
+    metric_name = models.CharField(max_length=64)
+    baseline_value = models.FloatField(null=True, blank=True)
+    after_value = models.FloatField(null=True, blank=True)
+    delta_value = models.FloatField(null=True, blank=True)
+    threshold_value = models.FloatField(null=True, blank=True)
+    passed = models.BooleanField(default=False)
+    validated_by_user_uuid = models.UUIDField(null=True, blank=True)
+    validated_at = models.DateTimeField(null=True, blank=True)
+    notes = models.TextField(null=True, blank=True)
+    created_at = models.DateTimeField(default=timezone.now)
+    updated_at = models.DateTimeField(default=timezone.now)
+
+    class Meta:
+        db_table = "calibration_results"
+        managed = True
+        indexes = [
+            models.Index(fields=["action", "metric_name"], name="cal_result_action_metric_idx"),
+            models.Index(fields=["passed", "validated_at"], name="cal_result_pass_valid_idx"),
         ]
 
 class StoreManager(UnmanagedModel):

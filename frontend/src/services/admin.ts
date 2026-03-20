@@ -60,11 +60,71 @@ export type AdminControlTowerSummary = {
   }
 }
 
+export type CalibrationActionItem = {
+  id: string
+  org_id: string
+  store_id: string
+  store_name?: string | null
+  camera_id?: string | null
+  camera_name?: string | null
+  issue_code: string
+  recommended_action: string
+  owner_role: string
+  status: "open" | "in_progress" | "waiting_validation" | "validated" | "rejected" | "closed" | string
+  priority: "low" | "medium" | "high" | "critical" | string
+  source: string
+  assigned_to_user_uuid?: string | null
+  created_by_user_uuid?: string | null
+  sla_due_at?: string | null
+  metadata?: Record<string, unknown>
+  notes?: string | null
+  created_at?: string | null
+  updated_at?: string | null
+  evidences_total?: number
+  results_total?: number
+  results_passed_total?: number
+}
+
+export type CalibrationActionListResponse = {
+  items: CalibrationActionItem[]
+  total: number
+}
+
 export const adminService = {
   async getControlTowerSummary(): Promise<AdminControlTowerSummary> {
     const response = await api.get("/v1/me/admin/control-tower/summary/", {
       timeoutCategory: "critical",
     })
     return response.data as AdminControlTowerSummary
+  },
+
+  async getCalibrationActions(params?: {
+    status?: string
+    store_id?: string
+    camera_id?: string
+    limit?: number
+  }): Promise<CalibrationActionListResponse> {
+    const response = await api.get("/v1/calibration/actions/", {
+      params: params || undefined,
+      timeoutCategory: "best-effort",
+      noRetry: true,
+    })
+    return response.data as CalibrationActionListResponse
+  },
+
+  async patchCalibrationAction(
+    actionId: string,
+    payload: {
+      status?: string
+      priority?: string
+      notes?: string
+      assigned_to_user_uuid?: string | null
+    }
+  ): Promise<CalibrationActionItem> {
+    const response = await api.patch(`/v1/calibration/actions/${actionId}/`, payload, {
+      timeoutCategory: "best-effort",
+      noRetry: true,
+    })
+    return response.data as CalibrationActionItem
   },
 }

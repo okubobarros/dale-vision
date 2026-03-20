@@ -17,6 +17,12 @@ from .views import (
     PdvIngestionHealthView,
     DataCompletenessView,
 )
+from .views_calibration import (
+    CalibrationActionListCreateView,
+    CalibrationActionStatusView,
+    CalibrationActionEvidenceCreateView,
+    CalibrationActionResultCreateView,
+)
 
 urlpatterns = [
     path("onboarding/progress/", OnboardingProgressView.as_view(), name="onboarding-progress"),
@@ -34,6 +40,10 @@ urlpatterns = [
     path("integration/pdv/summary/", PdvTransactionSummaryView.as_view(), name="pdv-summary"),
     path("integration/pdv/ingestion-health/", PdvIngestionHealthView.as_view(), name="pdv-ingestion-health"),
     path("data-quality/completeness/", DataCompletenessView.as_view(), name="data-quality-completeness"),
+    path("calibration/actions/", CalibrationActionListCreateView.as_view(), name="calibration-actions"),
+    path("calibration/actions/<uuid:action_id>/", CalibrationActionStatusView.as_view(), name="calibration-action-status"),
+    path("calibration/actions/<uuid:action_id>/evidence/", CalibrationActionEvidenceCreateView.as_view(), name="calibration-action-evidence"),
+    path("calibration/actions/<uuid:action_id>/result/", CalibrationActionResultCreateView.as_view(), name="calibration-action-result"),
     path("productivity/coverage", ProductivityCoverageView.as_view(), name="productivity-coverage-noslash"),
     path("productivity/coverage/", ProductivityCoverageView.as_view(), name="productivity-coverage"),
     path("system/storage-status/", StorageStatusView.as_view({"get": "list"}), name="storage-status"),

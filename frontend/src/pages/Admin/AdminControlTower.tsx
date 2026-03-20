@@ -3,7 +3,7 @@ import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query"
 import toast from "react-hot-toast"
 
 import { useAuth } from "../../contexts/useAuth"
-import { adminService } from "../../services/admin"
+import { adminService, type CalibrationActionItem } from "../../services/admin"
 import { meService } from "../../services/me"
 import { storesService, type StoreSummary } from "../../services/stores"
 import { supportService } from "../../services/support"
@@ -101,6 +101,13 @@ export default function AdminControlTower() {
     refetchInterval: 60_000,
   })
 
+  const calibrationActionsQuery = useQuery({
+    queryKey: ["admin", "calibration-actions", "active"],
+    queryFn: () => adminService.getCalibrationActions({ status: "all", limit: 100 }),
+    enabled: isInternalAdmin,
+    refetchInterval: 30_000,
+  })
+
   const grantSupportMutation = useMutation({
     mutationFn: (requestId: string) => supportService.grantSupportRequest(requestId, 120),
     onSuccess: () => {
@@ -122,6 +129,28 @@ export default function AdminControlTower() {
       toast.error((error as { message?: string })?.message || "Falha ao encerrar solicitação.")
     },
   })
+
+  const patchCalibrationActionMutation = useMutation({
+    mutationFn: ({
+      actionId,
+      payload,
+    }: {
+      actionId: string
+      payload: { status?: string; priority?: string; notes?: string }
+    }) => adminService.patchCalibrationAction(actionId, payload),
+    onSuccess: () => {
+      toast.success("Ação de calibração atualizada.")
+      queryClient.invalidateQueries({ queryKey: ["admin", "calibration-actions", "active"] })
+    },
+    onError: (error: unknown) => {
+      toast.error((error as { message?: string })?.message || "Falha ao atualizar ação.")
+    },
+  })
+
+  const activeCalibrationActions = useMemo(() => {
+    const items = calibrationActionsQuery.data?.items || []
+    return (items as CalibrationActionItem[]).filter((item) => item.status !== "closed").slice(0, 20)
+  }, [calibrationActionsQuery.data?.items])
 
   const storeRisks = useMemo(() => {
     const rows = (storesSummaryQuery.data || []) as StoreSummary[]
@@ -408,6 +437,92 @@ export default function AdminControlTower() {
                 </div>
               ) : null}
             </div>
+          </section>
+
+          <section className="rounded-xl border border-gray-200 bg-white p-4">
+            <div className="flex items-center justify-between">
+              <h2 className="text-sm font-semibold text-gray-800 uppercase tracking-wide">
+                Ações de calibração (admin + cliente)
+              </h2>
+              <span className="text-xs text-gray-500">{activeCalibrationActions.length} abertas</span>
+            </div>
+            {calibrationActionsQuery.isLoading ? (
+              <div className="mt-3 text-sm text-gray-600">Carregando backlog de calibração...</div>
+            ) : activeCalibrationActions.length === 0 ? (
+              <div className="mt-3 text-sm text-gray-600">Sem ações pendentes no momento.</div>
+            ) : (
+              <div className="mt-3 overflow-x-auto">
+                <table className="min-w-full text-sm">
+                  <thead className="bg-gray-50 text-gray-600">
+                    <tr>
+                      <th className="px-3 py-2 text-left font-semibold">Loja/Câmera</th>
+                      <th className="px-3 py-2 text-left font-semibold">Issue</th>
+                      <th className="px-3 py-2 text-left font-semibold">Ação recomendada</th>
+                      <th className="px-3 py-2 text-left font-semibold">Status</th>
+                      <th className="px-3 py-2 text-left font-semibold">Prioridade</th>
+                      <th className="px-3 py-2 text-left font-semibold">Ações</th>
+                    </tr>
+                  </thead>
+                  <tbody className="divide-y">
+                    {activeCalibrationActions.map((row) => (
+                      <tr key={row.id}>
+                        <td className="px-3 py-2">
+                          <div className="font-medium text-gray-900">{row.store_name || row.store_id}</div>
+                          <div className="text-xs text-gray-500">{row.camera_name || row.camera_id || "Todas as câmeras"}</div>
+                        </td>
+                        <td className="px-3 py-2">{row.issue_code}</td>
+                        <td className="px-3 py-2">{row.recommended_action}</td>
+                        <td className="px-3 py-2">{row.status}</td>
+                        <td className="px-3 py-2">{row.priority}</td>
+                        <td className="px-3 py-2">
+                          <div className="flex flex-wrap gap-2">
+                            <button
+                              type="button"
+                              onClick={() =>
+                                patchCalibrationActionMutation.mutate({
+                                  actionId: row.id,
+                                  payload: { status: "in_progress" },
+                                })
+                              }
+                              disabled={patchCalibrationActionMutation.isPending}
+                              className="rounded-lg border border-gray-300 px-2 py-1 text-xs font-semibold text-gray-700 hover:bg-gray-50 disabled:cursor-not-allowed disabled:opacity-50"
+                            >
+                              Em execução
+                            </button>
+                            <button
+                              type="button"
+                              onClick={() =>
+                                patchCalibrationActionMutation.mutate({
+                                  actionId: row.id,
+                                  payload: { status: "waiting_validation" },
+                                })
+                              }
+                              disabled={patchCalibrationActionMutation.isPending}
+                              className="rounded-lg border border-amber-300 px-2 py-1 text-xs font-semibold text-amber-700 hover:bg-amber-50 disabled:cursor-not-allowed disabled:opacity-50"
+                            >
+                              Aguard. validação
+                            </button>
+                            <button
+                              type="button"
+                              onClick={() =>
+                                patchCalibrationActionMutation.mutate({
+                                  actionId: row.id,
+                                  payload: { status: "validated" },
+                                })
+                              }
+                              disabled={patchCalibrationActionMutation.isPending}
+                              className="rounded-lg bg-emerald-600 px-2 py-1 text-xs font-semibold text-white hover:bg-emerald-700 disabled:cursor-not-allowed disabled:bg-emerald-300"
+                            >
+                              Validar
+                            </button>
+                          </div>
+                        </td>
+                      </tr>
+                    ))}
+                  </tbody>
+                </table>
+              </div>
+            )}
           </section>
 
           <section className="rounded-xl border border-gray-200 bg-white p-4">

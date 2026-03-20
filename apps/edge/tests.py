@@ -1035,10 +1035,12 @@ class VisionMetricsContractTests(TestCase):
         with patch("apps.edge.vision_metrics.connection.cursor", return_value=cursor_cm):
             with patch("apps.edge.vision_metrics._upsert_traffic_metrics") as traffic_upsert:
                 with patch("apps.edge.vision_metrics._upsert_conversion_metrics") as conversion_upsert:
-                    apply_vision_metrics(payload)
+                    with patch("apps.edge.vision_metrics._emit_first_metrics_received_if_missing") as emit_first:
+                        apply_vision_metrics(payload)
 
         traffic_upsert.assert_called_once()
         conversion_upsert.assert_called_once()
+        emit_first.assert_called_once()
         traffic_payload = traffic_upsert.call_args.args[2]
         conversion_payload = conversion_upsert.call_args.args[2]
         traffic_kwargs = traffic_upsert.call_args.kwargs
@@ -1136,9 +1138,11 @@ class VisionMetricsContractTests(TestCase):
         }
 
         with patch("apps.edge.vision_metrics._upsert_traffic_metrics") as traffic_upsert:
-            apply_vision_crossing(payload)
+            with patch("apps.edge.vision_metrics._emit_first_metrics_received_if_missing") as emit_first:
+                apply_vision_crossing(payload)
 
         traffic_upsert.assert_called_once()
+        emit_first.assert_called_once()
         traffic_payload = traffic_upsert.call_args.args[2]
         self.assertEqual(traffic_payload["footfall"], 1)
         self.assertEqual(traffic_payload["ownership"], "primary")
@@ -1210,9 +1214,11 @@ class VisionMetricsContractTests(TestCase):
         cursor_cm.__exit__.return_value = False
 
         with patch("apps.edge.vision_metrics.connection.cursor", return_value=cursor_cm):
-            apply_vision_queue_state(payload)
+            with patch("apps.edge.vision_metrics._emit_first_metrics_received_if_missing") as emit_first:
+                apply_vision_queue_state(payload)
 
         self.assertEqual(cursor.execute.call_count, 4)
+        emit_first.assert_called_once()
         insert_sql, insert_params = cursor.execute.call_args_list[3][0]
         self.assertIn("INSERT INTO public.conversion_metrics", insert_sql)
         self.assertEqual(insert_params[0], "store-1")
@@ -1287,9 +1293,11 @@ class VisionMetricsContractTests(TestCase):
         cursor_cm.__exit__.return_value = False
 
         with patch("apps.edge.vision_metrics.connection.cursor", return_value=cursor_cm):
-            apply_vision_checkout_proxy(payload)
+            with patch("apps.edge.vision_metrics._emit_first_metrics_received_if_missing") as emit_first:
+                apply_vision_checkout_proxy(payload)
 
         self.assertEqual(cursor.execute.call_count, 4)
+        emit_first.assert_called_once()
         insert_sql, insert_params = cursor.execute.call_args_list[3][0]
         self.assertIn("INSERT INTO public.conversion_metrics", insert_sql)
         self.assertEqual(insert_params[0], "store-1")
@@ -1358,9 +1366,11 @@ class VisionMetricsContractTests(TestCase):
 
         with patch("apps.edge.vision_metrics.connection.cursor", return_value=cursor_cm):
             with patch("apps.edge.vision_metrics._upsert_traffic_metrics") as traffic_upsert:
-                apply_vision_zone_occupancy(payload)
+                with patch("apps.edge.vision_metrics._emit_first_metrics_received_if_missing") as emit_first:
+                    apply_vision_zone_occupancy(payload)
 
         traffic_upsert.assert_called_once()
+        emit_first.assert_called_once()
         traffic_payload = traffic_upsert.call_args.args[2]
         self.assertEqual(traffic_payload["engaged"], 5)
         self.assertEqual(traffic_payload["dwell_seconds_avg"], 14)
