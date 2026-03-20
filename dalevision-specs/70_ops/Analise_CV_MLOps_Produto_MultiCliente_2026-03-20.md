@@ -1,5 +1,9 @@
 # Dale Vision - Análise CV + MLOps + Produto Multi-Cliente (2026-03-20)
 
+## Referência de produto/jornada (valor humano + money flow)
+- PRD executivo por rota: `dalevision-specs/20_journeys/PRD_Human_Value_MoneyFlow_Journey_2026-03-20.md`
+- Escopo: service design da jornada do dono, user stories, critérios de aceite, tracking e KPI tree.
+
 ## Contexto validado
 - Backfill executado com sucesso:
   - `python manage.py backfill_first_metrics_received`
