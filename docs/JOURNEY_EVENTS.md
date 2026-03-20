@@ -151,6 +151,138 @@ Payload:
 - `source` (`copilot_decision_center` default)
 - `event_id`
 
+### `activation_callback_started`
+When: início do callback de ativação/autenticação.
+Emitted by: frontend `AuthCallback`.
+
+### `activation_callback_failed`
+When: callback de ativação falha.
+Emitted by: frontend `AuthCallback`.
+
+### `activation_resend_clicked`
+When: usuário solicita reenvio de ativação.
+Emitted by: frontend `AuthCallback`.
+
+### `activation_callback_completed`
+When: callback de ativação concluído com sucesso.
+Emitted by: frontend `AuthCallback`.
+
+### `post_login_explainer_shown`
+When: explicação pós-login é exibida.
+Emitted by: frontend `PostLoginExplainer`.
+
+### `post_login_explainer_cta_clicked`
+When: CTA do explicador pós-login é clicado.
+Emitted by: frontend `PostLoginExplainer`.
+
+### `post_login_explainer_dismissed`
+When: explicador pós-login é fechado.
+Emitted by: frontend `PostLoginExplainer`.
+
+### `edge_checklist_viewed`
+When: checklist de ativação edge é visualizado.
+Emitted by: frontend `EdgeActivationChecklist`.
+
+### `edge_checklist_step_clicked`
+When: passo do checklist edge é acionado.
+Emitted by: frontend `EdgeActivationChecklist`.
+
+### `incident_escalate_clicked`
+When: usuário inicia escalonamento de incidente.
+Emitted by: frontend `Alerts`, `Stores`.
+
+### `incident_escalate_opened_edge_help`
+When: escalonamento abre fluxo Edge Help.
+Emitted by: frontend `EdgeHelp`.
+
+### `incident_escalate_completed`
+When: escalonamento finalizado.
+Emitted by: frontend `EdgeHelp`.
+
+### `alert_resolution_started`
+When: fluxo de resolução de alerta iniciado.
+Emitted by: frontend `Alerts`.
+
+### `alert_resolution_completed`
+When: resolução de alerta concluída.
+Emitted by: frontend `Alerts`.
+
+### `alert_resolution_escalated`
+When: alerta escalado durante resolução.
+Emitted by: frontend `Alerts`.
+
+### `alert_rule_quality_viewed`
+When: usuário visualiza qualidade de regra.
+Emitted by: frontend `AlertRules`.
+
+### `alert_rule_suggestion_shown`
+When: sugestão de ajuste de regra exibida.
+Emitted by: frontend `AlertRules`.
+
+### `alert_rule_suggestion_applied`
+When: sugestão de regra aplicada.
+Emitted by: frontend `AlertRules`.
+
+### `store_context_link_clicked`
+When: link entre módulos é clicado com contexto de loja.
+Emitted by: frontend `Alerts`.
+
+### `store_context_preserved`
+When: contexto de loja é preservado entre rotas.
+Emitted by: frontend `Alerts`.
+
+### `store_context_missing_fallback`
+When: contexto de loja ausente e fallback aplicado.
+Emitted by: frontend `Alerts`.
+
+### `camera_diagnosis_viewed`
+When: diagnóstico de câmera é exibido.
+Emitted by: frontend `Cameras`.
+
+### `camera_diagnosis_action_clicked`
+When: ação de diagnóstico de câmera é acionada.
+Emitted by: frontend `Cameras`, `EdgeHelp`.
+
+### `camera_diagnosis_resolved`
+When: resolução de diagnóstico de câmera registrada.
+Emitted by: frontend `Cameras`.
+
+### `upgrade_proof_viewed`
+When: bloco de prova de valor para upgrade é exibido.
+Emitted by: frontend `Upgrade`.
+
+### `upgrade_proof_cta_clicked`
+When: CTA da prova de upgrade é clicado.
+Emitted by: frontend `Upgrade`.
+
+### `upgrade_proof_insufficient_data_shown`
+When: UI indica dados insuficientes para prova.
+Emitted by: frontend `Upgrade`.
+
+### `operation_action_delegated`
+When: ação operacional delegada.
+Emitted by: frontend `Operations`, `Reports`, `Dashboard`.
+
+### `operation_action_feedback_submitted`
+When: feedback do resultado operacional enviado.
+Emitted by: frontend `Operations`, `Reports`.
+
+### `operation_action_completed`
+When: ação operacional concluída (ou falha final).
+Emitted by: frontend `Operations`, `Reports`.
+
+### `owner_goal_defined`
+When: objetivo do dono é definido/atualizado.
+Emitted by: frontend `Onboarding`, `Settings`.
+
+### `notification_tone_updated`
+When: tom de notificação é alterado.
+Emitted by: frontend `Onboarding`, `Settings`.
+
+### `notification_preferences_saved`
+When: preferências de notificação são salvas.
+Emitted by: frontend `Onboarding`, `Settings`.
+
 ## Dedupe Rules
 - `upgrade_viewed`: session-based dedupe (1 per tab/session).
 - `trial_expired_shown`: session-based dedupe on frontend; backend also throttles per org.

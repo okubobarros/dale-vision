@@ -980,7 +980,7 @@ export default function AdminControlTower() {
                 <h3 className="text-sm font-semibold text-gray-800">Lojas com gap visão → funil</h3>
                 <button
                   type="button"
-                  onClick={() => repairIngestionGapMutation.mutate()}
+                  onClick={() => repairIngestionGapMutation.mutate(undefined)}
                   disabled={repairIngestionGapMutation.isPending || ingestionGapRows.length === 0}
                   className="rounded-lg border border-blue-300 px-2 py-1 text-xs font-semibold text-blue-700 hover:bg-blue-50 disabled:cursor-not-allowed disabled:opacity-50"
                 >

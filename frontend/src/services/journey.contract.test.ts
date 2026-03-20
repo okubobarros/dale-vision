@@ -32,8 +32,9 @@ describe("HV-QA-01 journey tracking contract", () => {
     ]
 
     requiredOpsEvents.forEach((eventName) => {
-      expect(operationsSource).toContain(`trackJourneyEvent("${eventName}"`)
-      expect(reportsSource).toContain(`trackJourneyEvent("${eventName}"`)
+      const regex = new RegExp(`trackJourneyEvent\\(\\s*["']${eventName}["']`)
+      expect(regex.test(operationsSource)).toBe(true)
+      expect(regex.test(reportsSource)).toBe(true)
     })
   })
 
@@ -47,8 +48,9 @@ describe("HV-QA-01 journey tracking contract", () => {
     ]
 
     personalizationEvents.forEach((eventName) => {
-      expect(onboardingSource).toContain(`trackJourneyEvent("${eventName}"`)
-      expect(settingsSource).toContain(`trackJourneyEvent("${eventName}"`)
+      const regex = new RegExp(`trackJourneyEvent\\(\\s*["']${eventName}["']`)
+      expect(regex.test(onboardingSource)).toBe(true)
+      expect(regex.test(settingsSource)).toBe(true)
     })
   })
 })
