@@ -309,6 +309,29 @@ export type AdminCvQualityBaselineResponse = {
   rows: AdminCvQualityBaselineRow[]
 }
 
+export type AdminHvEventHealthRow = {
+  event_name: string
+  events_total: number
+  stores_total: number
+  missing: boolean
+}
+
+export type AdminHvEventHealthResponse = {
+  window_days: number
+  from: string
+  to: string
+  required_events: string[]
+  events: AdminHvEventHealthRow[]
+  missing_events: string[]
+  stores: {
+    stores_with_any_event: number
+    stores_with_all_events: number
+    coverage_rate?: number | null
+  }
+  overall_pass: boolean
+  status: "go" | "no_go" | string
+}
+
 export const adminService = {
   async getControlTowerSummary(): Promise<AdminControlTowerSummary> {
     const response = await api.get("/v1/me/admin/control-tower/summary/", {
@@ -462,5 +485,16 @@ export const adminService = {
       noRetry: true,
     })
     return response.data as AdminCvQualityBaselineResponse
+  },
+
+  async getHvEventHealth(params?: {
+    window_days?: number
+  }): Promise<AdminHvEventHealthResponse> {
+    const response = await api.get("/v1/me/admin/hv-event-health/", {
+      params: params || undefined,
+      timeoutCategory: "best-effort",
+      noRetry: true,
+    })
+    return response.data as AdminHvEventHealthResponse
   },
 }

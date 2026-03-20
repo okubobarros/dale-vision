@@ -188,6 +188,12 @@ export default function AdminControlTower() {
     enabled: isInternalAdmin,
     refetchInterval: 60_000,
   })
+  const hvEventHealthQuery = useQuery({
+    queryKey: ["admin", "hv-event-health", "7d"],
+    queryFn: () => adminService.getHvEventHealth({ window_days: 7 }),
+    enabled: isInternalAdmin,
+    refetchInterval: 60_000,
+  })
 
   const grantSupportMutation = useMutation({
     mutationFn: (requestId: string) => supportService.grantSupportRequest(requestId, 120),
@@ -372,6 +378,7 @@ export default function AdminControlTower() {
   const pipelineRows = pipelineObservabilityQuery.data?.rows || []
   const releaseGate = releaseGateQuery.data
   const cvBaselineRows = cvBaselineQuery.data?.rows || []
+  const hvEventHealth = hvEventHealthQuery.data
 
   return (
     <div className="space-y-6">
@@ -625,6 +632,59 @@ export default function AdminControlTower() {
                   hint={`${releaseGate?.checks?.funnel_non_zero_active_store?.pass ? "OK" : "Falhou"} · deve cobrir 100%`}
                 />
               </div>
+            </div>
+          </section>
+
+          <section className="space-y-3">
+            <h2 className="text-sm font-semibold text-gray-800 uppercase tracking-wide">Saúde eventos HV (7d)</h2>
+            <div className="rounded-xl border border-gray-200 bg-white p-4">
+              <div className="grid grid-cols-1 gap-3 md:grid-cols-4">
+                <Card
+                  title="Status HV"
+                  value={hvEventHealth?.overall_pass ? "GO" : "NO-GO"}
+                  hint={hvEventHealth?.overall_pass ? "6 eventos obrigatórios cobertos" : "Há gaps no contrato HV"}
+                />
+                <Card title="Eventos faltando" value={formatNumber(hvEventHealth?.missing_events?.length)} />
+                <Card
+                  title="Lojas com todos eventos"
+                  value={`${formatNumber(hvEventHealth?.stores?.stores_with_all_events)} / ${formatNumber(
+                    hvEventHealth?.stores?.stores_with_any_event
+                  )}`}
+                />
+                <Card title="Cobertura lojas" value={formatRatioPercent(hvEventHealth?.stores?.coverage_rate)} />
+              </div>
+              {hvEventHealthQuery.isLoading ? (
+                <div className="mt-3 text-sm text-gray-600">Carregando saúde de eventos HV...</div>
+              ) : (hvEventHealth?.events || []).length === 0 ? (
+                <div className="mt-3 text-sm text-gray-600">Sem dados de eventos HV no período.</div>
+              ) : (
+                <div className="mt-3 overflow-x-auto">
+                  <table className="min-w-full text-sm">
+                    <thead className="bg-gray-50 text-gray-600">
+                      <tr>
+                        <th className="px-3 py-2 text-left font-semibold">Evento</th>
+                        <th className="px-3 py-2 text-left font-semibold">Volume</th>
+                        <th className="px-3 py-2 text-left font-semibold">Lojas</th>
+                        <th className="px-3 py-2 text-left font-semibold">Status</th>
+                      </tr>
+                    </thead>
+                    <tbody className="divide-y">
+                      {(hvEventHealth?.events || []).map((item) => (
+                        <tr key={item.event_name}>
+                          <td className="px-3 py-2">{item.event_name}</td>
+                          <td className="px-3 py-2">{formatNumber(item.events_total)}</td>
+                          <td className="px-3 py-2">{formatNumber(item.stores_total)}</td>
+                          <td className="px-3 py-2">
+                            <span className={item.missing ? "text-rose-700" : "text-emerald-700"}>
+                              {item.missing ? "Faltando" : "OK"}
+                            </span>
+                          </td>
+                        </tr>
+                      ))}
+                    </tbody>
+                  </table>
+                </div>
+              )}
             </div>
           </section>
 

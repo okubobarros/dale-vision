@@ -73,6 +73,7 @@ Notas de payload (stores):
 - `GET /api/v1/me/admin/pipeline-observability/` (staff/superuser; query: `window_hours`, `store_id`, `limit`)
 - `GET /api/v1/me/admin/release-gate/` (staff/superuser; sem query)
 - `GET /api/v1/me/admin/cv-quality-baseline/` (staff/superuser; query: `period=7d|30d`, `store_id`, `limit`)
+- `GET /api/v1/me/admin/hv-event-health/` (staff/superuser; query: `window_days`)
 
 - `POST /api/v1/integration/pdv/interest/`
 - `POST /api/v1/integration/pdv/events/`
@@ -211,6 +212,19 @@ Resposta de `me/admin/cv-quality-baseline`:
   - `pass_rate`
   - `avg_delta`
   - `latest_validated_at`
+
+Resposta de `me/admin/hv-event-health`:
+- `required_events[]` (6 eventos obrigatórios HV).
+- `events[]`:
+  - `event_name`
+  - `events_total`
+  - `stores_total`
+  - `missing`
+- `stores`:
+  - `stores_with_any_event`
+  - `stores_with_all_events`
+  - `coverage_rate`
+- `overall_pass` + `status` (`go|no_go`) para gate de rollout HV.
 
 Resposta de `calibration/actions/{action_id}/evidences`:
 - `action_id`, `total`, `expires_seconds`

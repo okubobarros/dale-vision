@@ -26,6 +26,10 @@ Registrar decisões e eventos do dia.
     - signed URL curta por evidência quando `storage_key` estiver presente;
     - auditoria de leitura criada em `audit_logs` para rastreabilidade.
   - Backlog atualizado com pedido de early user (varejo moda) para métrica de expressão/sentimento em formato agregado e com guardrails LGPD.
+  - Hardening HV em produção:
+    - endpoint `GET /api/v1/me/admin/hv-event-health/` para validar cobertura dos 6 eventos obrigatórios;
+    - status `GO/NO-GO` com cobertura por loja (`stores_with_all_events`) e gaps por evento;
+    - painel exibido no Admin SaaS para decisão de rollout com dados.
 - Bloqueios:
   - Ainda falta validação ampla multi-loja com amostra maior para medir ganho médio por tipo de ação.
 - Decisões:

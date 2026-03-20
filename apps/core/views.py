@@ -1093,6 +1093,146 @@ class AdminCvQualityBaselineView(APIView):
         )
 
 
+HV_REQUIRED_EVENTS = [
+    "operation_action_delegated",
+    "operation_action_feedback_submitted",
+    "operation_action_completed",
+    "owner_goal_defined",
+    "notification_tone_updated",
+    "notification_preferences_saved",
+]
+
+
+def _load_hv_event_health_rows(*, start, end):
+    with connection.cursor() as cursor:
+        cursor.execute(
+            """
+            SELECT
+              event_name,
+              COUNT(*)::int AS events_total,
+              COUNT(DISTINCT NULLIF(TRIM(payload->>'store_id'), ''))::int AS stores_total
+            FROM public.journey_events
+            WHERE created_at >= %s
+              AND created_at < %s
+              AND event_name = ANY(%s)
+            GROUP BY event_name
+            """,
+            [start, end, HV_REQUIRED_EVENTS],
+        )
+        event_rows = [
+            {
+                "event_name": row[0],
+                "events_total": int(row[1] or 0),
+                "stores_total": int(row[2] or 0),
+            }
+            for row in cursor.fetchall()
+        ]
+
+        cursor.execute(
+            """
+            SELECT
+              NULLIF(TRIM(payload->>'store_id'), '') AS store_id,
+              event_name
+            FROM public.journey_events
+            WHERE created_at >= %s
+              AND created_at < %s
+              AND event_name = ANY(%s)
+              AND payload ? 'store_id'
+              AND NULLIF(TRIM(payload->>'store_id'), '') IS NOT NULL
+            GROUP BY 1,2
+            """,
+            [start, end, HV_REQUIRED_EVENTS],
+        )
+        store_rows = [
+            {"store_id": str(row[0]), "event_name": str(row[1])}
+            for row in cursor.fetchall()
+            if row[0] and row[1]
+        ]
+    return event_rows, store_rows
+
+
+class AdminHvEventHealthView(APIView):
+    permission_classes = [IsAuthenticated]
+
+    @staticmethod
+    def _assert_internal_admin(user):
+        if getattr(user, "is_staff", False) or getattr(user, "is_superuser", False):
+            return
+        raise PermissionDenied("Acesso restrito ao time interno (staff/superuser).")
+
+    @staticmethod
+    def _resolve_window_days(raw_value):
+        try:
+            value = int(raw_value or 7)
+        except Exception:
+            value = 7
+        return max(1, min(value, 90))
+
+    def get(self, request):
+        self._assert_internal_admin(request.user)
+        window_days = self._resolve_window_days(request.query_params.get("window_days"))
+        end = timezone.now()
+        start = end - timedelta(days=window_days)
+
+        event_rows, store_rows = _load_hv_event_health_rows(start=start, end=end)
+        by_event = {row["event_name"]: row for row in event_rows}
+        events = []
+        missing_events = []
+        for event_name in HV_REQUIRED_EVENTS:
+            row = by_event.get(event_name) or {}
+            events_total = int(row.get("events_total") or 0)
+            stores_total = int(row.get("stores_total") or 0)
+            is_missing = events_total <= 0
+            if is_missing:
+                missing_events.append(event_name)
+            events.append(
+                {
+                    "event_name": event_name,
+                    "events_total": events_total,
+                    "stores_total": stores_total,
+                    "missing": is_missing,
+                }
+            )
+
+        store_event_map: dict[str, set[str]] = {}
+        for row in store_rows:
+            store_id = str(row.get("store_id") or "").strip()
+            event_name = str(row.get("event_name") or "").strip()
+            if not store_id or not event_name:
+                continue
+            store_event_map.setdefault(store_id, set()).add(event_name)
+
+        stores_with_any_event = len(store_event_map)
+        stores_with_all_events = sum(
+            1 for event_set in store_event_map.values() if all(event in event_set for event in HV_REQUIRED_EVENTS)
+        )
+        stores_coverage_rate = (
+            round(stores_with_all_events / stores_with_any_event, 4) if stores_with_any_event > 0 else None
+        )
+        overall_pass = (len(missing_events) == 0) and (
+            stores_with_any_event == 0 or (stores_coverage_rate is not None and stores_coverage_rate >= 0.90)
+        )
+
+        return Response(
+            {
+                "window_days": window_days,
+                "from": start.isoformat(),
+                "to": end.isoformat(),
+                "required_events": HV_REQUIRED_EVENTS,
+                "events": events,
+                "missing_events": missing_events,
+                "stores": {
+                    "stores_with_any_event": stores_with_any_event,
+                    "stores_with_all_events": stores_with_all_events,
+                    "coverage_rate": stores_coverage_rate,
+                },
+                "overall_pass": overall_pass,
+                "status": "go" if overall_pass else "no_go",
+            },
+            status=status.HTTP_200_OK,
+        )
+
+
 def _compute_release_gate_summary():
     now = timezone.now()
     start_30d = now - timedelta(days=30)

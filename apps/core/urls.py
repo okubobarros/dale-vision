@@ -20,6 +20,7 @@ from .views import (
     AdminPipelineObservabilityView,
     AdminReleaseGateView,
     AdminCvQualityBaselineView,
+    AdminHvEventHealthView,
 )
 from .views_calibration import (
     CalibrationActionListCreateView,
@@ -51,6 +52,7 @@ urlpatterns = [
     path("me/admin/pipeline-observability/", AdminPipelineObservabilityView.as_view(), name="admin-pipeline-observability"),
     path("me/admin/release-gate/", AdminReleaseGateView.as_view(), name="admin-release-gate"),
     path("me/admin/cv-quality-baseline/", AdminCvQualityBaselineView.as_view(), name="admin-cv-quality-baseline"),
+    path("me/admin/hv-event-health/", AdminHvEventHealthView.as_view(), name="admin-hv-event-health"),
     path("calibration/actions/", CalibrationActionListCreateView.as_view(), name="calibration-actions"),
     path("calibration/actions/auto-generate/", CalibrationActionAutoGenerateView.as_view(), name="calibration-actions-auto-generate"),
     path("calibration/actions/impact-summary/", CalibrationImpactSummaryView.as_view(), name="calibration-actions-impact-summary"),
