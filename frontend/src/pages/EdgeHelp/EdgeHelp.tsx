@@ -3,12 +3,18 @@ import { useEffect, useMemo, useRef } from "react"
 import { useSearchParams } from "react-router-dom"
 
 import { storesService } from "../../services/stores"
+import { trackJourneyEvent } from "../../services/journey"
 
 const EdgeHelp = () => {
   const [searchParams] = useSearchParams()
   const storeId = searchParams.get("store_id") || ""
   const reasonCode = searchParams.get("reason_code") || ""
+  const cameraId = searchParams.get("camera_id") || ""
+  const eventId = searchParams.get("event_id") || ""
+  const escalationSource = searchParams.get("source") || ""
   const trackingSentRef = useRef(false)
+  const escalationOpenedRef = useRef(false)
+  const escalationCompletedRef = useRef(false)
 
   const runbookQ = useQuery({
     queryKey: ["edge-help-runbook", storeId, reasonCode],
@@ -29,6 +35,17 @@ const EdgeHelp = () => {
   }, [runbookQ.data?.runbook?.severity])
 
   useEffect(() => {
+    if (!storeId || !escalationSource || escalationOpenedRef.current) return
+    escalationOpenedRef.current = true
+    void trackJourneyEvent("incident_escalate_opened_edge_help", {
+      source: escalationSource,
+      store_id: storeId,
+      camera_id: cameraId || null,
+      event_id: eventId || null,
+    })
+  }, [cameraId, escalationSource, eventId, storeId])
+
+  useEffect(() => {
     if (!storeId || !runbookQ.data?.runbook || trackingSentRef.current) return
     trackingSentRef.current = true
     storesService.trackStoreEdgeUpdateRunbookOpened(storeId, {
@@ -38,6 +55,19 @@ const EdgeHelp = () => {
       // ignore telemetry errors on help page
     })
   }, [reasonCode, runbookQ.data?.runbook, storeId])
+
+  useEffect(() => {
+    if (!storeId || !runbookQ.data?.runbook || escalationCompletedRef.current) return
+    if (!escalationSource) return
+    escalationCompletedRef.current = true
+    void trackJourneyEvent("incident_escalate_completed", {
+      source: escalationSource,
+      store_id: storeId,
+      camera_id: cameraId || null,
+      event_id: eventId || null,
+      reason_code: runbookQ.data.runbook.reason_code || reasonCode || null,
+    })
+  }, [cameraId, escalationSource, eventId, reasonCode, runbookQ.data?.runbook, storeId])
 
   return (
     <div className="p-6 space-y-6">

@@ -13,6 +13,7 @@ import {
   type StoreVisionIngestionSummary,
 } from "../../services/stores"
 import { copilotService } from "../../services/copilot"
+import { trackJourneyEvent } from "../../services/journey"
 
 const ONLINE_MAX_AGE_SEC = 120
 
@@ -462,6 +463,35 @@ const StoreDetails = () => {
     window.dispatchEvent(
       new CustomEvent("dv-open-copilot", prompt ? { detail: { prompt } } : undefined)
     )
+  }
+
+  const buildEdgeEscalationUrl = (payload: {
+    storeId: string
+    cameraId?: string | null
+    eventId?: string | null
+    source: "store_details_alert" | "store_details_infra"
+  }) => {
+    const params = new URLSearchParams()
+    params.set("store_id", payload.storeId)
+    if (payload.cameraId) params.set("camera_id", payload.cameraId)
+    if (payload.eventId) params.set("event_id", payload.eventId)
+    params.set("source", payload.source)
+    return `/app/edge-help?${params.toString()}`
+  }
+
+  const escalateTechnical = (payload: {
+    storeId: string
+    cameraId?: string | null
+    eventId?: string | null
+    source: "store_details_alert" | "store_details_infra"
+  }) => {
+    void trackJourneyEvent("incident_escalate_clicked", {
+      source: payload.source,
+      store_id: payload.storeId,
+      camera_id: payload.cameraId || null,
+      event_id: payload.eventId || null,
+    })
+    window.location.assign(buildEdgeEscalationUrl(payload))
   }
 
   const staffMutation = useMutation({
@@ -1071,6 +1101,21 @@ const StoreDetails = () => {
                       <div className="text-xs text-gray-500 mt-2">
                         {alert.occurred_at ? new Date(alert.occurred_at).toLocaleString("pt-BR") : "—"}
                       </div>
+                      <div className="mt-3">
+                        <button
+                          type="button"
+                          onClick={() =>
+                            escalateTechnical({
+                              storeId: data.store.id,
+                              eventId: String(alert.id || ""),
+                              source: "store_details_alert",
+                            })
+                          }
+                          className="rounded-lg border border-amber-200 bg-amber-50 px-3 py-1.5 text-xs font-semibold text-amber-800 hover:bg-amber-100"
+                        >
+                          Escalar técnico
+                        </button>
+                      </div>
                     </li>
                   ))}
                 </ul>
@@ -1184,6 +1229,18 @@ const StoreDetails = () => {
                   Último erro registrado: {data.edge_health.last_error}
                 </div>
               )}
+              <button
+                type="button"
+                onClick={() =>
+                  escalateTechnical({
+                    storeId: data.store.id,
+                    source: "store_details_infra",
+                  })
+                }
+                className="rounded-lg border border-amber-200 bg-amber-50 px-3 py-2 text-xs font-semibold text-amber-800 hover:bg-amber-100"
+              >
+                Escalar incidente técnico
+              </button>
             </div>
           </div>
 

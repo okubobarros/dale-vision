@@ -11,6 +11,7 @@ import {
   useIngestAlert,
 } from "../../queries/alerts.queries"
 import { alertsService, type AlertIngestPayload } from "../../services/alerts"
+import { trackJourneyEvent } from "../../services/journey"
 import toast from "react-hot-toast"
 import { AlertsModuleTabs } from "../../components/Alerts/AlertsModuleTabs"
 
@@ -29,6 +30,7 @@ type AlertEvent = {
   status?: string
   occurred_at?: string
   created_at?: string
+  camera_id?: string | number | null
   media?: AlertMedia[]
   metadata?: AlertMetadata
 }
@@ -71,6 +73,12 @@ function normalizeArray<T>(input: unknown): T[] {
     if (Array.isArray(results)) return results as T[]
   }
   return []
+}
+
+const toOptionalString = (value: unknown) => {
+  if (value === null || value === undefined) return ""
+  const str = String(value).trim()
+  return str
 }
 
 export default function Alerts() {
@@ -247,6 +255,35 @@ export default function Alerts() {
     } finally {
       setDelegatingEventId(null)
     }
+  }
+
+  const getEscalationUrl = (event: AlertEvent) => {
+    const store = toOptionalString(event.store_id)
+    const camera = toOptionalString(event.camera_id)
+    const eventId = toOptionalString(event.id)
+    const params = new URLSearchParams()
+    if (store) params.set("store_id", store)
+    if (camera) params.set("camera_id", camera)
+    if (eventId) params.set("event_id", eventId)
+    params.set("source", "alerts")
+    return `/app/edge-help?${params.toString()}`
+  }
+
+  const handleEscalateTechnical = (event: AlertEvent) => {
+    const store = toOptionalString(event.store_id)
+    if (!store) {
+      toast.error("Não foi possível escalar: alerta sem loja vinculada.")
+      return
+    }
+    const camera = toOptionalString(event.camera_id)
+    const eventId = toOptionalString(event.id)
+    void trackJourneyEvent("incident_escalate_clicked", {
+      source: "alerts",
+      store_id: store,
+      camera_id: camera || null,
+      event_id: eventId || null,
+    })
+    window.location.assign(getEscalationUrl(event))
   }
 
   const filtered = useMemo(() => {
@@ -521,6 +558,13 @@ export default function Alerts() {
                   {e.status === "open" ? (
                     <>
                       <button
+                        className="rounded-lg border border-amber-200 bg-amber-50 px-3 py-2 text-sm font-semibold text-amber-800 hover:bg-amber-100"
+                        onClick={() => handleEscalateTechnical(e)}
+                        type="button"
+                      >
+                        Escalar técnico
+                      </button>
+                      <button
                         className="rounded-lg bg-green-600 px-3 py-2 text-sm font-semibold text-white hover:bg-green-700 disabled:opacity-60"
                         onClick={() => delegateToWhatsapp(e)}
                         disabled={delegatingEventId === String(e.id)}
@@ -721,6 +765,16 @@ export default function Alerts() {
             </div>
 
             <div className="flex flex-col gap-2 border-t border-gray-100 p-5 sm:flex-row sm:justify-end">
+              {selectedEvent?.status === "open" && (
+                <button
+                  className="rounded-xl border border-amber-200 bg-amber-50 px-4 py-2 text-sm font-semibold text-amber-800 hover:bg-amber-100"
+                  onClick={() => handleEscalateTechnical(selectedEvent)}
+                  type="button"
+                >
+                  Escalar técnico
+                </button>
+              )}
+
               {selectedEvent?.status === "open" && (
                 <button
                   className="rounded-xl bg-green-600 px-4 py-2 text-sm font-semibold text-white hover:bg-green-700 disabled:opacity-60"
