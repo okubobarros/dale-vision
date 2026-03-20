@@ -6,6 +6,7 @@ from rest_framework.test import APIRequestFactory, force_authenticate
 
 from apps.core.views_calibration import (
     CalibrationActionEvidenceCreateView,
+    CalibrationActionEvidenceListView,
     CalibrationActionListCreateView,
     CalibrationActionStatusView,
 )
@@ -155,3 +156,48 @@ class CalibrationActionEvidenceCreateViewTests(SimpleTestCase):
         self.assertEqual(response.status_code, 201)
         self.assertEqual(action.status, "in_progress")
         action.save.assert_called_once()
+
+
+class CalibrationActionEvidenceListViewTests(SimpleTestCase):
+    def setUp(self):
+        self.factory = APIRequestFactory()
+        self.view = CalibrationActionEvidenceListView.as_view()
+        self.user = SimpleNamespace(is_authenticated=True, is_staff=True, is_superuser=False, id=1)
+
+    @patch("apps.core.views_calibration.AuditLog.objects.create")
+    @patch("apps.core.views_calibration.supabase_storage.create_signed_url")
+    @patch("apps.core.views_calibration.CalibrationEvidence.objects")
+    @patch("apps.core.views_calibration.CalibrationAction.objects")
+    def test_list_returns_signed_urls(
+        self,
+        action_objects_mock,
+        evidence_objects_mock,
+        signed_url_mock,
+        _audit_mock,
+    ):
+        action = SimpleNamespace(id="00000000-0000-0000-0000-000000000001", org_id="org-1", store_id="store-1")
+        action_objects_mock.filter.return_value.first.return_value = action
+
+        evidence_row = SimpleNamespace(
+            id="evidence-1",
+            action_id=action.id,
+            snapshot_before_url=None,
+            snapshot_after_url=None,
+            clip_before_url=None,
+            clip_after_url=None,
+            captured_at=None,
+            captured_by_user_uuid=None,
+            notes=None,
+            metadata={"storage": {"snapshot_before_key": "org/store/cam/before.jpg"}},
+        )
+        evidence_objects_mock.filter.return_value.order_by.return_value.__getitem__.return_value = [evidence_row]
+        signed_url_mock.return_value = "https://signed.example/before"
+
+        request = self.factory.get("/api/v1/calibration/actions/00000000-0000-0000-0000-000000000001/evidences/")
+        force_authenticate(request, user=self.user)
+        response = self.view(request, action_id="00000000-0000-0000-0000-000000000001")
+
+        self.assertEqual(response.status_code, 200)
+        self.assertEqual(response.data["total"], 1)
+        self.assertEqual(response.data["items"][0]["snapshot_before_signed_url"], "https://signed.example/before")
+        signed_url_mock.assert_called_once()

@@ -55,6 +55,7 @@ export default function CalibrationActions() {
   const [statusFilter, setStatusFilter] = useState<string>("all")
   const [storeFilter, setStoreFilter] = useState<string>("all")
   const [activeEvidenceActionId, setActiveEvidenceActionId] = useState<string | null>(null)
+  const [viewEvidenceActionId, setViewEvidenceActionId] = useState<string | null>(null)
   const [activeResultActionId, setActiveResultActionId] = useState<string | null>(null)
   const [evidenceForm, setEvidenceForm] = useState({
     snapshotBeforeUrl: "",
@@ -95,6 +96,16 @@ export default function CalibrationActions() {
         store_id: storeFilter === "all" ? undefined : storeFilter,
       }),
     refetchInterval: 60_000,
+  })
+
+  const evidenceListQuery = useQuery({
+    queryKey: ["calibration", "action-evidences", viewEvidenceActionId],
+    queryFn: () =>
+      adminService.getCalibrationEvidences(String(viewEvidenceActionId), {
+        limit: 10,
+        expires_seconds: 300,
+      }),
+    enabled: Boolean(viewEvidenceActionId),
   })
 
   const patchActionMutation = useMutation({
@@ -184,6 +195,29 @@ export default function CalibrationActions() {
   const formatNumber = (value?: number | null) => {
     if (value === null || value === undefined || Number.isNaN(value)) return "—"
     return new Intl.NumberFormat("pt-BR", { maximumFractionDigits: 2 }).format(value)
+  }
+
+  const resolveEvidenceUrl = (item: {
+    snapshot_before_signed_url?: string | null
+    snapshot_after_signed_url?: string | null
+    clip_before_signed_url?: string | null
+    clip_after_signed_url?: string | null
+    snapshot_before_url?: string | null
+    snapshot_after_url?: string | null
+    clip_before_url?: string | null
+    clip_after_url?: string | null
+  }) => {
+    return (
+      item.snapshot_after_signed_url ||
+      item.snapshot_before_signed_url ||
+      item.clip_after_signed_url ||
+      item.clip_before_signed_url ||
+      item.snapshot_after_url ||
+      item.snapshot_before_url ||
+      item.clip_after_url ||
+      item.clip_before_url ||
+      null
+    )
   }
 
   return (
@@ -376,6 +410,7 @@ export default function CalibrationActions() {
                             type="button"
                             onClick={() => {
                               setActiveEvidenceActionId(row.id)
+                              setViewEvidenceActionId(null)
                               setActiveResultActionId(null)
                             }}
                             className="rounded-lg border border-blue-300 px-2 py-1 text-xs font-semibold text-blue-700 hover:bg-blue-50"
@@ -385,8 +420,20 @@ export default function CalibrationActions() {
                           <button
                             type="button"
                             onClick={() => {
+                              setViewEvidenceActionId((current) => (current === row.id ? null : row.id))
+                              setActiveEvidenceActionId(null)
+                              setActiveResultActionId(null)
+                            }}
+                            className="rounded-lg border border-slate-300 px-2 py-1 text-xs font-semibold text-slate-700 hover:bg-slate-50"
+                          >
+                            Ver evidências
+                          </button>
+                          <button
+                            type="button"
+                            onClick={() => {
                               setActiveResultActionId(row.id)
                               setActiveEvidenceActionId(null)
+                              setViewEvidenceActionId(null)
                             }}
                             className="rounded-lg border border-indigo-300 px-2 py-1 text-xs font-semibold text-indigo-700 hover:bg-indigo-50"
                           >
@@ -460,6 +507,51 @@ export default function CalibrationActions() {
                             >
                               Cancelar
                             </button>
+                          </div>
+                        </td>
+                      </tr>
+                    ) : null}
+                    {viewEvidenceActionId === row.id ? (
+                      <tr>
+                        <td className="px-3 py-3" colSpan={7}>
+                          <div className="rounded-lg border border-gray-200 bg-gray-50 p-3">
+                            {evidenceListQuery.isLoading ? (
+                              <div className="text-sm text-gray-600">Carregando evidências...</div>
+                            ) : (evidenceListQuery.data?.items || []).length === 0 ? (
+                              <div className="text-sm text-gray-600">Sem evidências para esta ação.</div>
+                            ) : (
+                              <div className="space-y-2">
+                                {(evidenceListQuery.data?.items || []).map((item) => {
+                                  const evidenceUrl = resolveEvidenceUrl(item)
+                                  return (
+                                    <div
+                                      key={item.id}
+                                      className="flex flex-wrap items-center justify-between gap-2 rounded-lg border border-gray-200 bg-white p-2 text-xs"
+                                    >
+                                      <div className="text-gray-700">
+                                        <span className="font-semibold">Capturado:</span>{" "}
+                                        {formatDateTime(item.captured_at)}
+                                      </div>
+                                      <div className="text-gray-700">
+                                        <span className="font-semibold">Obs:</span> {item.notes || "—"}
+                                      </div>
+                                      {evidenceUrl ? (
+                                        <a
+                                          href={evidenceUrl}
+                                          target="_blank"
+                                          rel="noreferrer"
+                                          className="rounded border border-indigo-300 px-2 py-1 font-semibold text-indigo-700 hover:bg-indigo-50"
+                                        >
+                                          Abrir evidência
+                                        </a>
+                                      ) : (
+                                        <span className="text-gray-500">Sem URL disponível</span>
+                                      )}
+                                    </div>
+                                  )
+                                })}
+                              </div>
+                            )}
                           </div>
                         </td>
                       </tr>

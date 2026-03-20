@@ -95,6 +95,10 @@ export type CalibrationEvidencePayload = {
   snapshot_after_url?: string
   clip_before_url?: string
   clip_after_url?: string
+  snapshot_before_key?: string
+  snapshot_after_key?: string
+  clip_before_key?: string
+  clip_after_key?: string
   captured_at?: string
   notes?: string
   metadata?: Record<string, unknown>
@@ -107,10 +111,27 @@ export type CalibrationEvidenceResponse = {
   snapshot_after_url?: string | null
   clip_before_url?: string | null
   clip_after_url?: string | null
+  snapshot_before_signed_url?: string | null
+  snapshot_after_signed_url?: string | null
+  clip_before_signed_url?: string | null
+  clip_after_signed_url?: string | null
   captured_at?: string | null
   captured_by_user_uuid?: string | null
   notes?: string | null
+  storage?: {
+    snapshot_before_key?: string | null
+    snapshot_after_key?: string | null
+    clip_before_key?: string | null
+    clip_after_key?: string | null
+  }
   metadata?: Record<string, unknown>
+}
+
+export type CalibrationEvidenceListResponse = {
+  action_id: string
+  total: number
+  expires_seconds: number
+  items: CalibrationEvidenceResponse[]
 }
 
 export type CalibrationResultPayload = {
@@ -335,6 +356,18 @@ export const adminService = {
       noRetry: true,
     })
     return response.data as CalibrationEvidenceResponse
+  },
+
+  async getCalibrationEvidences(
+    actionId: string,
+    params?: { limit?: number; expires_seconds?: number }
+  ): Promise<CalibrationEvidenceListResponse> {
+    const response = await api.get(`/v1/calibration/actions/${actionId}/evidences/`, {
+      params: params || undefined,
+      timeoutCategory: "best-effort",
+      noRetry: true,
+    })
+    return response.data as CalibrationEvidenceListResponse
   },
 
   async createCalibrationResult(

@@ -106,6 +106,24 @@
 - Papel do MediaPipe: estimar postura/atividade (evitar contar staff parado como ativo).
 - Sinal de qualidade: concordância com observação manual por amostragem.
 
+6. Clima de atendimento (expressões/sentimentos agregados) - pedido de early user (moda)
+- Objetivo de produto:
+  - oferecer leitura agregada de "fricção vs conforto" na jornada da loja, sem identificar indivíduo.
+- Modelos/técnicas:
+  - YOLO para detecção de face/pessoa em contexto de zona;
+  - modelo de expressão facial em classes amplas (neutro/positivo/frustração), com saída probabilística;
+  - MediaPipe Face Mesh opcional para estabilizar landmarks em câmeras de baixa angulação.
+- Saída permitida:
+  - índice agregado por faixa de tempo e zona (`sentiment_balance_index`, `friction_moments_rate`);
+  - nunca perfil individual, nunca trilha por pessoa.
+- Guardrails LGPD:
+  - proibido face recognition e proibido embedding biométrico persistente;
+  - persistência apenas de agregados e eventos anonimizados por janela;
+  - snapshots para calibração com retenção curta, acesso RBAC e auditoria;
+  - consentimento/aviso operacional no cliente (base legal e finalidade explícita).
+- Status:
+  - métrica classificada como `proxy_experimental` até concluir validação jurídica + baseline técnico.
+
 ## Recomendação de rollout de modelo
 - Fase 1 (rápida): YOLO + tracking + regras espaciais robustas.
 - Fase 2 (precisão): MediaPipe em câmeras críticas (caixa e salão).
@@ -214,6 +232,14 @@
 - Evidência para calibração/incidente: 90 dias (com justificativa).
 - Anonimização/masking se necessário por LGPD.
 
+5. Evidências multi-tenant (status atual)
+- Endpoint de leitura segura por ação já disponível:
+  - `GET /api/v1/calibration/actions/{action_id}/evidences/`
+- Comportamento:
+  - aplica RBAC por org/store;
+  - gera signed URL curta (TTL 60-900s) quando houver `storage_key`;
+  - registra trilha de auditoria de acesso (`calibration.evidence_list_viewed`).
+
 ## Backlog executável (próximos 14 dias)
 1. CV/ROI
 - Criar checklist de posicionamento por tipo de câmera (entrada, caixa, salão).
@@ -236,6 +262,13 @@
   - Admin interno (control tower global);
   - Cliente (somente sua operação e recomendações).
 - Expor módulo "Ações recomendadas" para cliente confirmar execução e solicitar nova validação.
+
+5. Pedido early user (moda) - sentimento/expressão com compliance
+- Criar ADR de privacidade para "sentimento agregado em loja" (sem biometria identificável).
+- Definir contrato de dados de sentimento:
+  - campos permitidos, retenção, base legal, trilha de auditoria.
+- Implementar painel piloto por zona/horário com rótulo `proxy_experimental`.
+- Validar custo inferência vs ganho operacional antes de promover para `official`.
 
 ## Critérios de sucesso para sair de score 55 -> 95
 - `first_metrics_received` em 100% das lojas com ingestão ativa.

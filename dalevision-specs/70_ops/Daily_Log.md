@@ -21,6 +21,11 @@ Registrar decisões e eventos do dia.
     - Admin SaaS com backlog de calibração ativo;
     - tela cliente `/app/calibration` com atualização de status, envio de evidência e registro de resultado.
   - Plano e análise CV/MLOps multi-cliente documentados e alinhados com jornada de produto.
+  - Multi-tenant de evidências avançou:
+    - `GET /api/v1/calibration/actions/{action_id}/evidences/` com RBAC por org/store;
+    - signed URL curta por evidência quando `storage_key` estiver presente;
+    - auditoria de leitura criada em `audit_logs` para rastreabilidade.
+  - Backlog atualizado com pedido de early user (varejo moda) para métrica de expressão/sentimento em formato agregado e com guardrails LGPD.
 - Bloqueios:
   - Ainda falta validação ampla multi-loja com amostra maior para medir ganho médio por tipo de ação.
 - Decisões:

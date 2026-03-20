@@ -44,6 +44,8 @@ Dar ao time interno Dale Vision capacidade de operar a plataforma multi-tenant c
 5. Como `SaaS Admin`, quero acompanhar null-rate e cobertura por loja para manter confianca das decisoes.
 6. Como `SaaS Admin`, quero monitorar risco de trial/billing para evitar bloqueio indevido e perda de receita.
 7. Como `SaaS Admin`, quero fechar o dia com backlog priorizado e SLA claro para o proximo ciclo.
+8. Como `SaaS Admin`, quero abrir evidencias de calibracao por loja/camera com signed URL curta e trilha de auditoria para operar em ambiente multi-tenant com seguranca.
+9. Como `SaaS Admin`, quero acompanhar metrica experimental de clima de atendimento (sentimento agregado) sem biometria identificavel, para orientar melhoria operacional com compliance.
 
 ## KPIs da jornada
 - MTTR de incidentes criticos (meta: <= 30 min).
@@ -56,6 +58,8 @@ Dar ao time interno Dale Vision capacidade de operar a plataforma multi-tenant c
 - Multiplicidade de fontes sem visao unica: consolidacao em `/app/admin` como fonte primaria.
 - Gaps entre CV e funil de produto: reconciliacao integrada e reprocessamento assistido.
 - Acao corretiva sem prova de impacto: obrigatoriedade de evidencia antes/depois no backlog de calibracao.
+- Risco de acesso indevido a midia entre clientes: RBAC por org/store + signed URL curta + auditoria de visualizacao.
+- Risco de uso indevido de analise facial: usar apenas agregados anonimos e classificar como `proxy_experimental` ate validacao juridica e tecnica.
 
 ## Alinhamento com a documentacao
 - Mantem arquitetura orientada a eventos (edge -> ingestao -> KPI -> alerta -> acao).

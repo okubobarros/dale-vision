@@ -12,7 +12,9 @@ from rest_framework.permissions import IsAuthenticated
 from rest_framework.response import Response
 from rest_framework.views import APIView
 
+from apps.core.integrations import supabase_storage
 from apps.core.models import (
+    AuditLog,
     CalibrationAction,
     CalibrationEvidence,
     CalibrationResult,
@@ -88,6 +90,8 @@ def _serialize_action(row: CalibrationAction) -> dict:
 
 
 def _serialize_evidence(row: CalibrationEvidence) -> dict:
+    metadata = row.metadata or {}
+    storage_meta = metadata.get("storage") if isinstance(metadata.get("storage"), dict) else {}
     return {
         "id": str(row.id),
         "action_id": str(row.action_id),
@@ -98,7 +102,13 @@ def _serialize_evidence(row: CalibrationEvidence) -> dict:
         "captured_at": row.captured_at.isoformat() if row.captured_at else None,
         "captured_by_user_uuid": str(row.captured_by_user_uuid) if row.captured_by_user_uuid else None,
         "notes": row.notes,
-        "metadata": row.metadata or {},
+        "metadata": metadata,
+        "storage": {
+            "snapshot_before_key": storage_meta.get("snapshot_before_key"),
+            "snapshot_after_key": storage_meta.get("snapshot_after_key"),
+            "clip_before_key": storage_meta.get("clip_before_key"),
+            "clip_after_key": storage_meta.get("clip_after_key"),
+        },
     }
 
 
@@ -145,6 +155,70 @@ def _resolve_period_window(raw_period: str | None):
     if period == "90d":
         return now - timedelta(days=90), now, "90d"
     return now - timedelta(days=30), now, "30d"
+
+
+def _assert_action_scope(user, action: CalibrationAction) -> None:
+    if _is_internal_admin(user):
+        return
+    org_scope = {str(item) for item in get_user_org_ids(user)}
+    if str(action.org_id) not in org_scope:
+        raise PermissionError("forbidden")
+
+
+def _safe_media_storage_key(raw_key: str | None) -> str | None:
+    value = str(raw_key or "").strip()
+    if not value:
+        return None
+    return value.lstrip("/")
+
+
+def _build_signed_media_url(raw_url: str | None, storage_key: str | None, expires_seconds: int) -> str | None:
+    if storage_key:
+        try:
+            return supabase_storage.create_signed_url(storage_key, expires_seconds=expires_seconds)
+        except Exception:
+            return raw_url
+    return raw_url
+
+
+def _serialize_evidence_with_signed_urls(row: CalibrationEvidence, *, expires_seconds: int) -> dict:
+    base = _serialize_evidence(row)
+    storage = base.get("storage") if isinstance(base.get("storage"), dict) else {}
+    base["snapshot_before_signed_url"] = _build_signed_media_url(
+        base.get("snapshot_before_url"),
+        storage.get("snapshot_before_key"),
+        expires_seconds,
+    )
+    base["snapshot_after_signed_url"] = _build_signed_media_url(
+        base.get("snapshot_after_url"),
+        storage.get("snapshot_after_key"),
+        expires_seconds,
+    )
+    base["clip_before_signed_url"] = _build_signed_media_url(
+        base.get("clip_before_url"),
+        storage.get("clip_before_key"),
+        expires_seconds,
+    )
+    base["clip_after_signed_url"] = _build_signed_media_url(
+        base.get("clip_after_url"),
+        storage.get("clip_after_key"),
+        expires_seconds,
+    )
+    return base
+
+
+def _log_audit(action: CalibrationAction, user, *, event: str, payload: dict | None = None) -> None:
+    try:
+        AuditLog.objects.create(
+            org_id=action.org_id,
+            store_id=action.store_id,
+            actor_user_id=_safe_uuid(_safe_user_uuid(user)),
+            action=event,
+            payload=payload or {},
+            created_at=timezone.now(),
+        )
+    except Exception:
+        return
 
 
 class CalibrationActionListCreateView(APIView):
@@ -289,10 +363,10 @@ class CalibrationActionStatusView(APIView):
         if not row:
             return Response({"detail": "Ação não encontrada."}, status=status.HTTP_404_NOT_FOUND)
 
-        if not _is_internal_admin(request.user):
-            org_scope = {str(item) for item in get_user_org_ids(request.user)}
-            if str(row.org_id) not in org_scope:
-                return Response({"detail": "Sem permissão para esta ação."}, status=status.HTTP_403_FORBIDDEN)
+        try:
+            _assert_action_scope(request.user, row)
+        except PermissionError:
+            return Response({"detail": "Sem permissão para esta ação."}, status=status.HTTP_403_FORBIDDEN)
 
         payload = request.data or {}
         status_value = str(payload.get("status") or "").strip().lower()
@@ -336,21 +410,45 @@ class CalibrationActionEvidenceCreateView(APIView):
         if not action:
             return Response({"detail": "Ação não encontrada."}, status=status.HTTP_404_NOT_FOUND)
 
-        if not _is_internal_admin(request.user):
-            org_scope = {str(item) for item in get_user_org_ids(request.user)}
-            if str(action.org_id) not in org_scope:
-                return Response({"detail": "Sem permissão para esta ação."}, status=status.HTTP_403_FORBIDDEN)
+        try:
+            _assert_action_scope(request.user, action)
+        except PermissionError:
+            return Response({"detail": "Sem permissão para esta ação."}, status=status.HTTP_403_FORBIDDEN)
 
         payload = request.data or {}
         snapshot_before_url = str(payload.get("snapshot_before_url") or "").strip() or None
         snapshot_after_url = str(payload.get("snapshot_after_url") or "").strip() or None
         clip_before_url = str(payload.get("clip_before_url") or "").strip() or None
         clip_after_url = str(payload.get("clip_after_url") or "").strip() or None
+        snapshot_before_key = _safe_media_storage_key(payload.get("snapshot_before_key"))
+        snapshot_after_key = _safe_media_storage_key(payload.get("snapshot_after_key"))
+        clip_before_key = _safe_media_storage_key(payload.get("clip_before_key"))
+        clip_after_key = _safe_media_storage_key(payload.get("clip_after_key"))
         captured_at = _parse_iso_datetime(payload.get("captured_at")) or timezone.now()
         notes = str(payload.get("notes") or "").strip() or None
         metadata = payload.get("metadata") if isinstance(payload.get("metadata"), dict) else {}
+        storage_meta = metadata.get("storage") if isinstance(metadata.get("storage"), dict) else {}
+        if snapshot_before_key:
+            storage_meta["snapshot_before_key"] = snapshot_before_key
+        if snapshot_after_key:
+            storage_meta["snapshot_after_key"] = snapshot_after_key
+        if clip_before_key:
+            storage_meta["clip_before_key"] = clip_before_key
+        if clip_after_key:
+            storage_meta["clip_after_key"] = clip_after_key
+        if storage_meta:
+            metadata["storage"] = storage_meta
 
-        if not snapshot_before_url and not snapshot_after_url and not clip_before_url and not clip_after_url:
+        if (
+            not snapshot_before_url
+            and not snapshot_after_url
+            and not clip_before_url
+            and not clip_after_url
+            and not snapshot_before_key
+            and not snapshot_after_key
+            and not clip_before_key
+            and not clip_after_key
+        ):
             return Response(
                 {"detail": "Informe pelo menos uma evidência (snapshot/clip before/after)."},
                 status=status.HTTP_400_BAD_REQUEST,
@@ -373,7 +471,59 @@ class CalibrationActionEvidenceCreateView(APIView):
             action.status = "in_progress"
             action.updated_at = timezone.now()
             action.save(update_fields=["status", "updated_at"])
-        return Response(_serialize_evidence(row), status=status.HTTP_201_CREATED)
+        _log_audit(
+            action,
+            request.user,
+            event="calibration.evidence_created",
+            payload={"action_id": str(action.id), "evidence_id": str(row.id)},
+        )
+        return Response(_serialize_evidence_with_signed_urls(row, expires_seconds=300), status=status.HTTP_201_CREATED)
+
+
+class CalibrationActionEvidenceListView(APIView):
+    permission_classes = [IsAuthenticated]
+
+    def get(self, request, action_id):
+        action = CalibrationAction.objects.filter(id=action_id).first()
+        if not action:
+            return Response({"detail": "Ação não encontrada."}, status=status.HTTP_404_NOT_FOUND)
+
+        try:
+            _assert_action_scope(request.user, action)
+        except PermissionError:
+            return Response({"detail": "Sem permissão para esta ação."}, status=status.HTTP_403_FORBIDDEN)
+
+        try:
+            limit = int(request.GET.get("limit") or 20)
+        except Exception:
+            limit = 20
+        limit = max(1, min(limit, 100))
+        try:
+            expires_seconds = int(request.GET.get("expires_seconds") or 300)
+        except Exception:
+            expires_seconds = 300
+        expires_seconds = max(60, min(expires_seconds, 900))
+
+        rows = list(
+            CalibrationEvidence.objects.filter(action_id=action.id).order_by("-captured_at", "-created_at")[:limit]
+        )
+        items = [_serialize_evidence_with_signed_urls(row, expires_seconds=expires_seconds) for row in rows]
+
+        _log_audit(
+            action,
+            request.user,
+            event="calibration.evidence_list_viewed",
+            payload={"action_id": str(action.id), "items_total": len(items), "expires_seconds": expires_seconds},
+        )
+        return Response(
+            {
+                "action_id": str(action.id),
+                "total": len(items),
+                "expires_seconds": expires_seconds,
+                "items": items,
+            },
+            status=status.HTTP_200_OK,
+        )
 
 
 class CalibrationActionResultCreateView(APIView):
@@ -384,10 +534,10 @@ class CalibrationActionResultCreateView(APIView):
         if not action:
             return Response({"detail": "Ação não encontrada."}, status=status.HTTP_404_NOT_FOUND)
 
-        if not _is_internal_admin(request.user):
-            org_scope = {str(item) for item in get_user_org_ids(request.user)}
-            if str(action.org_id) not in org_scope:
-                return Response({"detail": "Sem permissão para esta ação."}, status=status.HTTP_403_FORBIDDEN)
+        try:
+            _assert_action_scope(request.user, action)
+        except PermissionError:
+            return Response({"detail": "Sem permissão para esta ação."}, status=status.HTTP_403_FORBIDDEN)
 
         payload = request.data or {}
         metric_name = str(payload.get("metric_name") or "").strip()

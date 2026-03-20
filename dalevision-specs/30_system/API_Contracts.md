@@ -83,6 +83,7 @@ Notas de payload (stores):
 - `GET|POST /api/v1/calibration/actions/`
 - `PATCH /api/v1/calibration/actions/{action_id}/`
 - `POST /api/v1/calibration/actions/{action_id}/evidence/`
+- `GET /api/v1/calibration/actions/{action_id}/evidences/` (query: `limit`, `expires_seconds`)
 - `POST /api/v1/calibration/actions/{action_id}/result/`
 
 - `GET|POST /api/alerts/alert-rules/`
@@ -210,6 +211,17 @@ Resposta de `me/admin/cv-quality-baseline`:
   - `pass_rate`
   - `avg_delta`
   - `latest_validated_at`
+
+Resposta de `calibration/actions/{action_id}/evidences`:
+- `action_id`, `total`, `expires_seconds`
+- `items[]`:
+  - `snapshot_before_url|snapshot_after_url|clip_before_url|clip_after_url` (valor persistido)
+  - `snapshot_before_signed_url|snapshot_after_signed_url|clip_before_signed_url|clip_after_signed_url` (URL pronta para visualizacao)
+  - `storage.snapshot_before_key|snapshot_after_key|clip_before_key|clip_after_key`
+- Seguranca:
+  - RBAC por org/store;
+  - signed URL com TTL curta (`60-900s`);
+  - auditoria de leitura via `audit_logs`.
 
 Contrato de eventos de jornada (`JourneyEvent`):
 - Eventos críticos com campos obrigatórios (`signup_completed`, `store_created`, `camera_added`, `roi_saved`, `first_metrics_received`) têm validação de payload no backend.

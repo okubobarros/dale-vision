@@ -134,6 +134,20 @@ Owners sugeridos:
 - Aceite:
   - comportamento aplicado em dashboard/reports sem inconsistencias.
 
+### S3-06 - Sentimento agregado em loja com guardrails LGPD
+- Prioridade: `P1`
+- Esforco: `L`
+- Owner: `CV + PM + BE`
+- Dependencias: parecer juridico interno + contrato de dados de privacidade
+- Status: `todo`
+- Entrega:
+  - indice agregado por zona/horario (`sentiment_balance_index`, `friction_moments_rate`);
+  - sem identificacao individual e sem biometria persistente;
+  - trilha auditavel de acesso a evidencias de calibracao.
+- Aceite:
+  - ADR de privacidade aprovado;
+  - metrica publicada como `proxy_experimental` com limites claros de uso.
+
 ---
 
 ## Sprint 4 (auto-update edge + rollout seguro)
@@ -227,7 +241,8 @@ Owners sugeridos:
 ### Em seguida
 1. `S3-01` Playbook de labeling por segmento.
 2. `S3-03` Gate formal de avaliacao de modelo.
-3. `S4-02` Rollout canary com health gate.
+3. `S3-06` Sentimento agregado em loja com guardrails LGPD.
+4. `S4-02` Rollout canary com health gate.
 
 ---
 
