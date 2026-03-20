@@ -14,7 +14,7 @@ from rest_framework.response import Response
 from rest_framework.views import APIView
 
 from apps.cameras.permissions import ALLOWED_MANAGE_ROLES, ALLOWED_READ_ROLES, require_store_role
-from apps.core.models import Store
+from apps.core.models import DetectionEvent, Store
 from apps.stores.services.user_uuid import ensure_user_uuid
 from apps.stores.services.user_orgs import get_user_org_ids
 
@@ -130,6 +130,193 @@ def _is_valid_n8n_service_token(request) -> bool:
         or ""
     ).strip()
     return bool(expected and provided and compare_digest(expected, provided))
+
+
+def _build_daily_briefing_payload(
+    *,
+    org_ids: list[str] | None = None,
+    store_id=None,
+    store_name: str | None = None,
+):
+    today = timezone.localdate()
+
+    ledger_qs = ValueLedgerDaily.objects.filter(ledger_date=today)
+    outcomes_qs = ActionOutcome.objects.filter(dispatched_at__date=today)
+    critical_events_qs = DetectionEvent.objects.filter(status="open", severity="critical")
+
+    if org_ids:
+        ledger_qs = ledger_qs.filter(org_id__in=org_ids)
+        outcomes_qs = outcomes_qs.filter(org_id__in=org_ids)
+        critical_events_qs = critical_events_qs.filter(org_id__in=org_ids)
+    if store_id:
+        ledger_qs = ledger_qs.filter(store_id=store_id)
+        outcomes_qs = outcomes_qs.filter(store_id=store_id)
+        critical_events_qs = critical_events_qs.filter(store_id=store_id)
+
+    ledger_totals = ledger_qs.aggregate(
+        value_recovered=Sum("value_recovered_brl"),
+        value_at_risk=Sum("value_at_risk_brl"),
+        actions_dispatched=Sum("actions_dispatched"),
+        actions_completed=Sum("actions_completed"),
+    )
+    outcomes_totals = outcomes_qs.aggregate(
+        actions_total=Count("id"),
+        completed_total=Sum(
+            models.Case(
+                models.When(status="completed", then=1),
+                default=0,
+                output_field=models.IntegerField(),
+            )
+        ),
+    )
+
+    value_recovered_brl = float(ledger_totals.get("value_recovered") or 0)
+    value_at_risk_brl = float(ledger_totals.get("value_at_risk") or 0)
+    actions_dispatched = int(ledger_totals.get("actions_dispatched") or outcomes_totals.get("actions_total") or 0)
+    actions_completed = int(ledger_totals.get("actions_completed") or outcomes_totals.get("completed_total") or 0)
+    critical_open_total = int(critical_events_qs.count() or 0)
+
+    completion_rate = (
+        round((actions_completed / actions_dispatched) * 100, 1)
+        if actions_dispatched > 0
+        else 0.0
+    )
+    value_net_gap_brl = max(0.0, round(value_at_risk_brl - value_recovered_brl, 2))
+
+    if critical_open_total > 0 or value_net_gap_brl >= 1000:
+        briefing_state = "critical"
+        headline = (
+            f"{critical_open_total} alerta(s) crítico(s) em aberto"
+            if critical_open_total > 0
+            else "Risco financeiro elevado detectado na operação"
+        )
+        message = (
+            "Priorize intervenção imediata para conter perda de conversão e estabilizar atendimento."
+        )
+        if store_id:
+            href = f"/app/alerts?store_id={store_id}"
+        else:
+            href = "/app/alerts"
+        cta_label = "Resolver alertas críticos"
+    elif value_net_gap_brl > 0 or (actions_dispatched > 0 and completion_rate < 60):
+        briefing_state = "attention"
+        headline = "Oportunidades de recuperação em aberto hoje"
+        message = (
+            "Há ações pendentes com potencial de recuperar valor no turno. "
+            "Priorize execução nas lojas com maior impacto."
+        )
+        if store_id:
+            href = f"/app/operations/stores/{store_id}"
+        else:
+            href = "/app/operations"
+        cta_label = "Priorizar execução"
+    else:
+        briefing_state = "calm"
+        headline = "Operação estável agora"
+        message = (
+            "A rede está sob controle. Use este momento para revisar metas e capturar novas oportunidades."
+        )
+        if store_id:
+            href = f"/app/reports?store_id={store_id}"
+        else:
+            href = "/app/reports"
+        cta_label = "Revisar evolução"
+
+    moment_of_pride = {
+        "show": bool(
+            (value_recovered_brl >= value_at_risk_brl and actions_completed >= 3)
+            or value_recovered_brl >= 1500
+        ),
+        "title": "Momento de orgulho",
+        "description": (
+            f"Hoje você recuperou R$ {value_recovered_brl:.2f} em valor operacional."
+            if value_recovered_brl > 0
+            else "Sem valor recuperado registrado até o momento."
+        ),
+    }
+
+    return {
+        "generated_at": timezone.now().isoformat(),
+        "briefing_state": briefing_state,
+        "headline": headline,
+        "message": message,
+        "store_id": str(store_id) if store_id else None,
+        "store_name": store_name,
+        "metrics": {
+            "critical_open_total": critical_open_total,
+            "actions_dispatched": actions_dispatched,
+            "actions_completed": actions_completed,
+            "completion_rate": completion_rate,
+            "value_recovered_brl": value_recovered_brl,
+            "value_at_risk_brl": value_at_risk_brl,
+            "value_net_gap_brl": value_net_gap_brl,
+        },
+        "cta": {
+            "label": cta_label,
+            "href": href,
+        },
+        "moment_of_pride": moment_of_pride,
+    }
+
+
+class CopilotDailyBriefingView(APIView):
+    permission_classes = [IsAuthenticated]
+
+    def get(self, request):
+        store_id_raw = str(request.query_params.get("store_id") or "").strip()
+        org_ids = list(get_user_org_ids(request.user))
+        is_internal = bool(
+            getattr(request.user, "is_staff", False)
+            or getattr(request.user, "is_superuser", False)
+        )
+
+        if store_id_raw:
+            store, err = _get_store_or_404(store_id_raw)
+            if err:
+                return err
+            require_store_role(request.user, str(store.id), ALLOWED_READ_ROLES)
+            payload = _build_daily_briefing_payload(
+                org_ids=[str(store.org_id)],
+                store_id=store.id,
+                store_name=store.name,
+            )
+            return Response(payload, status=status.HTTP_200_OK)
+
+        if not org_ids and not is_internal:
+            return Response(
+                {
+                    "generated_at": timezone.now().isoformat(),
+                    "briefing_state": "calm",
+                    "headline": "Sem escopo de loja para briefing",
+                    "message": "Nenhuma organização vinculada ao usuário para compor recomendações.",
+                    "store_id": None,
+                    "store_name": None,
+                    "metrics": {
+                        "critical_open_total": 0,
+                        "actions_dispatched": 0,
+                        "actions_completed": 0,
+                        "completion_rate": 0.0,
+                        "value_recovered_brl": 0.0,
+                        "value_at_risk_brl": 0.0,
+                        "value_net_gap_brl": 0.0,
+                    },
+                    "cta": {
+                        "label": "Selecionar loja",
+                        "href": "/app/operations/stores",
+                    },
+                    "moment_of_pride": {
+                        "show": False,
+                        "title": "Momento de orgulho",
+                        "description": "Sem dados suficientes para celebrar progresso hoje.",
+                    },
+                },
+                status=status.HTTP_200_OK,
+            )
+
+        payload = _build_daily_briefing_payload(
+            org_ids=[str(org_id) for org_id in org_ids] if org_ids else None
+        )
+        return Response(payload, status=status.HTTP_200_OK)
 
 
 class CopilotDashboardContextView(APIView):

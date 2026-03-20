@@ -3,6 +3,7 @@ import type {
   CopilotActionOutcome,
   CopilotActionOutcomeListResponse,
   CopilotConversationMessage,
+  CopilotDailyBriefing,
   CopilotDashboardContext,
   CopilotValueLedgerDailyResponse,
   CopilotOperationalInsight,
@@ -13,6 +14,15 @@ import type {
 // Contratos para evolução do Copiloto como camada central da operação.
 // Endpoints ainda podem estar em construção no backend; manter chamadas isoladas aqui.
 export const copilotService = {
+  async getDailyBriefing(options?: { storeId?: string }): Promise<CopilotDailyBriefing> {
+    const response = await api.get("/v1/copilot/daily-briefing/", {
+      params: options?.storeId ? { store_id: options.storeId } : undefined,
+      timeoutCategory: "best-effort",
+      noRetry: true,
+    })
+    return response.data as CopilotDailyBriefing
+  },
+
   async getDashboardContext(storeId: string): Promise<CopilotDashboardContext> {
     const response = await api.get(`/v1/copilot/stores/${storeId}/context/`)
     return response.data as CopilotDashboardContext

@@ -28,6 +28,33 @@ export interface CopilotDashboardContext {
   generated_at: string
 }
 
+export interface CopilotDailyBriefing {
+  generated_at: string
+  briefing_state: "calm" | "attention" | "critical" | string
+  headline: string
+  message: string
+  store_id?: string | null
+  store_name?: string | null
+  metrics: {
+    critical_open_total: number
+    actions_dispatched: number
+    actions_completed: number
+    completion_rate: number
+    value_recovered_brl: number
+    value_at_risk_brl: number
+    value_net_gap_brl: number
+  }
+  cta: {
+    label: string
+    href: string
+  }
+  moment_of_pride?: {
+    show: boolean
+    title: string
+    description: string
+  }
+}
+
 export interface CopilotOperationalInsight {
   id: string
   org_id: string

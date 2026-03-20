@@ -30,7 +30,7 @@ import {
   type OnboardingNextStepResponse,
 } from "../../services/onboarding"
 import { copilotService } from "../../services/copilot"
-import type { CopilotValueLedgerDailyResponse } from "../../types/copilot"
+import type { CopilotDailyBriefing, CopilotValueLedgerDailyResponse } from "../../types/copilot"
 import { meService } from "../../services/me"
 import { salesService, type RevenueProgressData } from "../../services/sales"
 import { getDashboardExperience } from "./dashboardExperience"
@@ -414,6 +414,16 @@ const Dashboard = () => {
     queryFn: () => meService.getReportSummary(undefined, { period: networkPeriod }),
     enabled: canFetchAuth && isNetworkMode,
     staleTime: 30000,
+    retry: false,
+  })
+  const { data: dailyBriefing } = useQuery<CopilotDailyBriefing>({
+    queryKey: ["copilot-daily-briefing", isNetworkMode ? "network" : selectedStore],
+    queryFn: () =>
+      isNetworkMode
+        ? copilotService.getDailyBriefing()
+        : copilotService.getDailyBriefing({ storeId: selectedStore }),
+    enabled: canFetchAuth && (isNetworkMode || selectedStore !== ALL_STORES_VALUE),
+    staleTime: 60000,
     retry: false,
   })
   const { data: networkCoverageSummary } = useQuery({
@@ -1039,6 +1049,21 @@ const Dashboard = () => {
       : "Estamos calibrando a base da loja antes de consolidar os indicadores executivos.",
   ]
   const copilotRecommendationNow = useMemo(() => {
+    if (dailyBriefing?.headline && dailyBriefing?.cta?.href) {
+      const fallbackStoreId =
+        (!isNetworkMode && selectedStore !== ALL_STORES_VALUE ? selectedStore : null) ||
+        dailyBriefing.store_id ||
+        networkDashboard?.stores?.[0]?.id ||
+        ""
+      return {
+        title: dailyBriefing.headline,
+        action: dailyBriefing.cta.label || "Abrir recomendação",
+        impact: dailyBriefing.message || "Recomendação contextual disponível.",
+        storeId: String(fallbackStoreId || ""),
+        actionHref: dailyBriefing.cta.href,
+      }
+    }
+
     const orderedEvents = [...activeEvents].sort((a, b) => {
       const weight = (severity?: string) =>
         severity === "critical" ? 3 : severity === "warning" ? 2 : 1
@@ -1059,6 +1084,7 @@ const Dashboard = () => {
             ? "Reduzir tempo médio de espera e risco de perda de venda."
             : "Mitigar impacto operacional e estabilizar atendimento.",
         storeId: String(topEvent.store_id),
+        actionHref: `/app/operations/stores/${String(topEvent.store_id)}`,
       }
     }
 
@@ -1068,6 +1094,10 @@ const Dashboard = () => {
         action: "Restabelecer conexão do Edge para retomar a leitura operacional.",
         impact: "Reativar visão da operação e recomendações em tempo real.",
         storeId: selectedStore,
+        actionHref:
+          selectedStore && selectedStore !== ALL_STORES_VALUE
+            ? `/app/operations/stores/${selectedStore}`
+            : "/app/operations",
       }
     }
 
@@ -1080,6 +1110,7 @@ const Dashboard = () => {
           action: "Reforçar cobertura no pico e revisar fila com o gerente local.",
           impact: "Reduzir risco operacional e perda de conversão na rede.",
           storeId: highestRiskStore.id,
+          actionHref: `/app/operations/stores/${highestRiskStore.id}`,
         }
       }
     }
@@ -1089,8 +1120,19 @@ const Dashboard = () => {
       action: "Revisar prioridades com o Copiloto para antecipar riscos do dia.",
       impact: "Manter consistência operacional e acelerar tomada de decisão.",
       storeId: selectedStore,
+      actionHref:
+        selectedStore && selectedStore !== ALL_STORES_VALUE
+          ? `/app/operations/stores/${selectedStore}`
+          : "/app/operations",
     }
-  }, [activeEvents, isEdgeConnected, isNetworkMode, networkDashboard?.stores, selectedStore])
+  }, [
+    activeEvents,
+    dailyBriefing,
+    isEdgeConnected,
+    isNetworkMode,
+    networkDashboard?.stores,
+    selectedStore,
+  ])
   const priorityActions = useMemo(() => {
     const ordered = [...activeEvents].sort((a, b) => {
       const weight = (severity?: string) =>
@@ -1584,8 +1626,16 @@ const Dashboard = () => {
   const copilotHighlight = {
     message: `Hoje, ${formatCurrencyBRL(revenueAtRiskDay)} em risco por filas. Abrir caixa em ${copilotStoreName} pode recuperar ${formatCurrencyBRL(copilotRecoveryValue)}.`,
     actionLabel: "Ver ação",
-    actionHref: `/app/operations/stores/${copilotRecommendationNow.storeId}`,
+    actionHref: copilotRecommendationNow.actionHref,
   }
+  const momentOfPride = dailyBriefing?.moment_of_pride?.show
+    ? {
+        title: dailyBriefing.moment_of_pride.title || "Momento de orgulho",
+        description:
+          dailyBriefing.moment_of_pride.description ||
+          "A operação bateu metas críticas hoje.",
+      }
+    : null
   const recentEventItems = timelineItems.slice(0, 5).map((event) => ({
     id: event.id,
     title: event.title || "Alerta operacional",
@@ -2118,6 +2168,15 @@ const Dashboard = () => {
               </div>
             </section>
 
+            {momentOfPride && (
+              <section className="rounded-xl border border-emerald-200 bg-emerald-50 p-4 sm:p-5 shadow-sm">
+                <p className="text-xs font-semibold uppercase tracking-wide text-emerald-700">
+                  {momentOfPride.title}
+                </p>
+                <p className="mt-1 text-sm font-medium text-emerald-900">{momentOfPride.description}</p>
+              </section>
+            )}
+
             {showConfidenceCalibrationFallback && (
               <section className="rounded-xl border border-amber-200 bg-amber-50 p-4 sm:p-5 shadow-sm">
                 <div className="flex items-start justify-between gap-3">
@@ -2534,7 +2593,7 @@ const Dashboard = () => {
               </p>
               <div className="mt-4 flex flex-wrap gap-2">
                 <Link
-                  to={`/app/operations/stores/${copilotRecommendationNow.storeId}`}
+                  to={copilotRecommendationNow.actionHref}
                   className="rounded-lg bg-gradient-to-r from-blue-600 to-indigo-600 px-3 py-2 text-xs font-semibold text-white hover:brightness-95"
                 >
                   Abrir loja
@@ -2551,6 +2610,15 @@ const Dashboard = () => {
               </div>
             </article>
           </section>
+
+          {momentOfPride && (
+            <section className="rounded-xl border border-emerald-200 bg-emerald-50 p-4 sm:p-5 shadow-sm">
+              <p className="text-xs font-semibold uppercase tracking-wide text-emerald-700">
+                {momentOfPride.title}
+              </p>
+              <p className="mt-1 text-sm font-medium text-emerald-900">{momentOfPride.description}</p>
+            </section>
+          )}
 
           <section className="rounded-xl border border-gray-200 bg-white p-4 sm:p-6 shadow-sm">
             <div className="flex items-center justify-between gap-3">

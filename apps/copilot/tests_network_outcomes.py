@@ -88,14 +88,21 @@ class CopilotNetworkValueLedgerDailyViewTests(SimpleTestCase):
 
     @patch("apps.copilot.views.ValueLedgerDailySerializer")
     @patch("apps.copilot.views.ValueLedgerDaily.objects.filter")
+    @patch("apps.copilot.views.Store.objects.filter")
     @patch("apps.copilot.views.get_user_org_ids")
     def test_get_returns_aggregated_network_ledger(
         self,
         mock_org_ids,
+        mock_store_filter,
         mock_filter,
         mock_serializer,
     ):
         mock_org_ids.return_value = [uuid4()]
+        store_qs = MagicMock()
+        store_qs.values.return_value = store_qs
+        store_qs.distinct.return_value = store_qs
+        store_qs.count.return_value = 3
+        mock_store_filter.return_value = store_qs
         qs = MagicMock()
         qs.order_by.return_value = qs
         qs.filter.return_value = qs

@@ -9,6 +9,7 @@ from .views import (
     CopilotStaffPlanActionView,
     CopilotConversationView,
     CopilotDashboardContextView,
+    CopilotDailyBriefingView,
     CopilotInsightsView,
     CopilotReport72hView,
     CopilotStoreProfileView,
@@ -16,6 +17,7 @@ from .views import (
 )
 
 urlpatterns = [
+    path("copilot/daily-briefing/", CopilotDailyBriefingView.as_view(), name="copilot-daily-briefing"),
     path("copilot/network/actions/outcomes/", CopilotNetworkActionOutcomeView.as_view(), name="copilot-network-action-outcomes"),
     path("copilot/network/value-ledger/daily/", CopilotNetworkValueLedgerDailyView.as_view(), name="copilot-network-value-ledger-daily"),
     path("copilot/stores/<uuid:store_id>/context/", CopilotDashboardContextView.as_view(), name="copilot-context"),
