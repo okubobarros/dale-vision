@@ -155,6 +155,8 @@ def _build_daily_briefing_payload(
     org_ids: list[str] | None = None,
     store_id=None,
     store_name: str | None = None,
+    owner_goal: str | None = None,
+    notification_tone: str | None = None,
 ):
     today = timezone.localdate()
 
@@ -201,6 +203,9 @@ def _build_daily_briefing_payload(
     )
     value_net_gap_brl = max(0.0, round(value_at_risk_brl - value_recovered_brl, 2))
 
+    tone = str(notification_tone or "formal").strip().lower()
+    is_friendly_tone = tone in {"friendly", "amigavel", "amigável"}
+
     if critical_open_total > 0 or value_net_gap_brl >= 1000:
         briefing_state = "critical"
         headline = (
@@ -210,6 +215,8 @@ def _build_daily_briefing_payload(
         )
         message = (
             "Priorize intervenção imediata para conter perda de conversão e estabilizar atendimento."
+            if not is_friendly_tone
+            else "Atenção máxima agora: vamos agir rápido para proteger conversão e manter o time no controle."
         )
         if store_id:
             href = f"/app/alerts?store_id={store_id}"
@@ -222,6 +229,8 @@ def _build_daily_briefing_payload(
         message = (
             "Há ações pendentes com potencial de recuperar valor no turno. "
             "Priorize execução nas lojas com maior impacto."
+            if not is_friendly_tone
+            else "Temos oportunidades claras de ganho neste turno. Foco nas lojas de maior impacto para fechar o dia melhor."
         )
         if store_id:
             href = f"/app/operations/stores/{store_id}"
@@ -233,6 +242,8 @@ def _build_daily_briefing_payload(
         headline = "Operação estável agora"
         message = (
             "A rede está sob controle. Use este momento para revisar metas e capturar novas oportunidades."
+            if not is_friendly_tone
+            else "Tudo está estável agora. Excelente momento para revisar metas e avançar em oportunidades."
         )
         if store_id:
             href = f"/app/reports?store_id={store_id}"
@@ -252,6 +263,10 @@ def _build_daily_briefing_payload(
             else "Sem valor recuperado registrado até o momento."
         ),
     }
+
+    owner_goal_text = str(owner_goal or "").strip()
+    if owner_goal_text:
+        message = f"{message} Objetivo do dono em foco: {owner_goal_text}."
 
     return {
         "generated_at": timezone.now().isoformat(),
@@ -293,10 +308,14 @@ class CopilotDailyBriefingView(APIView):
             if err:
                 return err
             require_store_role(request.user, str(store.id), ALLOWED_READ_ROLES)
+            profile = StoreProfile.objects.filter(store_id=store.id).first()
+            defaults = profile.defaults_json if profile and isinstance(profile.defaults_json, dict) else {}
             payload = _build_daily_briefing_payload(
                 org_ids=[str(store.org_id)],
                 store_id=store.id,
                 store_name=store.name,
+                owner_goal=str(defaults.get("owner_goal") or "").strip() or None,
+                notification_tone=str(defaults.get("notification_tone") or "").strip() or None,
             )
             return Response(payload, status=status.HTTP_200_OK)
 

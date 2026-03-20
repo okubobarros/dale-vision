@@ -28,6 +28,20 @@ export interface CopilotDashboardContext {
   generated_at: string
 }
 
+export interface CopilotStoreProfile {
+  id?: string | null
+  org_id: string
+  store_id: string
+  business_model: string
+  has_salao: boolean
+  has_pos_integration: boolean
+  opening_hours?: Record<string, unknown>
+  timezone: string
+  defaults?: Record<string, unknown>
+  created_at?: string | null
+  updated_at?: string | null
+}
+
 export interface CopilotDailyBriefing {
   generated_at: string
   briefing_state: "calm" | "attention" | "critical" | string

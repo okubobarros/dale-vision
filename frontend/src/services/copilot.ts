@@ -8,6 +8,7 @@ import type {
   CopilotValueLedgerDailyResponse,
   CopilotOperationalInsight,
   CopilotReport72h,
+  CopilotStoreProfile,
   CopilotStaffPlanUpdateResult,
 } from "../types/copilot"
 
@@ -26,6 +27,29 @@ export const copilotService = {
   async getDashboardContext(storeId: string): Promise<CopilotDashboardContext> {
     const response = await api.get(`/v1/copilot/stores/${storeId}/context/`)
     return response.data as CopilotDashboardContext
+  },
+
+  async getStoreProfile(storeId: string): Promise<CopilotStoreProfile> {
+    const response = await api.get(`/v1/copilot/stores/${storeId}/profile/`, {
+      timeoutCategory: "best-effort",
+      noRetry: true,
+    })
+    return response.data as CopilotStoreProfile
+  },
+
+  async updateStoreProfile(
+    storeId: string,
+    payload: {
+      business_model?: string
+      has_salao?: boolean
+      has_pos_integration?: boolean
+      opening_hours?: Record<string, unknown>
+      timezone?: string
+      defaults?: Record<string, unknown>
+    }
+  ): Promise<CopilotStoreProfile> {
+    const response = await api.patch(`/v1/copilot/stores/${storeId}/profile/`, payload)
+    return response.data as CopilotStoreProfile
   },
 
   async getInsights(storeId: string): Promise<CopilotOperationalInsight[]> {

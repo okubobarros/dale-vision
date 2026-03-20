@@ -2,6 +2,7 @@ import { useEffect, useMemo, useState } from "react"
 import { Link } from "react-router-dom"
 import EdgeSetupModal from "../../components/EdgeSetupModal"
 import { storesService, type StoreSummary, type StoreEdgeUpdateEvent } from "../../services/stores"
+import { copilotService } from "../../services/copilot"
 
 const Settings = () => {
   const [edgeSetupOpen, setEdgeSetupOpen] = useState(false)
@@ -17,6 +18,12 @@ const Settings = () => {
   const [channel, setChannel] = useState<"stable" | "canary">("stable")
   const [packageUrl, setPackageUrl] = useState("")
   const [packageSha, setPackageSha] = useState("")
+  const [prefsLoading, setPrefsLoading] = useState(false)
+  const [prefsSaving, setPrefsSaving] = useState(false)
+  const [prefsError, setPrefsError] = useState<string | null>(null)
+  const [prefsSuccess, setPrefsSuccess] = useState<string | null>(null)
+  const [ownerGoal, setOwnerGoal] = useState("")
+  const [notificationTone, setNotificationTone] = useState<"formal" | "friendly">("friendly")
 
   useEffect(() => {
     let mounted = true
@@ -57,6 +64,31 @@ const Settings = () => {
       .finally(() => {
         if (!mounted) return
         setPolicyLoading(false)
+      })
+
+    setPrefsLoading(true)
+    setPrefsError(null)
+    setPrefsSuccess(null)
+    copilotService
+      .getStoreProfile(selectedStoreId)
+      .then((profile) => {
+        if (!mounted) return
+        const defaults: Record<string, unknown> =
+          profile?.defaults && typeof profile.defaults === "object"
+            ? (profile.defaults as Record<string, unknown>)
+            : {}
+        setOwnerGoal(String(defaults.owner_goal || ""))
+        setNotificationTone(defaults.notification_tone === "formal" ? "formal" : "friendly")
+      })
+      .catch(() => {
+        if (!mounted) return
+        setOwnerGoal("")
+        setNotificationTone("friendly")
+        setPrefsError("Não foi possível carregar as preferências humanas da loja.")
+      })
+      .finally(() => {
+        if (!mounted) return
+        setPrefsLoading(false)
       })
 
     setEventsLoading(true)
@@ -111,6 +143,32 @@ const Settings = () => {
     }
   }
 
+  const handleSaveHumanPreferences = async () => {
+    if (!selectedStoreId) return
+    setPrefsSaving(true)
+    setPrefsError(null)
+    setPrefsSuccess(null)
+    try {
+      const profile = await copilotService.getStoreProfile(selectedStoreId)
+      const defaults: Record<string, unknown> =
+        profile?.defaults && typeof profile.defaults === "object"
+          ? (profile.defaults as Record<string, unknown>)
+          : {}
+      await copilotService.updateStoreProfile(selectedStoreId, {
+        defaults: {
+          ...defaults,
+          owner_goal: ownerGoal.trim() || null,
+          notification_tone: notificationTone,
+        },
+      })
+      setPrefsSuccess("Preferências humanas salvas com sucesso.")
+    } catch {
+      setPrefsError("Falha ao salvar preferências humanas.")
+    } finally {
+      setPrefsSaving(false)
+    }
+  }
+
   return (
     <div className="p-6 space-y-6">
       <h1 className="text-2xl font-bold">Settings</h1>
@@ -153,6 +211,69 @@ const Settings = () => {
         >
           Gerenciar câmeras
         </Link>
+      </div>
+
+      <div className="bg-white border border-gray-200 rounded-xl p-6 space-y-4">
+        <h2 className="text-lg font-semibold text-gray-800">Preferências humanas do Copiloto</h2>
+        <p className="text-sm text-gray-600">
+          Defina o objetivo do dono e o tom das mensagens para personalizar briefing e notificações.
+        </p>
+        <div>
+          <label className="text-xs font-semibold uppercase tracking-wide text-gray-500">Loja</label>
+          <select
+            value={selectedStoreId}
+            onChange={(e) => setSelectedStoreId(e.target.value)}
+            className="mt-1 w-full rounded-lg border border-gray-300 px-3 py-2 text-sm text-gray-700"
+          >
+            <option value="">Selecione uma loja</option>
+            {stores.map((store) => (
+              <option key={store.id} value={store.id}>
+                {store.name}
+              </option>
+            ))}
+          </select>
+        </div>
+        {selectedStoreId && (
+          <div className="grid gap-3">
+            <div>
+              <label className="text-xs font-semibold uppercase tracking-wide text-gray-500">
+                Objetivo do dono
+              </label>
+              <input
+                value={ownerGoal}
+                onChange={(e) => setOwnerGoal(e.target.value)}
+                maxLength={180}
+                placeholder="Ex: abrir uma nova unidade até dezembro"
+                className="mt-1 w-full rounded-lg border border-gray-300 px-3 py-2 text-sm text-gray-700"
+              />
+            </div>
+            <div>
+              <label className="text-xs font-semibold uppercase tracking-wide text-gray-500">
+                Tom de notificação
+              </label>
+              <select
+                value={notificationTone}
+                onChange={(e) => setNotificationTone(e.target.value === "formal" ? "formal" : "friendly")}
+                className="mt-1 w-full rounded-lg border border-gray-300 px-3 py-2 text-sm text-gray-700"
+              >
+                <option value="friendly">Amigável</option>
+                <option value="formal">Formal</option>
+              </select>
+            </div>
+            <div className="flex items-center gap-3">
+              <button
+                type="button"
+                onClick={handleSaveHumanPreferences}
+                disabled={prefsSaving || prefsLoading}
+                className="inline-flex items-center rounded-lg bg-slate-900 px-4 py-2 text-sm font-semibold text-white hover:bg-slate-800 disabled:opacity-60"
+              >
+                {prefsSaving ? "Salvando..." : "Salvar preferências"}
+              </button>
+            </div>
+            {prefsError && <p className="text-sm text-rose-600">{prefsError}</p>}
+            {prefsSuccess && <p className="text-sm text-emerald-600">{prefsSuccess}</p>}
+          </div>
+        )}
       </div>
 
       <div className="bg-white border border-gray-200 rounded-xl p-6 space-y-4">

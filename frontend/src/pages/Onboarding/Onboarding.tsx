@@ -6,6 +6,7 @@ import { useAuth } from "../../contexts/useAuth"
 import { storesService } from "../../services/stores"
 import { employeesService } from "../../services/employees"
 import { resolvePostLoginRoute } from "../../services/postLoginRoute"
+import { copilotService } from "../../services/copilot"
 import PostLoginExplainer from "../../components/PostLoginExplainer"
 import OnboardingProgress from "./components/OnboardingProgress"
 import StoresSetup, { type StoreDraft } from "./components/StoresSetup"
@@ -32,6 +33,8 @@ export default function Onboarding() {
   const [lgpdRecommendedAccepted, setLgpdRecommendedAccepted] = useState(false)
   const [lgpdError, setLgpdError] = useState("")
   const [lgpdSubmitting, setLgpdSubmitting] = useState(false)
+  const [ownerGoal, setOwnerGoal] = useState("")
+  const [notificationTone, setNotificationTone] = useState<"formal" | "friendly">("friendly")
 
   useEffect(() => {
     window.scrollTo({ top: 0, behavior: "smooth" })
@@ -225,7 +228,7 @@ export default function Onboarding() {
     }
   }
 
-  function handleLgpdNext() {
+  async function handleLgpdNext() {
     if (lgpdSubmitting) return
     if (!lgpdAccepted) {
       setLgpdError("Confirme o aceite obrigatório para continuar.")
@@ -234,9 +237,27 @@ export default function Onboarding() {
     setLgpdSubmitting(true)
     setLgpdError("")
     try {
+      if (storeId) {
+        try {
+          const profile = await copilotService.getStoreProfile(storeId)
+          const previousDefaults =
+            profile?.defaults && typeof profile.defaults === "object" ? profile.defaults : {}
+          await copilotService.updateStoreProfile(storeId, {
+            defaults: {
+              ...previousDefaults,
+              owner_goal: ownerGoal.trim() || null,
+              notification_tone: notificationTone,
+            },
+          })
+        } catch (error) {
+          if (import.meta.env.DEV) {
+            console.warn("[Onboarding] failed to persist owner goal/tone", error)
+          }
+        }
+      }
       localStorage.setItem(
         "demo_onboarding",
-        JSON.stringify({ store, storeId, employees, avgHourlyLaborCost })
+        JSON.stringify({ store, storeId, employees, avgHourlyLaborCost, ownerGoal, notificationTone })
       )
       navigate("/app/dashboard?openEdgeSetup=1", { replace: true })
     } finally {
@@ -285,19 +306,57 @@ export default function Onboarding() {
             )}
 
             {step === 3 && (
-              <LgpdConsent
-                accepted={lgpdAccepted}
-                onAcceptedChange={(value) => {
-                  setLgpdAccepted(value)
-                  if (value) setLgpdError("")
-                }}
-                recommendedAccepted={lgpdRecommendedAccepted}
-                onRecommendedAcceptedChange={setLgpdRecommendedAccepted}
-                onPrev={handlePrev}
-                onNext={handleLgpdNext}
-                error={lgpdError}
-                isSubmitting={lgpdSubmitting}
-              />
+              <div className="space-y-6">
+                <div className="rounded-3xl border border-slate-200 bg-white/70 p-6 shadow-[0_18px_50px_rgba(15,23,42,0.08)]">
+                  <h4 className="text-lg font-semibold text-slate-900">Preferências humanas do Copiloto</h4>
+                  <p className="text-sm text-slate-600 mt-1">
+                    Opcional, mas recomendado para personalizar a narrativa diária.
+                  </p>
+                  <div className="mt-4 grid gap-4 sm:grid-cols-2">
+                    <div className="sm:col-span-2">
+                      <label className="text-xs font-semibold uppercase tracking-wide text-slate-500">
+                        Qual objetivo pessoal este faturamento ajuda a realizar?
+                      </label>
+                      <input
+                        value={ownerGoal}
+                        onChange={(event) => setOwnerGoal(event.target.value)}
+                        maxLength={180}
+                        placeholder="Ex: expandir para 2 novas lojas em 12 meses"
+                        className="mt-2 w-full rounded-2xl border border-slate-200 px-3 py-2 text-sm text-slate-800"
+                      />
+                    </div>
+                    <div>
+                      <label className="text-xs font-semibold uppercase tracking-wide text-slate-500">
+                        Tom de notificação
+                      </label>
+                      <select
+                        value={notificationTone}
+                        onChange={(event) =>
+                          setNotificationTone(event.target.value === "formal" ? "formal" : "friendly")
+                        }
+                        className="mt-2 w-full rounded-2xl border border-slate-200 px-3 py-2 text-sm text-slate-800"
+                      >
+                        <option value="friendly">Amigável</option>
+                        <option value="formal">Formal</option>
+                      </select>
+                    </div>
+                  </div>
+                </div>
+
+                <LgpdConsent
+                  accepted={lgpdAccepted}
+                  onAcceptedChange={(value) => {
+                    setLgpdAccepted(value)
+                    if (value) setLgpdError("")
+                  }}
+                  recommendedAccepted={lgpdRecommendedAccepted}
+                  onRecommendedAcceptedChange={setLgpdRecommendedAccepted}
+                  onPrev={handlePrev}
+                  onNext={() => void handleLgpdNext()}
+                  error={lgpdError}
+                  isSubmitting={lgpdSubmitting}
+                />
+              </div>
             )}
           </div>
         </div>
