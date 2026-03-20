@@ -42,6 +42,17 @@ const isTimeoutError = (error: unknown) => {
   )
 }
 
+const isServiceUnavailableError = (error: unknown) => {
+  if (!axios.isAxiosError(error)) return false
+  const status = error.response?.status
+  return (
+    status === 502 ||
+    status === 503 ||
+    status === 504 ||
+    (!status && error.code === "ERR_NETWORK")
+  )
+}
+
 export type ReportSummary = {
   period: string
   from?: string | null
@@ -288,6 +299,69 @@ const buildCoverageFallback = (
   windows: [],
 })
 
+const buildSummaryFallback = (
+  storeId?: string | null,
+  range?: ReportRangeParams
+): ReportSummary => ({
+  period: range?.period || "30d",
+  from: range?.from ?? null,
+  to: range?.to ?? null,
+  store_id: range?.store_id || storeId || null,
+  stores_count: 0,
+  kpis: {
+    total_visitors: 0,
+    avg_dwell_seconds: 0,
+    avg_queue_seconds: 0,
+    avg_conversion_rate: 0,
+    avg_conversion_rate_official: null,
+    total_alerts: 0,
+  },
+  chart_footfall_by_day: [],
+  chart_footfall_by_hour: [],
+  alert_counts_by_type: [],
+  insights: ["API indisponível no momento. Exibindo modo contingência."],
+  method: {
+    id: "report_summary_fallback",
+    version: "report_summary_fallback_v1_2026-03-20",
+    label: "Resumo operacional (contingência)",
+    description: "Retorno fallback quando a API está indisponível (503/network).",
+  },
+  confidence_governance: {
+    status: "insuficiente",
+    score: 0,
+    source_flags: {
+      footfall: "estimated",
+      conversion: "estimated",
+      queue: "estimated",
+    },
+    caveats: ["API indisponível no momento (503/network)."],
+  },
+})
+
+const buildImpactFallback = (
+  storeId?: string | null,
+  range?: ReportRangeParams
+): ReportImpact => {
+  const summary = buildSummaryFallback(storeId, range)
+  return {
+    ...summary,
+    impact: {
+      idle_seconds_total: 0,
+      queue_wait_seconds_total: 0,
+      avg_hourly_labor_cost: 0,
+      queue_abandon_rate: 0,
+      cost_idle: 0,
+      cost_queue: 0,
+      potential_monthly_estimated: 0,
+      currency: "BRL",
+      estimated: true,
+      method: "contingency_fallback",
+      method_version: "impact_fallback_v1_2026-03-20",
+    },
+    features_blocked: ["api_unavailable"],
+  }
+}
+
 export const meService = {
   async getSetupState(): Promise<SetupState | null> {
     try {
@@ -314,11 +388,11 @@ export const meService = {
       })
       return response.data as MeStatus
     } catch (error) {
-      if (!isTimeoutError(error)) {
+      if (!isTimeoutError(error) && !isServiceUnavailableError(error)) {
         throw error
       }
       if (import.meta.env.DEV) {
-        console.warn("[me/status] timeout - returning unknown")
+        console.warn("[me/status] fallback - returning unknown")
       }
       return null
     }
@@ -350,8 +424,15 @@ export const meService = {
     if (range?.from) params.from = range.from
     if (range?.to) params.to = range.to
     if (range?.period) params.period = range.period
-    const response = await api.get("/v1/report/summary/", { params })
-    return response.data as ReportSummary
+    try {
+      const response = await api.get("/v1/report/summary/", { params })
+      return response.data as ReportSummary
+    } catch (error) {
+      if (isServiceUnavailableError(error) || isTimeoutError(error)) {
+        return buildSummaryFallback(storeId, range)
+      }
+      throw error
+    }
   },
   async getReportImpact(
     storeId?: string | null,
@@ -363,8 +444,15 @@ export const meService = {
     if (range?.from) params.from = range.from
     if (range?.to) params.to = range.to
     if (range?.period) params.period = range.period
-    const response = await api.get("/v1/report/impact/", { params })
-    return response.data as ReportImpact
+    try {
+      const response = await api.get("/v1/report/impact/", { params })
+      return response.data as ReportImpact
+    } catch (error) {
+      if (isServiceUnavailableError(error) || isTimeoutError(error)) {
+        return buildImpactFallback(storeId, range)
+      }
+      throw error
+    }
   },
   async getProductivityCoverage(
     storeId?: string | null,
@@ -382,6 +470,12 @@ export const meService = {
     } catch (error) {
       if (axios.isAxiosError(error) && error.response?.status === 404) {
         const summary = await this.getReportSummary(storeId, range).catch(() => null)
+        return buildCoverageFallback(summary, storeId, range?.period ?? null)
+      }
+      if (isServiceUnavailableError(error) || isTimeoutError(error)) {
+        const summary = await this.getReportSummary(storeId, range).catch(() =>
+          buildSummaryFallback(storeId, range)
+        )
         return buildCoverageFallback(summary, storeId, range?.period ?? null)
       }
       throw error
