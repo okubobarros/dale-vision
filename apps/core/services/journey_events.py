@@ -1,5 +1,6 @@
 import json
 import logging
+import uuid
 from typing import Any, Dict, Optional
 
 from django.db import connection
@@ -8,6 +9,15 @@ from django.utils import timezone
 from apps.core.models import JourneyEvent
 
 logger = logging.getLogger(__name__)
+
+CONTRACT_VERSION = "journey_event_contract_v1_2026-03-20"
+CRITICAL_EVENT_REQUIRED_FIELDS: Dict[str, list[str]] = {
+    "signup_completed": ["user_id"],
+    "store_created": ["store_id"],
+    "camera_added": ["store_id", "camera_id"],
+    "roi_saved": ["store_id", "camera_id", "roi_version"],
+    "first_metrics_received": ["store_id"],
+}
 
 
 def _build_meta(
@@ -58,6 +68,62 @@ def _insert_event_receipt(
         )
 
 
+def _missing_required_fields(*, event_name: str, payload: Dict[str, Any]) -> list[str]:
+    required = CRITICAL_EVENT_REQUIRED_FIELDS.get(str(event_name or "").strip(), [])
+    missing: list[str] = []
+    for field in required:
+        value = payload.get(field)
+        if value is None:
+            missing.append(field)
+            continue
+        if isinstance(value, str) and value.strip() == "":
+            missing.append(field)
+    return missing
+
+
+def _record_contract_rejection(
+    *,
+    org_id: Optional[str],
+    lead_id: Optional[str],
+    event_name: str,
+    payload: Dict[str, Any],
+    source: str,
+    event_version: int,
+    meta: Optional[Dict[str, Any]],
+    missing_fields: list[str],
+) -> None:
+    raw = json.dumps(
+        {
+            "event_name": event_name,
+            "org_id": org_id,
+            "lead_id": lead_id,
+            "payload": payload,
+            "contract_status": "rejected",
+            "contract_error_code": "JOURNEY_EVENT_PAYLOAD_REQUIRED_MISSING",
+            "missing_fields": missing_fields,
+        },
+        ensure_ascii=False,
+    )
+    meta_out = _build_meta(org_id=org_id, lead_id=lead_id, payload=payload, meta=meta)
+    meta_out.update(
+        {
+            "contract_status": "rejected",
+            "contract_blocked": True,
+            "contract_version": CONTRACT_VERSION,
+            "contract_error_code": "JOURNEY_EVENT_PAYLOAD_REQUIRED_MISSING",
+            "missing_fields": missing_fields,
+        }
+    )
+    _insert_event_receipt(
+        event_id=f"journey-contract-reject-{uuid.uuid4()}",
+        event_name=event_name,
+        event_version=int(event_version or 1),
+        source=source or "app",
+        raw=raw,
+        meta_out=meta_out,
+    )
+
+
 def log_journey_event(
     *,
     org_id: Optional[str],
@@ -69,6 +135,34 @@ def log_journey_event(
     meta: Optional[Dict[str, Any]] = None,
 ) -> Optional[JourneyEvent]:
     payload = payload or {}
+    missing_fields = _missing_required_fields(event_name=event_name, payload=payload)
+    if missing_fields:
+        logger.warning(
+            "[JOURNEY] contract blocked event_name=%s org_id=%s lead_id=%s missing=%s",
+            event_name,
+            org_id,
+            lead_id,
+            ",".join(missing_fields),
+        )
+        try:
+            _record_contract_rejection(
+                org_id=org_id,
+                lead_id=lead_id,
+                event_name=event_name,
+                payload=payload,
+                source=source,
+                event_version=event_version,
+                meta=meta,
+                missing_fields=missing_fields,
+            )
+        except Exception:
+            logger.exception(
+                "[JOURNEY] failed to persist contract rejection event_name=%s org_id=%s",
+                event_name,
+                org_id,
+            )
+        return None
+
     now = timezone.now()
     try:
         journey_event = JourneyEvent.objects.create(

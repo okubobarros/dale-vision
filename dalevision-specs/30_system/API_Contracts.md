@@ -118,6 +118,8 @@ Idempotência:
 - `receipt_id` é opcional no request; se ausente, o backend calcula.
 - `idempotency_key` pode ser enviado como alias de `receipt_id`.
 - para `retail.event.v1`, o backend também suporta receipt determinístico por bucket de 5 minutos.
+- `trace_id` é aceito no envelope/data; quando ausente, backend usa `receipt_id` como fallback.
+- Respostas de ingestão incluem `trace_id` para rastreio técnico ponta-a-ponta.
 
 ### Contrato complementar: `retail.event.v1`
 Uso:
@@ -177,6 +179,14 @@ Resposta de `me/admin/ingestion-funnel-gap`:
 - `rows_total` + `rows[]` com `store_id`, `store_name`, `vision_events`, `last_vision_ts`
 - `GET`: diagnóstico de lojas com evento de visão recente e sem `first_metrics_received`
 - `POST`: executa repair de reconciliação e retorna `candidates_total`, `repaired_total`, `repaired_store_ids`
+
+Contrato de eventos de jornada (`JourneyEvent`):
+- Eventos críticos com campos obrigatórios (`signup_completed`, `store_created`, `camera_added`, `roi_saved`, `first_metrics_received`) têm validação de payload no backend.
+- Payload crítico incompleto é bloqueado (não grava em `journey_events`) e registra rejeição técnica em `event_receipts.meta` com:
+  - `contract_blocked=true`
+  - `contract_error_code=JOURNEY_EVENT_PAYLOAD_REQUIRED_MISSING`
+  - `missing_fields[]`
+  - `contract_version=journey_event_contract_v1_2026-03-20`
 
 ## Endpoints TBD (não implementar sem definição)
  (não implementar sem definição)

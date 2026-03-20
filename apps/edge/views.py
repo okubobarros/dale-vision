@@ -363,7 +363,7 @@ class EdgeEventsIngestView(APIView):
         if not ser.is_valid():
             return Response({"detail": "payload inválido", "errors": ser.errors}, status=status.HTTP_400_BAD_REQUEST)
         validated = ser.validated_data
-        payload = request.data  # salva raw json
+        payload = dict(request.data or {})  # salva raw json
 
         event_name = validated.get("event_name")
         source = validated.get("source") or "edge"
@@ -372,7 +372,8 @@ class EdgeEventsIngestView(APIView):
             or validated.get("receipt_id")
             or ""
         )
-        data = validated.get("data") or {}
+        data = dict(validated.get("data") or {})
+        trace_id = str(data.get("trace_id") or payload.get("trace_id") or "").strip() or None
         store_id = (
             data.get("store_id")
             or payload.get("store_id")
@@ -382,7 +383,7 @@ class EdgeEventsIngestView(APIView):
         canonical_event_name = _canonical_ingest_event_name(event_name, payload, data)
 
         if not event_name:
-            return Response({"detail": "event_name ausente."}, status=status.HTTP_400_BAD_REQUEST)
+            return Response({"detail": "event_name ausente.", "trace_id": trace_id}, status=status.HTTP_400_BAD_REQUEST)
 
         user_auth = TokenAuthentication().authenticate(request)
         if user_auth:
@@ -429,6 +430,7 @@ class EdgeEventsIngestView(APIView):
                     "reason": "vision_contract_invalid",
                     "contract_version": "vision_event_v1",
                     "missing_fields": contract_missing,
+                    "trace_id": trace_id,
                 },
                 status=status.HTTP_400_BAD_REQUEST,
             )
@@ -450,6 +452,7 @@ class EdgeEventsIngestView(APIView):
                     "reason": "retail_event_contract_invalid",
                     "contract_version": "retail_event_v1",
                     "errors": retail_contract_errors,
+                    "trace_id": trace_id,
                 },
                 status=status.HTTP_400_BAD_REQUEST,
             )
@@ -481,23 +484,34 @@ class EdgeEventsIngestView(APIView):
         deduped = False
         if not receipt_id:
             receipt_id = _compute_receipt_id(payload)
+        if not trace_id:
+            trace_id = str(receipt_id)
+        data.setdefault("trace_id", trace_id)
+        payload.setdefault("trace_id", trace_id)
         try:
             created = insert_event_receipt_if_new(
                 event_id=receipt_id,
                 event_name=canonical_event_name,
                 payload=payload,
                 source=source or "edge",
+                meta={
+                    "trace_id": trace_id,
+                    "store_id": str(store_id) if store_id else None,
+                    "camera_id": str(camera_id) if camera_id else None,
+                    "event_name": str(event_name),
+                    "canonical_event_name": str(canonical_event_name),
+                },
             )
         except (OperationalError, ProgrammingError):
             logger.exception("[EDGE] receipt write failed")
             return Response(
-                {"ok": False, "stored": False, "reason": "db_write_failed"},
+                {"ok": False, "stored": False, "reason": "db_write_failed", "trace_id": trace_id},
                 status=status.HTTP_503_SERVICE_UNAVAILABLE,
             )
         except Exception:
             logger.exception("[EDGE] receipt write failed")
             return Response(
-                {"ok": False, "stored": False, "reason": "db_write_failed"},
+                {"ok": False, "stored": False, "reason": "db_write_failed", "trace_id": trace_id},
                 status=status.HTTP_500_INTERNAL_SERVER_ERROR,
             )
         if not created:
@@ -523,7 +537,7 @@ class EdgeEventsIngestView(APIView):
                 pass
             mark_event_receipt_processed(event_id=receipt_id)
             return Response(
-                {"ok": True, "receipt_id": receipt_id or None, "stored": True, "deduped": True},
+                {"ok": True, "receipt_id": receipt_id or None, "trace_id": trace_id, "stored": True, "deduped": True},
                 status=status.HTTP_200_OK,
             )
         stored = True
@@ -554,14 +568,14 @@ class EdgeEventsIngestView(APIView):
                     apply_vision_metrics(payload)
                 mark_event_receipt_processed(event_id=receipt_id)
                 return Response(
-                    {"ok": True, "receipt_id": receipt_id or None, "stored": True, "deduped": not stored},
+                    {"ok": True, "receipt_id": receipt_id or None, "trace_id": trace_id, "stored": True, "deduped": not stored},
                     status=status.HTTP_201_CREATED if stored else status.HTTP_200_OK,
                 )
             except Exception:
                 logger.exception("[EDGE] vision metrics ingest failed")
                 mark_event_receipt_failed(event_id=receipt_id, error_message="vision_ingest_failed")
                 return Response(
-                    {"ok": False, "stored": False, "reason": "vision_ingest_failed"},
+                    {"ok": False, "stored": False, "reason": "vision_ingest_failed", "trace_id": trace_id},
                     status=status.HTTP_500_INTERNAL_SERVER_ERROR,
                 )
 
@@ -575,14 +589,14 @@ class EdgeEventsIngestView(APIView):
                     apply_vision_crossing(payload)
                 mark_event_receipt_processed(event_id=receipt_id)
                 return Response(
-                    {"ok": True, "receipt_id": receipt_id or None, "stored": True, "deduped": not inserted},
+                    {"ok": True, "receipt_id": receipt_id or None, "trace_id": trace_id, "stored": True, "deduped": not inserted},
                     status=status.HTTP_201_CREATED if inserted else status.HTTP_200_OK,
                 )
             except Exception:
                 logger.exception("[EDGE] vision crossing ingest failed")
                 mark_event_receipt_failed(event_id=receipt_id, error_message="vision_crossing_ingest_failed")
                 return Response(
-                    {"ok": False, "stored": False, "reason": "vision_crossing_ingest_failed"},
+                    {"ok": False, "stored": False, "reason": "vision_crossing_ingest_failed", "trace_id": trace_id},
                     status=status.HTTP_500_INTERNAL_SERVER_ERROR,
                 )
 
@@ -596,14 +610,14 @@ class EdgeEventsIngestView(APIView):
                     apply_vision_queue_state(payload)
                 mark_event_receipt_processed(event_id=receipt_id)
                 return Response(
-                    {"ok": True, "receipt_id": receipt_id or None, "stored": True, "deduped": not inserted},
+                    {"ok": True, "receipt_id": receipt_id or None, "trace_id": trace_id, "stored": True, "deduped": not inserted},
                     status=status.HTTP_201_CREATED if inserted else status.HTTP_200_OK,
                 )
             except Exception:
                 logger.exception("[EDGE] vision queue_state ingest failed")
                 mark_event_receipt_failed(event_id=receipt_id, error_message="vision_queue_state_ingest_failed")
                 return Response(
-                    {"ok": False, "stored": False, "reason": "vision_queue_state_ingest_failed"},
+                    {"ok": False, "stored": False, "reason": "vision_queue_state_ingest_failed", "trace_id": trace_id},
                     status=status.HTTP_500_INTERNAL_SERVER_ERROR,
                 )
 
@@ -617,14 +631,14 @@ class EdgeEventsIngestView(APIView):
                     apply_vision_checkout_proxy(payload)
                 mark_event_receipt_processed(event_id=receipt_id)
                 return Response(
-                    {"ok": True, "receipt_id": receipt_id or None, "stored": True, "deduped": not inserted},
+                    {"ok": True, "receipt_id": receipt_id or None, "trace_id": trace_id, "stored": True, "deduped": not inserted},
                     status=status.HTTP_201_CREATED if inserted else status.HTTP_200_OK,
                 )
             except Exception:
                 logger.exception("[EDGE] vision checkout_proxy ingest failed")
                 mark_event_receipt_failed(event_id=receipt_id, error_message="vision_checkout_proxy_ingest_failed")
                 return Response(
-                    {"ok": False, "stored": False, "reason": "vision_checkout_proxy_ingest_failed"},
+                    {"ok": False, "stored": False, "reason": "vision_checkout_proxy_ingest_failed", "trace_id": trace_id},
                     status=status.HTTP_500_INTERNAL_SERVER_ERROR,
                 )
 
@@ -638,14 +652,14 @@ class EdgeEventsIngestView(APIView):
                     apply_vision_zone_occupancy(payload)
                 mark_event_receipt_processed(event_id=receipt_id)
                 return Response(
-                    {"ok": True, "receipt_id": receipt_id or None, "stored": True, "deduped": not inserted},
+                    {"ok": True, "receipt_id": receipt_id or None, "trace_id": trace_id, "stored": True, "deduped": not inserted},
                     status=status.HTTP_201_CREATED if inserted else status.HTTP_200_OK,
                 )
             except Exception:
                 logger.exception("[EDGE] vision zone_occupancy ingest failed")
                 mark_event_receipt_failed(event_id=receipt_id, error_message="vision_zone_occupancy_ingest_failed")
                 return Response(
-                    {"ok": False, "stored": False, "reason": "vision_zone_occupancy_ingest_failed"},
+                    {"ok": False, "stored": False, "reason": "vision_zone_occupancy_ingest_failed", "trace_id": trace_id},
                     status=status.HTTP_500_INTERNAL_SERVER_ERROR,
                 )
 
@@ -699,7 +713,7 @@ class EdgeEventsIngestView(APIView):
 
             mark_event_receipt_processed(event_id=receipt_id)
             return Response(
-                {"ok": True, "stored": stored, "receipt_id": receipt_id or None},
+                {"ok": True, "stored": stored, "receipt_id": receipt_id or None, "trace_id": trace_id},
                 status=status.HTTP_201_CREATED,
             )
 
@@ -938,6 +952,7 @@ class EdgeEventsIngestView(APIView):
             try:
                 if isinstance(response.data, dict):
                     response.data.setdefault("receipt_id", receipt_id or None)
+                    response.data.setdefault("trace_id", trace_id)
                     response.data.setdefault("stored", stored)
                     response.data.setdefault("deduped", deduped or False)
             except Exception:
@@ -951,7 +966,7 @@ class EdgeEventsIngestView(APIView):
         # por enquanto: heartbeat/bucket aceita e responde ok
         mark_event_receipt_processed(event_id=receipt_id)
         return Response(
-            {"ok": True, "receipt_id": receipt_id or None, "stored": stored, "deduped": deduped or False},
+            {"ok": True, "receipt_id": receipt_id or None, "trace_id": trace_id, "stored": stored, "deduped": deduped or False},
             status=status.HTTP_201_CREATED if stored else status.HTTP_200_OK,
         )
 

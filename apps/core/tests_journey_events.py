@@ -51,3 +51,28 @@ class JourneyEventServiceTests(SimpleTestCase):
 
         self.assertEqual(result, event)
         create_mock.assert_called_once()
+
+    @patch("apps.core.services.journey_events.JourneyEvent.objects.create")
+    @patch("apps.core.services.journey_events._insert_event_receipt")
+    def test_blocks_critical_event_with_missing_required_fields(self, insert_mock, create_mock):
+        result = log_journey_event(
+            org_id="org-1",
+            event_name="roi_saved",
+            payload={
+                "store_id": "store-1",
+                "camera_id": "cam-1",
+                # roi_version intentionally missing
+            },
+        )
+
+        self.assertIsNone(result)
+        create_mock.assert_not_called()
+        insert_mock.assert_called_once()
+        _, kwargs = insert_mock.call_args
+        self.assertEqual(kwargs.get("event_name"), "roi_saved")
+        self.assertEqual(kwargs.get("meta_out", {}).get("contract_blocked"), True)
+        self.assertEqual(
+            kwargs.get("meta_out", {}).get("contract_error_code"),
+            "JOURNEY_EVENT_PAYLOAD_REQUIRED_MISSING",
+        )
+        self.assertIn("roi_version", kwargs.get("meta_out", {}).get("missing_fields", []))

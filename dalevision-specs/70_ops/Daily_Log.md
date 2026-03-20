@@ -364,6 +364,8 @@ Registrar decisões e eventos do dia.
   - Auto-generate de calibração ampliado com regra `vision_funnel_reconciliation_gap_24h` para abrir ações automaticamente quando há sinal de visão sem `first_metrics_received` no funil.
   - UI de Admin e Calibração ajustada para rótulos legíveis de `issue_code` (incluindo gap visão->funil).
   - SLA operacional adicionado para gap visão->funil (`4h`) no auto-generate, com leitura de vencimento no Admin Control Tower.
+  - Contrato de Journey Events endurecido para etapas críticas (`signup/store/camera/roi/first_metrics`): payload incompleto agora é bloqueado e registrado com motivo técnico estruturado.
+  - Ingestão edge passou a propagar `trace_id` (payload/meta/response), habilitando rastreio técnico evento-a-evento em `event_receipts`.
 - Decisões:
   - Usar observabilidade de rede como gate de confiabilidade antes de analisar conversão/funil de produto.
   - Tratar “visão com sinal + funil zerado” como incidente de reconciliação e não de aquisição.
