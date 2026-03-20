@@ -131,6 +131,7 @@ const TrustBadge = ({ status }: { status?: string | null }) => {
   const normalized = String(status || "estimated").toLowerCase()
   const map: Record<string, { label: string; className: string }> = {
     official: { label: "Oficial", className: "border-emerald-200 bg-emerald-50 text-emerald-700" },
+    validated: { label: "Validado", className: "border-blue-200 bg-blue-50 text-blue-700" },
     proxy: { label: "Proxy", className: "border-amber-200 bg-amber-50 text-amber-700" },
     estimated: { label: "Estimado", className: "border-slate-200 bg-slate-100 text-slate-600" },
     manual: { label: "Manual", className: "border-sky-200 bg-sky-50 text-sky-700" },
@@ -933,7 +934,7 @@ const Reports = () => {
             {selectedStore ? "Período selecionado da loja" : "Período selecionado da rede"}
           </p>
           <div className="mt-2 flex items-center gap-2">
-            <TrustBadge status="estimated" />
+            <TrustBadge status={ledgerTotals?.value_status || "estimated"} />
             <span className="text-[11px] text-slate-500">
               Método {ledgerQ.data?.method_version_current || "value_ledger_v1_2026-03-15"}
             </span>
@@ -1001,6 +1002,13 @@ const Reports = () => {
               Próxima ação: {ledgerQ.data.pipeline_health.recommended_action}
             </p>
           )}
+          {ledgerQ.data?.value_status_summary && (
+            <p className="text-[11px] text-slate-500 mt-2">
+              Níveis: oficial {ledgerQ.data.value_status_summary.official} · validado{" "}
+              {ledgerQ.data.value_status_summary.validated} · estimado{" "}
+              {ledgerQ.data.value_status_summary.estimated}
+            </p>
+          )}
         </article>
         <article className="rounded-xl border border-slate-200 bg-white p-4 shadow-sm">
           <p className="text-xs uppercase tracking-[0.08em] text-slate-500">Ações Despachadas</p>
@@ -1029,6 +1037,43 @@ const Reports = () => {
             {(outcomesSummary?.recovery_rate ?? 0).toFixed(1)}%
           </p>
         </article>
+      </section>
+
+      <section className="rounded-xl border border-slate-200 bg-white p-4 shadow-sm">
+        <div className="flex items-center justify-between">
+          <h2 className="text-base font-semibold text-slate-900">Timeline diária de valor (Ledger)</h2>
+          <span className="text-xs text-slate-500">{selectedStore ? "Loja selecionada" : "Rede"}</span>
+        </div>
+        {!ledgerQ.data?.items?.length ? (
+          <p className="mt-3 text-sm text-slate-500">Sem lançamentos de ledger no período.</p>
+        ) : (
+          <div className="mt-3 space-y-2">
+            {ledgerQ.data.items.slice(0, 7).map((entry) => (
+              <article
+                key={entry.id}
+                className="flex flex-col gap-2 rounded-lg border border-slate-200 bg-slate-50 p-3 md:flex-row md:items-center md:justify-between"
+              >
+                <div>
+                  <p className="text-sm font-semibold text-slate-800">{formatDateTime(entry.ledger_date)}</p>
+                  <p className="text-xs text-slate-500">
+                    Recuperado {formatCurrencyBRL(entry.value_recovered_brl)} · Em risco{" "}
+                    {formatCurrencyBRL(entry.value_at_risk_brl)}
+                  </p>
+                  <p className="text-xs text-slate-500">
+                    Ações {entry.actions_completed}/{entry.actions_dispatched} · recuperação{" "}
+                    {(entry.recovery_rate ?? 0).toFixed(1)}%
+                  </p>
+                </div>
+                <div className="flex items-center gap-2">
+                  <TrustBadge status={entry.value_status || "estimated"} />
+                  <span className="text-[11px] text-slate-500">
+                    Confiança {Math.round(entry.confidence_score_avg || 0)}/100
+                  </span>
+                </div>
+              </article>
+            ))}
+          </div>
+        )}
       </section>
 
       <section className="rounded-xl border border-slate-200 bg-white p-4 shadow-sm">

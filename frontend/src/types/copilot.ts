@@ -197,6 +197,9 @@ export interface CopilotValueLedgerDailyItem {
   actions_completed: number
   confidence_score_avg: number
   method_version: string
+  value_status?: "official" | "validated" | "estimated"
+  confidence_tier?: "official" | "validated" | "estimated"
+  recovery_rate?: number
   created_at: string
   updated_at: string
 }
@@ -235,6 +238,13 @@ export interface CopilotValueLedgerDailyResponse {
     completion_rate?: number
     recovery_rate?: number
     confidence_score_avg: number
+    value_status?: "official" | "validated" | "estimated"
+    confidence_tier?: "official" | "validated" | "estimated"
+  }
+  value_status_summary?: {
+    official: number
+    validated: number
+    estimated: number
   }
   breakdown_by_store?: Array<{
     store_id: string
@@ -247,6 +257,7 @@ export interface CopilotValueLedgerDailyResponse {
     completion_rate?: number
     recovery_rate?: number
     confidence_score_avg: number
+    value_status?: "official" | "validated" | "estimated"
   }>
   items: CopilotValueLedgerDailyItem[]
 }

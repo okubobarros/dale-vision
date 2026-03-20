@@ -200,6 +200,18 @@ const trustStyles: Record<"official" | "proxy" | "estimated", string> = {
   estimated: "bg-slate-50 text-slate-700 border-slate-200",
 }
 
+const ledgerValueStatusStyles: Record<"official" | "validated" | "estimated", string> = {
+  official: "border-emerald-200 bg-emerald-50 text-emerald-700",
+  validated: "border-blue-200 bg-blue-50 text-blue-700",
+  estimated: "border-slate-200 bg-slate-100 text-slate-600",
+}
+
+const ledgerValueStatusLabel: Record<"official" | "validated" | "estimated", string> = {
+  official: "Oficial",
+  validated: "Validado",
+  estimated: "Estimado",
+}
+
 const normalizeTrustStatus = (value?: string | null): "official" | "proxy" | "estimated" => {
   const normalized = String(value || "").toLowerCase()
   if (normalized === "official") return "official"
@@ -1767,6 +1779,22 @@ const Dashboard = () => {
           },
         ]
       : []
+  const ledgerTimelineItems =
+    !isNetworkMode && storeValueLedger?.items?.length
+      ? storeValueLedger.items.slice(0, 4).map((item) => {
+          const status = (item.value_status || "estimated") as "official" | "validated" | "estimated"
+          return {
+            id: item.id,
+            date: item.ledger_date,
+            recovered: item.value_recovered_brl || 0,
+            atRisk: item.value_at_risk_brl || 0,
+            actionsCompleted: item.actions_completed || 0,
+            actionsDispatched: item.actions_dispatched || 0,
+            confidence: item.confidence_score_avg || 0,
+            status,
+          }
+        })
+      : []
   const kpiItems = [...baseKpiItems, ...ledgerKpiItems]
   if (storesLoading) {
     return (
@@ -2617,6 +2645,46 @@ const Dashboard = () => {
                 {momentOfPride.title}
               </p>
               <p className="mt-1 text-sm font-medium text-emerald-900">{momentOfPride.description}</p>
+            </section>
+          )}
+
+          {!!ledgerTimelineItems.length && (
+            <section className="rounded-xl border border-gray-200 bg-white p-4 sm:p-6 shadow-sm">
+              <div className="flex items-center justify-between gap-3">
+                <div>
+                  <h3 className="text-base sm:text-lg font-semibold text-gray-900">Timeline de Valor Recuperado</h3>
+                  <p className="text-sm text-gray-600 mt-1">Últimos lançamentos financeiros da loja.</p>
+                </div>
+                <Link
+                  to="/app/reports"
+                  className="rounded-lg border border-gray-200 px-3 py-2 text-xs font-semibold text-gray-700 hover:bg-gray-50"
+                >
+                  Ver relatório
+                </Link>
+              </div>
+              <div className="mt-4 space-y-2">
+                {ledgerTimelineItems.map((entry) => (
+                  <article key={entry.id} className="rounded-lg border border-gray-200 bg-gray-50 p-3">
+                    <div className="flex flex-wrap items-center justify-between gap-2">
+                      <p className="text-sm font-semibold text-gray-900">{formatTimestampShort(entry.date)}</p>
+                      <span
+                        className={`rounded-full border px-2 py-0.5 text-[11px] font-semibold ${
+                          ledgerValueStatusStyles[entry.status]
+                        }`}
+                      >
+                        {ledgerValueStatusLabel[entry.status]}
+                      </span>
+                    </div>
+                    <p className="mt-1 text-xs text-gray-700">
+                      Recuperado {formatCurrencyBRL(entry.recovered)} · Em risco {formatCurrencyBRL(entry.atRisk)}
+                    </p>
+                    <p className="mt-1 text-xs text-gray-700">
+                      Ações {entry.actionsCompleted}/{entry.actionsDispatched} · confiança{" "}
+                      {Math.round(entry.confidence)}/100
+                    </p>
+                  </article>
+                ))}
+              </div>
             </section>
           )}
 

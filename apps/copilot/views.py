@@ -51,6 +51,24 @@ from .services import (
 logger = logging.getLogger(__name__)
 
 
+def _ledger_confidence_tier(confidence_score: float) -> str:
+    score = float(confidence_score or 0)
+    if score >= 80:
+        return "official"
+    if score >= 60:
+        return "validated"
+    return "estimated"
+
+
+def _ledger_value_status(*, confidence_score: float, actions_completed: int, recovery_rate: float) -> str:
+    tier = _ledger_confidence_tier(confidence_score)
+    if tier == "official" and actions_completed >= 3 and recovery_rate >= 60:
+        return "official"
+    if tier in {"official", "validated"} and actions_completed >= 1:
+        return "validated"
+    return "estimated"
+
+
 def _get_store_or_404(store_id):
     store = Store.objects.filter(id=store_id).first()
     if not store:
@@ -888,6 +906,39 @@ class CopilotValueLedgerDailyView(APIView):
         actions_completed = int(totals.get("actions_completed") or 0)
         completion_rate = round((actions_completed / actions_dispatched) * 100, 1) if actions_dispatched > 0 else 0.0
         recovery_rate = round((value_recovered_brl / value_at_risk_brl) * 100, 1) if value_at_risk_brl > 0 else 0.0
+        confidence_score_avg = float(totals.get("confidence_avg") or 0)
+        value_status = _ledger_value_status(
+            confidence_score=confidence_score_avg,
+            actions_completed=actions_completed,
+            recovery_rate=recovery_rate,
+        )
+        serialized_items = ValueLedgerDailySerializer(rows, many=True).data
+        status_summary = {"official": 0, "validated": 0, "estimated": 0}
+        enriched_items = []
+        for row, item in zip(rows, serialized_items):
+            item_value_recovered = float(getattr(row, "value_recovered_brl", 0) or 0)
+            item_value_at_risk = float(getattr(row, "value_at_risk_brl", 0) or 0)
+            item_recovery_rate = (
+                round((item_value_recovered / item_value_at_risk) * 100, 1)
+                if item_value_at_risk > 0
+                else 0.0
+            )
+            item_actions_completed = int(getattr(row, "actions_completed", 0) or 0)
+            item_confidence = float(getattr(row, "confidence_score_avg", 0) or 0)
+            item_status = _ledger_value_status(
+                confidence_score=item_confidence,
+                actions_completed=item_actions_completed,
+                recovery_rate=item_recovery_rate,
+            )
+            status_summary[item_status] = int(status_summary.get(item_status, 0)) + 1
+            enriched_items.append(
+                {
+                    **item,
+                    "value_status": item_status,
+                    "confidence_tier": _ledger_confidence_tier(item_confidence),
+                    "recovery_rate": item_recovery_rate,
+                }
+            )
         return Response(
             {
                 "store_id": str(store_id),
@@ -912,9 +963,12 @@ class CopilotValueLedgerDailyView(APIView):
                     "actions_completed": actions_completed,
                     "completion_rate": completion_rate,
                     "recovery_rate": recovery_rate,
-                    "confidence_score_avg": float(totals.get("confidence_avg") or 0),
+                    "confidence_score_avg": confidence_score_avg,
+                    "value_status": value_status,
+                    "confidence_tier": _ledger_confidence_tier(confidence_score_avg),
                 },
-                "items": ValueLedgerDailySerializer(rows, many=True).data,
+                "value_status_summary": status_summary,
+                "items": enriched_items,
             },
             status=status.HTTP_200_OK,
         )
@@ -1086,7 +1140,10 @@ class CopilotNetworkValueLedgerDailyView(APIView):
                         "completion_rate": 0.0,
                         "recovery_rate": 0.0,
                         "confidence_score_avg": 0.0,
+                        "value_status": "estimated",
+                        "confidence_tier": "estimated",
                     },
+                    "value_status_summary": {"official": 0, "validated": 0, "estimated": 0},
                     "breakdown_by_store": [],
                     "items": [],
                 },
@@ -1113,6 +1170,12 @@ class CopilotNetworkValueLedgerDailyView(APIView):
         actions_completed = int(totals.get("actions_completed") or 0)
         completion_rate = round((actions_completed / actions_dispatched) * 100, 1) if actions_dispatched > 0 else 0.0
         recovery_rate = round((value_recovered_brl / value_at_risk_brl) * 100, 1) if value_at_risk_brl > 0 else 0.0
+        confidence_score_avg = float(totals.get("confidence_avg") or 0)
+        value_status = _ledger_value_status(
+            confidence_score=confidence_score_avg,
+            actions_completed=actions_completed,
+            recovery_rate=recovery_rate,
+        )
         slo_target_seconds = 900
         if latest_row and latest_row.updated_at:
             freshness_seconds = max(0, int((timezone.now() - latest_row.updated_at).total_seconds()))
@@ -1163,6 +1226,33 @@ class CopilotNetworkValueLedgerDailyView(APIView):
             )
             .order_by("-value_at_risk_brl")[:10]
         )
+        status_summary = {"official": 0, "validated": 0, "estimated": 0}
+        serialized_items = ValueLedgerDailySerializer(rows[:200], many=True).data
+        enriched_items = []
+        for item in serialized_items:
+            item_value_recovered = float((item.get("value_recovered_brl") or 0))
+            item_value_at_risk = float((item.get("value_at_risk_brl") or 0))
+            item_recovery_rate = (
+                round((item_value_recovered / item_value_at_risk) * 100, 1)
+                if item_value_at_risk > 0
+                else 0.0
+            )
+            item_actions_completed = int((item.get("actions_completed") or 0))
+            item_confidence = float((item.get("confidence_score_avg") or 0))
+            item_status = _ledger_value_status(
+                confidence_score=item_confidence,
+                actions_completed=item_actions_completed,
+                recovery_rate=item_recovery_rate,
+            )
+            status_summary[item_status] = int(status_summary.get(item_status, 0)) + 1
+            enriched_items.append(
+                {
+                    **item,
+                    "value_status": item_status,
+                    "confidence_tier": _ledger_confidence_tier(item_confidence),
+                    "recovery_rate": item_recovery_rate,
+                }
+            )
         store_name_map = {
             str(row["id"]): row["name"]
             for row in Store.objects.filter(id__in=[row.get("store_id") for row in breakdown_rows]).values("id", "name")
@@ -1201,8 +1291,11 @@ class CopilotNetworkValueLedgerDailyView(APIView):
                     "actions_completed": actions_completed,
                     "completion_rate": completion_rate,
                     "recovery_rate": recovery_rate,
-                    "confidence_score_avg": float(totals.get("confidence_avg") or 0),
+                    "confidence_score_avg": confidence_score_avg,
+                    "value_status": value_status,
+                    "confidence_tier": _ledger_confidence_tier(confidence_score_avg),
                 },
+                "value_status_summary": status_summary,
                 "breakdown_by_store": [
                     {
                         "store_id": str(row.get("store_id")),
@@ -1237,10 +1330,26 @@ class CopilotNetworkValueLedgerDailyView(APIView):
                         if float(row.get("value_at_risk_brl") or 0) > 0
                         else 0.0,
                         "confidence_score_avg": float(row.get("confidence_score_avg") or 0),
+                        "value_status": _ledger_value_status(
+                            confidence_score=float(row.get("confidence_score_avg") or 0),
+                            actions_completed=int(row.get("actions_completed") or 0),
+                            recovery_rate=(
+                                round(
+                                    (
+                                        (float(row.get("value_recovered_brl") or 0)
+                                         / float(row.get("value_at_risk_brl") or 0))
+                                        * 100
+                                    ),
+                                    1,
+                                )
+                                if float(row.get("value_at_risk_brl") or 0) > 0
+                                else 0.0
+                            ),
+                        ),
                     }
                     for row in breakdown_rows
                 ],
-                "items": ValueLedgerDailySerializer(rows[:200], many=True).data,
+                "items": enriched_items,
             },
             status=status.HTTP_200_OK,
         )

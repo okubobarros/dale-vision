@@ -129,4 +129,5 @@ class CopilotNetworkValueLedgerDailyViewTests(SimpleTestCase):
         self.assertEqual(response.data.get("totals", {}).get("value_at_risk_brl"), 4200.0)
         self.assertEqual(response.data.get("totals", {}).get("actions_dispatched"), 12)
         self.assertEqual(response.data.get("totals", {}).get("actions_completed"), 9)
-        self.assertEqual(response.data.get("items"), [{"ledger_date": "2026-03-15"}])
+        self.assertEqual(response.data.get("items", [{}])[0].get("ledger_date"), "2026-03-15")
+        self.assertIn("value_status", response.data.get("items", [{}])[0])
