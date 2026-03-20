@@ -1,6 +1,16 @@
 import api from "./api"
 
 export type JourneyEventName =
+  | "activation_callback_started"
+  | "activation_callback_failed"
+  | "activation_resend_clicked"
+  | "activation_callback_completed"
+  | "post_login_explainer_shown"
+  | "post_login_explainer_cta_clicked"
+  | "post_login_explainer_dismissed"
+  | "edge_checklist_viewed"
+  | "edge_checklist_step_clicked"
+  | "edge_first_signal_achieved"
   | "signup_completed"
   | "store_created"
   | "camera_added"

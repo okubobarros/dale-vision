@@ -1,14 +1,17 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from "react"
 import { useNavigate } from "react-router-dom"
 import { supabase } from "../../lib/supabase"
+import { getAuthCallbackUrl } from "../../lib/siteUrl"
 import { authService } from "../../services/auth"
 import { useAuth } from "../../contexts/useAuth"
 import { syncApiAuthHeader } from "../../services/api"
-import { resolvePostLoginRoute } from "../../services/postLoginRoute"
+import { persistPostLoginExplainer, resolvePostLoginDecision } from "../../services/postLoginRoute"
+import { trackJourneyEvent } from "../../services/journey"
 
-type CallbackStatus = "loading" | "error" | "timeout"
+type CallbackStatus = "loading" | "action_required" | "timeout"
 
 const CALLBACK_TIMEOUT_MS = 8000
+const LAST_AUTH_EMAIL_STORAGE_KEY = "dv_last_auth_email"
 
 const getErrorMessage = (error: unknown, fallback: string) => {
   if (error && typeof error === "object") {
@@ -31,10 +34,32 @@ const readUrlError = (url: URL) => {
   )
 }
 
+const getEmailFromUrlOrStorage = (url: URL) => {
+  const fromQuery = (url.searchParams.get("email") || "").trim()
+  if (fromQuery.includes("@")) return fromQuery
+  if (typeof window === "undefined") return ""
+  return (localStorage.getItem(LAST_AUTH_EMAIL_STORAGE_KEY) || "").trim()
+}
+
+const isEmailRequiredError = (message: string) => {
+  const text = message.toLowerCase()
+  return (
+    text.includes("confirm") ||
+    text.includes("confirmation") ||
+    text.includes("expired") ||
+    text.includes("invalid") ||
+    text.includes("token")
+  )
+}
+
 const AuthCallback: React.FC = () => {
   const [status, setStatus] = useState<CallbackStatus>("loading")
   const [errorMessage, setErrorMessage] = useState("")
   const [attempt, setAttempt] = useState(0)
+  const [emailForResend, setEmailForResend] = useState("")
+  const [resendMessage, setResendMessage] = useState("")
+  const [resendLoading, setResendLoading] = useState(false)
+  const [showResend, setShowResend] = useState(false)
   const hasNavigatedRef = useRef(false)
   const navigate = useNavigate()
   const { refreshAuth } = useAuth()
@@ -47,11 +72,59 @@ const AuthCallback: React.FC = () => {
     setAttempt((prev) => prev + 1)
   }, [])
 
+  const handleResend = useCallback(async () => {
+    const email = emailForResend.trim()
+    if (!email || !email.includes("@")) {
+      setResendMessage("Informe um e-mail válido para reenviar.")
+      return
+    }
+
+    void trackJourneyEvent("activation_resend_clicked", {
+      source: "auth_callback",
+      status: "attempt",
+    })
+
+    setResendLoading(true)
+    setResendMessage("")
+    try {
+      const { error } = await supabase.auth.resend({
+        type: "signup",
+        email,
+        options: {
+          emailRedirectTo: getAuthCallbackUrl(),
+        },
+      })
+      if (error) {
+        setResendMessage(error.message || "Não foi possível reenviar o e-mail.")
+      } else {
+        if (typeof window !== "undefined") {
+          localStorage.setItem(LAST_AUTH_EMAIL_STORAGE_KEY, email)
+        }
+        setResendMessage("E-mail de confirmação reenviado.")
+        void trackJourneyEvent("activation_resend_clicked", {
+          source: "auth_callback",
+          status: "success",
+        })
+      }
+    } catch {
+      setResendMessage("Não foi possível reenviar o e-mail.")
+    } finally {
+      setResendLoading(false)
+    }
+  }, [emailForResend])
+
   useEffect(() => {
     let active = true
     setStatus("loading")
     setErrorMessage("")
+    setResendMessage("")
+    setShowResend(false)
     hasNavigatedRef.current = false
+
+    void trackJourneyEvent("activation_callback_started", {
+      source: "auth_callback",
+      attempt: attempt + 1,
+    })
 
     const timeoutId = window.setTimeout(() => {
       if (active) {
@@ -62,6 +135,10 @@ const AuthCallback: React.FC = () => {
     const run = async () => {
       try {
         const url = new URL(window.location.href)
+        const rememberedEmail = getEmailFromUrlOrStorage(url)
+        if (rememberedEmail) {
+          setEmailForResend(rememberedEmail)
+        }
         const urlError = readUrlError(url)
         if (urlError) {
           throw new Error(decodeURIComponent(urlError))
@@ -115,20 +192,32 @@ const AuthCallback: React.FC = () => {
         })
 
         authService.saveSupabaseSession(session, user, user.email || "")
+        if (user?.email) {
+          localStorage.setItem(LAST_AUTH_EMAIL_STORAGE_KEY, user.email)
+        }
         refreshAuth()
         syncApiAuthHeader()
+        void trackJourneyEvent("activation_callback_completed", {
+          source: "auth_callback",
+        })
 
         if (active && !hasNavigatedRef.current) {
           hasNavigatedRef.current = true
-          const nextRoute = await resolvePostLoginRoute()
-          navigate(nextRoute, { replace: true })
+          const decision = await resolvePostLoginDecision()
+          persistPostLoginExplainer(decision)
+          navigate(decision.route, { replace: true })
         }
       } catch (error) {
         const message = getErrorMessage(error, "Falha ao validar o login.")
         console.error("[AuthCallback] error", { message })
+        void trackJourneyEvent("activation_callback_failed", {
+          source: "auth_callback",
+          message,
+        })
         if (active) {
           setErrorMessage(message)
-          setStatus("error")
+          setShowResend(isEmailRequiredError(message))
+          setStatus("action_required")
         }
       } finally {
         clearTimeout(timeoutId)
@@ -143,8 +232,8 @@ const AuthCallback: React.FC = () => {
   }, [attempt, navigate, refreshAuth])
 
   const title = useMemo(() => {
-    if (status === "error") {
-      return "Não foi possível validar seu acesso"
+    if (status === "action_required") {
+      return "Ação necessária para concluir seu acesso"
     }
     if (status === "timeout") {
       return "Isso está demorando mais do que o esperado"
@@ -153,8 +242,8 @@ const AuthCallback: React.FC = () => {
   }, [status])
 
   const subtitle = useMemo(() => {
-    if (status === "error") {
-      return "Verifique o link de confirmação ou tente novamente."
+    if (status === "action_required") {
+      return "Você pode tentar novamente, reenviar o e-mail de confirmação ou voltar ao login."
     }
     if (status === "timeout") {
       return "Ainda estamos tentando confirmar seu acesso."
@@ -191,9 +280,35 @@ const AuthCallback: React.FC = () => {
             </button>
           </div>
         )}
-        {status === "error" && (
+        {status === "action_required" && (
           <div className="mt-4 space-y-3">
             <p className="text-sm text-red-600">{errorMessage}</p>
+            {showResend && (
+              <div className="space-y-2">
+                <label htmlFor="resend-email" className="block text-left text-xs font-medium text-slate-600">
+                  E-mail para reenvio
+                </label>
+                <input
+                  id="resend-email"
+                  type="email"
+                  value={emailForResend}
+                  onChange={(e) => setEmailForResend(e.target.value)}
+                  placeholder="nome@empresa.com.br"
+                  className="w-full rounded-lg border border-slate-200 px-3 py-2 text-sm text-slate-900 focus:outline-none focus:ring-2 focus:ring-cyan-200"
+                />
+                <button
+                  type="button"
+                  onClick={handleResend}
+                  disabled={resendLoading}
+                  className="inline-flex items-center justify-center rounded-lg border border-slate-200 bg-white px-4 py-2 text-sm font-semibold text-slate-700 hover:bg-slate-50 disabled:opacity-60"
+                >
+                  {resendLoading ? "Reenviando..." : "Reenviar e-mail"}
+                </button>
+                {resendMessage && (
+                  <p className="text-xs text-slate-600">{resendMessage}</p>
+                )}
+              </div>
+            )}
             <div className="flex flex-col gap-2">
               <button
                 type="button"

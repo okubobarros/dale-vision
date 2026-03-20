@@ -6,6 +6,8 @@ import SetupProgress from "../Onboarding/components/SetupProgress"
 import { supabase } from "../../lib/supabase"
 import { getAuthCallbackUrl } from "../../lib/siteUrl"
 
+const LAST_AUTH_EMAIL_STORAGE_KEY = "dv_last_auth_email"
+
 function isValidEmail(email: string) {
   return /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email.trim())
 }
@@ -54,10 +56,12 @@ export default function Register() {
     setCooldownUntil(Date.now() + 5000)
 
     const redirectTo = getAuthCallbackUrl()
+    const normalizedEmail = email.trim()
+    localStorage.setItem(LAST_AUTH_EMAIL_STORAGE_KEY, normalizedEmail)
 
     try {
       const { error } = await supabase.auth.signUp({
-        email: email.trim(),
+        email: normalizedEmail,
         password,
         options: {
           emailRedirectTo: redirectTo,

@@ -5,7 +5,9 @@ import logo from "../../assets/logo.png"
 import { useAuth } from "../../contexts/useAuth"
 import { supabase } from "../../lib/supabase"
 import { getAuthCallbackUrl } from "../../lib/siteUrl"
-import { resolvePostLoginRoute } from "../../services/postLoginRoute"
+import { persistPostLoginExplainer, resolvePostLoginDecision } from "../../services/postLoginRoute"
+
+const LAST_AUTH_EMAIL_STORAGE_KEY = "dv_last_auth_email"
 
 const Login = () => {
   const [username, setUsername] = useState("")
@@ -45,9 +47,11 @@ const Login = () => {
     setIsLoading(true)
 
     try {
+      localStorage.setItem(LAST_AUTH_EMAIL_STORAGE_KEY, username.trim())
       await login({ username, password })
-      const nextRoute = await resolvePostLoginRoute()
-      navigate(nextRoute, { replace: true })
+      const decision = await resolvePostLoginDecision()
+      persistPostLoginExplainer(decision)
+      navigate(decision.route, { replace: true })
     } catch (err: unknown) {
       const error = err as {
         message?: string
@@ -97,6 +101,7 @@ const Login = () => {
       if (resendError) {
         setResendMessage(resendError.message || "Não foi possível reenviar o e-mail.")
       } else {
+        localStorage.setItem(LAST_AUTH_EMAIL_STORAGE_KEY, email)
         setResendMessage("E-mail de confirmação reenviado.")
       }
     } catch {

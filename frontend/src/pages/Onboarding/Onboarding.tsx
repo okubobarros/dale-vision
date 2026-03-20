@@ -6,6 +6,7 @@ import { useAuth } from "../../contexts/useAuth"
 import { storesService } from "../../services/stores"
 import { employeesService } from "../../services/employees"
 import { resolvePostLoginRoute } from "../../services/postLoginRoute"
+import PostLoginExplainer from "../../components/PostLoginExplainer"
 import OnboardingProgress from "./components/OnboardingProgress"
 import StoresSetup, { type StoreDraft } from "./components/StoresSetup"
 import EmployeesSetup, { type EmployeeDraft } from "./components/EmployeesSetup"
@@ -254,6 +255,7 @@ export default function Onboarding() {
       <div className="relative max-w-5xl mx-auto px-4 sm:px-6 lg:px-8 py-10">
         {/* Card container para “premium feel” */}
         <div className="rounded-[28px] border border-slate-200/70 bg-white/75 backdrop-blur-xl shadow-[0_18px_60px_rgba(15,23,42,0.12)] p-6 sm:p-8">
+          <PostLoginExplainer />
           <OnboardingProgress currentStep={step} />
 
           <div className="mt-10">

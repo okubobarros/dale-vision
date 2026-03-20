@@ -40,6 +40,8 @@ import { PaidExecutiveDashboardView } from "./views/PaidExecutiveDashboardView"
 import { DashboardKpiStrip } from "./views/DashboardKpiStrip"
 import { InfrastructureSection } from "./views/InfrastructureSection"
 import { AlertsSection } from "./views/AlertsSection"
+import PostLoginExplainer from "../../components/PostLoginExplainer"
+import EdgeActivationChecklist from "./views/EdgeActivationChecklist"
 
 const ONLINE_MAX_AGE_SEC = 120
 
@@ -490,6 +492,13 @@ const Dashboard = () => {
     refetchOnMount: "always",
     retry: false,
   })
+  const { data: edgeSetupState } = useQuery({
+    queryKey: ["store-edge-setup-state", selectedStore],
+    queryFn: () => storesService.getStoreEdgeSetup(selectedStore),
+    enabled: canFetchAuth && !isNetworkMode && Boolean(selectedStore),
+    staleTime: 30000,
+    retry: false,
+  })
   const selectedStoreRole = selectedStoreItem?.role ?? null
   const canManageStore = selectedStoreRole
     ? ["owner", "admin", "manager"].includes(selectedStoreRole)
@@ -785,6 +794,53 @@ const Dashboard = () => {
   }
 
   const edgeStatusLabel = isEdgeConnected ? "Online" : "Offline"
+  const heartbeatRecent = isRecentTimestamp(lastSeenAt, 300)
+  const tokenReady = Boolean(edgeSetupState?.has_active_token || edgeSetupState?.edge_token)
+  const firstMetricsReady =
+    onboardingStage === "active" ||
+    (metricsSummary?.totals?.total_visitors ?? 0) > 0 ||
+    activeEvents.length > 0
+  const edgeActivationChecklistItems = useMemo(() => {
+    if (!selectedStore || selectedStore === ALL_STORES_VALUE) return []
+    const storeParam = `store_id=${encodeURIComponent(selectedStore)}`
+    return [
+      {
+        key: "token" as const,
+        label: "Token",
+        done: tokenReady,
+        href: `/app/dashboard?openEdgeSetup=1&${storeParam}`,
+        hint: "Gere/valide token do agente edge.",
+      },
+      {
+        key: "agent_online" as const,
+        label: "Agent online",
+        done: isEdgeConnected,
+        href: `/app/edge-help?${storeParam}`,
+        hint: "Confirme serviço em execução e conexão com cloud.",
+      },
+      {
+        key: "heartbeat" as const,
+        label: "Heartbeat",
+        done: heartbeatRecent,
+        href: `/app/edge-help?${storeParam}`,
+        hint: "Último heartbeat recente (< 5 min).",
+      },
+      {
+        key: "camera_health" as const,
+        label: "Saúde câmeras",
+        done: camerasOnline > 0,
+        href: `/app/cameras?${storeParam}&onboarding=true`,
+        hint: "Ao menos uma câmera online e saudável.",
+      },
+      {
+        key: "first_metrics" as const,
+        label: "Primeiro sinal",
+        done: firstMetricsReady,
+        href: `/app/operations/stores/${selectedStore}`,
+        hint: "Receber e validar primeiros eventos operacionais.",
+      },
+    ]
+  }, [camerasOnline, firstMetricsReady, heartbeatRecent, isEdgeConnected, selectedStore, tokenReady])
 
   const edgeStatusClass = isEdgeConnected
     ? "bg-green-100 text-green-800"
@@ -1677,6 +1733,7 @@ const Dashboard = () => {
   if (isTrialBlocked) {
     return (
       <div className="space-y-6 sm:space-y-8">
+        <PostLoginExplainer />
         <div className="bg-white rounded-2xl border border-gray-200 p-6 sm:p-8 shadow-sm">
           <div className="flex items-center justify-between gap-4">
             <div>
@@ -1744,6 +1801,14 @@ const Dashboard = () => {
 
   return (
     <div className="space-y-6 sm:space-y-8">
+      <PostLoginExplainer />
+      {!isNetworkMode && selectedStoreItem && canManageStore && edgeActivationChecklistItems.length > 0 && (
+        <EdgeActivationChecklist
+          storeId={selectedStore}
+          storeName={selectedStoreItem.name}
+          items={edgeActivationChecklistItems}
+        />
+      )}
       {/* Header (mobile-first) */}
       <div className="grid grid-cols-1 xl:grid-cols-3 gap-4 items-start">
         <div className="xl:col-span-2 flex flex-col gap-4">

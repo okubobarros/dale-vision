@@ -176,6 +176,12 @@ export default function AdminControlTower() {
     enabled: isInternalAdmin,
     refetchInterval: 30_000,
   })
+  const releaseGateQuery = useQuery({
+    queryKey: ["admin", "release-gate"],
+    queryFn: () => adminService.getReleaseGate(),
+    enabled: isInternalAdmin,
+    refetchInterval: 60_000,
+  })
 
   const grantSupportMutation = useMutation({
     mutationFn: (requestId: string) => supportService.grantSupportRequest(requestId, 120),
@@ -358,6 +364,7 @@ export default function AdminControlTower() {
     .slice(0, 5)
   const ingestionGapRows = ingestionGapQuery.data?.rows || []
   const pipelineRows = pipelineObservabilityQuery.data?.rows || []
+  const releaseGate = releaseGateQuery.data
 
   return (
     <div className="space-y-6">
@@ -572,6 +579,45 @@ export default function AdminControlTower() {
                     .join(", ")}
                 </div>
               ) : null}
+            </div>
+          </section>
+
+          <section className="space-y-3">
+            <h2 className="text-sm font-semibold text-gray-800 uppercase tracking-wide">Gate automático de release</h2>
+            <div className="rounded-xl border border-gray-200 bg-white p-4">
+              <div className="flex items-center justify-between gap-3">
+                <div className="text-sm text-gray-700">
+                  Liberação permitida somente com `null rate crítico` {"<="} 2%, `pipeline success` {">="} 99% e `funil` {">"} 0 em loja ativa.
+                </div>
+                <span
+                  className={`inline-flex rounded-full border px-3 py-1 text-xs font-semibold ${
+                    releaseGate?.overall_pass
+                      ? "border-emerald-300 bg-emerald-50 text-emerald-700"
+                      : "border-rose-300 bg-rose-50 text-rose-700"
+                  }`}
+                >
+                  {releaseGate?.overall_pass ? "GO" : "NO-GO"}
+                </span>
+              </div>
+              <div className="mt-3 grid grid-cols-1 gap-3 md:grid-cols-3">
+                <Card
+                  title="Null rate crítico"
+                  value={formatRatioPercent(releaseGate?.checks?.null_rate_critical?.value)}
+                  hint={`${releaseGate?.checks?.null_rate_critical?.pass ? "OK" : "Falhou"} · limite 2%`}
+                />
+                <Card
+                  title="Pipeline success"
+                  value={formatRatioPercent(releaseGate?.checks?.pipeline_success?.value)}
+                  hint={`${releaseGate?.checks?.pipeline_success?.pass ? "OK" : "Falhou"} · mínimo 99%`}
+                />
+                <Card
+                  title="Funil em lojas ativas"
+                  value={`${formatNumber(releaseGate?.checks?.funnel_non_zero_active_store?.active_with_funnel_total)} / ${formatNumber(
+                    releaseGate?.checks?.funnel_non_zero_active_store?.active_signal_total
+                  )}`}
+                  hint={`${releaseGate?.checks?.funnel_non_zero_active_store?.pass ? "OK" : "Falhou"} · deve cobrir 100%`}
+                />
+              </div>
             </div>
           </section>
 
