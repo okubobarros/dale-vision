@@ -1,4 +1,4 @@
-import { useEffect } from "react"
+import { useEffect, useMemo } from "react"
 import { useQuery } from "@tanstack/react-query"
 import { trackJourneyEvent, trackJourneyEventOnce } from "../../services/journey"
 import { meService, type MeStatus, type ReportImpact } from "../../services/me"
@@ -13,6 +13,11 @@ const formatCurrency = (value?: number | null) => {
     currency: "BRL",
     maximumFractionDigits: 0,
   }).format(safe)
+}
+
+const formatPercent = (value?: number | null) => {
+  if (value === null || value === undefined || Number.isNaN(value)) return "—"
+  return `${Math.round(value * 100)}%`
 }
 
 const Upgrade = () => {
@@ -35,6 +40,66 @@ const Upgrade = () => {
   useEffect(() => {
     void trackJourneyEventOnce("upgrade_viewed", "upgrade_viewed", { path: "/app/upgrade" })
   }, [])
+
+  const proofMode = useMemo<"with_data" | "insufficient_data">(() => {
+    if (!data) return "insufficient_data"
+    const visitors = data.kpis?.total_visitors ?? 0
+    const alerts = data.kpis?.total_alerts ?? 0
+    const potential = data.impact?.potential_monthly_estimated ?? 0
+    return visitors > 0 || alerts > 0 || potential > 0 ? "with_data" : "insufficient_data"
+  }, [data])
+
+  useEffect(() => {
+    if (!data) return
+    void trackJourneyEvent("upgrade_proof_viewed", {
+      source: "upgrade_page",
+      proof_mode: proofMode,
+    })
+    if (proofMode === "insufficient_data") {
+      void trackJourneyEvent("upgrade_proof_insufficient_data_shown", {
+        source: "upgrade_page",
+      })
+    }
+  }, [data, proofMode])
+
+  const beforeVsAfter = useMemo(() => {
+    if (!data) return null
+    const queueBefore = data.kpis?.avg_queue_seconds ?? 0
+    const conversionBefore = data.kpis?.avg_conversion_rate ?? 0
+    const riskBefore = data.impact?.cost_queue ?? 0
+    return {
+      queueBefore,
+      queueAfter: Math.max(0, Math.round(queueBefore * 0.7)),
+      conversionBefore,
+      conversionAfter: Math.min(1, conversionBefore + 0.04),
+      riskBefore,
+      riskAfter: Math.max(0, Math.round(riskBefore * 0.65)),
+    }
+  }, [data])
+
+  const actionProofCards = useMemo(() => {
+    if (!data) return []
+    const queueSeconds = data.kpis?.avg_queue_seconds ?? 0
+    const idleCost = data.impact?.cost_idle ?? 0
+    const queueCost = data.impact?.cost_queue ?? 0
+    return [
+      {
+        title: "Abrir caixa no pico de fila",
+        result: `Fila média projetada para ${Math.max(1, Math.round((queueSeconds * 0.7) / 60))} min`,
+        value: formatCurrency(Math.round(queueCost * 0.35)),
+      },
+      {
+        title: "Rebalancear equipe por janela crítica",
+        result: "Redução de ociosidade operacional no turno",
+        value: formatCurrency(Math.round(idleCost * 0.3)),
+      },
+      {
+        title: "Fechar loop de alertas críticos",
+        result: "Maior velocidade de resposta e menor perda invisível",
+        value: formatCurrency(Math.round((queueCost + idleCost) * 0.2)),
+      },
+    ]
+  }, [data])
 
   const plans = [
     {
@@ -115,7 +180,9 @@ const Upgrade = () => {
           <p className="text-base sm:text-lg text-slate-200 max-w-2xl">
             {hasActiveSubscription
               ? "Compare pacotes para ampliar cobertura de lojas, câmeras e inteligência operacional."
-              : "Continue com monitoramento em tempo real, alertas proativos e relatórios executivos para reduzir filas, ociosidade e perdas."}
+              : proofMode === "with_data"
+              ? "Seu diagnóstico já mostrou oportunidades concretas. Faça upgrade para transformar isso em rotina operacional contínua."
+              : "Ative o plano para consolidar dados operacionais, gerar prova de impacto e acelerar decisões por loja."}
           </p>
           <div className="flex flex-col sm:flex-row gap-3">
             <a
@@ -129,11 +196,15 @@ const Upgrade = () => {
               target="_blank"
               rel="noreferrer"
               className="inline-flex items-center justify-center rounded-xl border border-white/30 px-6 py-3 text-sm font-semibold text-white hover:border-white/60"
-              onClick={() =>
+              onClick={() => {
+                void trackJourneyEvent("upgrade_proof_cta_clicked", {
+                  source: "upgrade_whatsapp_hero",
+                  proof_mode: proofMode,
+                })
                 void trackJourneyEvent("upgrade_clicked", {
                   source: "upgrade_whatsapp",
                 })
-              }
+              }}
             >
               Falar no WhatsApp
             </a>
@@ -142,35 +213,69 @@ const Upgrade = () => {
       </section>
 
       <section className="px-6 py-10">
-        <div className="max-w-5xl mx-auto grid grid-cols-1 md:grid-cols-3 gap-4">
-          <div className="rounded-2xl border border-slate-200 bg-white p-5 shadow-sm">
-            <div className="text-xs text-slate-500">Custo de ociosidade</div>
-            <div className="text-2xl font-bold mt-2">
-              {formatCurrency(data?.impact?.cost_idle)}
+        {proofMode === "with_data" ? (
+          <div className="max-w-5xl mx-auto space-y-5">
+            <div className="rounded-2xl border border-emerald-200 bg-emerald-50 p-5">
+              <div className="text-xs uppercase tracking-[0.12em] text-emerald-700">
+                Prova de impacto (7 dias)
+              </div>
+              <div className="mt-2 text-2xl font-bold text-emerald-900">
+                Potencial mensal estimado: {formatCurrency(data?.impact?.potential_monthly_estimated)}
+              </div>
+              <p className="mt-2 text-sm text-emerald-800">
+                Baseado em custo de fila, ociosidade e comportamento operacional observado no período.
+              </p>
             </div>
-            <p className="text-xs text-slate-500 mt-2">
-              Estimativa com base no custo/hora informado.
-            </p>
-          </div>
-          <div className="rounded-2xl border border-slate-200 bg-white p-5 shadow-sm">
-            <div className="text-xs text-slate-500">Custo das filas</div>
-            <div className="text-2xl font-bold mt-2">
-              {formatCurrency(data?.impact?.cost_queue)}
+
+            <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+              <div className="rounded-2xl border border-slate-200 bg-white p-5 shadow-sm">
+                <div className="text-xs text-slate-500">Fila média (antes x meta)</div>
+                <div className="text-2xl font-bold mt-2">
+                  {Math.max(1, Math.round((beforeVsAfter?.queueBefore ?? 0) / 60))}m →{" "}
+                  {Math.max(1, Math.round((beforeVsAfter?.queueAfter ?? 0) / 60))}m
+                </div>
+              </div>
+              <div className="rounded-2xl border border-slate-200 bg-white p-5 shadow-sm">
+                <div className="text-xs text-slate-500">Conversão (antes x meta)</div>
+                <div className="text-2xl font-bold mt-2">
+                  {formatPercent(beforeVsAfter?.conversionBefore)} →{" "}
+                  {formatPercent(beforeVsAfter?.conversionAfter)}
+                </div>
+              </div>
+              <div className="rounded-2xl border border-slate-200 bg-white p-5 shadow-sm">
+                <div className="text-xs text-slate-500">Risco de fila (antes x meta)</div>
+                <div className="text-2xl font-bold mt-2">
+                  {formatCurrency(beforeVsAfter?.riskBefore)} → {formatCurrency(beforeVsAfter?.riskAfter)}
+                </div>
+              </div>
             </div>
-            <p className="text-xs text-slate-500 mt-2">
-              Heurística de abandono por segmento.
-            </p>
-          </div>
-          <div className="rounded-2xl border border-emerald-200 bg-emerald-50 p-5 shadow-sm">
-            <div className="text-xs text-emerald-700">Potencial mensal</div>
-            <div className="text-2xl font-bold mt-2 text-emerald-800">
-              {formatCurrency(data?.impact?.potential_monthly_estimated)}
+
+            <div className="rounded-2xl border border-slate-200 bg-white p-5 shadow-sm">
+              <div className="text-sm font-semibold text-slate-900">Ações que geraram resultado</div>
+              <div className="mt-4 grid grid-cols-1 md:grid-cols-3 gap-3">
+                {actionProofCards.map((item) => (
+                  <div key={item.title} className="rounded-xl border border-slate-200 bg-slate-50 p-4">
+                    <div className="text-xs font-semibold text-slate-700">{item.title}</div>
+                    <div className="mt-2 text-sm text-slate-600">{item.result}</div>
+                    <div className="mt-3 text-lg font-bold text-slate-900">{item.value}</div>
+                  </div>
+                ))}
+              </div>
             </div>
-            <p className="text-xs text-emerald-700 mt-2">
-              Projeção do período atual para 30 dias.
-            </p>
           </div>
-        </div>
+        ) : (
+          <div className="max-w-5xl mx-auto rounded-2xl border border-amber-200 bg-amber-50 p-5">
+            <div className="text-sm font-semibold text-amber-900">Dados ainda insuficientes para prova completa</div>
+            <p className="mt-2 text-sm text-amber-800">
+              Para gerar prova de impacto robusta, complete estes passos: conectar edge, ativar pelo menos 1 câmera com saúde estável e operar por alguns dias com alertas ativos.
+            </p>
+            <div className="mt-3 grid grid-cols-1 md:grid-cols-3 gap-3 text-sm">
+              <div className="rounded-xl border border-amber-300 bg-white p-3">1. Concluir setup edge e heartbeat recente.</div>
+              <div className="rounded-xl border border-amber-300 bg-white p-3">2. Garantir câmera saudável e eventos operacionais.</div>
+              <div className="rounded-xl border border-amber-300 bg-white p-3">3. Registrar ações para medir melhoria e ROI.</div>
+            </div>
+          </div>
+        )}
       </section>
 
       <section id="plans" className="px-6 pb-16">
@@ -213,6 +318,11 @@ const Upgrade = () => {
                 <button
                   type="button"
                   onClick={() => {
+                    void trackJourneyEvent("upgrade_proof_cta_clicked", {
+                      source: "upgrade_plan_card",
+                      plan_id: plan.id,
+                      proof_mode: proofMode,
+                    })
                     void trackJourneyEvent("upgrade_clicked", {
                       plan_id: plan.id,
                       source: "upgrade_plan_card",
