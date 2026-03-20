@@ -2,6 +2,7 @@ import requests
 from decimal import Decimal, InvalidOperation
 from datetime import timedelta
 from django.conf import settings
+from django.db import connection
 from django.db.models import Count, Sum
 from django.utils import timezone
 from django.utils.dateparse import parse_datetime
@@ -458,3 +459,181 @@ class PdvIngestionHealthView(APIView):
         payload["store_id"] = store_id
         payload["scope_stores"] = len(scoped_store_ids) if scoped_store_ids else None
         return Response(payload, status=status.HTTP_200_OK)
+
+
+class DataCompletenessView(APIView):
+    permission_classes = [IsAuthenticated]
+
+    def get(self, request):
+        period = str(request.query_params.get("period") or "30d").strip().lower()
+        days = 30
+        if period.endswith("d"):
+            try:
+                days = int(period[:-1])
+            except Exception:
+                days = 30
+        days = max(1, min(days, 365))
+        start = timezone.now() - timedelta(days=days)
+
+        store_id = str(request.query_params.get("store_id") or "").strip() or None
+        scope_org_ids = []
+        scope_store_ids = []
+
+        if getattr(request.user, "is_staff", False) or getattr(request.user, "is_superuser", False):
+            if store_id:
+                scope_store_ids = [store_id]
+        else:
+            org_ids = [str(org_id) for org_id in get_user_org_ids(request.user)]
+            if not org_ids:
+                return Response(
+                    {
+                        "period": f"{days}d",
+                        "from": start.isoformat(),
+                        "to": timezone.now().isoformat(),
+                        "tables": [],
+                        "overall_null_rate": 0.0,
+                    },
+                    status=status.HTTP_200_OK,
+                )
+            scope_org_ids = org_ids
+            store_qs = models.Store.objects.filter(org_id__in=org_ids)
+            if store_id:
+                if not store_qs.filter(id=store_id).exists():
+                    raise PermissionDenied("Sem permissão para consultar esta loja.")
+                scope_store_ids = [store_id]
+            else:
+                scope_store_ids = [str(sid) for sid in store_qs.values_list("id", flat=True)]
+
+        checks = [
+            {
+                "table": "pos_transaction_events",
+                "label": "POS Transactions",
+                "ts_column": "occurred_at",
+                "scope_mode": "store",
+                "fields": [
+                    "store_id",
+                    "source_system",
+                    "transaction_id",
+                    "occurred_at",
+                    "gross_amount",
+                ],
+            },
+            {
+                "table": "journey_events",
+                "label": "Journey Events",
+                "ts_column": "created_at",
+                "scope_mode": "org_or_global",
+                "fields": ["event_name", "created_at"],
+            },
+            {
+                "table": "traffic_metrics",
+                "label": "Traffic Metrics",
+                "ts_column": "ts_bucket",
+                "scope_mode": "store",
+                "fields": ["store_id", "ts_bucket", "footfall", "camera_role", "ownership"],
+            },
+            {
+                "table": "conversion_metrics",
+                "label": "Conversion Metrics",
+                "ts_column": "ts_bucket",
+                "scope_mode": "store",
+                "fields": ["store_id", "ts_bucket", "queue_avg_seconds", "checkout_events", "camera_role", "ownership"],
+            },
+        ]
+
+        def _field_expr(field: str) -> str:
+            if field == "event_name":
+                return "COALESCE(NULLIF(TRIM(event_name::text), ''), NULL) IS NULL"
+            if field in {"source_system", "transaction_id", "camera_role", "ownership"}:
+                return f"COALESCE(NULLIF(TRIM({field}::text), ''), NULL) IS NULL"
+            return f"{field} IS NULL"
+
+        rows = []
+        total_samples = 0
+        total_missing = 0
+
+        with connection.cursor() as cursor:
+            for check in checks:
+                base_where = [f"{check['ts_column']} >= %s"]
+                params = [start]
+
+                if check["scope_mode"] == "store" and scope_store_ids:
+                    base_where.append("store_id = ANY(%s)")
+                    params.append(scope_store_ids)
+                elif check["scope_mode"] == "store" and not (
+                    getattr(request.user, "is_staff", False) or getattr(request.user, "is_superuser", False)
+                ):
+                    base_where.append("1 = 0")
+
+                if check["scope_mode"] == "org_or_global":
+                    if scope_org_ids:
+                        base_where.append("(org_id::text = ANY(%s) OR org_id IS NULL)")
+                        params.append(scope_org_ids)
+                    elif not (
+                        getattr(request.user, "is_staff", False) or getattr(request.user, "is_superuser", False)
+                    ):
+                        base_where.append("1 = 0")
+
+                where_clause = " AND ".join(base_where)
+                cursor.execute(
+                    f"""
+                    SELECT COUNT(*)::int
+                    FROM public.{check["table"]}
+                    WHERE {where_clause}
+                    """,
+                    params,
+                )
+                total_rows = int((cursor.fetchone() or [0])[0] or 0)
+                fields_payload = []
+                table_samples = 0
+                table_missing = 0
+
+                for field in check["fields"]:
+                    missing_expr = _field_expr(field)
+                    cursor.execute(
+                        f"""
+                        SELECT COUNT(*)::int
+                        FROM public.{check["table"]}
+                        WHERE {where_clause}
+                          AND ({missing_expr})
+                        """,
+                        params,
+                    )
+                    missing_count = int((cursor.fetchone() or [0])[0] or 0)
+                    null_rate = round((missing_count / total_rows), 4) if total_rows > 0 else 0.0
+                    fields_payload.append(
+                        {
+                            "field": field,
+                            "missing_count": missing_count,
+                            "null_rate": null_rate,
+                        }
+                    )
+                    table_samples += total_rows
+                    table_missing += missing_count
+
+                table_null_rate = round((table_missing / table_samples), 4) if table_samples > 0 else 0.0
+                rows.append(
+                    {
+                        "table": check["table"],
+                        "label": check["label"],
+                        "rows_total": total_rows,
+                        "null_rate": table_null_rate,
+                        "fields": fields_payload,
+                    }
+                )
+                total_samples += table_samples
+                total_missing += table_missing
+
+        overall_null_rate = round((total_missing / total_samples), 4) if total_samples > 0 else 0.0
+        return Response(
+            {
+                "period": f"{days}d",
+                "from": start.isoformat(),
+                "to": timezone.now().isoformat(),
+                "store_id": store_id,
+                "tables": rows,
+                "overall_null_rate": overall_null_rate,
+                "quality_score": max(0, min(100, round(100 - (overall_null_rate * 100)))),
+            },
+            status=status.HTTP_200_OK,
+        )

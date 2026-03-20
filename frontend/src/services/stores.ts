@@ -153,6 +153,30 @@ export type PdvIngestionHealthResponse = {
   top_errors: Array<{ error: string; count: number }>
 }
 
+export type DataCompletenessField = {
+  field: string
+  missing_count: number
+  null_rate: number
+}
+
+export type DataCompletenessTable = {
+  table: string
+  label: string
+  rows_total: number
+  null_rate: number
+  fields: DataCompletenessField[]
+}
+
+export type DataCompletenessResponse = {
+  period: string
+  from: string
+  to: string
+  store_id?: string | null
+  overall_null_rate: number
+  quality_score: number
+  tables: DataCompletenessTable[]
+}
+
 export interface StoreMetrics {
   total_cameras: number;
   active_cameras: number;
@@ -1711,5 +1735,17 @@ export const storesService = {
       noRetry: true,
     })
     return response.data as PdvIngestionHealthResponse
+  },
+
+  async getDataCompleteness(params?: {
+    store_id?: string
+    period?: string
+  }): Promise<DataCompletenessResponse> {
+    const response = await api.get("/v1/data-quality/completeness/", {
+      params: params || undefined,
+      timeoutCategory: "best-effort",
+      noRetry: true,
+    })
+    return response.data as DataCompletenessResponse
   },
 };

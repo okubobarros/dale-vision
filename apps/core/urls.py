@@ -15,6 +15,7 @@ from .views import (
     PdvTransactionIngestView,
     PdvTransactionSummaryView,
     PdvIngestionHealthView,
+    DataCompletenessView,
 )
 
 urlpatterns = [
@@ -32,6 +33,7 @@ urlpatterns = [
     path("integration/pdv/events/", PdvTransactionIngestView.as_view(), name="pdv-events-ingest"),
     path("integration/pdv/summary/", PdvTransactionSummaryView.as_view(), name="pdv-summary"),
     path("integration/pdv/ingestion-health/", PdvIngestionHealthView.as_view(), name="pdv-ingestion-health"),
+    path("data-quality/completeness/", DataCompletenessView.as_view(), name="data-quality-completeness"),
     path("productivity/coverage", ProductivityCoverageView.as_view(), name="productivity-coverage-noslash"),
     path("productivity/coverage/", ProductivityCoverageView.as_view(), name="productivity-coverage"),
     path("system/storage-status/", StorageStatusView.as_view({"get": "list"}), name="storage-status"),

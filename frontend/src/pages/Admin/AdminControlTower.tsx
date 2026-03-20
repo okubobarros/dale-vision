@@ -79,6 +79,20 @@ export default function AdminControlTower() {
     refetchInterval: 60_000,
   })
 
+  const completeness30dQuery = useQuery({
+    queryKey: ["admin", "data-completeness", "30d"],
+    queryFn: () => storesService.getDataCompleteness({ period: "30d" }),
+    enabled: isInternalAdmin,
+    refetchInterval: 60_000,
+  })
+
+  const completeness7dQuery = useQuery({
+    queryKey: ["admin", "data-completeness", "7d"],
+    queryFn: () => storesService.getDataCompleteness({ period: "7d" }),
+    enabled: isInternalAdmin,
+    refetchInterval: 60_000,
+  })
+
   const grantSupportMutation = useMutation({
     mutationFn: (requestId: string) => supportService.grantSupportRequest(requestId, 120),
     onSuccess: () => {
@@ -127,6 +141,8 @@ export default function AdminControlTower() {
   const dataQuality = useMemo(() => {
     const funnel = journeyFunnelQuery.data
     const pdv = pdvHealthQuery.data
+    const completeness30d = completeness30dQuery.data
+    const completeness7d = completeness7dQuery.data
     const missingRates = (funnel?.stages || []).map((row) => Number(row.payload_missing_rate || 0))
     const avgMissingRate =
       missingRates.length > 0 ? missingRates.reduce((acc, item) => acc + item, 0) / missingRates.length : null
@@ -141,6 +157,8 @@ export default function AdminControlTower() {
       return {
         score: null,
         avgMissingRate: null,
+        nullRate30d: completeness30d?.overall_null_rate ?? null,
+        nullRate7d: completeness7d?.overall_null_rate ?? null,
       }
     }
     const weighted =
@@ -150,8 +168,10 @@ export default function AdminControlTower() {
     return {
       score: Math.max(0, Math.min(100, Math.round(weighted))),
       avgMissingRate,
+      nullRate30d: completeness30d?.overall_null_rate ?? null,
+      nullRate7d: completeness7d?.overall_null_rate ?? null,
     }
-  }, [journeyFunnelQuery.data, pdvHealthQuery.data])
+  }, [journeyFunnelQuery.data, pdvHealthQuery.data, completeness30dQuery.data, completeness7dQuery.data])
 
   if (!isInternalAdmin) {
     return (
@@ -289,8 +309,47 @@ export default function AdminControlTower() {
             <div className="grid grid-cols-1 gap-3 md:grid-cols-4">
               <Card title="Score qualidade (meta 95)" value={formatNumber(dataQuality.score)} />
               <Card title="Payload faltante médio" value={formatRatioPercent(dataQuality.avgMissingRate)} />
+              <Card title="Null rate 30d" value={formatRatioPercent(dataQuality.nullRate30d)} />
+              <Card title="Null rate 7d" value={formatRatioPercent(dataQuality.nullRate7d)} />
+            </div>
+            <div className="grid grid-cols-1 gap-3 md:grid-cols-2">
               <Card title="PDV processing rate" value={formatRatioPercent(pdvHealthQuery.data?.processing_rate)} />
               <Card title="PDV failure rate" value={formatRatioPercent(pdvHealthQuery.data?.failure_rate)} />
+            </div>
+            <div className="rounded-xl border border-gray-200 bg-white p-4">
+              <h3 className="text-sm font-semibold text-gray-800">Completude por tabela/campo (30d)</h3>
+              {!completeness30dQuery.data?.tables?.length ? (
+                <div className="mt-3 text-sm text-gray-600">Sem dados de completude no período.</div>
+              ) : (
+                <div className="mt-3 overflow-x-auto">
+                  <table className="min-w-full text-sm">
+                    <thead className="bg-gray-50 text-gray-600">
+                      <tr>
+                        <th className="px-3 py-2 text-left font-semibold">Tabela</th>
+                        <th className="px-3 py-2 text-left font-semibold">Rows</th>
+                        <th className="px-3 py-2 text-left font-semibold">Null rate</th>
+                        <th className="px-3 py-2 text-left font-semibold">Campos críticos</th>
+                      </tr>
+                    </thead>
+                    <tbody className="divide-y">
+                      {completeness30dQuery.data.tables.map((table) => (
+                        <tr key={table.table}>
+                          <td className="px-3 py-2">{table.label}</td>
+                          <td className="px-3 py-2">{formatNumber(table.rows_total)}</td>
+                          <td className="px-3 py-2">{formatRatioPercent(table.null_rate)}</td>
+                          <td className="px-3 py-2">
+                            {table.fields
+                              .filter((field) => field.null_rate > 0)
+                              .slice(0, 3)
+                              .map((field) => `${field.field} (${Math.round(field.null_rate * 1000) / 10}%)`)
+                              .join(", ") || "Sem nulos críticos"}
+                          </td>
+                        </tr>
+                      ))}
+                    </tbody>
+                  </table>
+                </div>
+              )}
             </div>
             <div className="rounded-xl border border-gray-200 bg-white p-4">
               <h3 className="text-sm font-semibold text-gray-800">Backlog executivo (próximos 14 dias)</h3>
