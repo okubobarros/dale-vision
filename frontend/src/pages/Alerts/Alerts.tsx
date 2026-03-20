@@ -17,6 +17,7 @@ import { AlertsModuleTabs } from "../../components/Alerts/AlertsModuleTabs"
 
 type FilterSeverity = "all" | "critical" | "warning" | "info"
 type FilterStatus = "all" | "open" | "resolved" | "ignored"
+type AlertResolutionType = "resolvido_localmente" | "delegado" | "incidente_tecnico"
 type StoreOption = { id: string | number; name?: string }
 type AlertMedia = { id?: string | number; media_type?: string; url?: string }
 type AlertMetadata = { receipt_id?: string }
@@ -91,6 +92,10 @@ export default function Alerts() {
     searchParams.get("event_id")
   )
   const [delegatingEventId, setDelegatingEventId] = useState<string | null>(null)
+  const [resolutionTarget, setResolutionTarget] = useState<AlertEvent | null>(null)
+  const [resolutionType, setResolutionType] = useState<AlertResolutionType>("resolvido_localmente")
+  const [resolutionReason, setResolutionReason] = useState("")
+  const [resolutionSubmitting, setResolutionSubmitting] = useState(false)
   const [dateFrom, setDateFrom] = useState<string>("")
   const [dateTo, setDateTo] = useState<string>("")
 
@@ -224,23 +229,30 @@ export default function Alerts() {
     }`
   }
 
-  const delegateToWhatsapp = async (event: AlertEvent) => {
+  const delegateToWhatsapp = async (
+    event: AlertEvent,
+    options?: { reason?: string; successMessage?: string }
+  ) => {
     if (!event?.id) return
     const eventId = String(event.id)
     const storeName = storesMap.get(String(event.store_id || "")) || "Loja não identificada"
     const evidenceUrl = event?.media?.[0]?.url
-    const note = buildDelegationMessage(event, storeName, evidenceUrl)
+    const note = `${buildDelegationMessage(event, storeName, evidenceUrl)}${
+      options?.reason ? `\nMotivo do desfecho: ${options.reason}` : ""
+    }`
     setDelegatingEventId(eventId)
     try {
       const response = await alertsService.delegateEventWhatsapp(eventId, {
         note,
       })
       if (response?.ok) {
-        toast.success(
-          response?.employee?.name
+        const successMessage =
+          options?.successMessage ||
+          (response?.employee?.name
             ? `Delegação enviada para ${response.employee.name}.`
-            : "Delegação enviada para fila de entrega via WhatsApp."
-        )
+            : "Delegação enviada para fila de entrega via WhatsApp.")
+        toast.success(successMessage)
+        return true
       } else {
         throw new Error(response?.message || "Falha ao delegar")
       }
@@ -252,12 +264,13 @@ export default function Alerts() {
         (typeof payload?.detail === "string" && payload.detail) ||
         "Delegação indisponível: vincule um telefone válido a um colaborador da loja."
       toast.error(message)
+      return false
     } finally {
       setDelegatingEventId(null)
     }
   }
 
-  const getEscalationUrl = (event: AlertEvent) => {
+  const getEscalationUrl = (event: AlertEvent, reason?: string) => {
     const store = toOptionalString(event.store_id)
     const camera = toOptionalString(event.camera_id)
     const eventId = toOptionalString(event.id)
@@ -266,10 +279,11 @@ export default function Alerts() {
     if (camera) params.set("camera_id", camera)
     if (eventId) params.set("event_id", eventId)
     params.set("source", "alerts")
+    if (reason) params.set("reason", reason)
     return `/app/edge-help?${params.toString()}`
   }
 
-  const handleEscalateTechnical = (event: AlertEvent) => {
+  const handleEscalateTechnical = (event: AlertEvent, reason?: string) => {
     const store = toOptionalString(event.store_id)
     if (!store) {
       toast.error("Não foi possível escalar: alerta sem loja vinculada.")
@@ -282,8 +296,90 @@ export default function Alerts() {
       store_id: store,
       camera_id: camera || null,
       event_id: eventId || null,
+      reason: reason || null,
     })
-    window.location.assign(getEscalationUrl(event))
+    window.location.assign(getEscalationUrl(event, reason))
+  }
+
+  const reasonRequired =
+    resolutionType === "delegado" || resolutionType === "incidente_tecnico"
+
+  const openResolutionFlow = (event: AlertEvent) => {
+    const eventId = toOptionalString(event.id)
+    const store = toOptionalString(event.store_id)
+    setResolutionTarget(event)
+    setResolutionType("resolvido_localmente")
+    setResolutionReason("")
+    void trackJourneyEvent("alert_resolution_started", {
+      source: "alerts",
+      alert_id: eventId || null,
+      store_id: store || null,
+    })
+  }
+
+  const closeResolutionFlow = () => {
+    setResolutionTarget(null)
+    setResolutionType("resolvido_localmente")
+    setResolutionReason("")
+    setResolutionSubmitting(false)
+  }
+
+  const handleSubmitResolution = async () => {
+    if (!resolutionTarget?.id) return
+    const reason = resolutionReason.trim()
+    if (reasonRequired && !reason) {
+      toast.error("Informe um motivo curto para continuar.")
+      return
+    }
+
+    const eventId = String(resolutionTarget.id)
+    const store = toOptionalString(resolutionTarget.store_id)
+    const camera = toOptionalString(resolutionTarget.camera_id)
+    setResolutionSubmitting(true)
+
+    try {
+      if (resolutionType === "resolvido_localmente") {
+        await resolveMut.mutateAsync(eventId)
+        toast.success("Alerta encerrado como resolvido localmente ✅")
+      } else if (resolutionType === "delegado") {
+        const delegated = await delegateToWhatsapp(resolutionTarget, {
+          reason,
+          successMessage: "Ação delegada no WhatsApp e alerta encerrado ✅",
+        })
+        if (!delegated) return
+        await ignoreMut.mutateAsync(eventId)
+      } else {
+        await ignoreMut.mutateAsync(eventId)
+        void trackJourneyEvent("alert_resolution_escalated", {
+          source: "alerts",
+          alert_id: eventId,
+          store_id: store || null,
+          camera_id: camera || null,
+          resolution_type: resolutionType,
+          reason,
+        })
+        handleEscalateTechnical(resolutionTarget, reason)
+      }
+
+      void trackJourneyEvent("alert_resolution_completed", {
+        source: "alerts",
+        alert_id: eventId,
+        store_id: store || null,
+        camera_id: camera || null,
+        resolution_type: resolutionType,
+        reason: reason || null,
+      })
+
+      if (String(selectedEventId) === eventId) {
+        setSelectedEventId(null)
+      }
+      closeResolutionFlow()
+      eventsQuery.refetch()
+    } catch {
+      toast.error("Falha ao encerrar alerta.")
+    } finally {
+      setResolutionSubmitting(false)
+    }
   }
 
   const filtered = useMemo(() => {
@@ -556,45 +652,13 @@ export default function Alerts() {
                   </button>
 
                   {e.status === "open" ? (
-                    <>
-                      <button
-                        className="rounded-lg border border-amber-200 bg-amber-50 px-3 py-2 text-sm font-semibold text-amber-800 hover:bg-amber-100"
-                        onClick={() => handleEscalateTechnical(e)}
-                        type="button"
-                      >
-                        Escalar técnico
-                      </button>
-                      <button
-                        className="rounded-lg bg-green-600 px-3 py-2 text-sm font-semibold text-white hover:bg-green-700 disabled:opacity-60"
-                        onClick={() => delegateToWhatsapp(e)}
-                        disabled={delegatingEventId === String(e.id)}
-                        type="button"
-                      >
-                        {delegatingEventId === String(e.id)
-                          ? "Delegando..."
-                          : "Delegar no WhatsApp"}
-                      </button>
-                      <button
-                        className="rounded-lg bg-blue-600 px-3 py-2 text-sm font-semibold text-white hover:bg-blue-700 disabled:opacity-60"
-                        onClick={() =>
-                          resolveMut.mutate(String(e.id), {
-                            onSuccess: () => {
-                              toast.success("Alerta resolvido ✅")
-                              // se estava aberto no drawer também, fecha
-                              if (String(selectedEventId) === String(e.id)) {
-                                setSelectedEventId(null)
-                              }
-                              eventsQuery.refetch()
-                            },
-                            onError: () => toast.error("Falha ao resolver alerta."),
-                          })
-                        }
-                        disabled={resolveMut.isPending}
-                        type="button"
-                      >
-                        {resolveMut.isPending ? "Resolvendo..." : "Resolver"}
-                      </button>
-                    </>
+                    <button
+                      className="rounded-lg bg-blue-600 px-3 py-2 text-sm font-semibold text-white hover:bg-blue-700"
+                      onClick={() => openResolutionFlow(e)}
+                      type="button"
+                    >
+                      Encerrar alerta
+                    </button>
                   ) : (
                     <button
                       className="rounded-lg border border-gray-200 px-3 py-2 text-sm font-semibold text-gray-700 hover:bg-gray-50"
@@ -767,45 +831,11 @@ export default function Alerts() {
             <div className="flex flex-col gap-2 border-t border-gray-100 p-5 sm:flex-row sm:justify-end">
               {selectedEvent?.status === "open" && (
                 <button
-                  className="rounded-xl border border-amber-200 bg-amber-50 px-4 py-2 text-sm font-semibold text-amber-800 hover:bg-amber-100"
-                  onClick={() => handleEscalateTechnical(selectedEvent)}
-                  type="button"
-                >
-                  Escalar técnico
-                </button>
-              )}
-
-              {selectedEvent?.status === "open" && (
-                <button
-                  className="rounded-xl bg-green-600 px-4 py-2 text-sm font-semibold text-white hover:bg-green-700 disabled:opacity-60"
-                  onClick={() => delegateToWhatsapp(selectedEvent)}
-                  disabled={delegatingEventId === String(selectedEvent.id)}
-                  type="button"
-                >
-                  {delegatingEventId === String(selectedEvent.id)
-                    ? "Delegando..."
-                    : "Delegar no WhatsApp"}
-                </button>
-              )}
-
-              {/* ✅ Resolver fecha drawer automaticamente */}
-              {selectedEvent?.status === "open" && (
-                <button
                   className="rounded-xl bg-blue-600 px-4 py-2 text-sm font-semibold text-white hover:bg-blue-700 disabled:opacity-60"
-                  onClick={() =>
-                    resolveMut.mutate(String(selectedEvent.id), {
-                      onSuccess: () => {
-                        toast.success("Alerta resolvido ✅")
-                        setSelectedEventId(null) // ✅ fecha drawer
-                        eventsQuery.refetch() // ✅ atualiza feed
-                      },
-                      onError: () => toast.error("Falha ao resolver alerta."),
-                    })
-                  }
-                  disabled={resolveMut.isPending}
+                  onClick={() => openResolutionFlow(selectedEvent)}
                   type="button"
                 >
-                  {resolveMut.isPending ? "Resolvendo..." : "Resolver"}
+                  Encerrar alerta
                 </button>
               )}
 
@@ -815,6 +845,115 @@ export default function Alerts() {
                 type="button"
               >
                 Fechar
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {resolutionTarget && (
+        <div className="fixed inset-0 z-[60] flex items-end justify-center bg-black/50 p-4 sm:items-center">
+          <div className="w-full max-w-xl rounded-2xl bg-white shadow-xl">
+            <div className="border-b border-gray-100 p-5">
+              <div className="text-xs text-gray-500">
+                Encerramento guiado do alerta #{toOptionalString(resolutionTarget.id)}
+              </div>
+              <h2 className="mt-1 text-lg font-bold text-gray-900">
+                Selecione o desfecho desta ocorrência
+              </h2>
+            </div>
+
+            <div className="space-y-4 p-5">
+              <div className="space-y-2">
+                <label className="flex cursor-pointer items-start gap-3 rounded-xl border border-gray-200 p-3">
+                  <input
+                    type="radio"
+                    name="resolutionType"
+                    value="resolvido_localmente"
+                    checked={resolutionType === "resolvido_localmente"}
+                    onChange={() => setResolutionType("resolvido_localmente")}
+                  />
+                  <span className="text-sm text-gray-800">
+                    <span className="block font-semibold">Resolvido localmente</span>
+                    <span className="block text-xs text-gray-500">
+                      Equipe atuou na loja e o desvio foi corrigido.
+                    </span>
+                  </span>
+                </label>
+
+                <label className="flex cursor-pointer items-start gap-3 rounded-xl border border-gray-200 p-3">
+                  <input
+                    type="radio"
+                    name="resolutionType"
+                    value="delegado"
+                    checked={resolutionType === "delegado"}
+                    onChange={() => setResolutionType("delegado")}
+                  />
+                  <span className="text-sm text-gray-800">
+                    <span className="block font-semibold">Delegado</span>
+                    <span className="block text-xs text-gray-500">
+                      Ação enviada para execução no WhatsApp.
+                    </span>
+                  </span>
+                </label>
+
+                <label className="flex cursor-pointer items-start gap-3 rounded-xl border border-gray-200 p-3">
+                  <input
+                    type="radio"
+                    name="resolutionType"
+                    value="incidente_tecnico"
+                    checked={resolutionType === "incidente_tecnico"}
+                    onChange={() => setResolutionType("incidente_tecnico")}
+                  />
+                  <span className="text-sm text-gray-800">
+                    <span className="block font-semibold">Incidente técnico</span>
+                    <span className="block text-xs text-gray-500">
+                      Exige suporte técnico e será direcionado para Edge Help.
+                    </span>
+                  </span>
+                </label>
+              </div>
+
+              <div>
+                <label htmlFor="resolution-reason" className="text-sm font-semibold text-gray-800">
+                  Motivo {reasonRequired ? "(obrigatório)" : "(opcional)"}
+                </label>
+                <textarea
+                  id="resolution-reason"
+                  rows={3}
+                  value={resolutionReason}
+                  onChange={(e) => setResolutionReason(e.target.value)}
+                  placeholder="Descreva rapidamente o que motivou o desfecho..."
+                  className="mt-2 w-full rounded-xl border border-gray-300 px-3 py-2 text-sm focus:border-blue-500 focus:outline-none"
+                />
+                {reasonRequired && !resolutionReason.trim() && (
+                  <p className="mt-1 text-xs text-amber-700">
+                    Informe um motivo curto para continuar.
+                  </p>
+                )}
+              </div>
+            </div>
+
+            <div className="flex flex-col gap-2 border-t border-gray-100 p-5 sm:flex-row sm:justify-end">
+              <button
+                className="rounded-xl border border-gray-200 px-4 py-2 text-sm font-semibold text-gray-700 hover:bg-gray-50"
+                onClick={closeResolutionFlow}
+                disabled={resolutionSubmitting}
+                type="button"
+              >
+                Cancelar
+              </button>
+              <button
+                className="rounded-xl bg-blue-600 px-4 py-2 text-sm font-semibold text-white hover:bg-blue-700 disabled:opacity-60"
+                onClick={handleSubmitResolution}
+                disabled={
+                  resolutionSubmitting ||
+                  delegatingEventId === toOptionalString(resolutionTarget.id) ||
+                  (reasonRequired && !resolutionReason.trim())
+                }
+                type="button"
+              >
+                {resolutionSubmitting ? "Encerrando..." : "Confirmar desfecho"}
               </button>
             </div>
           </div>
