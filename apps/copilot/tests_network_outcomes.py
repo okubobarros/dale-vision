@@ -66,6 +66,8 @@ class CopilotNetworkActionOutcomeViewTests(SimpleTestCase):
         self.assertEqual(response.data.get("summary", {}).get("actions_completed"), 4)
         self.assertEqual(response.data.get("summary", {}).get("impact_expected_brl"), 1400.0)
         self.assertEqual(response.data.get("summary", {}).get("impact_realized_brl"), 980.0)
+        self.assertEqual(response.data.get("summary", {}).get("completion_rate"), 57.1)
+        self.assertEqual(response.data.get("summary", {}).get("recovery_rate"), 70.0)
         self.assertEqual(response.data.get("items"), [{"id": "outcome-1"}])
 
 
@@ -130,6 +132,9 @@ class CopilotNetworkValueLedgerDailyViewTests(SimpleTestCase):
         self.assertEqual(response.data.get("totals", {}).get("value_at_risk_brl"), 4200.0)
         self.assertEqual(response.data.get("totals", {}).get("actions_dispatched"), 12)
         self.assertEqual(response.data.get("totals", {}).get("actions_completed"), 9)
+        self.assertEqual(response.data.get("totals", {}).get("value_net_gap_brl"), 950.0)
+        self.assertEqual(response.data.get("totals", {}).get("completion_rate"), 75.0)
+        self.assertEqual(response.data.get("totals", {}).get("recovery_rate"), 77.4)
         self.assertEqual(response.data.get("items", [{}])[0].get("ledger_date"), "2026-03-15")
         self.assertIn("value_status", response.data.get("items", [{}])[0])
 
