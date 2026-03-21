@@ -16,6 +16,7 @@ const CRITICAL_TIMEOUT_MS = 12000
 const LONG_TIMEOUT_MS = 45000
 const BEST_EFFORT_TIMEOUT_MS = 6000
 const WAKEUP_TOAST_COOLDOWN_MS = 60000
+const SERVICE_UNAVAILABLE_TOAST_COOLDOWN_MS = 45000
 const RETRY_BACKOFF_MS = [800]
 const TRIAL_EXPIRED_CODE = "TRIAL_EXPIRED"
 const SUBSCRIPTION_REQUIRED_CODE = "SUBSCRIPTION_REQUIRED"
@@ -154,6 +155,7 @@ const shouldSuppressTimeoutToast = (url?: string) => {
 }
 
 let lastWakeupToastAt = 0
+let lastServiceUnavailableToastAt = 0
 
 const showTimeoutRetryToast = (config?: RetriableConfig) => {
   const now = Date.now()
@@ -193,6 +195,13 @@ const showTimeoutRetryToast = (config?: RetriableConfig) => {
       ),
     { id }
   )
+}
+
+const showServiceUnavailableToast = () => {
+  const now = Date.now()
+  if (now - lastServiceUnavailableToastAt < SERVICE_UNAVAILABLE_TOAST_COOLDOWN_MS) return
+  lastServiceUnavailableToastAt = now
+  toast.error("API indisponível no momento (503). Retentando automaticamente.")
 }
 
 const notifyTrialExpired = () => {
@@ -329,6 +338,10 @@ api.interceptors.response.use(
       return new Promise((resolve) => setTimeout(resolve, delayMs)).then(() =>
         api.request(config)
       )
+    }
+
+    if (shouldRetry) {
+      showServiceUnavailableToast()
     }
 
     if (status === 401 && config && !config._retryAuth) {

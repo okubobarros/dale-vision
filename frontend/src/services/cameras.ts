@@ -133,7 +133,10 @@ export const camerasService = {
 
   async getStoreCameras(storeId: string): Promise<Camera[]> {
     try {
-      const response = await api.get(`/v1/stores/${storeId}/cameras/`)
+      const response = await api.get(`/v1/stores/${storeId}/cameras/`, {
+        timeoutCategory: "best-effort",
+        noRetry: true,
+      })
       return Array.isArray(response.data) ? response.data : []
     } catch (error) {
       throw normalizeApiError(error, "Falha ao carregar câmeras.")

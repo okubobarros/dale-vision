@@ -56,7 +56,10 @@ export type OnboardingNextStepResponse = {
 export const onboardingService = {
   async getProgress(storeId?: string): Promise<OnboardingProgressResponse> {
     const params = storeId ? `?store_id=${storeId}` : ""
-    const response = await api.get(`/v1/onboarding/progress/${params}`)
+    const response = await api.get(`/v1/onboarding/progress/${params}`, {
+      timeoutCategory: "best-effort",
+      noRetry: true,
+    })
     return response.data
   },
 

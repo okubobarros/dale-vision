@@ -26,6 +26,17 @@ Variaveis recomendadas:
 - CSRF_TRUSTED_ORIGINS=https://app.dalevision.com,https://api.dalevision.com,https://dalevision.com,https://www.dalevision.com
 - DATABASE_URL=...
 - N8N_EVENTS_WEBHOOK
+- WEB_CONCURRENCY=1
+- GUNICORN_THREADS=4
+- GUNICORN_WORKER_CLASS=gthread
+- GUNICORN_KEEPALIVE=10
+- GUNICORN_MAX_REQUESTS=1000
+- GUNICORN_MAX_REQUESTS_JITTER=100
+
+Confiabilidade (importante):
+- No plano Free, a instância pode hibernar e causar "Acordando servidor" + timeout de health check.
+- Para operação de loja em horário comercial, usar instância always-on (Starter ou superior).
+- Evitar Auto-Deploy durante horário de loja aberta (deploy em janela controlada).
 
 ## Cron Job (Sprint 1 - aderência operacional)
 Para materializar `operational_window_hourly` continuamente:

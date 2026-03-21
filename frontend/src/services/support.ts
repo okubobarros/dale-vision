@@ -42,7 +42,10 @@ export const supportService = {
 
   async getMyStoreSupportRequests(storeId: string): Promise<SupportRequest[]> {
     try {
-      const response = await api.get(`/v1/stores/${storeId}/support/requests/`)
+      const response = await api.get(`/v1/stores/${storeId}/support/requests/`, {
+        timeoutCategory: "best-effort",
+        noRetry: true,
+      })
       return Array.isArray(response.data) ? (response.data as SupportRequest[]) : []
     } catch (error) {
       throw normalizeError(error, "Falha ao carregar solicitações de suporte.")

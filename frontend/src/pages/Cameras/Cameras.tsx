@@ -267,6 +267,8 @@ const Cameras = () => {
       return 20000
     },
     refetchIntervalInBackground: false,
+    refetchOnWindowFocus: false,
+    retry: false,
   })
 
   const {
@@ -281,6 +283,8 @@ const Cameras = () => {
         : camerasService.getStoreCameras(selectedStore),
     enabled: Boolean(selectedStore),
     staleTime: 15000,
+    refetchOnWindowFocus: false,
+    retry: false,
   })
 
   const edgeOnline =
@@ -377,6 +381,8 @@ const Cameras = () => {
     queryFn: () => camerasService.getStoreLimits(selectedStore),
     enabled: Boolean(selectedStore && selectedStore !== "all"),
     staleTime: 30000,
+    refetchOnWindowFocus: false,
+    retry: false,
   })
 
   const { data: mySupportRequests } = useQuery({
@@ -384,6 +390,8 @@ const Cameras = () => {
     queryFn: () => supportService.getMyStoreSupportRequests(selectedStore),
     enabled: Boolean(selectedStore && selectedStore !== "all"),
     staleTime: 30000,
+    refetchOnWindowFocus: false,
+    retry: false,
   })
 
   const latestSupportRequest = useMemo(() => {

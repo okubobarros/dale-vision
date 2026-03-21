@@ -10,6 +10,27 @@ Registrar decisões e eventos do dia.
 - Decisões:
 - Próximos passos:
 
+## 2026-03-21
+- Data: 2026-03-21
+- Highlights:
+  - Incidente de produção formalizado: `503 + CORS` nas telas de câmeras/admin em horário de operação.
+  - Documento de incidente publicado em `70_ops/Incident_API_503_CORS_2026-03-21.md` com causa, impacto e plano.
+  - Evidência adicional de Render analisada: instância Free com spin-down e eventos recorrentes de `HTTP health check failed (timeout 5s)` seguidos de recovery.
+  - Mitigação aplicada no frontend para reduzir efeito cascata durante indisponibilidade da API:
+    - endpoints best-effort críticos (`onboarding/progress`, `store/cameras`, `support/requests`) com `noRetry=true` e timeout curto;
+    - queries da tela de câmeras com `retry:false` e `refetchOnWindowFocus:false`;
+    - toast consolidado para indisponibilidade (`503/ERR_NETWORK`) com cooldown para evitar spam.
+- Bloqueios:
+  - Causa definitiva permanece na disponibilidade da API/proxy (camada de infraestrutura), fora da mitigação de frontend.
+- Decisões:
+  - Tratar `CORS sem allow-origin` durante 503 como sintoma secundário (raiz = indisponibilidade da API).
+  - Priorizar estabilidade percebida pelo usuário: menos retries concorrentes e feedback unificado.
+- Próximos passos:
+  - Fechar ação de infra para eliminar cold-start/indisponibilidade em `api.dalevision.com`.
+  - Padronizar resposta de erro na borda com CORS para não mascarar falhas como erro de navegador.
+  - Monitorar 24h pós-mitigação: taxa de 503, número de retries e tempo de recuperação.
+  - Aplicar tuning de runtime no start do Gunicorn para reduzir timeouts de health check.
+
 ## 2026-03-20
 - Data: 2026-03-20
 - Highlights:

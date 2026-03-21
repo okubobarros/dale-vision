@@ -1,0 +1,25 @@
+name: Keep API Warm
+
+on:
+  schedule:
+    - cron: "*/5 * * * *"
+  workflow_dispatch:
+
+jobs:
+  ping:
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - name: Ping public health endpoints
+        shell: bash
+        run: |
+          set -euo pipefail
+          urls=(
+            "https://api.dalevision.com/health/"
+            "https://api.dalevision.com/api/health/auth/"
+          )
+          for url in "${urls[@]}"; do
+            echo "Pinging: $url"
+            curl --silent --show-error --fail --max-time 20 "$url" > /dev/null
+          done
+          echo "Keep-warm ping completed."
