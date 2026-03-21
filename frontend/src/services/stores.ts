@@ -54,6 +54,7 @@ export interface StoreSummary {
   blocked_reason?: string | null;
   trial_ends_at?: string | null;
   plan?: StorePlan | null;
+  cameras_count?: number | null;
   role?: "owner" | "admin" | "manager" | "viewer" | null;
 }
 

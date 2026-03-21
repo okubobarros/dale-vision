@@ -286,7 +286,7 @@ export function PaidExecutiveDashboardView({
             <select
               value={comparison}
               onChange={(event) =>
-                setComparison(event.target.value as "yesterday" | "prev_period" | "none")
+                setComparison(event.target.value as "yesterday" | "prev_period")
               }
               className="rounded-lg border border-gray-300 bg-white px-3 py-2 text-sm text-gray-700 focus:border-blue-500 focus:outline-none"
               aria-label="Comparar com"
