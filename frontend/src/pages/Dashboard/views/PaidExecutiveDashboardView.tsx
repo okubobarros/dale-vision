@@ -91,7 +91,8 @@ export function PaidExecutiveDashboardView({
 }: PaidExecutiveDashboardViewProps) {
   const { user } = useAuth()
   const [period, setPeriod] = useState<"today" | "yesterday" | "7d" | "month" | "custom">("today")
-  const [comparison, setComparison] = useState<"yesterday" | "prev_period" | "none">("yesterday")
+  const [comparison, setComparison] = useState<"yesterday" | "prev_period">("yesterday")
+  const [salesGranularity, setSalesGranularity] = useState<"hour" | "day" | "month">("hour")
   const [now, setNow] = useState(() => new Date())
   const [goalMonth, setGoalMonth] = useState(() => salesGoal.month || new Date().toISOString().slice(0, 7))
   const [goalDaysMode, setGoalDaysMode] = useState<"calendar" | "business">(salesGoal.daysMode || "calendar")
@@ -129,7 +130,6 @@ export function PaidExecutiveDashboardView({
     return `há ${Math.floor(diffMinutes / 60)}h`
   }
 
-  const chartScaleMax = Math.max(...revenueSeries.map((point) => point.value), 1)
   const flowScaleMax = Math.max(...flowSeries.map((point) => point.value), 1)
   const currentStoreLabel =
     selectedStoreId === STORE_ALL
@@ -142,6 +142,7 @@ export function PaidExecutiveDashboardView({
       ? "text-emerald-700"
       : "text-rose-700"
   const healthyStores = stores.filter((store) => getStoreState(store) === "online").length
+  const storesInAttention = Math.max(0, stores.length - healthyStores)
 
   const daysInMonth = useMemo(() => {
     const [year, month] = goalMonth.split("-").map(Number)
@@ -164,10 +165,71 @@ export function PaidExecutiveDashboardView({
   const dailyProgressPct = dailyGoal > 0 ? Math.min(200, Math.round((todayRevenueBRL / dailyGoal) * 100)) : 0
   const criticalEvents = recentEvents.filter((event) => event.severity === "critical").length
   const warningEvents = recentEvents.filter((event) => event.severity === "warning").length
+  const scopedStores =
+    selectedStoreId === STORE_ALL ? stores : stores.filter((store) => store.id === selectedStoreId)
+  const scopedStoreCount = Math.max(0, scopedStores.length)
+  const scopedCameraCount = scopedStores.reduce(
+    (acc, store) => acc + Math.max(0, Number(store.cameras_count || 0)),
+    0
+  )
+  const currentPlan = scopedStores[0]?.plan || null
+  const planCameraLimit = currentPlan === "trial" || currentPlan === "start" || currentPlan === "basic" || currentPlan === "paid" ? 3 : null
+  const planStoreLimit = currentPlan ? 1 : null
   const estimatedSalesSeries = revenueSeries.map((point) => ({
     label: point.label,
     value: Math.max(0, Math.round(point.value)),
   }))
+  const salesSeriesByDay = useMemo(() => {
+    const nowDate = new Date()
+    return estimatedSalesSeries.map((point, index) => {
+      const date = new Date(nowDate)
+      const offset = estimatedSalesSeries.length - index - 1
+      date.setDate(nowDate.getDate() - offset)
+      return {
+        label: date.toLocaleDateString("pt-BR", { day: "2-digit", month: "2-digit" }),
+        value: point.value,
+      }
+    })
+  }, [estimatedSalesSeries])
+  const salesSeriesByMonth = useMemo(() => {
+    const buckets = Math.max(1, Math.min(6, estimatedSalesSeries.length))
+    const chunkSize = Math.max(1, Math.ceil(estimatedSalesSeries.length / buckets))
+    const monthPoints: Array<{ label: string; value: number }> = []
+    for (let i = 0; i < buckets; i += 1) {
+      const start = i * chunkSize
+      const chunk = estimatedSalesSeries.slice(start, start + chunkSize)
+      if (chunk.length === 0) continue
+      const value = Math.round(chunk.reduce((acc, item) => acc + item.value, 0))
+      const date = new Date()
+      const monthOffset = buckets - i - 1
+      date.setMonth(date.getMonth() - monthOffset)
+      monthPoints.push({
+        label: date.toLocaleDateString("pt-BR", { month: "short" }),
+        value,
+      })
+    }
+    return monthPoints
+  }, [estimatedSalesSeries])
+  const salesSeries =
+    salesGranularity === "hour"
+      ? estimatedSalesSeries
+      : salesGranularity === "day"
+      ? salesSeriesByDay
+      : salesSeriesByMonth
+  const salesScaleMax = Math.max(...salesSeries.map((point) => point.value), 1)
+  const flowChartMinWidth = Math.max(320, flowSeries.length * 36)
+  const salesChartMinWidth = Math.max(320, salesSeries.length * 40)
+  const shouldShowCompactTick = (index: number, total: number) => {
+    if (total <= 8) return true
+    if (total <= 14) return index % 2 === 0
+    return index % 3 === 0
+  }
+
+  const openPdvModal = () => {
+    setPdvStoreId(selectedStoreId !== STORE_ALL ? selectedStoreId : stores[0]?.id || "")
+    setPdvEmail(user?.email || "")
+    setPdvModalOpen(true)
+  }
 
   const handleSaveGoal = async () => {
     const next = Number(goalInput)
@@ -231,7 +293,6 @@ export function PaidExecutiveDashboardView({
             >
               <option value="yesterday">Comparar: Ontem</option>
               <option value="prev_period">Comparar: Período anterior</option>
-              <option value="none">Sem comparação</option>
             </select>
             <select
               value={selectedStoreId}
@@ -285,11 +346,7 @@ export function PaidExecutiveDashboardView({
       <section className="grid grid-cols-1 sm:grid-cols-2 xl:grid-cols-4 gap-3">
         <button
           type="button"
-          onClick={() => {
-            setPdvStoreId(selectedStoreId !== STORE_ALL ? selectedStoreId : stores[0]?.id || "")
-            setPdvEmail(user?.email || "")
-            setPdvModalOpen(true)
-          }}
+          onClick={openPdvModal}
           className="text-left rounded-xl border border-gray-200 bg-white p-4 hover:border-blue-300"
         >
           <p className="text-xs font-semibold uppercase tracking-wide text-gray-500">Receita Bruta</p>
@@ -302,32 +359,16 @@ export function PaidExecutiveDashboardView({
           ) : (
             <p className="mt-1 text-xs text-gray-500">Sem base consolidada para comparação no período.</p>
           )}
-        </button>
-        <button
-          type="button"
-          onClick={() => {
-            setGoalInput(monthlyGoal > 0 ? String(Math.round(monthlyGoal)) : "")
-            setGoalMonth(salesGoal.month || new Date().toISOString().slice(0, 7))
-            setGoalDaysMode(salesGoal.daysMode || "calendar")
-            setGoalModalOpen(true)
-          }}
-          className="text-left rounded-xl border border-gray-200 bg-white p-4 hover:border-blue-300"
-        >
-          <p className="text-xs font-semibold uppercase tracking-wide text-gray-500">Meta Realizada</p>
-          <p className="mt-2 text-2xl font-bold text-gray-900">{dailyGoal > 0 ? `${dailyProgressPct}%` : "—"}</p>
-          <p className="mt-1 text-xs text-gray-600">
-            {monthlyGoal > 0 ? `${formatCurrency(dailyGoal)} meta diária` : "Meta mensal não configurada"}
-          </p>
-          <p className="mt-1 text-xs text-gray-600">
-            Hoje: {formatCurrency(todayRevenueBRL)}
-            {dailyGoal > 0 ? ` · ${dailyProgressPct}% da meta` : ""}
-          </p>
-          {monthlyGoal > 0 && (
-            <div className="mt-2 h-1.5 w-full rounded-full bg-gray-100">
-              <div
-                className={`h-1.5 rounded-full ${dailyProgressPct >= 100 ? "bg-emerald-500" : "bg-blue-500"}`}
-                style={{ width: `${Math.min(100, dailyProgressPct)}%` }}
-              />
+          {todayRevenueBRL <= 0 && showPosIntegrationCta && (
+            <div className="mt-3">
+              <span className="inline-flex items-center rounded-lg border border-amber-200 bg-amber-50 px-2.5 py-1 text-[11px] font-semibold text-amber-700">
+                Integração PDV pendente
+              </span>
+              <div>
+                <span className="mt-2 inline-flex items-center rounded-lg bg-amber-500 px-3 py-1.5 text-xs font-semibold text-white">
+                  Integrar PDV para ver meus números
+                </span>
+              </div>
             </div>
           )}
         </button>
@@ -335,44 +376,48 @@ export function PaidExecutiveDashboardView({
           to="/app/operations"
           className="rounded-xl border border-gray-200 bg-white p-4 hover:border-blue-300"
         >
-          <p className="text-xs font-semibold uppercase tracking-wide text-gray-500">Risco em Fila</p>
+          <p className="text-xs font-semibold uppercase tracking-wide text-gray-500">Receita em Risco</p>
           <p className="mt-2 text-2xl font-bold text-rose-700">{formatCurrency(revenueAtRiskBRL)}</p>
           <p className="mt-1 text-xs text-gray-600">
-            Fila média {queueAvgMin !== null ? `${Math.round(queueAvgMin)} min` : "—"}
+            Fila média {queueAvgMin !== null ? `${Math.round(queueAvgMin)} min` : "—"} · Cobertura operacional
           </p>
         </Link>
-        <Link
-          to="/app/operations"
-          className="rounded-xl border border-gray-200 bg-white p-4 hover:border-blue-300"
-        >
-          <p className="text-xs font-semibold uppercase tracking-wide text-gray-500">Saúde da Rede</p>
-          <p className="mt-2 text-2xl font-bold text-emerald-700">{healthScorePct !== null ? Math.round(healthScorePct) : "—"}</p>
-          <p className="mt-1 text-xs text-gray-600">
-            {healthyStores}/{stores.length || 1} lojas saudáveis
+        <article className="rounded-xl border border-blue-200 bg-blue-50 p-4">
+          <div className="flex items-start justify-between gap-3">
+            <p className="text-xs font-semibold uppercase tracking-wide text-blue-700">Conversão Média</p>
+            <span className="rounded-full border border-blue-200 bg-white px-2 py-0.5 text-[10px] font-semibold text-blue-700">
+              proxy
+            </span>
+          </div>
+          <p className="mt-2 text-2xl font-bold text-blue-900">
+            {conversionAvgPct !== null ? `${conversionAvgPct.toFixed(1)}%` : "—"}
           </p>
-        </Link>
+          <p className="mt-1 text-xs text-blue-700">Conecte PDV para dado oficial</p>
+        </article>
+        <article className="rounded-xl border border-gray-200 bg-white p-4">
+          <div className="flex items-start justify-between gap-2">
+            <p className="text-xs font-semibold uppercase tracking-wide text-gray-500">Lojas e Câmeras</p>
+            <div className="text-right text-[11px] leading-4">
+              <p className="text-emerald-700">{healthyStores} lojas saudáveis</p>
+              <p className="text-amber-700">{storesInAttention} em atenção</p>
+              <p className="text-rose-700">{criticalEvents} eventos críticos</p>
+            </div>
+          </div>
+          <p className="mt-2 text-2xl font-bold text-gray-900">
+            {planStoreLimit ? `${scopedStoreCount}/${planStoreLimit}` : scopedStoreCount} lojas
+          </p>
+          <p className="mt-1 text-sm font-semibold text-gray-700">
+            {planCameraLimit ? `${scopedCameraCount}/${planCameraLimit}` : scopedCameraCount} câmeras
+          </p>
+          <p className="mt-1 text-xs text-gray-500">
+            {currentPlan ? `Plano ${String(currentPlan).toUpperCase()}` : "Plano em validação"}
+          </p>
+        </article>
       </section>
 
       <section className="grid grid-cols-1 xl:grid-cols-[2fr_1fr] gap-5">
         <div className="space-y-5">
-          <div className="grid grid-cols-1 sm:grid-cols-2 xl:grid-cols-4 gap-3">
-            <article className="rounded-xl border border-rose-200 bg-rose-50 p-3">
-              <p className="text-xs font-medium text-rose-700">Receita em risco</p>
-              <p className="mt-2 text-2xl font-bold text-rose-900">{formatCurrency(revenueAtRiskBRL)}</p>
-              <p className="mt-1 text-xs text-rose-700">Fila e cobertura</p>
-            </article>
-            <article className="rounded-xl border border-blue-200 bg-blue-50 p-3">
-              <div className="flex items-center justify-between gap-2">
-                <p className="text-xs font-medium text-blue-700">Conversão média</p>
-                <span className="rounded-full border border-blue-200 bg-white px-2 py-0.5 text-[10px] font-semibold text-blue-700">
-                  proxy
-                </span>
-              </div>
-              <p className="mt-2 text-2xl font-bold text-blue-900">
-                {conversionAvgPct !== null ? `${conversionAvgPct.toFixed(1)}%` : "—"}
-              </p>
-              <p className="mt-1 text-xs text-blue-700">Conecte PDV para dado oficial</p>
-            </article>
+          <div className="grid grid-cols-1 sm:grid-cols-2 xl:grid-cols-3 gap-3">
             <article className="rounded-xl border border-amber-200 bg-amber-50 p-3">
               <div className="flex items-center justify-between gap-2">
                 <p className="text-xs font-medium text-amber-700">Fila média</p>
@@ -397,6 +442,20 @@ export function PaidExecutiveDashboardView({
               </p>
               <p className="mt-1 text-xs text-emerald-700">Produtividade</p>
             </article>
+            <article className="rounded-xl border border-slate-200 bg-slate-50 p-3">
+              <div className="flex items-center justify-between gap-2">
+                <p className="text-xs font-medium text-slate-700">Saúde da rede</p>
+                <span className="rounded-full border border-slate-200 bg-white px-2 py-0.5 text-[10px] font-semibold text-slate-700">
+                  operacional
+                </span>
+              </div>
+              <p className="mt-2 text-2xl font-bold text-slate-900">
+                {healthScorePct !== null ? Math.round(healthScorePct) : "—"}
+              </p>
+              <p className="mt-1 text-xs text-slate-700">
+                {healthyStores} saudáveis · {storesInAttention} atenção · {criticalEvents} críticos
+              </p>
+            </article>
           </div>
 
           <div className="grid grid-cols-1 gap-5">
@@ -407,38 +466,118 @@ export function PaidExecutiveDashboardView({
                   {currentStoreLabel}
                 </span>
               </div>
-              <div className="mt-4 flex h-40 items-end gap-2 rounded-xl bg-gradient-to-b from-slate-50 to-white p-3">
-                {flowSeries.map((point) => (
-                  <div key={point.label} className="flex min-w-0 flex-1 flex-col items-center justify-end gap-1.5">
+              <div className="mt-4 overflow-x-auto rounded-xl bg-gradient-to-b from-slate-50 to-white p-3">
+                <div
+                  className="flex h-40 items-end gap-2"
+                  style={{ minWidth: `${flowChartMinWidth}px` }}
+                >
+                  {flowSeries.map((point, index) => (
                     <div
-                      className="w-full rounded-md bg-slate-700/80"
-                      style={{ height: `${Math.max(10, Math.round((point.value / flowScaleMax) * 120))}px` }}
-                      title={`${point.label}: ${point.value} visitantes`}
-                    />
-                    <span className="text-[10px] text-gray-500">{point.label}</span>
-                  </div>
-                ))}
+                      key={point.label}
+                      className="flex min-w-6 flex-1 flex-col items-center justify-end gap-1.5"
+                    >
+                      <div
+                        className="w-full rounded-md bg-slate-700/80"
+                        style={{ height: `${Math.max(10, Math.round((point.value / flowScaleMax) * 120))}px` }}
+                        title={`${point.label}: ${point.value} visitantes`}
+                      />
+                      <span className="text-[10px] text-gray-500">
+                        {shouldShowCompactTick(index, flowSeries.length) ? point.label : "·"}
+                      </span>
+                    </div>
+                  ))}
+                </div>
               </div>
             </article>
 
             <article className="rounded-2xl border border-gray-200 bg-white p-4 sm:p-6">
               <div className="flex items-center justify-between gap-2">
-                <h4 className="text-base font-semibold text-gray-900">Vendas por Horário</h4>
-                <span className="rounded-full border border-blue-200 bg-blue-50 px-2.5 py-1 text-[11px] font-semibold text-blue-700">
-                  estimado
-                </span>
+                <div>
+                  <h4 className="text-base font-semibold text-gray-900">
+                    {salesGranularity === "hour"
+                      ? "Vendas por Horário"
+                      : salesGranularity === "day"
+                      ? "Vendas por Dia"
+                      : "Vendas por Mês"}
+                  </h4>
+                  <p className="text-xs text-gray-500">Filtro alinhado ao calendário real.</p>
+                </div>
+                <div className="flex items-center gap-2">
+                  <select
+                    value={salesGranularity}
+                    onChange={(event) => setSalesGranularity(event.target.value as "hour" | "day" | "month")}
+                    className="rounded-lg border border-gray-300 bg-white px-2.5 py-1.5 text-xs text-gray-700 focus:border-blue-500 focus:outline-none"
+                    aria-label="Granularidade de vendas"
+                  >
+                    <option value="hour">Hora</option>
+                    <option value="day">Dia</option>
+                    <option value="month">Mês</option>
+                  </select>
+                  {showPosIntegrationCta && (
+                    <button
+                      type="button"
+                      onClick={openPdvModal}
+                      className="rounded-lg border border-amber-200 bg-amber-50 px-2.5 py-1.5 text-[11px] font-semibold text-amber-700 hover:bg-amber-100"
+                    >
+                      Integração PDV pendente · Integrar agora
+                    </button>
+                  )}
+                </div>
               </div>
-              <div className="mt-4 flex h-40 items-end gap-2 rounded-xl bg-gradient-to-b from-blue-50 to-white p-3">
-                {estimatedSalesSeries.map((point) => (
-                  <div key={point.label} className="flex min-w-0 flex-1 flex-col items-center justify-end gap-1.5">
+              <div className="mt-4 overflow-x-auto rounded-xl bg-gradient-to-b from-blue-50 to-white p-3">
+                <div
+                  className="flex h-40 items-end gap-2"
+                  style={{ minWidth: `${salesChartMinWidth}px` }}
+                >
+                  {salesSeries.map((point, index) => (
                     <div
-                      className="w-full rounded-md bg-blue-500/80"
-                      style={{ height: `${Math.max(10, Math.round((point.value / chartScaleMax) * 120))}px` }}
-                      title={`${point.label}: ${formatCurrency(point.value)}`}
+                      key={`${salesGranularity}-${point.label}-${index}`}
+                      className="flex min-w-7 flex-1 flex-col items-center justify-end gap-1.5"
+                    >
+                      <div
+                        className="w-full rounded-md bg-blue-500/80"
+                        style={{ height: `${Math.max(10, Math.round((point.value / salesScaleMax) * 120))}px` }}
+                        title={`${point.label}: ${formatCurrency(point.value)}`}
+                      />
+                      <span className="text-[10px] text-gray-500">
+                        {shouldShowCompactTick(index, salesSeries.length) ? point.label : "·"}
+                      </span>
+                    </div>
+                  ))}
+                </div>
+              </div>
+              <div className="mt-3 rounded-xl border border-gray-100 bg-gray-50 p-3">
+                <div className="flex items-center justify-between gap-2">
+                  <p className="text-xs font-semibold uppercase tracking-wide text-gray-500">Meta Realizada</p>
+                  <button
+                    type="button"
+                    onClick={() => {
+                      setGoalInput(monthlyGoal > 0 ? String(Math.round(monthlyGoal)) : "")
+                      setGoalMonth(salesGoal.month || new Date().toISOString().slice(0, 7))
+                      setGoalDaysMode(salesGoal.daysMode || "calendar")
+                      setGoalModalOpen(true)
+                    }}
+                    className="rounded-lg border border-gray-200 bg-white px-2.5 py-1 text-[11px] font-semibold text-gray-700 hover:bg-gray-100"
+                  >
+                    Configurar meta
+                  </button>
+                </div>
+                <p className="mt-2 text-lg font-bold text-gray-900">{dailyGoal > 0 ? `${dailyProgressPct}%` : "—"}</p>
+                <p className="mt-1 text-xs text-gray-600">
+                  {monthlyGoal > 0 ? `${formatCurrency(dailyGoal)} meta diária` : "Meta mensal não configurada"}
+                </p>
+                <p className="mt-1 text-xs text-gray-600">
+                  Hoje: {formatCurrency(todayRevenueBRL)}
+                  {dailyGoal > 0 ? ` · ${dailyProgressPct}% da meta` : ""}
+                </p>
+                {monthlyGoal > 0 && (
+                  <div className="mt-2 h-1.5 w-full rounded-full bg-gray-100">
+                    <div
+                      className={`h-1.5 rounded-full ${dailyProgressPct >= 100 ? "bg-emerald-500" : "bg-blue-500"}`}
+                      style={{ width: `${Math.min(100, dailyProgressPct)}%` }}
                     />
-                    <span className="text-[10px] text-gray-500">{point.label}</span>
                   </div>
-                ))}
+                )}
               </div>
               <p className="mt-2 text-xs text-gray-500">
                 Estimativa baseada em fluxo e conversão proxy. Conecte o PDV para valores oficiais.
@@ -509,28 +648,11 @@ export function PaidExecutiveDashboardView({
             </section>
           )}
 
-          {showPosIntegrationCta && (
-            <section className="rounded-2xl border border-amber-200 bg-amber-50 p-4 sm:p-6">
-              <h4 className="text-sm font-semibold text-amber-900">Integração PDV pendente</h4>
-              <p className="mt-1 text-sm text-amber-800">
-                Conecte seu PDV e veja a conversão real. Estimativa de ganho: {formatCurrency(Math.max(500, Math.round(revenueAtRiskBRL * 0.25)))}/dia.
+          {pdvSubmitted && (
+            <section className="rounded-2xl border border-emerald-200 bg-emerald-50 p-4 sm:p-6">
+              <p className="text-xs font-semibold text-emerald-700">
+                Interesse de integração PDV registrado. Nosso time entrará em contato.
               </p>
-              <button
-                type="button"
-                onClick={() => {
-                  setPdvStoreId(selectedStoreId !== STORE_ALL ? selectedStoreId : stores[0]?.id || "")
-                  setPdvEmail(user?.email || "")
-                  setPdvModalOpen(true)
-                }}
-                className="mt-3 inline-flex items-center rounded-lg bg-amber-500 px-3 py-2 text-xs font-semibold text-white hover:bg-amber-600"
-              >
-                Integrar agora
-              </button>
-              {pdvSubmitted && (
-                <p className="mt-2 text-xs font-semibold text-emerald-700">
-                  Interesse registrado. Nosso time entrará em contato.
-                </p>
-              )}
             </section>
           )}
         </div>
