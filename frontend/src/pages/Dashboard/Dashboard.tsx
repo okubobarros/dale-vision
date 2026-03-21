@@ -357,6 +357,12 @@ const Dashboard = () => {
     return selectedStoreOverride || ALL_STORES_VALUE
   }, [selectedStoreOverride])
   const isNetworkMode = selectedStore === ALL_STORES_VALUE
+  const coverageStoreId = useMemo(() => {
+    if (selectedStore !== ALL_STORES_VALUE) return selectedStore
+    const items = stores ?? []
+    if (items.length === 1) return items[0].id
+    return null
+  }, [selectedStore, stores])
 
   useEffect(() => {
     if (!canFetchAuth || storesLoading || !stores) return
@@ -494,9 +500,9 @@ const Dashboard = () => {
     data: edgeStatus,
     isLoading: edgeStatusLoading,
   } = useQuery<StoreEdgeStatus>({
-    queryKey: ["store-edge-status", selectedStore],
-    queryFn: () => storesService.getStoreEdgeStatus(selectedStore),
-    enabled: canFetchAuth && !isNetworkMode,
+    queryKey: ["store-edge-status", coverageStoreId],
+    queryFn: () => storesService.getStoreEdgeStatus(coverageStoreId as string),
+    enabled: canFetchAuth && Boolean(coverageStoreId),
     refetchInterval: (query) => {
       if (typeof document !== "undefined" && document.visibilityState === "hidden") {
         return 30000
@@ -515,9 +521,9 @@ const Dashboard = () => {
     retry: false,
   })
   const { data: edgeSetupState } = useQuery({
-    queryKey: ["store-edge-setup-state", selectedStore],
-    queryFn: () => storesService.getStoreEdgeSetup(selectedStore),
-    enabled: canFetchAuth && !isNetworkMode && Boolean(selectedStore),
+    queryKey: ["store-edge-setup-state", coverageStoreId],
+    queryFn: () => storesService.getStoreEdgeSetup(coverageStoreId as string),
+    enabled: canFetchAuth && Boolean(coverageStoreId),
     staleTime: 30000,
     retry: false,
   })
@@ -565,9 +571,9 @@ const Dashboard = () => {
     edgeConnectivityStatus === "degraded" ||
     isRecentTimestamp(lastSeenAt, ONLINE_MAX_AGE_SEC)
   const { data: storeLimits } = useQuery({
-    queryKey: ["store-limits", selectedStore],
-    queryFn: () => camerasService.getStoreLimits(selectedStore),
-    enabled: canFetchAuth && Boolean(selectedStore && !isNetworkMode),
+    queryKey: ["store-limits", coverageStoreId],
+    queryFn: () => camerasService.getStoreLimits(coverageStoreId as string),
+    enabled: canFetchAuth && Boolean(coverageStoreId),
     retry: false,
   })
 
@@ -601,15 +607,12 @@ const Dashboard = () => {
   const ignoreEvent = useIgnoreEvent()
 
   const shouldFetchOnboardingNextStep =
-    canFetchAuth && !storesLoading && !isNetworkMode
+    canFetchAuth && !storesLoading && Boolean(coverageStoreId)
   const {
     data: onboardingNextStep,
   } = useQuery<OnboardingNextStepResponse | null>({
-    queryKey: ["onboarding-next-step", selectedStore],
-    queryFn: () =>
-      onboardingService.getNextStep(
-        !isNetworkMode ? selectedStore : undefined
-      ),
+    queryKey: ["onboarding-next-step", coverageStoreId],
+    queryFn: () => onboardingService.getNextStep(coverageStoreId as string),
     enabled: shouldFetchOnboardingNextStep,
     staleTime: 30000,
     retry: false,
