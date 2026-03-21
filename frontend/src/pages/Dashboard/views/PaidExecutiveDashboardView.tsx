@@ -41,6 +41,9 @@ interface PaidExecutiveDashboardViewProps {
   onRegisterPdvInterest: (payload: RegisterPdvInterestPayload) => Promise<void>
   isSavingPdvInterest: boolean
   calculationRationale: string[]
+  camerasTotal: number
+  camerasOnline: number | null
+  camerasOffline: number | null
 }
 
 const STORE_ALL = "all"
@@ -88,10 +91,12 @@ export function PaidExecutiveDashboardView({
   onRegisterPdvInterest,
   isSavingPdvInterest,
   calculationRationale,
+  camerasTotal,
+  camerasOnline,
+  camerasOffline,
 }: PaidExecutiveDashboardViewProps) {
   const { user } = useAuth()
   const [period, setPeriod] = useState<"today" | "yesterday" | "7d" | "month" | "custom">("today")
-  const [comparison, setComparison] = useState<"yesterday" | "prev_period">("yesterday")
   const [salesGranularity, setSalesGranularity] = useState<"hour" | "day" | "month">("hour")
   const [now, setNow] = useState(() => new Date())
   const [goalMonth, setGoalMonth] = useState(() => salesGoal.month || new Date().toISOString().slice(0, 7))
@@ -168,10 +173,9 @@ export function PaidExecutiveDashboardView({
   const scopedStores =
     selectedStoreId === STORE_ALL ? stores : stores.filter((store) => store.id === selectedStoreId)
   const scopedStoreCount = Math.max(0, scopedStores.length)
-  const scopedCameraCount = scopedStores.reduce(
-    (acc, store) => acc + Math.max(0, Number(store.cameras_count || 0)),
-    0
-  )
+  const scopedCameraCount = Math.max(0, Number(camerasTotal || 0))
+  const scopedCamerasOnline = camerasOnline === null ? null : Math.max(0, Number(camerasOnline || 0))
+  const scopedCamerasOffline = camerasOffline === null ? null : Math.max(0, Number(camerasOffline || 0))
   const currentPlan = scopedStores[0]?.plan || null
   const planCameraLimit = currentPlan === "trial" || currentPlan === "start" || currentPlan === "basic" || currentPlan === "paid" ? 3 : null
   const planStoreLimit = currentPlan ? 1 : null
@@ -268,7 +272,7 @@ export function PaidExecutiveDashboardView({
               <p className="text-sm text-gray-600">Bem-vindo de volta ao seu painel executivo</p>
             </div>
           </div>
-          <div className="grid grid-cols-1 sm:grid-cols-3 gap-2">
+          <div className="grid grid-cols-1 sm:grid-cols-2 gap-2">
             <select
               value={period}
               onChange={(event) =>
@@ -282,17 +286,6 @@ export function PaidExecutiveDashboardView({
               <option value="7d">Últimos 7 dias</option>
               <option value="month">Este mês</option>
               <option value="custom">Personalizado</option>
-            </select>
-            <select
-              value={comparison}
-              onChange={(event) =>
-                setComparison(event.target.value as "yesterday" | "prev_period")
-              }
-              className="rounded-lg border border-gray-300 bg-white px-3 py-2 text-sm text-gray-700 focus:border-blue-500 focus:outline-none"
-              aria-label="Comparar com"
-            >
-              <option value="yesterday">Comparar: Ontem</option>
-              <option value="prev_period">Comparar: Período anterior</option>
             </select>
             <select
               value={selectedStoreId}
@@ -354,7 +347,7 @@ export function PaidExecutiveDashboardView({
           {todayRevenueDeltaPct !== null ? (
             <p className={`mt-1 text-xs font-semibold ${deltaTone}`}>
               {todayRevenueDeltaPct >= 0 ? "+" : ""}
-              {todayRevenueDeltaPct.toFixed(1)}% vs {comparison === "yesterday" ? "ontem" : "período anterior"}
+              {todayRevenueDeltaPct.toFixed(1)}% vs ontem
             </p>
           ) : (
             <p className="mt-1 text-xs text-gray-500">Sem base consolidada para comparação no período.</p>
@@ -397,17 +390,27 @@ export function PaidExecutiveDashboardView({
         <article className="rounded-xl border border-gray-200 bg-white p-4">
           <div className="flex items-start justify-between gap-2">
             <p className="text-xs font-semibold uppercase tracking-wide text-gray-500">Lojas e Câmeras</p>
-            <div className="text-right text-[11px] leading-4">
-              <p className="text-emerald-700">{healthyStores} lojas saudáveis</p>
-              <p className="text-amber-700">{storesInAttention} em atenção</p>
-              <p className="text-rose-700">{criticalEvents} eventos críticos</p>
-            </div>
+            {scopedCamerasOnline !== null && scopedCamerasOnline > 0 ? (
+              <span className="inline-flex items-center gap-1 rounded-full border border-rose-200 bg-rose-50 px-2 py-0.5 text-[10px] font-semibold uppercase tracking-wide text-rose-700">
+                <span className="h-2 w-2 rounded-full bg-rose-600 animate-pulse" />
+                AO VIVO
+              </span>
+            ) : (
+              <span className="rounded-full border border-gray-200 bg-gray-50 px-2 py-0.5 text-[10px] font-semibold uppercase tracking-wide text-gray-600">
+                sem stream
+              </span>
+            )}
           </div>
           <p className="mt-2 text-2xl font-bold text-gray-900">
             {planStoreLimit ? `${scopedStoreCount}/${planStoreLimit}` : scopedStoreCount} lojas
           </p>
           <p className="mt-1 text-sm font-semibold text-gray-700">
             {planCameraLimit ? `${scopedCameraCount}/${planCameraLimit}` : scopedCameraCount} câmeras
+          </p>
+          <p className="mt-1 text-xs text-gray-600">
+            {scopedCamerasOnline === null || scopedCamerasOffline === null
+              ? "— online · — offline"
+              : `${scopedCamerasOnline} online · ${scopedCamerasOffline} offline`}
           </p>
           <p className="mt-1 text-xs text-gray-500">
             {currentPlan ? `Plano ${String(currentPlan).toUpperCase()}` : "Plano em validação"}

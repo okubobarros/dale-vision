@@ -2111,6 +2111,9 @@ const Dashboard = () => {
             }
             isSavingPdvInterest={savePdvInterestMutation.isPending}
             calculationRationale={calculationRationale}
+            camerasTotal={coverageCamerasTotal}
+            camerasOnline={coverageCamerasOnline}
+            camerasOffline={coverageCamerasOffline}
           />
         ) : isNetworkMode ? (
           <>
