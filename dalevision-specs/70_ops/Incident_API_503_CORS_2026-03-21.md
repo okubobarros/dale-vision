@@ -61,4 +61,5 @@
 
 ## Status
 - Mitigação de UX aplicada no frontend.
+- Configuração operacional Free documentada em `70_ops/Render_Free_Stable_Config_2026-03-21.md`.
 - Pendência para fechamento definitivo: ajuste de disponibilidade/edge proxy no ambiente de produção.
